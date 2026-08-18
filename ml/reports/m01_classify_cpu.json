@@ -1,0 +1,180 @@
+{
+  "n_rows_source": 909,
+  "folds": 5,
+  "seed": 42,
+  "min_support": 2,
+  "targets": {
+    "middle_category": {
+      "classes_total": 61,
+      "classes_evaluated": 49,
+      "rows_evaluated": 896,
+      "coverage": 0.9868,
+      "singleton_classes_excluded": 12,
+      "majority_share": 0.152,
+      "clean": {
+        "Majority(하한선)": {
+          "accuracy": 0.154,
+          "accuracy_std": 0.003,
+          "macro_f1": 0.0059,
+          "macro_f1_std": 0.0003,
+          "weighted_f1": 0.0411,
+          "fit_seconds": 1.9
+        },
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.6328,
+          "accuracy_std": 0.0291,
+          "macro_f1": 0.4494,
+          "macro_f1_std": 0.031,
+          "weighted_f1": 0.6041,
+          "fit_seconds": 23.4
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.6361,
+          "accuracy_std": 0.0118,
+          "macro_f1": 0.5129,
+          "macro_f1_std": 0.014,
+          "weighted_f1": 0.6223,
+          "fit_seconds": 3.8
+        },
+        "SVD+RandomForest": {
+          "accuracy": 0.4755,
+          "accuracy_std": 0.0327,
+          "macro_f1": 0.2352,
+          "macro_f1_std": 0.031,
+          "weighted_f1": 0.4036,
+          "fit_seconds": 25.6
+        },
+        "SVD+XGBoost": {
+          "accuracy": 0.5257,
+          "accuracy_std": 0.0345,
+          "macro_f1": 0.3007,
+          "macro_f1_std": 0.0158,
+          "weighted_f1": 0.4746,
+          "fit_seconds": 62.9
+        },
+        "SVD+LightGBM": {
+          "accuracy": 0.4889,
+          "accuracy_std": 0.045,
+          "macro_f1": 0.2338,
+          "macro_f1_std": 0.0299,
+          "weighted_f1": 0.4399,
+          "fit_seconds": 50.3
+        },
+        "SVD+CatBoost": {
+          "accuracy": 0.5525,
+          "accuracy_std": 0.0199,
+          "macro_f1": 0.3048,
+          "macro_f1_std": 0.0159,
+          "weighted_f1": 0.49,
+          "fit_seconds": 202.9
+        }
+      },
+      "leaky_control": {
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.8393,
+          "accuracy_std": 0.0222,
+          "macro_f1": 0.676,
+          "macro_f1_std": 0.0571,
+          "weighted_f1": 0.8163,
+          "fit_seconds": 24.1
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.8906,
+          "accuracy_std": 0.019,
+          "macro_f1": 0.7762,
+          "macro_f1_std": 0.022,
+          "weighted_f1": 0.879,
+          "fit_seconds": 4.5
+        }
+      },
+      "best_model": "TFIDF+LinearSVM",
+      "best_macro_f1": 0.5129
+    },
+    "industry": {
+      "classes_total": 65,
+      "classes_evaluated": 56,
+      "rows_evaluated": 900,
+      "coverage": 0.9901,
+      "singleton_classes_excluded": 9,
+      "majority_share": 0.4928,
+      "clean": {
+        "Majority(하한선)": {
+          "accuracy": 0.4978,
+          "accuracy_std": 0.0027,
+          "macro_f1": 0.0139,
+          "macro_f1_std": 0.0003,
+          "weighted_f1": 0.3309,
+          "fit_seconds": 2.0
+        },
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.7711,
+          "accuracy_std": 0.0234,
+          "macro_f1": 0.6414,
+          "macro_f1_std": 0.0481,
+          "weighted_f1": 0.7626,
+          "fit_seconds": 27.9
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.7978,
+          "accuracy_std": 0.0276,
+          "macro_f1": 0.703,
+          "macro_f1_std": 0.0245,
+          "weighted_f1": 0.7951,
+          "fit_seconds": 6.1
+        },
+        "SVD+RandomForest": {
+          "accuracy": 0.5478,
+          "accuracy_std": 0.0103,
+          "macro_f1": 0.0936,
+          "macro_f1_std": 0.0153,
+          "weighted_f1": 0.409,
+          "fit_seconds": 42.2
+        },
+        "SVD+XGBoost": {
+          "accuracy": 0.6222,
+          "accuracy_std": 0.0145,
+          "macro_f1": 0.2042,
+          "macro_f1_std": 0.0199,
+          "weighted_f1": 0.5117,
+          "fit_seconds": 71.7
+        },
+        "SVD+LightGBM": {
+          "accuracy": 0.6022,
+          "accuracy_std": 0.0134,
+          "macro_f1": 0.1355,
+          "macro_f1_std": 0.0183,
+          "weighted_f1": 0.4875,
+          "fit_seconds": 85.7
+        },
+        "SVD+CatBoost": {
+          "accuracy": 0.5911,
+          "accuracy_std": 0.0156,
+          "macro_f1": 0.1443,
+          "macro_f1_std": 0.0199,
+          "weighted_f1": 0.4706,
+          "fit_seconds": 243.0
+        }
+      },
+      "leaky_control": {
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.8489,
+          "accuracy_std": 0.0315,
+          "macro_f1": 0.7853,
+          "macro_f1_std": 0.0182,
+          "weighted_f1": 0.8478,
+          "fit_seconds": 31.6
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.8867,
+          "accuracy_std": 0.0255,
+          "macro_f1": 0.8721,
+          "macro_f1_std": 0.0274,
+          "weighted_f1": 0.8919,
+          "fit_seconds": 8.8
+        }
+      },
+      "best_model": "TFIDF+LinearSVM",
+      "best_macro_f1": 0.703
+    }
+  }
+}
