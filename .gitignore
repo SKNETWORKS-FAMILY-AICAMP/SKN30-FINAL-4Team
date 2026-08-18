@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+~$*
+
+# ---- ML/DL ----
+# 원천 데이터: 기업마당 CSV 2종(23MB) + 중앙부처 엑셀. Temp/Downloads에서 재취득 가능
+ml/data/raw/
+
+# 학습 가중치: RoBERTa-base 기준 1개당 400MB+ → git 부적합
+ml/models/
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+
+# 캐시
+ml/.cache/
+.cache/huggingface/
+
+# 커밋 대상(참고): ml/data/processed/*.parquet, ml/reports/*.json, ml/figures/*.png
