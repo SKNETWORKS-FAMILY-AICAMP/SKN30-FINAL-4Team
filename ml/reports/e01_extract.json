@@ -1,0 +1,19 @@
+{
+  "files": 300,
+  "ok": 228,
+  "fail": 72,
+  "needs_ocr": 15,
+  "success_rate": 0.76,
+  "by_ext": {
+    "pdf": 205,
+    "hwp": 59,
+    "hwpx": 36
+  },
+  "by_method": {
+    "pymupdf": 205,
+    "soffice_unavailable": 59,
+    "hwpx_xml": 36
+  },
+  "output": "C:/Users/PLAYDA~1/AppData/Local/Temp/claude/C--Users-playdata2-workspace-SKN30-FINAL-4Team/fb8bf858-f0cc-4ddf-adec-c6534d0378b8/scratchpad/e01_api300.jsonl",
+  "scan_threshold_chars_per_page": 50
+}

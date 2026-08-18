@@ -1,0 +1,41 @@
+{
+  "rows": 1176,
+  "categories": [
+    "경영",
+    "기술",
+    "수출",
+    "내수",
+    "창업",
+    "인력",
+    "금융",
+    "기타"
+  ],
+  "months": 147,
+  "period": [
+    "2013-01",
+    "2025-03"
+  ],
+  "partial_months": [
+    "2025-03"
+  ],
+  "zero_cells": 0,
+  "trainable_rows_after_warmup": 1072,
+  "count_stats": {
+    "mean": 83.16,
+    "median": 55.0,
+    "min": 1,
+    "max": 449
+  },
+  "by_category_mean": {
+    "경영": 136.2,
+    "금융": 42.8,
+    "기술": 164.4,
+    "기타": 13.6,
+    "내수": 59.3,
+    "수출": 157.3,
+    "인력": 45.7,
+    "창업": 46.1
+  },
+  "leak_control": "lag/rolling 전부 shift(1) 이후 계산 — 시점 t 피처는 t-1 이전만 사용",
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/timeseries_aggregate.parquet"
+}

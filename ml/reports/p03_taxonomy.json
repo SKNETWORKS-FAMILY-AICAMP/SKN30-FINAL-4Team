@@ -1,0 +1,47 @@
+{
+  "rows_raw": 910,
+  "rows_final": 909,
+  "label_leak": {
+    "설명": "사업개요 첫 줄 【사업개요】에 대분류/중분류/업종이 그대로 기재됨",
+    "대분류_노출률": 1.0,
+    "중분류_노출률": 0.9989,
+    "업종_노출률": 0.4587,
+    "조치": "text_for_model에서 메타 줄 제외, 본문(①②③)만 사용"
+  },
+  "section_coverage": {
+    "purpose": 1.0,
+    "content": 1.0,
+    "target_text": 1.0,
+    "scale_text": 0.9703
+  },
+  "large_category": {
+    "경영": 300,
+    "기술": 173,
+    "수출": 146,
+    "창업": 100,
+    "금융": 59,
+    "소상": 57,
+    "인력": 56,
+    "내수": 18
+  },
+  "business_type": {
+    "23년 계속사업": 760,
+    "23년 공고예정": 50,
+    "23년 신규지원없음": 40,
+    "23년 신규사업": 37,
+    "22년 종료사업": 22
+  },
+  "middle_category_n": 61,
+  "industry_n": 65,
+  "amount_extracted": 699,
+  "amount_type_dist": {
+    "unknown": 617,
+    "NaN": 205,
+    "periodic": 33,
+    "per_company": 31,
+    "per_project": 15,
+    "total_budget": 8
+  },
+  "mean_confidence": 0.4461,
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/business_taxonomy.parquet"
+}
