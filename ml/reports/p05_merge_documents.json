@@ -1,0 +1,28 @@
+{
+  "rows": 1570,
+  "with_document": 906,
+  "document_coverage": 0.5771,
+  "needs_ocr": 12,
+  "doc_chars_median": 4810,
+  "support_source_dist": {
+    "doc": 746,
+    "csv_only": 664,
+    "csv": 160
+  },
+  "amount_detected_all": 0.5707,
+  "amount_typed_all": 0.3803,
+  "amount_typed_with_doc": 0.4691,
+  "amount_typed_without_doc": 0.259,
+  "type_dist": {
+    "NaN": 634,
+    "per_company": 383,
+    "unknown": 339,
+    "periodic": 99,
+    "total_budget": 77,
+    "per_project": 38
+  },
+  "mean_confidence": 0.3327,
+  "ratio_extracted": 87,
+  "count_extracted": 861,
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail_enriched.parquet"
+}
