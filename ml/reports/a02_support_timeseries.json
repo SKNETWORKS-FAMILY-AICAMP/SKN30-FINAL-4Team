@@ -1,55 +1,55 @@
 {
-  "observations": 1938,
+  "observations": 3786,
   "source_dist": {
-    "list_sample": 1042,
-    "openapi": 896
+    "list_sample": 2795,
+    "openapi": 991
   },
   "amount_type_dist": {
-    "per_company": 710,
-    "unknown": 682,
-    "periodic": 222,
-    "total_budget": 219,
-    "per_project": 105
+    "unknown": 1322,
+    "per_company": 1226,
+    "total_budget": 611,
+    "periodic": 408,
+    "per_project": 219
   },
-  "typed_observations": 1256,
+  "typed_observations": 2464,
   "year_range": [
     2019,
     2026
   ],
   "by_year": {
-    "2019": 1,
-    "2020": 62,
-    "2021": 68,
-    "2022": 65,
-    "2023": 114,
-    "2024": 185,
-    "2025": 196,
-    "2026": 565
+    "2019": 221,
+    "2020": 263,
+    "2021": 244,
+    "2022": 249,
+    "2023": 265,
+    "2024": 286,
+    "2025": 294,
+    "2026": 642
   },
-  "mvp_rows": 574,
+  "mvp_rows": 1078,
   "availability": {
     "per_company": {
-      "n": 710,
-      "months": 68,
-      "per_month": 10.44,
+      "n": 1226,
+      "months": 85,
+      "per_month": 14.42,
       "usable": true
     },
     "per_project": {
-      "n": 105,
-      "months": 44,
-      "per_month": 2.39,
-      "usable": false
+      "n": 219,
+      "months": 72,
+      "per_month": 3.04,
+      "usable": true
     },
     "total_budget": {
-      "n": 219,
-      "months": 55,
-      "per_month": 3.98,
+      "n": 611,
+      "months": 84,
+      "per_month": 7.27,
       "usable": true
     },
     "periodic": {
-      "n": 222,
-      "months": 54,
-      "per_month": 4.11,
+      "n": 408,
+      "months": 82,
+      "per_month": 4.98,
       "usable": true
     }
   },

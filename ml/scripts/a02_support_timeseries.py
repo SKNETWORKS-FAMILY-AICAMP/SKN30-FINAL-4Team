@@ -34,6 +34,9 @@ DETAIL = PROC + "/announcement_detail_enriched.parquet"
 CLASSIFIED = PROC + "/announcement_detail_with_support_type.parquet"
 MASTER = PROC + "/announcement_master.parquet"
 SAMPLE = PROC + "/list_sample.parquet"
+# E02(pdf-inspector + rhwp)가 있으면 우선 사용한다. 표 구조가 보존돼 있어
+# 지원규모 파싱 결과가 E01(PyMuPDF + pyhwp)보다 낫다.
+DOCS_V2 = REPORTS + "/e02_documents.jsonl"
 DOCS_API = REPORTS + "/e01_documents.jsonl"
 DOCS_LIST = REPORTS + "/e01_documents_list.jsonl"
 
@@ -43,8 +46,11 @@ OUT_TS = PROC + "/timeseries_support_amount.parquet"
 TYPES = ["per_company", "per_project", "total_budget", "periodic"]
 
 
-def load_docs(path):
-    """공고 1건에 문서가 여러 개면 가장 긴 것을 대표로."""
+def load_docs(path, source=None):
+    """공고 1건에 문서가 여러 개면 가장 긴 것을 대표로.
+
+    source 를 주면 해당 출처(api/list)만 추린다. E02 는 두 출처를 한 파일에 담는다.
+    """
     best = {}
     if not os.path.exists(path):
         return best
@@ -53,10 +59,21 @@ def load_docs(path):
             r = json.loads(line)
             if r.get("n_chars", 0) <= 0:
                 continue
+            if source and r.get("source") != source:
+                continue
             pid = r["announcement_id"]
             if pid not in best or r["n_chars"] > best[pid]["n_chars"]:
                 best[pid] = r
     return best
+
+
+def pick_docs(source, legacy_path):
+    """E02 가 있으면 그것을, 없으면 E01 결과를 쓴다."""
+    if os.path.exists(DOCS_V2):
+        d = load_docs(DOCS_V2, source=source)
+        if d:
+            return d, "e02"
+    return load_docs(legacy_path), "e01"
 
 
 def build_observations():
@@ -75,8 +92,25 @@ def build_observations():
         d["support_type_confidence"] = np.nan
         d["support_type_status"] = np.nan
 
+    # 원문이 있으면 재파싱한다(E02는 표 구조가 살아 있어 결과가 낫다).
+    # 없으면 parquet에 이미 들어있는 값을 쓴다.
+    api_docs, api_ver = pick_docs("api", DOCS_API)
     for _, r in d.iterrows():
-        if pd.isna(r.get("created_at")) or pd.isna(r.get("support_amount_max")):
+        if pd.isna(r.get("created_at")):
+            continue
+        doc = api_docs.get(str(r["announcement_id"]))
+        if doc is not None:
+            amt = parse_support(doc["text"])
+            amax, amin = amt["support_amount_max"], amt["support_amount_min"]
+            atype = amt["support_amount_type"]
+            ratio, cnt = amt["support_ratio"], amt["support_count"]
+            src_text = "doc_" + api_ver
+        else:
+            amax, amin = r.get("support_amount_max"), r.get("support_amount_min")
+            atype = r.get("support_amount_type")
+            ratio, cnt = r.get("support_ratio"), r.get("support_count")
+            src_text = "csv_summary"
+        if pd.isna(amax) or amax is None:
             continue
         rows.append({
             "announcement_id": r["announcement_id"],
@@ -84,16 +118,17 @@ def build_observations():
             "large_category": r.get("category_large"),
             "support_type": r.get("support_type_pred"),
             "support_type_status": r.get("support_type_status"),
-            "amount_type": r.get("support_amount_type"),
-            "amount_max": r.get("support_amount_max"),
-            "amount_min": r.get("support_amount_min"),
-            "support_ratio": r.get("support_ratio"),
-            "support_count": r.get("support_count"),
+            "amount_type": atype,
+            "amount_max": amax,
+            "amount_min": amin,
+            "support_ratio": ratio,
+            "support_count": cnt,
+            "text_source": src_text,
             "source": "openapi",
         })
 
     # --- 목록 표본 (2019~2025, 장기 시계열의 핵심)
-    docs = load_docs(DOCS_LIST)
+    docs, list_ver = pick_docs("list", DOCS_LIST)
     if docs:
         m = pd.read_parquet(MASTER)[
             ["announcement_id", "registered_date", "category_large"]]
@@ -116,6 +151,7 @@ def build_observations():
                 "amount_min": amt["support_amount_min"],
                 "support_ratio": amt["support_ratio"],
                 "support_count": amt["support_count"],
+                "text_source": "doc_" + list_ver,
                 "source": "list_sample",
             })
 
