@@ -1,0 +1,156 @@
+{
+  "rows": 361,
+  "n_groups": 350,
+  "folds": 5,
+  "split": "GroupKFold(그룹=연도 제거한 사업명)",
+  "task": "지원규모 3등급 분류 (기업당 최대지원금)",
+  "class_names": [
+    "1천만 미만",
+    "1천만~1억",
+    "1억 이상"
+  ],
+  "class_dist": {
+    "1천만 미만": 154,
+    "1천만~1억": 127,
+    "1억 이상": 80
+  },
+  "svd_components": 100,
+  "results": {
+    "Majority(하한선) / 메타만": {
+      "accuracy": 0.4266,
+      "macro_f1": 0.1994,
+      "weighted_f1": 0.2551,
+      "adjacent_accuracy": 0.7784,
+      "uses_text": false
+    },
+    "LogisticRegression / 메타만": {
+      "accuracy": 0.5734,
+      "macro_f1": 0.5781,
+      "weighted_f1": 0.5706,
+      "adjacent_accuracy": 0.9529,
+      "uses_text": false
+    },
+    "RandomForest / 메타만": {
+      "accuracy": 0.6427,
+      "macro_f1": 0.6339,
+      "weighted_f1": 0.638,
+      "adjacent_accuracy": 0.9501,
+      "uses_text": false
+    },
+    "XGBoost / 메타만": {
+      "accuracy": 0.5706,
+      "macro_f1": 0.5559,
+      "weighted_f1": 0.5662,
+      "adjacent_accuracy": 0.928,
+      "uses_text": false
+    },
+    "LightGBM / 메타만": {
+      "accuracy": 0.5928,
+      "macro_f1": 0.5794,
+      "weighted_f1": 0.5908,
+      "adjacent_accuracy": 0.9501,
+      "uses_text": false
+    },
+    "CatBoost / 메타만": {
+      "accuracy": 0.6233,
+      "macro_f1": 0.6145,
+      "weighted_f1": 0.6177,
+      "adjacent_accuracy": 0.9584,
+      "uses_text": false
+    },
+    "Majority(하한선) / 메타+텍스트": {
+      "accuracy": 0.4266,
+      "macro_f1": 0.1994,
+      "weighted_f1": 0.2551,
+      "adjacent_accuracy": 0.7784,
+      "uses_text": true
+    },
+    "LogisticRegression / 메타+텍스트": {
+      "accuracy": 0.59,
+      "macro_f1": 0.5922,
+      "weighted_f1": 0.5851,
+      "adjacent_accuracy": 0.9529,
+      "uses_text": true
+    },
+    "RandomForest / 메타+텍스트": {
+      "accuracy": 0.6565,
+      "macro_f1": 0.6683,
+      "weighted_f1": 0.6611,
+      "adjacent_accuracy": 0.9889,
+      "uses_text": true
+    },
+    "XGBoost / 메타+텍스트": {
+      "accuracy": 0.6842,
+      "macro_f1": 0.691,
+      "weighted_f1": 0.6896,
+      "adjacent_accuracy": 0.9889,
+      "uses_text": true
+    },
+    "LightGBM / 메타+텍스트": {
+      "accuracy": 0.6787,
+      "macro_f1": 0.6812,
+      "weighted_f1": 0.6835,
+      "adjacent_accuracy": 0.9917,
+      "uses_text": true
+    },
+    "CatBoost / 메타+텍스트": {
+      "accuracy": 0.687,
+      "macro_f1": 0.6901,
+      "weighted_f1": 0.6919,
+      "adjacent_accuracy": 0.9889,
+      "uses_text": true
+    }
+  },
+  "best": "XGBoost / 메타+텍스트",
+  "best_macro_f1": 0.691,
+  "confusion_matrix": [
+    [
+      99,
+      53,
+      2
+    ],
+    [
+      22,
+      99,
+      6
+    ],
+    [
+      2,
+      29,
+      49
+    ]
+  ],
+  "per_class": {
+    "1천만 미만": {
+      "precision": 0.8048780487804879,
+      "recall": 0.6428571428571429,
+      "f1-score": 0.7148014440433214,
+      "support": 154.0
+    },
+    "1천만~1억": {
+      "precision": 0.5469613259668509,
+      "recall": 0.7795275590551181,
+      "f1-score": 0.6428571428571429,
+      "support": 127.0
+    },
+    "1억 이상": {
+      "precision": 0.8596491228070176,
+      "recall": 0.6125,
+      "f1-score": 0.7153284671532847,
+      "support": 80.0
+    }
+  },
+  "macro_avg": {
+    "precision": 0.7371628325181186,
+    "recall": 0.6782949006374203,
+    "f1-score": 0.690995684684583,
+    "support": 361.0
+  },
+  "weighted_avg": {
+    "precision": 0.7262804369378021,
+    "recall": 0.6842105263157895,
+    "f1-score": 0.6896081908526078,
+    "support": 361.0
+  },
+  "note": "회귀(M03) 대비: 10배 초과 오차 12.2% -> 두 칸 이상 오차 1.1%. 텍스트 피처는 TF-IDF·SVD100 사용 — SBERT 768차원은 361행에 과하여 M04에서 오히려 악화됐다."
+}

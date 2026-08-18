@@ -1,0 +1,344 @@
+{
+  "rows": 361,
+  "n_groups": 350,
+  "split": "GroupKFold(그룹=연도 제거한 사업명)",
+  "folds": 5,
+  "A_bracket_classification": {
+    "고정 3등급": {
+      "class_names": [
+        "1천만 미만",
+        "1천만~1억",
+        "1억 이상"
+      ],
+      "class_dist": {
+        "1천만 미만": 154,
+        "1천만~1억": 127,
+        "1억 이상": 80
+      },
+      "results": {
+        "Majority(하한선)": {
+          "accuracy": 0.4266,
+          "macro_f1": 0.1994,
+          "adjacent_accuracy": 0.7784
+        },
+        "LogisticRegression": {
+          "accuracy": 0.5734,
+          "macro_f1": 0.5781,
+          "adjacent_accuracy": 0.9529
+        },
+        "RandomForest": {
+          "accuracy": 0.6427,
+          "macro_f1": 0.6339,
+          "adjacent_accuracy": 0.9501
+        },
+        "XGBoost": {
+          "accuracy": 0.5706,
+          "macro_f1": 0.5559,
+          "adjacent_accuracy": 0.928
+        },
+        "LightGBM": {
+          "accuracy": 0.5928,
+          "macro_f1": 0.5794,
+          "adjacent_accuracy": 0.9501
+        },
+        "CatBoost": {
+          "accuracy": 0.6233,
+          "macro_f1": 0.6145,
+          "adjacent_accuracy": 0.9584
+        }
+      },
+      "best_model": "RandomForest",
+      "best_macro_f1": 0.6339,
+      "confusion_matrix": [
+        [
+          113,
+          26,
+          15
+        ],
+        [
+          41,
+          60,
+          26
+        ],
+        [
+          3,
+          18,
+          59
+        ]
+      ]
+    },
+    "고정 5등급": {
+      "class_names": [
+        "500만 미만",
+        "500만~2천만",
+        "2천만~5천만",
+        "5천만~2억",
+        "2억 이상"
+      ],
+      "class_dist": {
+        "500만 미만": 92,
+        "500만~2천만": 109,
+        "2천만~5천만": 42,
+        "5천만~2억": 57,
+        "2억 이상": 61
+      },
+      "results": {
+        "Majority(하한선)": {
+          "accuracy": 0.3019,
+          "macro_f1": 0.0928,
+          "adjacent_accuracy": 0.6731
+        },
+        "LogisticRegression": {
+          "accuracy": 0.3518,
+          "macro_f1": 0.3015,
+          "adjacent_accuracy": 0.6759
+        },
+        "RandomForest": {
+          "accuracy": 0.4709,
+          "macro_f1": 0.4228,
+          "adjacent_accuracy": 0.8366
+        },
+        "XGBoost": {
+          "accuracy": 0.4515,
+          "macro_f1": 0.4308,
+          "adjacent_accuracy": 0.8255
+        },
+        "LightGBM": {
+          "accuracy": 0.4598,
+          "macro_f1": 0.4301,
+          "adjacent_accuracy": 0.8255
+        },
+        "CatBoost": {
+          "accuracy": 0.4931,
+          "macro_f1": 0.419,
+          "adjacent_accuracy": 0.8449
+        }
+      },
+      "best_model": "XGBoost",
+      "best_macro_f1": 0.4308,
+      "confusion_matrix": [
+        [
+          47,
+          34,
+          1,
+          5,
+          5
+        ],
+        [
+          38,
+          51,
+          7,
+          11,
+          2
+        ],
+        [
+          5,
+          20,
+          9,
+          6,
+          2
+        ],
+        [
+          3,
+          18,
+          0,
+          18,
+          18
+        ],
+        [
+          3,
+          5,
+          3,
+          12,
+          38
+        ]
+      ]
+    },
+    "분위 3등급": {
+      "class_names": [
+        "Q1 (100만~600만)",
+        "Q2 (600만~4000만)",
+        "Q3 (4000만~1000000만)"
+      ],
+      "class_dist": {
+        "Q1 (100만~600만)": 117,
+        "Q2 (600만~4000만)": 120,
+        "Q3 (4000만~1000000만)": 124
+      },
+      "results": {
+        "Majority(하한선)": {
+          "accuracy": 0.2881,
+          "macro_f1": 0.2244,
+          "adjacent_accuracy": 0.8144
+        },
+        "LogisticRegression": {
+          "accuracy": 0.6011,
+          "macro_f1": 0.6002,
+          "adjacent_accuracy": 0.9335
+        },
+        "RandomForest": {
+          "accuracy": 0.6316,
+          "macro_f1": 0.6318,
+          "adjacent_accuracy": 0.9335
+        },
+        "XGBoost": {
+          "accuracy": 0.6011,
+          "macro_f1": 0.5988,
+          "adjacent_accuracy": 0.9418
+        },
+        "LightGBM": {
+          "accuracy": 0.5845,
+          "macro_f1": 0.5825,
+          "adjacent_accuracy": 0.9252
+        },
+        "CatBoost": {
+          "accuracy": 0.6371,
+          "macro_f1": 0.6332,
+          "adjacent_accuracy": 0.9418
+        }
+      },
+      "best_model": "CatBoost",
+      "best_macro_f1": 0.6332,
+      "confusion_matrix": [
+        [
+          81,
+          24,
+          12
+        ],
+        [
+          38,
+          58,
+          24
+        ],
+        [
+          9,
+          24,
+          91
+        ]
+      ]
+    },
+    "분위 5등급": {
+      "class_names": [
+        "Q1 (100만~300만)",
+        "Q2 (300만~800만)",
+        "Q3 (800만~2000만)",
+        "Q4 (2000만~10000만)",
+        "Q5 (10000만~1000000만)"
+      ],
+      "class_dist": {
+        "Q1 (100만~300만)": 56,
+        "Q2 (300만~800만)": 82,
+        "Q3 (800만~2000만)": 63,
+        "Q4 (2000만~10000만)": 80,
+        "Q5 (10000만~1000000만)": 80
+      },
+      "results": {
+        "Majority(하한선)": {
+          "accuracy": 0.205,
+          "macro_f1": 0.1098,
+          "adjacent_accuracy": 0.4709
+        },
+        "LogisticRegression": {
+          "accuracy": 0.3296,
+          "macro_f1": 0.3196,
+          "adjacent_accuracy": 0.6427
+        },
+        "RandomForest": {
+          "accuracy": 0.4294,
+          "macro_f1": 0.4096,
+          "adjacent_accuracy": 0.7895
+        },
+        "XGBoost": {
+          "accuracy": 0.4072,
+          "macro_f1": 0.3958,
+          "adjacent_accuracy": 0.759
+        },
+        "LightGBM": {
+          "accuracy": 0.4044,
+          "macro_f1": 0.3932,
+          "adjacent_accuracy": 0.7645
+        },
+        "CatBoost": {
+          "accuracy": 0.4127,
+          "macro_f1": 0.3861,
+          "adjacent_accuracy": 0.8116
+        }
+      },
+      "best_model": "RandomForest",
+      "best_macro_f1": 0.4096,
+      "confusion_matrix": [
+        [
+          23,
+          17,
+          8,
+          2,
+          6
+        ],
+        [
+          19,
+          31,
+          18,
+          5,
+          9
+        ],
+        [
+          11,
+          15,
+          22,
+          9,
+          6
+        ],
+        [
+          5,
+          13,
+          20,
+          17,
+          25
+        ],
+        [
+          0,
+          2,
+          9,
+          7,
+          62
+        ]
+      ]
+    }
+  },
+  "B_feature_sets_regression": {
+    "F1 메타만 (M03 현재)": {
+      "MAE_log10": 0.4713,
+      "R2_log10": 0.5332,
+      "geo_mean_error_x": 2.96,
+      "within_2x": 0.3961,
+      "within_5x": 0.7812,
+      "over_10x": 0.1219
+    },
+    "F2 메타 + TFIDF·SVD100": {
+      "MAE_log10": 0.4165,
+      "R2_log10": 0.6221,
+      "geo_mean_error_x": 2.609,
+      "within_2x": 0.4737,
+      "within_5x": 0.8172,
+      "over_10x": 0.0665
+    },
+    "F3 텍스트만 (TFIDF·SVD100)": {
+      "MAE_log10": 0.4541,
+      "R2_log10": 0.5438,
+      "geo_mean_error_x": 2.845,
+      "within_2x": 0.4377,
+      "within_5x": 0.795,
+      "over_10x": 0.0776
+    },
+    "F4 메타 + SBERT임베딩": {
+      "MAE_log10": 0.4845,
+      "R2_log10": 0.5247,
+      "geo_mean_error_x": 3.052,
+      "within_2x": 0.3906,
+      "within_5x": 0.7673,
+      "over_10x": 0.108
+    }
+  },
+  "embedding_model": "jhgan/ko-sroberta-multitask",
+  "note": "A안은 순서형이라 인접 등급 허용 정확도를 함께 본다. B안은 모델을 CatBoost로 고정해 피처 기여만 분리한다."
+}
