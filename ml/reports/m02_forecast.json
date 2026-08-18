@@ -1,0 +1,177 @@
+{
+  "rows_trainable": 1072,
+  "categories": [
+    "경영",
+    "금융",
+    "기술",
+    "기타",
+    "내수",
+    "수출",
+    "인력",
+    "창업"
+  ],
+  "folds": [
+    {
+      "train_until": "2021-12",
+      "validate": "2022"
+    },
+    {
+      "train_until": "2022-12",
+      "validate": "2023"
+    },
+    {
+      "train_until": "2023-12",
+      "validate": "2024"
+    }
+  ],
+  "excluded": "2025년 부분 연도(2025-03-27까지)",
+  "target": "announcement_count (1개월 ahead)",
+  "features": [
+    "lag_1",
+    "lag_2",
+    "lag_3",
+    "lag_6",
+    "lag_12",
+    "rolling_mean_3",
+    "rolling_mean_6",
+    "rolling_mean_12",
+    "rolling_std_12",
+    "yoy_diff",
+    "month",
+    "quarter",
+    "month_sin",
+    "month_cos"
+  ],
+  "leak_control": [
+    "lag/rolling은 shift(1) 이후 계산",
+    "스케일러는 fold train에만 fit",
+    "SARIMA/Prophet은 fold마다 재적합"
+  ],
+  "results": {
+    "Last Value": {
+      "MAE": 29.708,
+      "RMSE": 44.309,
+      "sMAPE": 32.12,
+      "direction_acc": 0.028,
+      "per_fold_MAE": {
+        "2022": 31.583,
+        "2023": 25.812,
+        "2024": 31.729
+      }
+    },
+    "Seasonal Naive": {
+      "MAE": 22.75,
+      "RMSE": 33.264,
+      "sMAPE": 28.303,
+      "direction_acc": 0.687,
+      "per_fold_MAE": {
+        "2022": 25.281,
+        "2023": 21.552,
+        "2024": 21.417
+      }
+    },
+    "Moving Average(3)": {
+      "MAE": 34.572,
+      "RMSE": 48.884,
+      "sMAPE": 37.92,
+      "direction_acc": 0.455,
+      "per_fold_MAE": {
+        "2022": 33.399,
+        "2023": 30.965,
+        "2024": 39.351
+      }
+    },
+    "LinearRegression": {
+      "MAE": 22.969,
+      "RMSE": 30.826,
+      "sMAPE": 30.293,
+      "direction_acc": 0.635,
+      "per_fold_MAE": {
+        "2022": 25.563,
+        "2023": 19.606,
+        "2024": 23.738
+      }
+    },
+    "RandomForest": {
+      "MAE": 22.893,
+      "RMSE": 30.126,
+      "sMAPE": 28.577,
+      "direction_acc": 0.642,
+      "per_fold_MAE": {
+        "2022": 25.999,
+        "2023": 18.315,
+        "2024": 24.365
+      }
+    },
+    "XGBoost": {
+      "MAE": 23.349,
+      "RMSE": 31.66,
+      "sMAPE": 29.5,
+      "direction_acc": 0.649,
+      "per_fold_MAE": {
+        "2022": 27.09,
+        "2023": 18.895,
+        "2024": 24.063
+      }
+    },
+    "LightGBM": {
+      "MAE": 23.622,
+      "RMSE": 31.784,
+      "sMAPE": 30.45,
+      "direction_acc": 0.649,
+      "per_fold_MAE": {
+        "2022": 26.416,
+        "2023": 19.121,
+        "2024": 25.33
+      }
+    },
+    "CatBoost": {
+      "MAE": 22.597,
+      "RMSE": 30.313,
+      "sMAPE": 28.12,
+      "direction_acc": 0.66,
+      "per_fold_MAE": {
+        "2022": 26.519,
+        "2023": 18.0,
+        "2024": 23.272
+      }
+    },
+    "SARIMA": {
+      "MAE": 23.552,
+      "RMSE": 33.254,
+      "sMAPE": 29.21,
+      "direction_acc": 0.667,
+      "per_fold_MAE": {
+        "2022": 26.326,
+        "2023": 20.145,
+        "2024": 24.184
+      }
+    },
+    "Prophet": {
+      "MAE": 29.014,
+      "RMSE": 38.942,
+      "sMAPE": 34.537,
+      "direction_acc": 0.59,
+      "per_fold_MAE": {
+        "2022": 30.089,
+        "2023": 25.046,
+        "2024": 31.907
+      }
+    },
+    "Ensemble(단순평균)": {
+      "MAE": 21.451,
+      "RMSE": 29.148,
+      "sMAPE": 27.3,
+      "direction_acc": 0.684,
+      "per_fold_MAE": {
+        "2022": 24.327,
+        "2023": 17.986,
+        "2024": 22.039
+      }
+    }
+  },
+  "best_model": "Ensemble(단순평균)",
+  "best_MAE": 21.451,
+  "baseline_seasonal_naive_MAE": 22.75,
+  "improvement_vs_seasonal_naive": 0.0571
+}
