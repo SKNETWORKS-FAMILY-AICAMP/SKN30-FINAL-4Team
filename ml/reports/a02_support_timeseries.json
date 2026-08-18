@@ -1,0 +1,62 @@
+{
+  "observations": 1938,
+  "source_dist": {
+    "list_sample": 1042,
+    "openapi": 896
+  },
+  "amount_type_dist": {
+    "per_company": 710,
+    "unknown": 682,
+    "periodic": 222,
+    "total_budget": 219,
+    "per_project": 105
+  },
+  "typed_observations": 1256,
+  "year_range": [
+    2019,
+    2026
+  ],
+  "by_year": {
+    "2019": 1,
+    "2020": 62,
+    "2021": 68,
+    "2022": 65,
+    "2023": 114,
+    "2024": 185,
+    "2025": 196,
+    "2026": 565
+  },
+  "mvp_rows": 574,
+  "availability": {
+    "per_company": {
+      "n": 710,
+      "months": 68,
+      "per_month": 10.44,
+      "usable": true
+    },
+    "per_project": {
+      "n": 105,
+      "months": 44,
+      "per_month": 2.39,
+      "usable": false
+    },
+    "total_budget": {
+      "n": 219,
+      "months": 55,
+      "per_month": 3.98,
+      "usable": true
+    },
+    "periodic": {
+      "n": 222,
+      "months": 54,
+      "per_month": 4.11,
+      "usable": true
+    }
+  },
+  "criteria": "개월수>=24 AND 월평균 관측>=3 이면 시계열 분석 가능(설계서 18장)",
+  "note": "설계서 24장 규칙8 — per_company/total_budget/per_project/periodic 을 섞지 않는다",
+  "outputs": {
+    "observations": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_amount_observations.parquet",
+    "timeseries": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/timeseries_support_amount.parquet"
+  }
+}
