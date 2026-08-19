@@ -1,0 +1,512 @@
+{
+  "purpose": "시간축(등록일 vs 마감일) 선택이 계절성·예측성능에 미치는 영향 측정",
+  "boundary_effect": {
+    "cross_month_rate": 0.5708,
+    "cross_rate_late_registered": 0.89,
+    "cross_rate_early_registered": 0.307,
+    "lead_days_median": 17.0,
+    "lead_days_p99": 358
+  },
+  "deadline_censoring": {
+    "safe_range": [
+      "2013-12",
+      "2024-04"
+    ],
+    "reason": "원본은 등록 시점 기준 수집이라 마감일 축은 양끝이 절단된다",
+    "cut_days_p99": 358,
+    "note": "두 축을 이 구간으로 통일해 비교했다. 기간이 다르면 차이가 시간축 때문인지 기간 때문인지 구분되지 않는다."
+  },
+  "folds_used": [
+    "2022",
+    "2023"
+  ],
+  "monthly_distribution_corr": -0.2896,
+  "axes": {
+    "registered": {
+      "label": "등록일",
+      "date_column": "registered_date",
+      "months": 125,
+      "period": [
+        "2013-12",
+        "2024-04"
+      ],
+      "total_count": 84373,
+      "monthly_total": {
+        "1": 8412,
+        "2": 8727,
+        "3": 9358,
+        "4": 8885,
+        "5": 7300,
+        "6": 7358,
+        "7": 7851,
+        "8": 6733,
+        "9": 5974,
+        "10": 5292,
+        "11": 4470,
+        "12": 4013
+      },
+      "stl": {
+        "전체": {
+          "n_months": 125,
+          "mean": 674.98,
+          "std": 253.27,
+          "trend_strength": 0.8449,
+          "seasonal_strength": 0.8198,
+          "residual_var": 5858.13,
+          "residual_var_ratio": 0.0913,
+          "acf_lag1": 0.7436,
+          "acf_lag12": 0.7357,
+          "ljungbox_p_lag12": 0.3909,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.6677,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "경영": {
+          "n_months": 125,
+          "mean": 137.02,
+          "std": 78.48,
+          "trend_strength": 0.8766,
+          "seasonal_strength": 0.7149,
+          "residual_var": 593.8,
+          "residual_var_ratio": 0.0964,
+          "acf_lag1": 0.8595,
+          "acf_lag12": 0.7172,
+          "ljungbox_p_lag12": 0.0146,
+          "residual_autocorr_remains": true,
+          "adf_p": 0.6308,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "기술": {
+          "n_months": 125,
+          "mean": 165.32,
+          "std": 64.66,
+          "trend_strength": 0.5614,
+          "seasonal_strength": 0.7254,
+          "residual_var": 853.49,
+          "residual_var_ratio": 0.2041,
+          "acf_lag1": 0.6431,
+          "acf_lag12": 0.6566,
+          "ljungbox_p_lag12": 0.26,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.7679,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "수출": {
+          "n_months": 125,
+          "mean": 162.87,
+          "std": 67.39,
+          "trend_strength": 0.6048,
+          "seasonal_strength": 0.6731,
+          "residual_var": 989.36,
+          "residual_var_ratio": 0.2179,
+          "acf_lag1": 0.6531,
+          "acf_lag12": 0.5721,
+          "ljungbox_p_lag12": 0.5679,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.2562,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "내수": {
+          "n_months": 125,
+          "mean": 58.18,
+          "std": 33.63,
+          "trend_strength": 0.8954,
+          "seasonal_strength": 0.7482,
+          "residual_var": 94.64,
+          "residual_var_ratio": 0.0837,
+          "acf_lag1": 0.8304,
+          "acf_lag12": 0.6446,
+          "ljungbox_p_lag12": 0.1155,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.8043,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "창업": {
+          "n_months": 125,
+          "mean": 48.26,
+          "std": 29.1,
+          "trend_strength": 0.7303,
+          "seasonal_strength": 0.7033,
+          "residual_var": 140.84,
+          "residual_var_ratio": 0.1663,
+          "acf_lag1": 0.6832,
+          "acf_lag12": 0.6285,
+          "ljungbox_p_lag12": 0.1577,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.3819,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "인력": {
+          "n_months": 125,
+          "mean": 45.38,
+          "std": 19.96,
+          "trend_strength": 0.2791,
+          "seasonal_strength": 0.4277,
+          "residual_var": 196.97,
+          "residual_var_ratio": 0.4945,
+          "acf_lag1": 0.4381,
+          "acf_lag12": 0.4778,
+          "ljungbox_p_lag12": 0.0182,
+          "residual_autocorr_remains": true,
+          "adf_p": 0.5922,
+          "is_stationary": false,
+          "trend_direction": "감소"
+        },
+        "금융": {
+          "n_months": 125,
+          "mean": 43.98,
+          "std": 30.92,
+          "trend_strength": 0.4141,
+          "seasonal_strength": 0.7385,
+          "residual_var": 211.74,
+          "residual_var_ratio": 0.2215,
+          "acf_lag1": 0.2592,
+          "acf_lag12": 0.6104,
+          "ljungbox_p_lag12": 0.2795,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.6904,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "기타": {
+          "n_months": 125,
+          "mean": 13.98,
+          "std": 12.2,
+          "trend_strength": 0.1722,
+          "seasonal_strength": 0.1568,
+          "residual_var": 107.71,
+          "residual_var_ratio": 0.7241,
+          "acf_lag1": 0.3682,
+          "acf_lag12": 0.1168,
+          "ljungbox_p_lag12": 0.2245,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.0,
+          "is_stationary": true,
+          "trend_direction": "증가"
+        }
+      },
+      "forecast": {
+        "Last Value": {
+          "MAE": 28.697,
+          "RMSE": 43.578,
+          "sMAPE": 29.215,
+          "direction_acc": 0.036
+        },
+        "Seasonal Naive": {
+          "MAE": 23.416,
+          "RMSE": 34.487,
+          "sMAPE": 29.78,
+          "direction_acc": 0.677
+        },
+        "Moving Average(3)": {
+          "MAE": 32.182,
+          "RMSE": 46.445,
+          "sMAPE": 34.34,
+          "direction_acc": 0.458
+        },
+        "LinearRegression": {
+          "MAE": 22.73,
+          "RMSE": 31.45,
+          "sMAPE": 29.515,
+          "direction_acc": 0.63
+        },
+        "RandomForest": {
+          "MAE": 22.153,
+          "RMSE": 29.896,
+          "sMAPE": 27.865,
+          "direction_acc": 0.62
+        },
+        "XGBoost": {
+          "MAE": 22.845,
+          "RMSE": 31.48,
+          "sMAPE": 28.575,
+          "direction_acc": 0.62
+        },
+        "LightGBM": {
+          "MAE": 23.233,
+          "RMSE": 31.592,
+          "sMAPE": 30.28,
+          "direction_acc": 0.609
+        },
+        "CatBoost": {
+          "MAE": 21.939,
+          "RMSE": 30.008,
+          "sMAPE": 26.97,
+          "direction_acc": 0.625
+        },
+        "SARIMA": {
+          "MAE": 22.382,
+          "RMSE": 32.884,
+          "sMAPE": 28.055,
+          "direction_acc": 0.667
+        },
+        "Ensemble": {
+          "MAE": 21.262,
+          "RMSE": 29.154,
+          "sMAPE": 27.575,
+          "direction_acc": 0.656
+        }
+      },
+      "verdict": {
+        "전체": "추세 강함 / 계절성 강함",
+        "경영": "추세 강함 / 계절성 강함 / 잔차 자기상관 남음",
+        "기술": "추세 보통 / 계절성 강함",
+        "수출": "추세 강함 / 계절성 강함",
+        "내수": "추세 강함 / 계절성 강함",
+        "창업": "추세 강함 / 계절성 강함",
+        "인력": "추세 약함 / 계절성 보통 / 잔차 자기상관 남음",
+        "금융": "추세 보통 / 계절성 강함",
+        "기타": "추세 약함 / 계절성 약함"
+      }
+    },
+    "deadline": {
+      "label": "마감일",
+      "date_column": "application_end",
+      "months": 125,
+      "period": [
+        "2013-12",
+        "2024-04"
+      ],
+      "total_count": 83753,
+      "monthly_total": {
+        "1": 3366,
+        "2": 6193,
+        "3": 7971,
+        "4": 8307,
+        "5": 7051,
+        "6": 7111,
+        "7": 6892,
+        "8": 6839,
+        "9": 5976,
+        "10": 5764,
+        "11": 5931,
+        "12": 12352
+      },
+      "stl": {
+        "전체": {
+          "n_months": 125,
+          "mean": 670.02,
+          "std": 272.69,
+          "trend_strength": 0.9019,
+          "seasonal_strength": 0.9162,
+          "residual_var": 3529.71,
+          "residual_var_ratio": 0.0475,
+          "acf_lag1": 0.2481,
+          "acf_lag12": 0.8138,
+          "ljungbox_p_lag12": 0.0493,
+          "residual_autocorr_remains": true,
+          "adf_p": 0.7387,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "경영": {
+          "n_months": 125,
+          "mean": 135.61,
+          "std": 79.15,
+          "trend_strength": 0.9046,
+          "seasonal_strength": 0.7934,
+          "residual_var": 441.96,
+          "residual_var_ratio": 0.0705,
+          "acf_lag1": 0.6386,
+          "acf_lag12": 0.7239,
+          "ljungbox_p_lag12": 0.0067,
+          "residual_autocorr_remains": true,
+          "adf_p": 0.8059,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "기술": {
+          "n_months": 125,
+          "mean": 164.37,
+          "std": 62.86,
+          "trend_strength": 0.6941,
+          "seasonal_strength": 0.8209,
+          "residual_var": 505.42,
+          "residual_var_ratio": 0.1279,
+          "acf_lag1": 0.406,
+          "acf_lag12": 0.7381,
+          "ljungbox_p_lag12": 0.0302,
+          "residual_autocorr_remains": true,
+          "adf_p": 0.7999,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "수출": {
+          "n_months": 125,
+          "mean": 162.15,
+          "std": 55.82,
+          "trend_strength": 0.6506,
+          "seasonal_strength": 0.5396,
+          "residual_var": 775.79,
+          "residual_var_ratio": 0.249,
+          "acf_lag1": 0.4714,
+          "acf_lag12": 0.5047,
+          "ljungbox_p_lag12": 0.0004,
+          "residual_autocorr_remains": true,
+          "adf_p": 0.3957,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "내수": {
+          "n_months": 125,
+          "mean": 57.64,
+          "std": 34.8,
+          "trend_strength": 0.9188,
+          "seasonal_strength": 0.8477,
+          "residual_var": 70.7,
+          "residual_var_ratio": 0.0584,
+          "acf_lag1": 0.7748,
+          "acf_lag12": 0.666,
+          "ljungbox_p_lag12": 0.0636,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.7922,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "창업": {
+          "n_months": 125,
+          "mean": 47.75,
+          "std": 27.8,
+          "trend_strength": 0.812,
+          "seasonal_strength": 0.7529,
+          "residual_var": 93.38,
+          "residual_var_ratio": 0.1208,
+          "acf_lag1": 0.662,
+          "acf_lag12": 0.6677,
+          "ljungbox_p_lag12": 0.7436,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.359,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "인력": {
+          "n_months": 125,
+          "mean": 45.38,
+          "std": 27.74,
+          "trend_strength": 0.4176,
+          "seasonal_strength": 0.8354,
+          "residual_var": 113.71,
+          "residual_var_ratio": 0.1478,
+          "acf_lag1": 0.0417,
+          "acf_lag12": 0.7551,
+          "ljungbox_p_lag12": 0.0594,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.6891,
+          "is_stationary": false,
+          "trend_direction": "감소"
+        },
+        "금융": {
+          "n_months": 125,
+          "mean": 43.18,
+          "std": 65.46,
+          "trend_strength": 0.3427,
+          "seasonal_strength": 0.9292,
+          "residual_var": 292.49,
+          "residual_var_ratio": 0.0683,
+          "acf_lag1": -0.0565,
+          "acf_lag12": 0.8656,
+          "ljungbox_p_lag12": 0.1758,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.8373,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        },
+        "기타": {
+          "n_months": 125,
+          "mean": 13.95,
+          "std": 15.79,
+          "trend_strength": 0.0683,
+          "seasonal_strength": 0.2409,
+          "residual_var": 179.96,
+          "residual_var_ratio": 0.7219,
+          "acf_lag1": 0.0612,
+          "acf_lag12": 0.4536,
+          "ljungbox_p_lag12": 0.1039,
+          "residual_autocorr_remains": false,
+          "adf_p": 0.2262,
+          "is_stationary": false,
+          "trend_direction": "증가"
+        }
+      },
+      "forecast": {
+        "Last Value": {
+          "MAE": 38.271,
+          "RMSE": 68.805,
+          "sMAPE": 36.825,
+          "direction_acc": 0.031
+        },
+        "Seasonal Naive": {
+          "MAE": 21.822,
+          "RMSE": 32.465,
+          "sMAPE": 25.34,
+          "direction_acc": 0.708
+        },
+        "Moving Average(3)": {
+          "MAE": 37.05,
+          "RMSE": 57.873,
+          "sMAPE": 37.675,
+          "direction_acc": 0.615
+        },
+        "LinearRegression": {
+          "MAE": 21.736,
+          "RMSE": 31.291,
+          "sMAPE": 28.79,
+          "direction_acc": 0.693
+        },
+        "RandomForest": {
+          "MAE": 20.572,
+          "RMSE": 31.372,
+          "sMAPE": 22.92,
+          "direction_acc": 0.703
+        },
+        "XGBoost": {
+          "MAE": 21.034,
+          "RMSE": 31.451,
+          "sMAPE": 23.79,
+          "direction_acc": 0.703
+        },
+        "LightGBM": {
+          "MAE": 22.968,
+          "RMSE": 32.968,
+          "sMAPE": 26.745,
+          "direction_acc": 0.677
+        },
+        "CatBoost": {
+          "MAE": 20.822,
+          "RMSE": 30.569,
+          "sMAPE": 23.525,
+          "direction_acc": 0.698
+        },
+        "SARIMA": {
+          "MAE": 21.295,
+          "RMSE": 32.99,
+          "sMAPE": 25.66,
+          "direction_acc": 0.766
+        },
+        "Ensemble": {
+          "MAE": 19.602,
+          "RMSE": 29.481,
+          "sMAPE": 22.565,
+          "direction_acc": 0.698
+        }
+      },
+      "verdict": {
+        "전체": "추세 강함 / 계절성 강함 / 잔차 자기상관 남음",
+        "경영": "추세 강함 / 계절성 강함 / 잔차 자기상관 남음",
+        "기술": "추세 강함 / 계절성 강함 / 잔차 자기상관 남음",
+        "수출": "추세 강함 / 계절성 보통 / 잔차 자기상관 남음",
+        "내수": "추세 강함 / 계절성 강함",
+        "창업": "추세 강함 / 계절성 강함",
+        "인력": "추세 보통 / 계절성 강함",
+        "금융": "추세 보통 / 계절성 강함",
+        "기타": "추세 약함 / 계절성 약함"
+      }
+    }
+  }
+}
