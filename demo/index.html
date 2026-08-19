@@ -225,7 +225,7 @@
             <img alt="Pre-review Logo" class="w-full h-auto object-contain px-md"
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4SrAZZJ-ahDGrDs0kzdU6hFvRoWSLM7mktc7rRHB2C-qjKTIvSlIFbXuk01hjqlzeIQtlLGjpf2ozbkanFr3sf2X3WOBZIaQaCE0UWEWlF2poYf2Tpfd_Mq2tSk-5vzzz6JQsy4g4y5ELmPGSB4h8x59fb_lNGQrVxXBksOsCSExlq8F26I2YpxOdcnYupLJO7xJChRStnzDIMSDFM0S5QhyCfq2EHryMuectd-S8qx2l-zTSTFMzeQ-UTT72vv-Otmo">
         </div>
-        <button
+        <button onclick="showStepUp()"
             class="w-full bg-primary-container text-on-primary font-title-sm text-title-sm py-md rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity mb-md">
             <span class="material-symbols-outlined">add</span>
             새 분석
@@ -536,7 +536,7 @@
                             검토</span></div>
                 </div>
                 <div class="flex-1 overflow-x-auto">
-                    <table class="w-full text-left border-collapse min-w-[500px]">
+                    <table class="w-full h-full text-left border-collapse min-w-[500px]">
                         <thead>
                             <tr class="border-b border-outline-variant bg-background">
                                 <th class="p-md font-label-caps text-label-caps text-on-surface-variant font-semibold">
@@ -549,7 +549,7 @@
                         </thead>
                         <tbody>
                             <tr
-                                class="border-b border-outline-variant hover:bg-surface-container-low transition-colors group border-l-4 border-l-error">
+                                class="min-h-1/4 border-b border-outline-variant hover:bg-surface-container-low transition-colors group border-l-4 border-l-error">
                                 <td class="p-md align-top">
                                     <div
                                         class="inline-flex items-center gap-xs bg-error-container text-on-error-container px-sm py-xs rounded font-label-caps text-[10px]">
@@ -565,7 +565,7 @@
                                 </td>
                             </tr>
                             <tr
-                                class="border-b border-outline-variant hover:bg-surface-container-low transition-colors bg-background border-l-4 border-l-error">
+                                class="min-h-1/4 border-b border-outline-variant hover:bg-surface-container-low transition-colors bg-background border-l-4 border-l-error">
                                 <td class="p-md align-top">
                                     <div
                                         class="inline-flex items-center gap-xs bg-error-container text-on-error-container px-sm py-xs rounded font-label-caps text-[10px]">
@@ -581,7 +581,7 @@
                                 </td>
                             </tr>
                             <tr
-                                class="border-b border-outline-variant hover:bg-surface-container-low transition-colors border-l-4 border-l-tertiary-fixed-dim">
+                                class="min-h-1/4 border-b border-outline-variant hover:bg-surface-container-low transition-colors border-l-4 border-l-tertiary-fixed-dim">
                                 <td class="p-md align-top">
                                     <div
                                         class="inline-flex items-center gap-xs bg-tertiary-fixed-dim text-on-tertiary-fixed px-sm py-xs rounded font-label-caps text-[10px]">
@@ -597,7 +597,7 @@
                                 </td>
                             </tr>
                             <tr
-                                class="hover:bg-surface-container-low transition-colors bg-background border-l-4 border-l-tertiary-fixed-dim">
+                                class="min-h-1/4 hover:bg-surface-container-low transition-colors bg-background border-l-4 border-l-tertiary-fixed-dim">
                                 <td class="p-md align-top">
                                     <div
                                         class="inline-flex items-center gap-xs bg-tertiary-fixed-dim text-on-tertiary-fixed px-sm py-xs rounded font-label-caps text-[10px]">
@@ -691,7 +691,8 @@
                         class="material-symbols-outlined text-[20px]">keyboard_arrow_down</span></button>
             </div>
             <div class="flex-1 p-md bg-surface-bright flex flex-col overflow-hidden">
-                <div class="flex-1 overflow-y-auto flex flex-col gap-md">
+                <div class="flex-1 overflow-y-auto flex flex-col gap-md"
+                    style="scrollbar-width: thin; scrollbar-color: rgba(67, 71, 78, 0.3) transparent;">
                     <div
                         class="bg-secondary-container text-on-secondary-container p-md rounded-lg rounded-tl-none self-start max-w-[90%] font-body-sm text-[14px] shadow-sm">
                         분석 결과에 대해 궁금한 점을 물어보세요. '원가율 산정 방식' 또는 '유사 사례 기준' 등을 물어보시면 답변해 드립니다.</div>
