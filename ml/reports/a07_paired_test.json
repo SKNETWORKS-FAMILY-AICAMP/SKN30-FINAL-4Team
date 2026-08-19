@@ -1,0 +1,190 @@
+{
+  "purpose": "모델 간 MAE 차이의 유의성 — fold 단위 paired 검정",
+  "method": {
+    "unit": "fold (walk-forward 분기)",
+    "n_bootstrap": 10000,
+    "tests": [
+      "fold별 승패",
+      "Wilcoxon signed-rank",
+      "paired bootstrap 95% CI"
+    ],
+    "note": "fold 내부 관측은 독립이 아니므로 관측 단위가 아닌 fold 단위로 재표집"
+  },
+  "period": [
+    "2013-12",
+    "2024-04"
+  ],
+  "n_folds": 17,
+  "axes": {
+    "registered": {
+      "label": "등록일",
+      "pairs": [
+        {
+          "model": "Ensemble",
+          "baseline": "Seasonal Naive",
+          "n_folds": 17,
+          "mae_a": 21.056,
+          "mae_b": 24.047,
+          "mean_diff": -2.991,
+          "improve_pct": 12.44,
+          "ci95": [
+            -4.76,
+            -1.136
+          ],
+          "ci_excludes_zero": true,
+          "wins": 13,
+          "losses": 4,
+          "win_rate": 0.765,
+          "wilcoxon_p": 0.011,
+          "fold_diff_std": 3.923,
+          "verdict": "유의"
+        },
+        {
+          "model": "Ensemble",
+          "baseline": "CatBoost",
+          "n_folds": 17,
+          "mae_a": 21.056,
+          "mae_b": 21.733,
+          "mean_diff": -0.677,
+          "improve_pct": 3.12,
+          "ci95": [
+            -1.528,
+            0.076
+          ],
+          "ci_excludes_zero": false,
+          "wins": 11,
+          "losses": 6,
+          "win_rate": 0.647,
+          "wilcoxon_p": 0.306,
+          "fold_diff_std": 1.762,
+          "verdict": "판정불가"
+        },
+        {
+          "model": "CatBoost",
+          "baseline": "Seasonal Naive",
+          "n_folds": 17,
+          "mae_a": 21.733,
+          "mae_b": 24.047,
+          "mean_diff": -2.313,
+          "improve_pct": 9.62,
+          "ci95": [
+            -4.463,
+            -0.051
+          ],
+          "ci_excludes_zero": true,
+          "wins": 11,
+          "losses": 6,
+          "win_rate": 0.647,
+          "wilcoxon_p": 0.0797,
+          "fold_diff_std": 4.754,
+          "verdict": "경계"
+        },
+        {
+          "model": "Ensemble",
+          "baseline": "Last Value",
+          "n_folds": 17,
+          "mae_a": 21.056,
+          "mae_b": 27.868,
+          "mean_diff": -6.812,
+          "improve_pct": 24.44,
+          "ci95": [
+            -11.689,
+            -2.199
+          ],
+          "ci_excludes_zero": true,
+          "wins": 13,
+          "losses": 4,
+          "win_rate": 0.765,
+          "wilcoxon_p": 0.0129,
+          "fold_diff_std": 10.372,
+          "verdict": "유의"
+        }
+      ]
+    },
+    "deadline": {
+      "label": "마감일",
+      "pairs": [
+        {
+          "model": "Ensemble",
+          "baseline": "Seasonal Naive",
+          "n_folds": 17,
+          "mae_a": 20.077,
+          "mae_b": 22.373,
+          "mean_diff": -2.296,
+          "improve_pct": 10.26,
+          "ci95": [
+            -3.86,
+            -0.607
+          ],
+          "ci_excludes_zero": true,
+          "wins": 14,
+          "losses": 3,
+          "win_rate": 0.824,
+          "wilcoxon_p": 0.0129,
+          "fold_diff_std": 3.575,
+          "verdict": "유의"
+        },
+        {
+          "model": "Ensemble",
+          "baseline": "CatBoost",
+          "n_folds": 17,
+          "mae_a": 20.077,
+          "mae_b": 20.519,
+          "mean_diff": -0.443,
+          "improve_pct": 2.16,
+          "ci95": [
+            -1.445,
+            0.601
+          ],
+          "ci_excludes_zero": false,
+          "wins": 9,
+          "losses": 8,
+          "win_rate": 0.529,
+          "wilcoxon_p": 0.4038,
+          "fold_diff_std": 2.224,
+          "verdict": "판정불가"
+        },
+        {
+          "model": "CatBoost",
+          "baseline": "Seasonal Naive",
+          "n_folds": 17,
+          "mae_a": 20.519,
+          "mae_b": 22.373,
+          "mean_diff": -1.853,
+          "improve_pct": 8.28,
+          "ci95": [
+            -3.44,
+            0.019
+          ],
+          "ci_excludes_zero": false,
+          "wins": 13,
+          "losses": 4,
+          "win_rate": 0.765,
+          "wilcoxon_p": 0.0305,
+          "fold_diff_std": 3.773,
+          "verdict": "경계"
+        },
+        {
+          "model": "Ensemble",
+          "baseline": "Last Value",
+          "n_folds": 17,
+          "mae_a": 20.077,
+          "mae_b": 40.275,
+          "mean_diff": -20.198,
+          "improve_pct": 50.15,
+          "ci95": [
+            -31.407,
+            -10.059
+          ],
+          "ci_excludes_zero": true,
+          "wins": 14,
+          "losses": 3,
+          "win_rate": 0.824,
+          "wilcoxon_p": 0.0021,
+          "fold_diff_std": 23.398,
+          "verdict": "유의"
+        }
+      ]
+    }
+  }
+}

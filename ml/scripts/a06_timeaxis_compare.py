@@ -96,14 +96,40 @@ def stl_all(ts, cats):
     return out
 
 
-def forecast(ts, cats, seed=42, skip_slow=False, folds=FOLDS):
-    """m02와 동일한 walk-forward. fold는 두 축이 공통으로 커버하는 것만 쓴다."""
+def quarter_folds(lo, hi, start="2020-Q1"):
+    """분기 단위 walk-forward fold 목록.
+
+    연 단위는 마감일 축이 2024-04까지라 fold가 2개뿐이다. 분기로 쪼개면
+    같은 구간에서 fold를 늘려 두 축을 대등하게 비교할 수 있고,
+    fold별 편차(표준편차)도 볼 수 있다.
+    """
+    qs = pd.period_range(pd.Period(start, "Q"), pd.Period(hi, "M").asfreq("Q"), freq="Q")
+    out = []
+    for q in qs:
+        months = pd.period_range(q.start_time, q.end_time, freq="M")
+        if months[-1] > pd.Period(hi, "M"):      # 부분 분기 제외
+            continue
+        cut = (months[0] - 1).strftime("%Y-%m")
+        out.append((cut, [m.strftime("%Y-%m") for m in months]))
+    return out
+
+
+def forecast(ts, cats, seed=42, skip_slow=False, folds=FOLDS, return_store=False):
+    """m02와 동일한 walk-forward. fold는 두 축이 공통으로 커버하는 것만 쓴다.
+
+    folds 원소: (train_cut, valyr_str) 또는 (train_cut, [val_month, ...])
+    """
     t = ts.dropna(subset=FEATS).sort_values(["category", "ym"]).reset_index(drop=True)
     results, store = {}, {}
 
-    for cut, valyr in folds:
+    for cut, valspec in folds:
         tr = t[t["ym"] <= cut]
-        va = t[t["ym"].str.startswith(valyr)]
+        if isinstance(valspec, str):
+            va = t[t["ym"].str.startswith(valspec)]
+            valyr = valspec
+        else:
+            va = t[t["ym"].isin(valspec)]
+            valyr = valspec[0][:7] + "~" + valspec[-1][-2:]
         if va.empty or len(tr) < 50:
             continue
         y, base = va["announcement_count"].values, va["lag_1"].values
@@ -147,23 +173,37 @@ def forecast(ts, cats, seed=42, skip_slow=False, folds=FOLDS):
     members = [m for m in ("XGBoost", "LightGBM", "CatBoost", "SARIMA", "Seasonal Naive")
                if m in store]
     if len(members) >= 2:
-        for _, valyr in folds:
-            rows = {m: next((x for x in store[m] if x[0] == valyr), None) for m in members}
+        for key in dict.fromkeys(x[0] for x in store[members[0]]):
+            rows = {m: next((x for x in store[m] if x[0] == key), None) for m in members}
             if any(v is None for v in rows.values()):
                 continue
             y, base = rows[members[0]][1], rows[members[0]][3]
             p = np.mean([rows[m][2] for m in members], axis=0)
-            results.setdefault("Ensemble", {})[valyr] = score(y, p, base)
+            results.setdefault("Ensemble", {})[key] = score(y, p, base)
+            store.setdefault("Ensemble", []).append((key, y, p, base))
 
-    return {n: {k: round(float(np.mean([f[k] for f in folds.values()])), 3)
-                for k in ("MAE", "RMSE", "sMAPE", "direction_acc")}
-            for n, folds in results.items() if folds}
+    out = {}
+    for n, fd in results.items():
+        if not fd:
+            continue
+        e = {}
+        for k in ("MAE", "RMSE", "sMAPE", "direction_acc"):
+            v = [f[k] for f in fd.values()]
+            e[k] = round(float(np.mean(v)), 3)
+            e[k + "_std"] = round(float(np.std(v, ddof=1)) if len(v) > 1 else 0.0, 3)
+        e["n_folds"] = len(fd)
+        e["per_fold_MAE"] = {k: round(v["MAE"], 2) for k, v in fd.items()}
+        out[n] = e
+    return (out, store) if return_store else out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--skip-slow", action="store_true")
+    ap.add_argument("--granularity", choices=["year", "quarter"], default="quarter",
+                    help="fold 단위. 연 단위는 마감일 축이 2024-04까지라 2개뿐이다")
+    ap.add_argument("--q-start", default="2020-Q1", help="분기 fold 시작")
     args = ap.parse_args()
 
     m = pd.read_parquet(MASTER, columns=["registered_date", "application_end", "category_large"])
@@ -189,10 +229,15 @@ def main():
 
     # 두 축을 같은 기간으로 맞춘다. 마감일 축의 안전 구간이 더 좁으므로 그쪽에 맞춘다.
     # 기간이 다르면 계절성·MAE 차이가 시간축 때문인지 기간 때문인지 구분되지 않는다.
-    use_folds = [(c, v) for c, v in FOLDS
-                 if pd.Period(f"{v}-12", "M") <= hi and pd.Period(f"{v}-01", "M") >= lo]
-    print("공통 기간 %s ~ %s / 사용 fold: %s" % (
-        lo, hi, [v for _, v in use_folds]))
+    if args.granularity == "quarter":
+        use_folds = quarter_folds(lo, hi, args.q_start)
+        label_folds = [f"{v[0]}~{v[-1][-2:]}" for _, v in use_folds]
+    else:
+        use_folds = [(c, v) for c, v in FOLDS
+                     if pd.Period(f"{v}-12", "M") <= hi and pd.Period(f"{v}-01", "M") >= lo]
+        label_folds = [v for _, v in use_folds]
+    print("공통 기간 %s ~ %s / %s fold %d개: %s" % (
+        lo, hi, args.granularity, len(use_folds), label_folds))
 
     out = {}
     for key, (col, label) in AXES.items():
@@ -209,9 +254,9 @@ def main():
 
         fc = forecast(ts, cats, args.seed, args.skip_slow, use_folds)
         print("  --- 예측 (walk-forward %d-fold) ---" % len(use_folds))
-        for n, s in sorted(fc.items(), key=lambda x: x[1]["MAE"]):
-            print("    %-20s MAE %7.2f  RMSE %7.2f  sMAPE %6.2f" % (
-                n, s["MAE"], s["RMSE"], s["sMAPE"]))
+        for n, v in sorted(fc.items(), key=lambda x: x[1]["MAE"]):
+            print("    %-20s MAE %6.2f ±%5.2f   sMAPE %6.2f ±%5.2f" % (
+                n, v["MAE"], v["MAE_std"], v["sMAPE"], v["sMAPE_std"]))
 
         monthly = ts.groupby("month")["announcement_count"].sum()
         out[key] = {
@@ -239,7 +284,8 @@ def main():
             "note": "두 축을 이 구간으로 통일해 비교했다. 기간이 다르면 "
                     "차이가 시간축 때문인지 기간 때문인지 구분되지 않는다.",
         },
-        "folds_used": [v for _, v in use_folds],
+        "granularity": args.granularity,
+        "folds_used": label_folds,
         "monthly_distribution_corr": round(corr, 4),
         "axes": out,
     })
