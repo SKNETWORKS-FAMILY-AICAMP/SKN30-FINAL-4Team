@@ -1,0 +1,354 @@
+{
+  "tag": "main",
+  "n_rows": 900,
+  "n_classes": 26,
+  "folds": 5,
+  "seed": 42,
+  "hyperparams": {
+    "epochs": 8,
+    "batch": 16,
+    "lr": 3e-05,
+    "max_len": 256,
+    "class_weight": true
+  },
+  "baseline": {
+    "model": "TF-IDF + LinearSVM",
+    "macro_f1": 0.6428,
+    "accuracy": 0.7567
+  },
+  "results": {
+    "klue/roberta-base": {
+      "accuracy": 0.7733,
+      "macro_f1": 0.694,
+      "weighted_f1": 0.7684,
+      "train_seconds": 143.4,
+      "beats_baseline": true,
+      "delta_macro_f1": 0.0512,
+      "per_class": {
+        "SW·솔루션": {
+          "precision": 0.42105263157894735,
+          "recall": 0.5333333333333333,
+          "f1-score": 0.47058823529411764,
+          "support": 15.0
+        },
+        "경진대회": {
+          "precision": 0.2857142857142857,
+          "recall": 0.3333333333333333,
+          "f1-score": 0.3076923076923077,
+          "support": 6.0
+        },
+        "고용보조": {
+          "precision": 0.9166666666666666,
+          "recall": 0.9166666666666666,
+          "f1-score": 0.9166666666666666,
+          "support": 36.0
+        },
+        "교육훈련": {
+          "precision": 0.8108108108108109,
+          "recall": 0.8333333333333334,
+          "f1-score": 0.821917808219178,
+          "support": 36.0
+        },
+        "근속장려금": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 3.0
+        },
+        "기술·IP평가": {
+          "precision": 0.7,
+          "recall": 1.0,
+          "f1-score": 0.8235294117647058,
+          "support": 7.0
+        },
+        "기타지원": {
+          "precision": 0.7222222222222222,
+          "recall": 0.3611111111111111,
+          "f1-score": 0.48148148148148145,
+          "support": 36.0
+        },
+        "매출채권": {
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1-score": 0.8571428571428571,
+          "support": 4.0
+        },
+        "보증": {
+          "precision": 0.8333333333333334,
+          "recall": 0.8333333333333334,
+          "f1-score": 0.8333333333333334,
+          "support": 6.0
+        },
+        "사업화": {
+          "precision": 0.8565022421524664,
+          "recall": 0.7549407114624506,
+          "f1-score": 0.8025210084033614,
+          "support": 253.0
+        },
+        "상담": {
+          "precision": 0.5294117647058824,
+          "recall": 0.9,
+          "f1-score": 0.6666666666666666,
+          "support": 10.0
+        },
+        "설비": {
+          "precision": 0.7547169811320755,
+          "recall": 0.851063829787234,
+          "f1-score": 0.8,
+          "support": 47.0
+        },
+        "성능인증": {
+          "precision": 0.42857142857142855,
+          "recall": 0.42857142857142855,
+          "f1-score": 0.42857142857142855,
+          "support": 14.0
+        },
+        "수출물류": {
+          "precision": 0.8181818181818182,
+          "recall": 1.0,
+          "f1-score": 0.9,
+          "support": 9.0
+        },
+        "수출통관": {
+          "precision": 0.6153846153846154,
+          "recall": 0.8888888888888888,
+          "f1-score": 0.7272727272727273,
+          "support": 9.0
+        },
+        "연구개발": {
+          "precision": 0.7633587786259542,
+          "recall": 0.9174311926605505,
+          "f1-score": 0.8333333333333334,
+          "support": 109.0
+        },
+        "연구장비": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 3.0
+        },
+        "융자": {
+          "precision": 0.9,
+          "recall": 0.9183673469387755,
+          "f1-score": 0.9090909090909091,
+          "support": 49.0
+        },
+        "자격인증": {
+          "precision": 0.5,
+          "recall": 0.8,
+          "f1-score": 0.6153846153846154,
+          "support": 5.0
+        },
+        "종합지원": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 4.0
+        },
+        "창업보육": {
+          "precision": 0.52,
+          "recall": 0.7222222222222222,
+          "f1-score": 0.6046511627906976,
+          "support": 18.0
+        },
+        "컨설팅": {
+          "precision": 0.7209302325581395,
+          "recall": 0.62,
+          "f1-score": 0.6666666666666666,
+          "support": 100.0
+        },
+        "판로": {
+          "precision": 0.7959183673469388,
+          "recall": 0.896551724137931,
+          "f1-score": 0.8432432432432433,
+          "support": 87.0
+        },
+        "판로지원": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 5.0
+        },
+        "해외수주·실증": {
+          "precision": 1.0,
+          "recall": 0.9333333333333333,
+          "f1-score": 0.9655172413793104,
+          "support": 15.0
+        },
+        "해외인증": {
+          "precision": 0.8333333333333334,
+          "recall": 0.7142857142857143,
+          "f1-score": 0.7692307692307693,
+          "support": 14.0
+        }
+      }
+    },
+    "monologg/koelectra-base-v3-discriminator": {
+      "accuracy": 0.4544,
+      "macro_f1": 0.3007,
+      "weighted_f1": 0.4259,
+      "train_seconds": 151.2,
+      "beats_baseline": false,
+      "delta_macro_f1": -0.3421,
+      "per_class": {
+        "SW·솔루션": {
+          "precision": 0.06666666666666667,
+          "recall": 0.13333333333333333,
+          "f1-score": 0.08888888888888889,
+          "support": 15.0
+        },
+        "경진대회": {
+          "precision": 0.125,
+          "recall": 0.16666666666666666,
+          "f1-score": 0.14285714285714285,
+          "support": 6.0
+        },
+        "고용보조": {
+          "precision": 0.52,
+          "recall": 0.7222222222222222,
+          "f1-score": 0.6046511627906976,
+          "support": 36.0
+        },
+        "교육훈련": {
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666,
+          "f1-score": 0.6666666666666666,
+          "support": 36.0
+        },
+        "근속장려금": {
+          "precision": 1.0,
+          "recall": 0.3333333333333333,
+          "f1-score": 0.5,
+          "support": 3.0
+        },
+        "기술·IP평가": {
+          "precision": 0.5,
+          "recall": 0.14285714285714285,
+          "f1-score": 0.2222222222222222,
+          "support": 7.0
+        },
+        "기타지원": {
+          "precision": 0.5,
+          "recall": 0.19444444444444445,
+          "f1-score": 0.28,
+          "support": 36.0
+        },
+        "매출채권": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 4.0
+        },
+        "보증": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 6.0
+        },
+        "사업화": {
+          "precision": 0.6538461538461539,
+          "recall": 0.3359683794466403,
+          "f1-score": 0.44386422976501305,
+          "support": 253.0
+        },
+        "상담": {
+          "precision": 0.3333333333333333,
+          "recall": 0.4,
+          "f1-score": 0.36363636363636365,
+          "support": 10.0
+        },
+        "설비": {
+          "precision": 0.29591836734693877,
+          "recall": 0.6170212765957447,
+          "f1-score": 0.4,
+          "support": 47.0
+        },
+        "성능인증": {
+          "precision": 0.5,
+          "recall": 0.07142857142857142,
+          "f1-score": 0.125,
+          "support": 14.0
+        },
+        "수출물류": {
+          "precision": 0.5454545454545454,
+          "recall": 0.6666666666666666,
+          "f1-score": 0.6,
+          "support": 9.0
+        },
+        "수출통관": {
+          "precision": 0.5,
+          "recall": 0.1111111111111111,
+          "f1-score": 0.18181818181818182,
+          "support": 9.0
+        },
+        "연구개발": {
+          "precision": 0.43037974683544306,
+          "recall": 0.6238532110091743,
+          "f1-score": 0.5093632958801498,
+          "support": 109.0
+        },
+        "연구장비": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 3.0
+        },
+        "융자": {
+          "precision": 0.6818181818181818,
+          "recall": 0.9183673469387755,
+          "f1-score": 0.782608695652174,
+          "support": 49.0
+        },
+        "자격인증": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 5.0
+        },
+        "종합지원": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 4.0
+        },
+        "창업보육": {
+          "precision": 0.2153846153846154,
+          "recall": 0.7777777777777778,
+          "f1-score": 0.3373493975903614,
+          "support": 18.0
+        },
+        "컨설팅": {
+          "precision": 0.8333333333333334,
+          "recall": 0.05,
+          "f1-score": 0.09433962264150944,
+          "support": 100.0
+        },
+        "판로": {
+          "precision": 0.5645161290322581,
+          "recall": 0.8045977011494253,
+          "f1-score": 0.6635071090047393,
+          "support": 87.0
+        },
+        "판로지원": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 5.0
+        },
+        "해외수주·실증": {
+          "precision": 0.1643835616438356,
+          "recall": 0.8,
+          "f1-score": 0.2727272727272727,
+          "support": 15.0
+        },
+        "해외인증": {
+          "precision": 0.5833333333333334,
+          "recall": 0.5,
+          "f1-score": 0.5384615384615384,
+          "support": 14.0
+        }
+      }
+    }
+  },
+  "gpu": "NVIDIA GeForce RTX 4090"
+}

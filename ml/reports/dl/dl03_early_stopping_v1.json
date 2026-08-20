@@ -1,0 +1,62 @@
+{
+  "model": "klue/roberta-base",
+  "config": {
+    "lr": 3e-05,
+    "batch": 16,
+    "max_len": 256,
+    "class_weight": true
+  },
+  "n_rows": 900,
+  "n_classes": 26,
+  "outer_folds": 5,
+  "inner_val_ratio": 0.1,
+  "split_sizes_last_fold": {
+    "outer_train": 720,
+    "outer_val": 180,
+    "inner_train": 648,
+    "inner_val": 72
+  },
+  "fixed_epochs": 12,
+  "early_stop": {
+    "max_epochs": 30,
+    "patience": 3,
+    "monitor": "inner val macro_f1",
+    "stopped_at": [
+      7,
+      7,
+      6,
+      4,
+      8
+    ],
+    "mean_stop_epoch": 6.4
+  },
+  "baselines": {
+    "ml_linearsvm": 0.6428,
+    "dl_epochs12": 0.7194
+  },
+  "results": {
+    "A_fixed12_full": {
+      "accuracy": 0.7911,
+      "macro_f1": 0.7194,
+      "weighted_f1": 0.7865
+    },
+    "B_earlystop": {
+      "accuracy": 0.7033,
+      "macro_f1": 0.651,
+      "weighted_f1": 0.703
+    },
+    "C_fixed12_reduced": {
+      "accuracy": 0.78,
+      "macro_f1": 0.6919,
+      "weighted_f1": 0.7767
+    }
+  },
+  "deltas": {
+    "B_minus_C": -0.0409,
+    "C_minus_A": -0.0275,
+    "B_minus_A": -0.0684
+  },
+  "verdict": "조기종료 자체가 불리 — 고정 epoch 유지",
+  "total_seconds": 557.0,
+  "note": "nested split — inner val 로만 정지 시점을 정하고 outer val 은 평가에만 사용. C 는 B 와 데이터량을 맞춘 대조군."
+}

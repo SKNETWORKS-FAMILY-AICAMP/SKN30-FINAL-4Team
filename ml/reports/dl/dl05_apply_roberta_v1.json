@@ -1,0 +1,72 @@
+{
+  "model": "klue/roberta-base",
+  "config": {
+    "lr": 3e-05,
+    "epochs": 12,
+    "batch": 16,
+    "max_len": 256
+  },
+  "mc_samples": 30,
+  "train_rows": 900,
+  "n_classes": 26,
+  "applied_rows": 1570,
+  "with_document": 906,
+  "thresholds": {
+    "hold": 0.25,
+    "trust": 0.35
+  },
+  "m08_comparison": {
+    "model": "TF-IDF + LogisticRegression",
+    "condition": "B (E01 + 전처리)",
+    "n_trust": 182,
+    "n_ref": 281,
+    "n_hold": 1107,
+    "hold_rate": 0.705,
+    "mean_confidence": 0.216
+  },
+  "result": {
+    "n_trust": 1511,
+    "n_ref": 33,
+    "n_hold": 26,
+    "hold_rate": 0.0166,
+    "usable": 1544,
+    "mean_confidence": 0.7983
+  },
+  "hold_rate_change": -0.6884,
+  "by_source": {
+    "document": {
+      "n": 906,
+      "mean_conf": 0.7871,
+      "hold_rate": 0.0232
+    },
+    "summary": {
+      "n": 664,
+      "mean_conf": 0.8136,
+      "hold_rate": 0.0075
+    }
+  },
+  "uncertainty": {
+    "total": 1.1245,
+    "aleatoric": 1.095,
+    "epistemic": 0.0295,
+    "epistemic_share_pct": 2.6
+  },
+  "predicted_dist": {
+    "사업화": 246,
+    "컨설팅": 236,
+    "기타지원": 232,
+    "판로": 224,
+    "융자": 142,
+    "고용보조": 83,
+    "설비": 69,
+    "수출물류": 46,
+    "경진대회": 35,
+    "보증": 35,
+    "교육훈련": 29,
+    "연구개발": 25,
+    "자격인증": 24,
+    "성능인증": 20,
+    "기술·IP평가": 19
+  },
+  "output": "/workspace/dl/data/openapi_support_type_roberta.parquet"
+}
