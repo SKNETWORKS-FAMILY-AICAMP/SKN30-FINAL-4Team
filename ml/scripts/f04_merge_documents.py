@@ -18,8 +18,17 @@ from common import PROC, REPORTS, save_report
 from amount_parser import parse_support
 
 DETAIL = PROC + "/announcement_detail.parquet"
-DOCS = REPORTS + "/e01_documents.jsonl"
+# E02(pdf-inspector + rhwp)를 우선 쓰고 없으면 E01로 폴백한다. A02와 같은 규칙.
+DOCS_V2 = REPORTS + "/e02_documents.jsonl"
+DOCS_LEGACY = REPORTS + "/e01_documents.jsonl"
 OUT = PROC + "/announcement_detail_enriched.parquet"
+
+# PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다.
+#   - 한 셀에 금액 3개 이상 병합: 표 보유 PDF 의 13.6% (HWP 는 0.0%)
+#   - 예: "238만원|119만원|476만원|1,900만원" 4행이 뭉쳐 39억원으로 파싱
+# A02 가 이미 같은 기준으로 PDF 를 빼고 있는데 이 병합본만 PDF 값을 갖고 있으면
+# A02 의 요약문 폴백 경로로 오염된 금액이 되돌아온다. 기준을 맞춘다.
+EXCLUDE_EXT = {"pdf"}
 
 TYPED = {"per_company", "per_project", "total_budget", "periodic"}
 AMT_COLS = ["support_amount_raw", "support_amount_min", "support_amount_max",
@@ -28,13 +37,23 @@ AMT_COLS = ["support_amount_raw", "support_amount_min", "support_amount_max",
             "n_amount_candidates", "extraction_confidence"]
 
 
-def load_docs():
-    """공고 1건에 문서가 여러 개면 가장 긴 본문을 대표로 삼는다."""
+def load_docs(path, source=None, exclude_ext=EXCLUDE_EXT):
+    """공고 1건에 문서가 여러 개면 가장 긴 본문을 대표로 삼는다.
+
+    source 를 주면 해당 출처만 추린다(E02 는 api/list 를 한 파일에 담는다).
+    exclude_ext 에 든 확장자는 대표 선정에서 제외한다.
+    """
     best = {}
-    with open(DOCS, encoding="utf-8") as f:
+    if not os.path.exists(path):
+        return best
+    with open(path, encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
             if r.get("n_chars", 0) <= 0:
+                continue
+            if source and r.get("source") not in (None, source):
+                continue
+            if exclude_ext and (r.get("ext") or "").lower() in exclude_ext:
                 continue
             pid = r["announcement_id"]
             if pid not in best or r["n_chars"] > best[pid]["n_chars"]:
@@ -42,9 +61,17 @@ def load_docs():
     return best
 
 
+def pick_docs():
+    """E02 가 있으면 그것을, 없으면 E01 결과를 쓴다."""
+    d = load_docs(DOCS_V2, source="api")
+    if d:
+        return d, "e02"
+    return load_docs(DOCS_LEGACY), "e01"
+
+
 def main():
     d = pd.read_parquet(DETAIL)
-    docs = load_docs()
+    docs, docs_ver = pick_docs()
     print("원문 보유 공고 %d건 / detail %d행" % (len(docs), len(d)))
 
     doc_text, doc_chars, doc_ocr, parsed = [], [], [], []
@@ -115,6 +142,13 @@ def main():
         "mean_confidence": round(float(d["extraction_confidence"].mean()), 4),
         "ratio_extracted": int(d["support_ratio"].notna().sum()),
         "count_extracted": int(d["support_count"].notna().sum()),
+        "docs_version": docs_ver,
+        "excluded_ext": sorted(EXCLUDE_EXT),
+        "exclusion_reason": (
+            "PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 "
+            "13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), A02 도 같은 기준으로 "
+            "PDF 를 제외한다. 이 병합본만 PDF 값을 가지면 A02 의 요약문 폴백 경로로 "
+            "오염된 금액이 되돌아온다."),
         "output": OUT,
     }
     save_report("f04_merge_documents.json", rep)
