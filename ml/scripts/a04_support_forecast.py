@@ -119,6 +119,12 @@ def main():
     args = ap.parse_args()
 
     obs = pd.read_parquet(OBS)
+    # 파싱 오류(SANE_RANGE 밖)는 a02 가 붙인 플래그로 제외한다.
+    # 예전에는 a05 에만 필터가 있어 STL·예측이 4,517억원 같은 값을 그대로 봤다.
+    if "is_outlier" in obs.columns:
+        n0 = len(obs)
+        obs = obs[~obs["is_outlier"]].copy()
+        print("이상치 제외: %d건 (%.1f%%)" % (n0 - len(obs), (n0 - len(obs)) / n0 * 100))
     df = build_frame(obs, args.type)
     usable = df.dropna(subset=FEATS + ["y"])
     print("대상: %s / 전체 %d개월, 워밍업 제외 후 %d개월 (%s~%s)"

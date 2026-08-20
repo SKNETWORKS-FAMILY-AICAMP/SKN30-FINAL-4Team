@@ -1,55 +1,85 @@
 {
-  "observations": 3786,
+  "outliers_flagged": 85,
+  "outliers_by_type": {
+    "per_company": 31,
+    "periodic": 27,
+    "total_budget": 21,
+    "per_project": 6
+  },
+  "sane_range": {
+    "per_company": [
+      100000.0,
+      5000000000.0
+    ],
+    "per_project": [
+      100000.0,
+      10000000000.0
+    ],
+    "periodic": [
+      10000.0,
+      100000000.0
+    ],
+    "total_budget": [
+      1000000.0,
+      10000000000000.0
+    ]
+  },
+  "outlier_policy": "SANE_RANGE 밖은 파싱 오류로 보고 is_outlier 플래그를 붙인다. 행은 지우지 않으며 집계·STL·예측·참고범위가 모두 이 플래그로 제외한다.",
+  "excluded_ext": [
+    "pdf"
+  ],
+  "exclusion_reason": "PDF 는 표 셀이 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), 해당 문서 기반 per_company 는 중앙값 2배·p95 3.8배로 부풀려졌다. 병합 탐지로 일부만 거르는 대신 오류가 0인 HWP 계열만 사용한다.",
+  "observations": 2706,
   "source_dist": {
-    "list_sample": 2795,
-    "openapi": 991
+    "list_sample": 1720,
+    "openapi": 986
   },
   "amount_type_dist": {
-    "unknown": 1322,
-    "per_company": 1226,
-    "total_budget": 611,
-    "periodic": 408,
-    "per_project": 219
+    "unknown": 940,
+    "per_company": 901,
+    "total_budget": 441,
+    "periodic": 278,
+    "per_project": 146
   },
-  "typed_observations": 2464,
+  "typed_observations": 1766,
   "year_range": [
     2019,
     2026
   ],
   "by_year": {
-    "2019": 221,
-    "2020": 263,
-    "2021": 244,
-    "2022": 249,
-    "2023": 265,
-    "2024": 286,
-    "2025": 294,
-    "2026": 642
+    "2019": 220,
+    "2020": 198,
+    "2021": 172,
+    "2022": 184,
+    "2023": 152,
+    "2024": 96,
+    "2025": 108,
+    "2026": 636
   },
-  "mvp_rows": 1078,
+  "mvp_rows": 777,
   "availability": {
     "per_company": {
-      "n": 1226,
-      "months": 85,
-      "per_month": 14.42,
+      "n": 901,
+      "months": 83,
+      "per_month": 10.86,
       "usable": true
     },
     "per_project": {
-      "n": 219,
-      "months": 72,
-      "per_month": 3.04,
-      "usable": true
+      "n": 146,
+      "months": 57,
+      "per_month": 2.56,
+      "usable": false
     },
     "total_budget": {
-      "n": 611,
-      "months": 84,
-      "per_month": 7.27,
+      "n": 441,
+      "months": 82,
+      "per_month": 5.38,
       "usable": true
     },
     "periodic": {
-      "n": 408,
-      "months": 82,
-      "per_month": 4.98,
+      "n": 278,
+      "months": 70,
+      "per_month": 3.97,
       "usable": true
     }
   },

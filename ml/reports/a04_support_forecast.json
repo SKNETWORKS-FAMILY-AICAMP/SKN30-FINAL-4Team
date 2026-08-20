@@ -37,72 +37,72 @@
   ],
   "results": {
     "Last Value": {
-      "MAE_log10": 0.2904,
-      "RMSE_log10": 0.3863,
-      "geo_mean_error_x": 2.6125,
-      "within_2x": 0.5416,
-      "direction_acc": 0.0625
+      "MAE_log10": 0.3005,
+      "RMSE_log10": 0.3988,
+      "geo_mean_error_x": 2.636,
+      "within_2x": 0.6666,
+      "direction_acc": 0.0
     },
     "Seasonal Naive": {
-      "MAE_log10": 1.0063,
-      "RMSE_log10": 1.1346,
-      "geo_mean_error_x": 16.929,
-      "within_2x": 0.1666,
-      "direction_acc": 0.4375
+      "MAE_log10": 1.0672,
+      "RMSE_log10": 1.2542,
+      "geo_mean_error_x": 29.3105,
+      "within_2x": 0.2083,
+      "direction_acc": 0.5
     },
     "Moving Average(3)": {
-      "MAE_log10": 0.4021,
-      "RMSE_log10": 0.4926,
-      "geo_mean_error_x": 3.2515,
+      "MAE_log10": 0.4337,
+      "RMSE_log10": 0.514,
+      "geo_mean_error_x": 3.3355,
       "within_2x": 0.5,
-      "direction_acc": 0.3541
+      "direction_acc": 0.3959
     },
     "Ridge": {
-      "MAE_log10": 0.8874,
-      "RMSE_log10": 0.9165,
-      "geo_mean_error_x": 25.4825,
-      "within_2x": 0.4375,
+      "MAE_log10": 1.4122,
+      "RMSE_log10": 1.5158,
+      "geo_mean_error_x": 63.084,
+      "within_2x": 0.0,
       "direction_acc": 0.4375
     },
     "RandomForest": {
-      "MAE_log10": 0.7591,
-      "RMSE_log10": 0.8516,
-      "geo_mean_error_x": 15.0505,
-      "within_2x": 0.3542,
-      "direction_acc": 0.5834
+      "MAE_log10": 0.7227,
+      "RMSE_log10": 0.7907,
+      "geo_mean_error_x": 11.1665,
+      "within_2x": 0.25,
+      "direction_acc": 0.5416
     },
     "XGBoost": {
-      "MAE_log10": 0.7504,
-      "RMSE_log10": 0.8639,
-      "geo_mean_error_x": 14.885,
-      "within_2x": 0.3542,
-      "direction_acc": 0.4166
+      "MAE_log10": 0.7406,
+      "RMSE_log10": 0.8303,
+      "geo_mean_error_x": 14.0465,
+      "within_2x": 0.0625,
+      "direction_acc": 0.6041
     },
     "LightGBM": {
-      "MAE_log10": 0.7423,
-      "RMSE_log10": 0.865,
-      "geo_mean_error_x": 14.988,
-      "within_2x": 0.3542,
+      "MAE_log10": 0.895,
+      "RMSE_log10": 0.9582,
+      "geo_mean_error_x": 17.623,
+      "within_2x": 0.125,
       "direction_acc": 0.5
     },
     "CatBoost": {
-      "MAE_log10": 0.7632,
-      "RMSE_log10": 0.8642,
-      "geo_mean_error_x": 15.069,
-      "within_2x": 0.3542,
-      "direction_acc": 0.5416
+      "MAE_log10": 0.7236,
+      "RMSE_log10": 0.7863,
+      "geo_mean_error_x": 11.563,
+      "within_2x": 0.2917,
+      "direction_acc": 0.5
     },
     "Ensemble(단순평균)": {
-      "MAE_log10": 0.7996,
-      "RMSE_log10": 0.8947,
-      "geo_mean_error_x": 13.33,
-      "within_2x": 0.2917,
+      "MAE_log10": 0.8389,
+      "RMSE_log10": 0.9373,
+      "geo_mean_error_x": 14.7065,
+      "within_2x": 0.2083,
       "direction_acc": 0.5
     }
   },
   "best_model": "Last Value",
-  "best_MAE_log10": 0.2904,
-  "best_baseline_MAE_log10": 0.2904,
+  "best_MAE_log10": 0.3005,
+  "best_baseline_MAE_log10": 0.3005,
   "condition5_beats_baseline": false,
   "decision": "예측 미제공 — 데이터 부족/시계열 구조 불충분 (설계서 18장)"
 }

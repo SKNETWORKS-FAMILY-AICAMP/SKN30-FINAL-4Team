@@ -25,17 +25,19 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from common import PROC, REPORTS, save_report
+from common import PROC, REPORTS, save_report, mark_outliers, SANE_RANGE
 from amount_parser import parse_support
 
 warnings.filterwarnings("ignore")
 
 DETAIL = PROC + "/announcement_detail_enriched.parquet"
-CLASSIFIED = PROC + "/announcement_detail_with_support_type.parquet"
+# 채택 모델(KLUE-RoBERTa)의 추론 결과. 구버전 LogisticRegression 산출물
+# (announcement_detail_with_support_type.parquet)은 판단보류가 70.5%라 폐기했다.
+CLASSIFIED = PROC + "/openapi_support_type_roberta.parquet"
 MASTER = PROC + "/announcement_master.parquet"
 SAMPLE = PROC + "/list_sample.parquet"
-# E02(pdf-inspector + rhwp)가 있으면 우선 사용한다. 표 구조가 보존돼 있어
-# 지원규모 파싱 결과가 E01(PyMuPDF + pyhwp)보다 낫다.
+# E02(pdf-inspector + rhwp)가 있으면 우선 사용한다. HWP 표가 실제로 읽힌다.
+# 단 PDF 는 EXCLUDE_EXT 로 걸러낸다(아래 근거 참조).
 DOCS_V2 = REPORTS + "/e02_documents.jsonl"
 DOCS_API = REPORTS + "/e01_documents.jsonl"
 DOCS_LIST = REPORTS + "/e01_documents_list.jsonl"
@@ -46,10 +48,22 @@ OUT_TS = PROC + "/timeseries_support_amount.parquet"
 TYPES = ["per_company", "per_project", "total_budget", "periodic"]
 
 
-def load_docs(path, source=None):
+# PDF 는 표 셀이 뭉쳐 나와 금액이 왜곡된다. 실측:
+#   - 한 셀에 금액 3개 이상 뭉친 문서가 표 보유 PDF 의 13.6%
+#     (HWP 는 0%. rhwp 가 셀 단위로 정확히 읽는다)
+#   - 그 문서에서 나온 per_company 관측은 중앙값 2배, p95 3.8배로 부풀려짐
+#     (병합없음 1,500만/20.0억 vs 병합있음 3,000만/76.1억)
+#   - 예: "238만원|119만원|476만원|1,900만원" 4행이 한 셀로 뭉쳐 39억원으로 파싱
+# 병합 탐지 규칙에 의존해 일부만 거르는 것보다, 오류가 0인 HWP 계열만 쓰는 편이
+# 경계가 깨끗하다. 관측은 3,786 -> 2,706건으로 줄지만 신뢰도를 택한다.
+EXCLUDE_EXT = {"pdf"}
+
+
+def load_docs(path, source=None, exclude_ext=EXCLUDE_EXT):
     """공고 1건에 문서가 여러 개면 가장 긴 것을 대표로.
 
     source 를 주면 해당 출처(api/list)만 추린다. E02 는 두 출처를 한 파일에 담는다.
+    exclude_ext 에 든 확장자는 대표 선정에서 제외한다(기본: pdf).
     """
     best = {}
     if not os.path.exists(path):
@@ -60,6 +74,8 @@ def load_docs(path, source=None):
             if r.get("n_chars", 0) <= 0:
                 continue
             if source and r.get("source") != source:
+                continue
+            if exclude_ext and (r.get("ext") or "").lower() in exclude_ext:
                 continue
             pid = r["announcement_id"]
             if pid not in best or r["n_chars"] > best[pid]["n_chars"]:
@@ -84,8 +100,8 @@ def build_observations():
     d = pd.read_parquet(DETAIL)
     try:
         cls = pd.read_parquet(CLASSIFIED)[
-            ["announcement_id", "support_type_pred", "support_type_confidence",
-             "support_type_status"]]
+            ["announcement_id", "support_type_pred", "confidence", "status"]].rename(
+            columns={"confidence": "support_type_confidence", "status": "support_type_status"})
         d = d.merge(cls, on="announcement_id", how="left")
     except Exception:
         d["support_type_pred"] = np.nan
@@ -162,6 +178,9 @@ def build_observations():
     obs = obs.dropna(subset=["date"])
     obs["ym"] = obs["date"].dt.to_period("M").astype(str)
     obs["year"] = obs["date"].dt.year
+    # 상식 범위 밖 = 파싱 오류. 행을 지우지 않고 플래그만 붙여 하류(a03/a04/a05)가
+    # 같은 기준으로 제외하게 한다. 몇 건을 왜 뺐는지 추적 가능하다.
+    obs["is_outlier"] = mark_outliers(obs)
     return obs.reset_index(drop=True)
 
 
@@ -171,7 +190,7 @@ def aggregate(obs, level="mvp", min_obs=1):
     if level == "full":
         keys.insert(2, "support_type")
 
-    sub = obs[obs["amount_type"].isin(TYPES)].copy()
+    sub = obs[obs["amount_type"].isin(TYPES) & ~obs.get("is_outlier", False)].copy()
     if sub.empty:
         return pd.DataFrame()
 
@@ -242,6 +261,18 @@ def main():
                     "per_month": round(per_month, 2), "usable": bool(ok)}
 
     save_report("a02_support_timeseries.json", {
+        "outliers_flagged": int(obs["is_outlier"].sum()),
+        "outliers_by_type": obs[obs["is_outlier"]]["amount_type"]
+                            .value_counts().to_dict(),
+        "sane_range": {k: list(v) for k, v in SANE_RANGE.items()},
+        "outlier_policy": ("SANE_RANGE 밖은 파싱 오류로 보고 is_outlier 플래그를 붙인다. "
+                           "행은 지우지 않으며 집계·STL·예측·참고범위가 모두 이 플래그로 제외한다."),
+        "excluded_ext": sorted(EXCLUDE_EXT),
+        "exclusion_reason": (
+            "PDF 는 표 셀이 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 13.6%가 "
+            "한 셀에 금액 3개 이상 병합되며(HWP 0%), 해당 문서 기반 per_company 는 "
+            "중앙값 2배·p95 3.8배로 부풀려졌다. 병합 탐지로 일부만 거르는 대신 "
+            "오류가 0인 HWP 계열만 사용한다."),
         "observations": int(len(obs)),
         "source_dist": obs["source"].value_counts().to_dict(),
         "amount_type_dist": obs["amount_type"].value_counts(dropna=False).to_dict(),

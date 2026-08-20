@@ -26,7 +26,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from common import PROC, ROOT, save_report
+from common import PROC, ROOT, save_report, SANE_RANGE
 
 OBS = PROC + "/support_amount_observations.parquet"
 OUT_PARQUET = PROC + "/reference_support_amount.parquet"
@@ -48,12 +48,7 @@ RECENT_YEARS = 3
 # 파서가 '1조'를 놓치고 '4,517억원'만 뽑은 뒤 per_company 로 분류했다.
 # 기업 한 곳에 4,517억을 준다는 값이 통계에 섞이면 평균이 완전히 왜곡된다.
 # (중앙값은 견디지만 평균·최대값이 무의미해진다)
-SANE_RANGE = {
-    "per_company": (1e5, 5e9),      # 10만원 ~ 50억원
-    "per_project": (1e5, 1e10),     # 10만원 ~ 100억원
-    "periodic": (1e4, 1e8),         # 1만원 ~ 1억원 (월/연 단위)
-    "total_budget": (1e6, 1e13),    # 100만원 ~ 10조원
-}
+# SANE_RANGE 는 common 에 있다 — a02(플래그 부착)·a03·a04 와 같은 기준을 쓴다.
 
 
 def won(v):
@@ -132,15 +127,13 @@ def main():
     obs = obs[obs["amount_type"].isin(TYPES)].copy()
     n_before = len(obs)
 
-    # 상식 범위를 벗어난 값은 파싱 오류로 보고 제외한다
-    keep = pd.Series(False, index=obs.index)
-    dropped = {}
-    for t, (lo, hi) in SANE_RANGE.items():
-        m = obs["amount_type"] == t
-        ok = m & obs["amount_max"].between(lo, hi)
-        keep |= ok
-        dropped[t] = int((m & ~ok).sum())
-    obs = obs[keep].copy()
+    # 상식 범위를 벗어난 값은 파싱 오류. a02 가 붙인 is_outlier 플래그를 쓴다
+    # (플래그가 없는 구버전 parquet 이면 여기서 직접 계산한다).
+    if "is_outlier" not in obs.columns:
+        from common import mark_outliers
+        obs["is_outlier"] = mark_outliers(obs)
+    dropped = obs[obs["is_outlier"]]["amount_type"].value_counts().to_dict()
+    obs = obs[~obs["is_outlier"]].copy()
     n_dropped = n_before - len(obs)
     print("이상치 제외: %d건 (%.1f%%) — %s"
           % (n_dropped, n_dropped / n_before * 100,
