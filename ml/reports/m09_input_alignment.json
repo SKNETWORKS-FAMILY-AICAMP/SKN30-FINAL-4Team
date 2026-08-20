@@ -1,0 +1,88 @@
+{
+  "purpose": "학습/추론 입력 형식 정합이 판단보류율에 미치는 영향 분리 측정",
+  "design": "모델·임계값·학습데이터를 M08 과 동일하게 고정하고 추론 입력 구성만 변경",
+  "train_rows": 900,
+  "train_classes": 26,
+  "train_input": "title + purpose + content + target_text (2023 엑셀)",
+  "train_input_len_median": 181,
+  "summary_parse_rate": 1.0,
+  "thresholds": {
+    "hold": 0.25,
+    "trust": 0.35
+  },
+  "conditions": {
+    "E0. 현행 (summary 통째 + target + hashtags)": {
+      "input_len_median": 409,
+      "mean_confidence": 0.2337,
+      "n_trust": 248,
+      "n_ref": 296,
+      "n_hold": 1026,
+      "hold_rate": 0.6535,
+      "usable_rate": 0.3465,
+      "pred_dist_tvd_vs_train": 0.3827,
+      "n_pred_classes": 18,
+      "top5_pred": {
+        "판로": 0.195,
+        "컨설팅": 0.191,
+        "융자": 0.186,
+        "사업화": 0.099,
+        "고용보조": 0.088
+      }
+    },
+    "E1. 정합 (title + 목적 + 내용 + 대상)": {
+      "input_len_median": 307,
+      "mean_confidence": 0.2325,
+      "n_trust": 240,
+      "n_ref": 285,
+      "n_hold": 1045,
+      "hold_rate": 0.6656,
+      "usable_rate": 0.3344,
+      "pred_dist_tvd_vs_train": 0.3635,
+      "n_pred_classes": 18,
+      "top5_pred": {
+        "컨설팅": 0.19,
+        "판로": 0.19,
+        "융자": 0.173,
+        "사업화": 0.114,
+        "고용보조": 0.091
+      }
+    },
+    "E2. 정합 - 제목 제외": {
+      "input_len_median": 265,
+      "mean_confidence": 0.2291,
+      "n_trust": 221,
+      "n_ref": 293,
+      "n_hold": 1056,
+      "hold_rate": 0.6726,
+      "usable_rate": 0.3274,
+      "pred_dist_tvd_vs_train": 0.3632,
+      "n_pred_classes": 18,
+      "top5_pred": {
+        "판로": 0.202,
+        "컨설팅": 0.187,
+        "융자": 0.16,
+        "사업화": 0.121,
+        "고용보조": 0.093
+      }
+    },
+    "E3. 정합 + 원문 본문발췌": {
+      "input_len_median": 432,
+      "mean_confidence": 0.2184,
+      "n_trust": 193,
+      "n_ref": 272,
+      "n_hold": 1105,
+      "hold_rate": 0.7038,
+      "usable_rate": 0.2962,
+      "pred_dist_tvd_vs_train": 0.375,
+      "n_pred_classes": 18,
+      "top5_pred": {
+        "컨설팅": 0.215,
+        "판로": 0.174,
+        "융자": 0.172,
+        "사업화": 0.116,
+        "고용보조": 0.103
+      }
+    }
+  },
+  "caution": "보류율 하락만으로 성공 판정하지 않는다. 확신도 상승은 과신일 수 있어 예측 클래스 분포의 학습분포 대비 TVD 를 함께 본다."
+}

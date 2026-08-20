@@ -104,3 +104,33 @@ def save_report(name, obj):
         json.dump(obj, f, ensure_ascii=False, indent=2, default=str)
     print(f"[report] {p}")
     return p
+
+
+# ---- 지원규모 상식 범위 (파싱 오류 판별) ----
+# 이 범위를 벗어난 값은 금액 자체가 아니라 파싱이 틀린 것으로 본다.
+# 실례: "예산규모는 1조 4,517억원"(정부 전체 예산)에서 '1조'를 놓쳐
+#       4,517억원이 per_company 로 잡힌 건이 있었다.
+#
+# 정의를 common 에 두는 이유: a03(STL)·a04(예측)·a05(참고범위)가 같은 기준을
+# 써야 한다. 예전에는 a05 에만 있어서 STL·예측이 오류값을 그대로 보고 있었다.
+SANE_RANGE = {
+    "per_company": (1e5, 5e9),      # 10만원 ~ 50억원
+    "per_project": (1e5, 1e10),     # 10만원 ~ 100억원
+    "periodic": (1e4, 1e8),         # 1만원 ~ 1억원 (월/연 단위)
+    "total_budget": (1e6, 1e13),    # 100만원 ~ 10조원
+}
+
+
+def mark_outliers(obs, amount_col="amount_max", type_col="amount_type"):
+    """SANE_RANGE 밖이면 True 인 불리언 Series 를 돌려준다.
+
+    행을 지우지 않고 플래그만 붙인다. 몇 건을 왜 뺐는지 추적할 수 있고,
+    기준을 바꿔도 원문 재파싱이 필요 없다.
+    amount_type 이 SANE_RANGE 에 없는 값(unknown 등)은 판정 대상이 아니라 False.
+    """
+    import pandas as pd
+    flag = pd.Series(False, index=obs.index)
+    for t, (lo, hi) in SANE_RANGE.items():
+        m = obs[type_col] == t
+        flag |= m & ~obs[amount_col].between(lo, hi)
+    return flag

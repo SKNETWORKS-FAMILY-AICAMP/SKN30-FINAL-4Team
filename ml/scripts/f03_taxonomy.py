@@ -1,4 +1,4 @@
-"""P03 — business_taxonomy (설계서 4.3) + 라벨 누수 진단.
+"""F03 — business_taxonomy (설계서 4.3) + 라벨 누수 진단.
 
 2023년 중앙부처 엑셀은 중분류/업종 라벨의 유일한 출처다.
 단 `사업개요` 첫 줄 【사업개요】에 대분류/중분류/업종/부처가 그대로 적혀 있어,
@@ -64,7 +64,7 @@ def main():
 
     out = f"{PROC}/business_taxonomy.parquet"
     t.to_parquet(out, index=False)
-    save_report("p03_taxonomy.json", {
+    save_report("f03_taxonomy.json", {
         "rows_raw": n_raw, "rows_final": len(t),
         "label_leak": {
             "설명": "사업개요 첫 줄 【사업개요】에 대분류/중분류/업종이 그대로 기재됨",
