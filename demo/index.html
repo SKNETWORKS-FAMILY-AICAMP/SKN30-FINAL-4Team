@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Pre-review</title>
+
+    <link rel="icon" type="image/svg+xml" href="./images/favicon.svg" />
+
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;500;700&amp;display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet">
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed": "#2b1700",
+                        "tertiary-fixed-dim": "#f2bc82",
+                        "surface": "#faf9fd",
+                        "secondary-fixed": "#d8e3fa",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#4f2e00",
+                        "surface-variant": "#e3e2e6",
+                        "surface-bright": "#faf9fd",
+                        "outline-variant": "#c4c6cf",
+                        "surface-container-low": "#f4f3f7",
+                        "on-tertiary-container": "#c6955e",
+                        "on-surface-variant": "#43474e",
+                        "on-primary": "#ffffff",
+                        "surface-tint": "#455f88",
+                        "on-primary-fixed-variant": "#2d476f",
+                        "surface-container-high": "#e9e7eb",
+                        "primary-fixed": "#d6e3ff",
+                        "on-background": "#1a1c1e",
+                        "background": "#faf9fd",
+                        "tertiary-fixed": "#ffddba",
+                        "on-error": "#ffffff",
+                        "tertiary": "#321b00",
+                        "surface-dim": "#dad9dd",
+                        "error": "#ba1a1a",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed-variant": "#633f0f",
+                        "secondary-container": "#d5e0f7",
+                        "surface-container-highest": "#e3e2e6",
+                        "primary-container": "#1a365d",
+                        "secondary-fixed-dim": "#bcc7dd",
+                        "on-secondary-fixed": "#111c2c",
+                        "outline": "#74777f",
+                        "on-primary-container": "#86a0cd",
+                        "primary": "#002045",
+                        "on-secondary-container": "#586377",
+                        "inverse-surface": "#2f3033",
+                        "on-secondary-fixed-variant": "#3c475a",
+                        "inverse-primary": "#adc7f7",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-surface": "#1a1c1e",
+                        "on-primary-fixed": "#001b3c",
+                        "secondary": "#545f72",
+                        "on-tertiary": "#ffffff",
+                        "inverse-on-surface": "#f1f0f4",
+                        "surface-container": "#efedf1",
+                        "primary-fixed-dim": "#adc7f7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "lg": "24px",
+                        "sm": "8px",
+                        "base": "4px",
+                        "md": "16px",
+                        "gutter": "20px",
+                        "xl": "40px",
+                        "container-max": "1440px",
+                        "xs": "4px"
+                    },
+                    "fontFamily": {
+                        "label-caps": [
+                            "Nanum Gothic"
+                        ],
+                        "headline-md": [
+                            "Nanum Gothic"
+                        ],
+                        "display-lg": [
+                            "Nanum Gothic"
+                        ],
+                        "data-mono": [
+                            "Nanum Gothic"
+                        ],
+                        "title-sm": [
+                            "Nanum Gothic"
+                        ],
+                        "body-md": [
+                            "Nanum Gothic"
+                        ],
+                        "body-sm": [
+                            "Nanum Gothic"
+                        ]
+                    },
+                    "fontSize": {
+                        "label-caps": [
+                            "12px",
+                            {
+                                "lineHeight": "16px",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "700"
+                            }
+                        ],
+                        "headline-md": [
+                            "24px",
+                            {
+                                "lineHeight": "32px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "600"
+                            }
+                        ],
+                        "display-lg": [
+                            "30px",
+                            {
+                                "lineHeight": "38px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "700"
+                            }
+                        ],
+                        "data-mono": [
+                            "13px",
+                            {
+                                "lineHeight": "18px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "title-sm": [
+                            "18px",
+                            {
+                                "lineHeight": "24px",
+                                "fontWeight": "600"
+                            }
+                        ],
+                        "body-md": [
+                            "14px",
+                            {
+                                "lineHeight": "20px",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "body-sm": [
+                            "13px",
+                            {
+                                "lineHeight": "18px",
+                                "fontWeight": "400"
+                            }
+                        ]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Nanum Gothic', sans-serif;
+        }
+    </style>
+    <style>
+        .group\/scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .group\/scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .group\/scroll::-webkit-scrollbar-thumb {
+            background: transparent;
+            border-radius: 10px;
+            transition: background 0.2s;
+        }
+
+        .group\/scroll:hover::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.5);
+        }
+    </style>
+    <style>
+        .group\/scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .group\/scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .group\/scroll::-webkit-scrollbar-thumb {
+            background-color: rgba(67, 71, 78, 0.3);
+            border-radius: 20px;
+            border: 2px solid transparent;
+            background-clip: content-box;
+        }
+
+        .group\/scroll::-webkit-scrollbar-button {
+            display: none;
+            height: 0;
+            width: 0;
+        }
+
+        /* Ensure overlay behavior */
+        .group\/scroll {
+            overflow-y: overlay !important;
+        }
+    </style>
+</head>
+
+<body class="bg-background text-on-background min-h-screen font-body-md flex">
+    <!-- SideNavBar -->
+    <nav
+        class="fixed left-0 top-0 h-full w-[320px] bg-surface border-r border-outline-variant flex flex-col py-xl px-lg gap-lg z-50">
+        <div class="mb-md">
+            <img alt="Pre-review Logo" class="w-full h-auto object-contain px-md"
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4SrAZZJ-ahDGrDs0kzdU6hFvRoWSLM7mktc7rRHB2C-qjKTIvSlIFbXuk01hjqlzeIQtlLGjpf2ozbkanFr3sf2X3WOBZIaQaCE0UWEWlF2poYf2Tpfd_Mq2tSk-5vzzz6JQsy4g4y5ELmPGSB4h8x59fb_lNGQrVxXBksOsCSExlq8F26I2YpxOdcnYupLJO7xJChRStnzDIMSDFM0S5QhyCfq2EHryMuectd-S8qx2l-zTSTFMzeQ-UTT72vv-Otmo">
+        </div>
+        <button onclick="showStepUp()"
+            class="w-full bg-primary-container text-on-primary font-title-sm text-title-sm py-md rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity mb-md">
+            <span class="material-symbols-outlined">add</span>
+            새 분석
+        </button>
+        <div class="flex flex-col flex-1 overflow-hidden">
+            <div class="flex justify-between items-center mb-md px-xs">
+                <h3 class="font-title-sm text-title-sm text-on-surface">최근 분석 이력</h3>
+            </div>
+            <div class="flex-1 overflow-y-auto space-y-md group/scroll"
+                style="scrollbar-width: thin; scrollbar-color: rgba(67, 71, 78, 0.3) transparent;">
+                <!-- History Item 1 -->
+                <div
+                    class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant hover:border-primary-container hover:shadow-sm transition-all group cursor-pointer">
+                    <div class="flex justify-between items-start mb-sm">
+                        <h4 class="font-title-sm text-[16px] font-bold text-on-surface truncate pr-sm">그린테크 혁신 펀드 제안서
+                        </h4>
+
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span
+                            class="font-data-mono text-data-mono text-on-surface-variant flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">schedule</span> 2023.10.24 14:30</span>
+                    </div>
+                </div>
+                <!-- History Item 2 -->
+                <div
+                    class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant hover:border-primary-container hover:shadow-sm transition-all group cursor-pointer">
+                    <div class="flex justify-between items-start mb-sm">
+                        <h4 class="font-title-sm text-[16px] font-bold text-on-surface truncate pr-sm">AI 의료 진단 도구</h4>
+
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span
+                            class="font-data-mono text-data-mono text-on-surface-variant flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">schedule</span> 2023.10.22
+                            09:15</span>
+                    </div>
+                </div>
+                <!-- History Item 3 -->
+                <div
+                    class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant hover:border-primary-container hover:shadow-sm transition-all group cursor-pointer">
+                    <div class="flex justify-between items-start mb-sm">
+                        <h4 class="font-title-sm text-[16px] font-bold text-on-surface truncate pr-sm">스마트 팜 IoT 확장</h4>
+
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span
+                            class="font-data-mono text-data-mono text-on-surface-variant flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">schedule</span> 2023.10.20
+                            16:45</span>
+                    </div>
+                </div>
+                <!-- History Item 4 -->
+                <div
+                    class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant hover:border-primary-container hover:shadow-sm transition-all group cursor-pointer">
+                    <div class="flex justify-between items-start mb-sm">
+                        <h4 class="font-title-sm text-[16px] font-bold text-on-surface truncate pr-sm">차세대 배터리 제조</h4>
+
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span
+                            class="font-data-mono text-data-mono text-on-surface-variant flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">schedule</span> 2023.10.18
+                            11:20</span>
+                    </div>
+                </div>
+                <!-- History Item 5 -->
+                <div
+                    class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant hover:border-primary-container hover:shadow-sm transition-all group cursor-pointer">
+                    <div class="flex justify-between items-start mb-sm">
+                        <h4 class="font-title-sm text-[16px] font-bold text-on-surface truncate pr-sm">탄소중립 기술 검토</h4>
+
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span
+                            class="font-data-mono text-data-mono text-on-surface-variant flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">schedule</span> 2023.10.15
+                            10:00</span>
+                    </div>
+                </div>
+                <!-- History Item 6 -->
+                <!-- History Item 7 -->
+                <!-- History Item 8 -->
+                <button
+                    class="w-full py-sm text-body-sm text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors flex items-center justify-center gap-xs">
+                    더보기 <span class="material-symbols-outlined text-sm">expand_more</span>
+                </button>
+            </div>
+        </div>
+        <div class="mt-auto border-t border-outline-variant pt-md">
+            <div class="flex items-center gap-md px-xs py-sm">
+                <div
+                    class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant shrink-0">
+                    <img alt="Analyst Profile" class="w-full h-full object-cover"
+                        data-alt="A professional headshot of a data analyst, subtle lighting, modern corporate environment, wearing a dark blazer over a light shirt, confident yet approachable expression. White background."
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfflctLCBH9MzYdw4r2HgL508lb_Ure-RRnv9cGBwj_IoY0dSpucbeU4tYUJtFKeT74XY2fLXgKFUSC7Tzfn_p4vlVFVcgVMuRnXQyevwqQtkH6JsjL-V-SaWoiuZ9mYA9R46CydKhycFC9V5b6x93foQWiH-jHXSUnSOz45SW6WzUjDhMkuH0_AQK398W0fo7Pi8ywe20TMj-EFkJZA5isv5IPv1xOBgTuGHa1QSEufOBIVOEv44e0A">
+                </div>
+                <div class="flex flex-col flex-1 min-w-0">
+                    <span class="font-title-sm text-title-sm text-on-surface truncate">분석가</span>
+                    <a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-xs"
+                        href="#">
+                        <span class="material-symbols-outlined text-sm">logout</span> 로그아웃
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <!-- Main Content -->
+    <main id="step-up"
+        class="ml-[320px] p-lg md:p-xl flex-1 flex flex-col items-center min-h-screen max-w-container-max mx-auto w-full">
+        <!-- Center Column: Input Area -->
+        <div class="w-full max-w-4xl flex flex-col gap-lg mt-md">
+            <div class="text-center mb-xl pt-lg">
+                <h1 class="font-display-lg text-display-lg text-on-surface mb-sm">사전협의 요청서 업로드</h1>
+                <p class="font-body-md text-body-md text-on-surface-variant">AI 사전검토를 위한 새 사업계획안을 제출하거나 최근 활동을 모니터링하세요.
+                </p>
+            </div>
+            <!-- Upload Card -->
+            <div id="upload-box"
+                class="relative bg-surface-container-lowest rounded-2xl border border-outline-variant p-xl flex flex-col shadow-sm w-fit mx-auto">
+                <!-- Drop Zone -->
+                <label class="border-2 border-dashed border-outline-variant rounded-xl p-xl flex flex-col items-center justify-center text-center hover:bg-surface-container-low hover:border-primary transition-all cursor-pointer mb-xl h-80 shrink-0 bg-surface overflow-hidden">
+                    <!-- 파일 선택 input -->
+                    <input type="file" class="hidden" accept=".pdf,.hwp,.docx" onchange="handleFileChange(event)">
+                    
+                    <!-- 기존 콘텐츠 -->
+                    <span class="material-symbols-outlined text-outline text-[48px] mb-md">cloud_upload</span>
+                    <p class="font-title-sm text-title-sm font-semibold text-on-surface mb-sm">문서를 여기에 드래그 앤 드롭하세요</p>
+                    <p class="font-body-md text-body-md text-on-surface-variant mb-md">지원 형식: PDF, HWP, DOCX (최대 50MB)</p>
+                    <span class="text-primary font-title-sm text-[15px] font-semibold hover:underline">
+                        또는 클릭하여 파일 찾아보기
+                    </span>
+                </label>
+                <!-- Text Area -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-md">
+                    <div class="p-md bg-surface-container-low rounded-lg border border-outline-variant">
+                        <div class="flex items-center gap-sm mb-xs text-primary">
+                            <span class="material-symbols-outlined text-[20px]">description</span>
+                            <span class="font-bold text-body-md">지원 포맷 상세</span>
+                        </div>
+                        <p class="text-body-sm text-on-surface-variant">PDF, HWP, DOCX 파일을 지원하며, 표와 이미지가 포함된 문서도 분석
+                            가능합니다.</p>
+                    </div>
+                    <div class="p-md bg-surface-container-low rounded-lg border border-outline-variant">
+                        <div class="flex items-center gap-sm mb-xs text-primary">
+                            <span class="material-symbols-outlined text-[20px]">security</span>
+                            <span class="font-bold text-body-md">보안 정책 안내</span>
+                        </div>
+                        <p class="text-body-sm text-on-surface-variant">업로드된 문서는 암호화되어 처리되며, 분석 완료 후 즉시 파기하거나 안전하게
+                            보관됩니다.</p>
+                    </div>
+                    <div class="p-md bg-surface-container-low rounded-lg border border-outline-variant">
+                        <div class="flex items-center gap-sm mb-xs text-primary">
+                            <span class="material-symbols-outlined text-[20px]">info</span>
+                            <span class="font-bold text-body-md">분석 가이드</span>
+                        </div>
+                        <p class="text-body-sm text-on-surface-variant">최대 50MB 용량까지 지원하며, 텍스트가 선명한 문서를 권장합니다.</p>
+                    </div>
+                </div>
+
+                <!-- 딤(Dim) 및 스피너 영역 -->
+                <div id="loading-overlay"
+                    class="absolute inset-5 bg-surface/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center hidden">
+                    <div class="relative w-24 h-24 flex items-center justify-center mb-lg">
+                        <div
+                            class="absolute inset-0 border-4 border-primary/20 border-t-primary rounded-full animate-spin">
+                        </div>
+                    </div>
+                    <div class="text-center p-lg rounded-2xl border-outline-variant/30">
+                        <p class="font-display-lg text-[24px] font-bold text-on-surface">파일을 업로드하고 분석을 진행 중입니다</p>
+                        <p class="font-body-md text-on-surface-variant mt-sm">업로드가 완료되는 대로 분석 결과를 확인하실 수 있습니다.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <main id="step-result"
+        class="flex-1 md:ml-[320px] py-20 px-md md:px-lg xl:px-xl min-h-screen bg-background flex flex-col hidden">
+        <div class="mb-lg flex flex-col sm:flex-row sm:items-end justify-between gap-md pt-lg">
+            <div>
+                <h2 class="font-headline-md text-headline-md text-on-surface">분석 결과</h2>
+                <p class="font-body-md text-body-md text-on-surface-variant mt-xs">문서 ID: PRG-2024-883A • 처리일시: 오늘, 오전
+                    09:42</p>
+            </div>
+            <div class="flex gap-sm">
+                <button
+                    class="px-md py-sm border border-outline-variant rounded bg-surface hover:bg-surface-container-low font-label-caps text-label-caps text-on-surface flex items-center gap-xs transition-colors">
+                    <span class="material-symbols-outlined text-[16px]">download</span> 보고서 내보내기
+                </button>
+            </div>
+        </div>
+        <div class="grid grid-cols-12 gap-lg">
+            <div class="col-span-12 grid grid-cols-1 sm:grid-cols-2 gap-lg xl:col-span-12">
+                <div
+                    class="bg-surface border border-outline-variant rounded p-lg flex flex-col relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-md">
+                        <div>
+                            <h3 class="font-title-sm text-title-sm text-on-surface">자체 점검도</h3>
+                            <p class="font-body-sm text-body-sm text-on-surface-variant">필수 문서 필드</p>
+                        </div>
+                        <span
+                            class="material-symbols-outlined text-primary-container p-sm bg-primary-fixed rounded">fact_check</span>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center py-md">
+                        <div class="flex flex-col w-full gap-md">
+                            <div class="flex items-center justify-center py-sm">
+                                <div class="relative w-[100px] h-[100px]"><svg class="circular-progress w-full h-full"
+                                        viewBox="0 0 100 100">
+                                        <circle cx="50" cy="50" fill="none" r="45" stroke="#e3e2e6" stroke-width="8">
+                                        </circle>
+                                        <circle cx="50" cy="50" fill="none" r="45" stroke="#1a365d"
+                                            stroke-dasharray="282.7" stroke-dashoffset="22.6" stroke-linecap="round"
+                                            stroke-width="8"></circle>
+                                    </svg>
+                                    <div class="absolute inset-0 flex items-center justify-center"><span
+                                            class="font-headline-md text-headline-md text-primary-container">92%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-xs">
+                                <div class="flex justify-between text-[11px] font-label-caps text-on-surface-variant">
+                                    <span class="">필수 항목</span><span class="">100%</span></div>
+                                <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                                    <div class="h-full bg-primary-container" style="width: 100%"></div>
+                                </div>
+                                <div
+                                    class="flex justify-between text-[11px] font-label-caps text-on-surface-variant mt-xs">
+                                    <span class="">증빙 서류</span><span class="">85%</span></div>
+                                <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                                    <div class="h-full bg-primary-container" style="width: 85%"></div>
+                                </div>
+                                <div
+                                    class="flex justify-between text-[11px] font-label-caps text-on-surface-variant mt-xs">
+                                    <span class="">재무 데이터</span><span class="">90%</span></div>
+                                <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                                    <div class="h-full bg-primary-container" style="width: 90%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto border-t border-outline-variant pt-md flex justify-between items-center">
+                        <span class="font-body-sm text-body-sm text-on-surface-variant">46개 중 42개 필드 확인됨</span>
+                        <span
+                            class="font-label-caps text-label-caps text-primary-container flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">trending_up</span> 평균 대비 +5%</span>
+                    </div>
+                </div>
+                <div class="bg-surface border border-outline-variant rounded p-lg flex flex-col">
+                    <div class="flex justify-between items-start mb-md">
+                        <div>
+                            <h3 class="font-title-sm text-title-sm text-on-surface">구조적 정합성</h3>
+                            <p class="font-body-sm text-body-sm text-on-surface-variant">내부 데이터 교차 검증</p>
+                        </div>
+                        <span
+                            class="material-symbols-outlined text-primary-container p-sm bg-primary-fixed rounded">rule</span>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center py-md">
+                        <div class="flex flex-col w-full gap-md">
+                            <div class="flex items-center justify-center py-sm">
+                                <div class="relative w-[100px] h-[100px]"><svg class="circular-progress w-full h-full"
+                                        viewBox="0 0 100 100">
+                                        <circle cx="50" cy="50" fill="none" r="45" stroke="#e3e2e6" stroke-width="8">
+                                        </circle>
+                                        <circle cx="50" cy="50" fill="none" r="45" stroke="#c6955e"
+                                            stroke-dasharray="282.7" stroke-dashoffset="62.2" stroke-linecap="round"
+                                            stroke-width="8"></circle>
+                                    </svg>
+                                    <div class="absolute inset-0 flex items-center justify-center"><span
+                                            class="font-headline-md text-headline-md text-on-tertiary-container">78%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-xs text-center">
+                                <div class="p-xs bg-error-container rounded">
+                                    <p class="text-[10px] font-label-caps text-on-error-container">높음</p>
+                                    <p class="font-bold text-on-error-container">1</p>
+                                </div>
+                                <div class="p-xs bg-tertiary-fixed-dim rounded">
+                                    <p class="text-[10px] font-label-caps text-on-tertiary-fixed">중간</p>
+                                    <p class="font-bold text-on-tertiary-fixed">1</p>
+                                </div>
+                                <div class="p-xs bg-surface-container-high rounded">
+                                    <p class="text-[10px] font-label-caps text-on-surface-variant">낮음</p>
+                                    <p class="font-bold text-on-surface-variant">0</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto border-t border-outline-variant pt-md flex justify-between items-center">
+                        <span class="font-body-sm text-body-sm text-on-surface-variant">2개의 이상 징후 감지됨</span>
+                        <span
+                            class="font-label-caps text-label-caps text-on-tertiary-container flex items-center gap-xs"><span
+                                class="material-symbols-outlined text-[14px]">warning</span> 조치 필요</span>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="col-span-12 lg:col-span-7 bg-surface border border-outline-variant rounded overflow-hidden flex flex-col">
+                <div
+                    class="p-md border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+                    <h3 class="font-title-sm text-title-sm text-on-surface">식별된 검토 쟁점</h3>
+                    <div class="flex gap-xs"><span
+                            class="bg-error-container text-on-error-container font-label-caps text-[10px] px-sm py-xs rounded">2개
+                            심각</span><span
+                            class="bg-tertiary-fixed-dim text-on-tertiary-fixed font-label-caps text-[10px] px-sm py-xs rounded">2개
+                            검토</span></div>
+                </div>
+                <div class="flex-1 overflow-x-auto">
+                    <table class="w-full h-full text-left border-collapse min-w-[500px]">
+                        <thead>
+                            <tr class="border-b border-outline-variant bg-background">
+                                <th class="p-md font-label-caps text-label-caps text-on-surface-variant font-semibold">
+                                    심각도</th>
+                                <th class="p-md font-label-caps text-label-caps text-on-surface-variant font-semibold">
+                                    쟁점 설명</th>
+                                <th class="p-md font-label-caps text-label-caps text-on-surface-variant font-semibold">
+                                    위치</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                class="min-h-1/4 border-b border-outline-variant hover:bg-surface-container-low transition-colors group border-l-4 border-l-error">
+                                <td class="p-md align-top">
+                                    <div
+                                        class="inline-flex items-center gap-xs bg-error-container text-on-error-container px-sm py-xs rounded font-label-caps text-[10px]">
+                                        <span class="material-symbols-outlined text-[12px]">gpp_bad</span> 심각 (T1)
+                                    </div>
+                                </td>
+                                <td class="p-md align-top">
+                                    <p class="font-body-sm text-body-sm text-on-surface font-medium">수혜자 기준 누락</p>
+                                    <p class="font-body-sm text-body-sm text-on-surface-variant mt-xs line-clamp-2">
+                                        프레임워크에서 요구하는 중소기업 자격에 대한 규모 요건이 4절에 명시적으로 정의되어 있지 않습니다.</p>
+                                </td>
+                                <td class="p-md align-top font-data-mono text-data-mono text-on-surface-variant">4.1.2절
+                                </td>
+                            </tr>
+                            <tr
+                                class="min-h-1/4 border-b border-outline-variant hover:bg-surface-container-low transition-colors bg-background border-l-4 border-l-error">
+                                <td class="p-md align-top">
+                                    <div
+                                        class="inline-flex items-center gap-xs bg-error-container text-on-error-container px-sm py-xs rounded font-label-caps text-[10px]">
+                                        <span class="material-symbols-outlined text-[12px]">gpp_bad</span> 심각 (T1)
+                                    </div>
+                                </td>
+                                <td class="p-md align-top">
+                                    <p class="font-body-sm text-body-sm text-on-surface font-medium">예산 부속 서류 불일치</p>
+                                    <p class="font-body-sm text-body-sm text-on-surface-variant mt-xs line-clamp-2">요청된
+                                        총 자금이 부속서 B의 항목별 비용 합계와 일치하지 않습니다.</p>
+                                </td>
+                                <td class="p-md align-top font-data-mono text-data-mono text-on-surface-variant">부속서 B
+                                </td>
+                            </tr>
+                            <tr
+                                class="min-h-1/4 border-b border-outline-variant hover:bg-surface-container-low transition-colors border-l-4 border-l-tertiary-fixed-dim">
+                                <td class="p-md align-top">
+                                    <div
+                                        class="inline-flex items-center gap-xs bg-tertiary-fixed-dim text-on-tertiary-fixed px-sm py-xs rounded font-label-caps text-[10px]">
+                                        <span class="material-symbols-outlined text-[12px]">warning</span> 검토 (T2)
+                                    </div>
+                                </td>
+                                <td class="p-md align-top">
+                                    <p class="font-body-sm text-body-sm text-on-surface font-medium">모호한 KPI 정의</p>
+                                    <p class="font-body-sm text-body-sm text-on-surface-variant mt-xs line-clamp-2">"생산성
+                                        향상"에 대한 기준 지표나 측정 방법론이 부족합니다.</p>
+                                </td>
+                                <td class="p-md align-top font-data-mono text-data-mono text-on-surface-variant">5.3절
+                                </td>
+                            </tr>
+                            <tr
+                                class="min-h-1/4 hover:bg-surface-container-low transition-colors bg-background border-l-4 border-l-tertiary-fixed-dim">
+                                <td class="p-md align-top">
+                                    <div
+                                        class="inline-flex items-center gap-xs bg-tertiary-fixed-dim text-on-tertiary-fixed px-sm py-xs rounded font-label-caps text-[10px]">
+                                        <span class="material-symbols-outlined text-[12px]">warning</span> 검토 (T2)
+                                    </div>
+                                </td>
+                                <td class="p-md align-top">
+                                    <p class="font-body-sm text-body-sm text-on-surface font-medium">일정 타당성</p>
+                                    <p class="font-body-sm text-body-sm text-on-surface-variant mt-xs line-clamp-2">표준
+                                        조달 주기를 고려할 때 1단계 배포 일정이 매우 공격적으로 보입니다.</p>
+                                </td>
+                                <td class="p-md align-top font-data-mono text-data-mono text-on-surface-variant">2.4절
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-span-12 lg:col-span-5 bg-surface border border-outline-variant rounded flex flex-col">
+                <div class="p-md border-b border-outline-variant bg-surface-container-low">
+                    <h3 class="font-title-sm text-title-sm text-on-surface">추천 유사 프로그램</h3>
+                    <p class="font-body-sm text-body-sm text-on-surface-variant mt-xs">과거 선례 분석</p>
+                </div>
+                <div class="p-sm flex-1 flex flex-col gap-sm overflow-y-auto">
+                    <div class="p-md border border-outline-variant rounded bg-background flex flex-col gap-sm">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-title-sm text-body-md font-medium text-primary-container">2023년 디지털 전환
+                                    이니셔티브</h4>
+                                <p class="font-data-mono text-data-mono text-on-surface-variant mt-xs">ID: PRG-2023-412
+                                </p>
+                            </div>
+                            <div
+                                class="bg-primary-fixed text-on-primary-fixed px-sm py-xs rounded font-label-caps text-label-caps">
+                                89% 일치
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-xs text-on-surface-variant font-body-sm text-body-sm mt-xs">
+                            <span class="material-symbols-outlined text-[16px]">check_circle</span> 승인됨
+                            <span class="mx-xs">•</span>
+                            제조업
+                        </div>
+                        <div class="mt-sm pt-sm border-t border-outline-variant flex justify-end">
+                            <button
+                                class="text-primary-container hover:text-primary font-label-caps text-label-caps flex items-center gap-xs">
+                                상세 보기 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-md border border-outline-variant rounded bg-background flex flex-col gap-sm">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-title-sm text-body-md font-medium text-primary-container">중소기업 수출 준비 보조금
+                                </h4>
+                                <p class="font-data-mono text-data-mono text-on-surface-variant mt-xs">ID: PRG-2022-881
+                                </p>
+                            </div>
+                            <div
+                                class="bg-surface-variant text-on-surface-variant px-sm py-xs rounded font-label-caps text-label-caps">
+                                74% 일치
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-xs text-on-surface-variant font-body-sm text-body-sm mt-xs">
+                            <span class="material-symbols-outlined text-[16px]">cancel</span> 거절됨
+                            <span class="mx-xs">•</span>
+                            범부처
+                        </div>
+                        <div class="mt-sm pt-sm border-t border-outline-variant flex justify-end">
+                            <button
+                                class="text-primary-container hover:text-primary font-label-caps text-label-caps flex items-center gap-xs">
+                                상세 보기 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-sm border-t border-outline-variant bg-surface-container-lowest text-center">
+                    <button
+                        class="text-on-surface-variant hover:text-primary font-label-caps text-label-caps py-sm px-md w-full transition-colors">
+                        모든 과거 일치 항목 보기
+                    </button>
+                </div>
+            </div>
+        </div>
+        <aside id="ai-chat"
+            class="fixed bottom-0 right-md w-[400px] h-[600px] bg-surface border border-outline-variant flex flex-col z-50 shadow-md rounded-t-xl overflow-hidden transition-all translate-y-[calc(100%-64px)]">
+            <div onclick="toggleAiChat()" class="h-16 bg-primary-container text-on-tertiary px-md flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-sm"><span
+                        class="material-symbols-outlined text-[20px]">forum</span><span
+                        class="font-title-sm text-[16px]">AI 질의응답</span></div><button
+                    class="hover:bg-white/10 p-xs rounded transition-colors"><span
+                        class="material-symbols-outlined text-[20px]">keyboard_arrow_down</span></button>
+            </div>
+            <div class="flex-1 p-md bg-surface-bright flex flex-col overflow-hidden">
+                <div class="flex-1 overflow-y-auto flex flex-col gap-md"
+                    style="scrollbar-width: thin; scrollbar-color: rgba(67, 71, 78, 0.3) transparent;">
+                    <div
+                        class="bg-secondary-container text-on-secondary-container p-md rounded-lg rounded-tl-none self-start max-w-[90%] font-body-sm text-[14px] shadow-sm">
+                        분석 결과에 대해 궁금한 점을 물어보세요. '원가율 산정 방식' 또는 '유사 사례 기준' 등을 물어보시면 답변해 드립니다.</div>
+                    <div
+                        class="bg-primary-container text-on-primary p-md rounded-lg rounded-tr-none self-end max-w-[90%] font-body-sm text-[14px] shadow-sm">
+                        '수혜자 기준 누락' 항목에 대해 더 자세히 설명해줘.</div>
+                    <div
+                        class="bg-secondary-container text-on-secondary-container p-md rounded-lg rounded-tl-none self-start max-w-[90%] font-body-sm text-[14px] shadow-sm">
+                        해당 항목은 사업 공고문 4절에 명시된 '중소기업기본법'에 따른 규모 요건이 현재 제출된 사업계획서 본문에 누락되어 있음을 의미합니다. 4.1.2절에 해당 정의를 추가하시길
+                        권장합니다.</div>
+                    <div
+                        class="bg-primary-container text-on-primary p-md rounded-lg rounded-tr-none self-end max-w-[90%] font-body-sm text-[14px] shadow-sm">
+                        비슷한 사례에서 승인된 문구가 있을까?</div>
+                    <div
+                        class="bg-secondary-container text-on-secondary-container p-md rounded-lg rounded-tl-none self-start max-w-[90%] font-body-sm text-[14px] shadow-sm">
+                        네, '2023년 디지털 전환 이니셔티브' 사례에서는 다음과 같이 기술되었습니다: "본 사업의 수혜 대상은 중소기업기본법 제2조에 따른 중소기업으로 한정하며..."
+                    </div>
+                </div>
+                <div class="mt-md pt-md border-t border-outline-variant relative bg-surface flex items-center">
+                    <div
+                        class="flex-1 flex items-end gap-sm bg-surface-container-low p-xs rounded-xl border border-outline-variant focus-within:border-primary-container focus-within:ring-2 focus-within:ring-inverse-primary/30 transition-all">
+                        <textarea
+                            class="flex-1 min-h-[40px] max-h-[120px] bg-transparent border-none focus:ring-0 p-sm font-body-sm text-[14px] resize-none overflow-y-auto"
+                            placeholder="질문을 입력하세요..." rows="1"></textarea><button
+                            class="bg-primary-container text-on-primary rounded-lg hover:opacity-90 transition-opacity shadow-sm flex items-center justify-center w-10 h-10 shrink-0 mb-[2px]"><span
+                                class="material-symbols-outlined text-[20px] leading-none">send</span></button></div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+<script src="./js.js" defer></script>
+</body>
+
+</html>
