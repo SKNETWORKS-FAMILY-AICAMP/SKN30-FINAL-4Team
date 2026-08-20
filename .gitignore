@@ -9,11 +9,16 @@ ehthumbs.db
 Desktop.ini
 
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *.sublime-workspace
 *.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # ==========================================
 # 2. 보안 파일
@@ -48,12 +53,23 @@ secrets/
 **/.ipynb_checkpoints/
 
 # ==========================================
-# 4. 프론트엔드 (Node.js)
+# 4. 프론트엔드 (Node.js & Vite)
 # ==========================================
 **/node_modules/
 **/dist/
+**/dist-ssr/
 **/.vite/
 **/.npm/
+**/*.local
+
+# 패키지 매니저 및 빌드 로그
+**/logs/
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+**/lerna-debug.log*
 
 # ==========================================
 # 5. Rust (크롤러 관련)
@@ -67,7 +83,6 @@ Cargo.lock
 # MLflow 및 W&B
 **/mlruns/
 **/wandb/
-**/*.log
 
 # 딥러닝 가중치 및 대용량 데이터 파일
 **/*.pt
