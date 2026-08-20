@@ -1,28 +1,33 @@
 {
   "rows": 1570,
-  "with_document": 906,
-  "document_coverage": 0.5771,
-  "needs_ocr": 12,
-  "doc_chars_median": 4810,
+  "with_document": 641,
+  "document_coverage": 0.4083,
+  "needs_ocr": 0,
+  "doc_chars_median": 2185,
   "support_source_dist": {
-    "doc": 746,
-    "csv_only": 664,
-    "csv": 160
+    "csv_only": 929,
+    "doc": 489,
+    "csv": 152
   },
-  "amount_detected_all": 0.5707,
-  "amount_typed_all": 0.3803,
-  "amount_typed_with_doc": 0.4691,
-  "amount_typed_without_doc": 0.259,
+  "amount_detected_all": 0.4796,
+  "amount_typed_all": 0.314,
+  "amount_typed_with_doc": 0.4477,
+  "amount_typed_without_doc": 0.2217,
   "type_dist": {
-    "NaN": 634,
-    "per_company": 383,
-    "unknown": 339,
-    "periodic": 99,
-    "total_budget": 77,
-    "per_project": 38
+    "NaN": 780,
+    "per_company": 323,
+    "unknown": 297,
+    "periodic": 76,
+    "total_budget": 72,
+    "per_project": 22
   },
-  "mean_confidence": 0.3327,
-  "ratio_extracted": 87,
-  "count_extracted": 861,
+  "mean_confidence": 0.2614,
+  "ratio_extracted": 35,
+  "count_extracted": 620,
+  "docs_version": "e02",
+  "excluded_ext": [
+    "pdf"
+  ],
+  "exclusion_reason": "PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), A02 도 같은 기준으로 PDF 를 제외한다. 이 병합본만 PDF 값을 가지면 A02 의 요약문 폴백 경로로 오염된 금액이 되돌아온다.",
   "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail_enriched.parquet"
 }
