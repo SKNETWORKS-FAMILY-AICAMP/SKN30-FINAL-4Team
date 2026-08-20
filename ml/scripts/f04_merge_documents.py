@@ -1,4 +1,4 @@
-"""P05 — 공고문 원문 추출본을 announcement_detail에 병합하고 지원규모를 재계산.
+"""F04 — 공고문 원문 추출본을 announcement_detail에 병합하고 지원규모를 재계산.
 
 CSV 요약(bsnsSumryCn)에는 "④ 규모" 한 줄뿐이라 금액의 의미가 자주 unknown으로 남는다.
 공고문 원문에는 지원조건이 표로 들어있어 의미 확정률이 크게 오른다.
@@ -117,7 +117,7 @@ def main():
         "count_extracted": int(d["support_count"].notna().sum()),
         "output": OUT,
     }
-    save_report("p05_merge_documents.json", rep)
+    save_report("f04_merge_documents.json", rep)
 
     print("원문 보유 %d건 (%.1f%%) / OCR대기 %d건"
           % (rep["with_document"], rep["document_coverage"] * 100, rep["needs_ocr"]))

@@ -1,4 +1,4 @@
-"""P01 — announcement_master (설계서 4.1). 장기 공고 목록 97,794건 정제."""
+"""F01 — announcement_master (설계서 4.1). 장기 공고 목록 97,794건 정제."""
 import hashlib
 import sys
 
@@ -90,7 +90,7 @@ def main():
 
     out = f"{PROC}/announcement_master.parquet"
     m.to_parquet(out, index=False)
-    save_report("p01_master.json", {
+    save_report("f01_master.json", {
         "rows_raw": n_raw, "rows_final": len(m),
         "url_without_pblanc_id": miss, "duplicate_dropped": n_dup,
         "registered_date_null": int(m["registered_date"].isna().sum()),
