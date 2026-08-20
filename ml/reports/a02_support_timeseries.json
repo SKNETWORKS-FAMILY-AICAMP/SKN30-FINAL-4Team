@@ -1,9 +1,9 @@
 {
-  "outliers_flagged": 85,
+  "outliers_flagged": 72,
   "outliers_by_type": {
-    "per_company": 31,
-    "periodic": 27,
-    "total_budget": 21,
+    "per_company": 25,
+    "periodic": 23,
+    "total_budget": 18,
     "per_project": 6
   },
   "sane_range": {
@@ -29,19 +29,19 @@
     "pdf"
   ],
   "exclusion_reason": "PDF 는 표 셀이 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), 해당 문서 기반 per_company 는 중앙값 2배·p95 3.8배로 부풀려졌다. 병합 탐지로 일부만 거르는 대신 오류가 0인 HWP 계열만 사용한다.",
-  "observations": 2706,
+  "observations": 2458,
   "source_dist": {
     "list_sample": 1720,
-    "openapi": 986
+    "openapi": 738
   },
   "amount_type_dist": {
-    "unknown": 940,
-    "per_company": 901,
-    "total_budget": 441,
-    "periodic": 278,
-    "per_project": 146
+    "unknown": 889,
+    "per_company": 807,
+    "total_budget": 386,
+    "periodic": 251,
+    "per_project": 125
   },
-  "typed_observations": 1766,
+  "typed_observations": 1569,
   "year_range": [
     2019,
     2026
@@ -53,33 +53,33 @@
     "2022": 184,
     "2023": 152,
     "2024": 96,
-    "2025": 108,
-    "2026": 636
+    "2025": 102,
+    "2026": 445
   },
-  "mvp_rows": 777,
+  "mvp_rows": 750,
   "availability": {
     "per_company": {
-      "n": 901,
-      "months": 83,
-      "per_month": 10.86,
+      "n": 807,
+      "months": 82,
+      "per_month": 9.84,
       "usable": true
     },
     "per_project": {
-      "n": 146,
-      "months": 57,
-      "per_month": 2.56,
+      "n": 125,
+      "months": 56,
+      "per_month": 2.23,
       "usable": false
     },
     "total_budget": {
-      "n": 441,
+      "n": 386,
       "months": 82,
-      "per_month": 5.38,
+      "per_month": 4.71,
       "usable": true
     },
     "periodic": {
-      "n": 278,
-      "months": 70,
-      "per_month": 3.97,
+      "n": 251,
+      "months": 69,
+      "per_month": 3.64,
       "usable": true
     }
   },
