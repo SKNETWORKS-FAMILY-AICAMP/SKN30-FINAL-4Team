@@ -3,13 +3,13 @@
     2019,
     2026
   ],
-  "total_observations": 1681,
+  "total_observations": 1497,
   "min_n_for_range": 5,
-  "outliers_dropped": 85,
+  "outliers_dropped": 72,
   "outliers_dropped_by_type": {
-    "per_company": 31,
-    "periodic": 27,
-    "total_budget": 21,
+    "per_company": 25,
+    "periodic": 23,
+    "total_budget": 18,
     "per_project": 6
   },
   "sane_range": {
@@ -35,37 +35,37 @@
     "by_type": 4,
     "by_type_category": 31,
     "by_type_year": 32,
-    "by_type_support": 60,
-    "recent_by_type_category": 31
+    "by_type_support": 26,
+    "recent_by_type_category": 29
   },
   "by_type_summary": {
     "기업당 지원금": {
-      "n": 870,
-      "median": 10650000.0,
+      "n": 782,
+      "median": 12000000.0,
       "p25": 3000000.0,
-      "p75": 70000000.0,
-      "mean": 160380517.6551724
+      "p75": 80000000.0,
+      "mean": 162675959.53964195
     },
     "과제당 지원금": {
-      "n": 140,
-      "median": 34000000.0,
-      "p25": 9375000.0,
-      "p75": 152500000.0,
-      "mean": 481530750.0
+      "n": 119,
+      "median": 35000000.0,
+      "p25": 6000000.0,
+      "p75": 210000000.0,
+      "mean": 492388025.210084
     },
     "정기 지원금(월/연)": {
-      "n": 251,
-      "median": 2000000.0,
-      "p25": 538960.0,
-      "p75": 3000000.0,
-      "mean": 4926225.972111554
+      "n": 228,
+      "median": 1800000.0,
+      "p25": 500000.0,
+      "p75": 2800000.0,
+      "mean": 4319603.3728070175
     },
     "총사업비": {
-      "n": 420,
-      "median": 165500000.0,
-      "p25": 26750000.0,
-      "p75": 5139000000.0,
-      "mean": 37395364880.95238
+      "n": 368,
+      "median": 200000000.0,
+      "p25": 30000000.0,
+      "p75": 6510250000.0,
+      "mean": 39844376703.804344
     }
   },
   "policy": "설계서 v3 18장 조건5 미충족으로 예측 미제공. 19장에 따라 관측 기반 추이·범위만 산출.",
