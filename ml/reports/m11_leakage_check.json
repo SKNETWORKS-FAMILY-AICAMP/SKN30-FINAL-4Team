@@ -1,0 +1,70 @@
+{
+  "purpose": "2022 병합의 성능 향상에서 연도 간 재공고 누수분을 분리",
+  "design": "같은 데이터·모델을 StratifiedKFold 와 StratifiedGroupKFold 로 각각 측정. 그룹 키는 제목에서 연도를 뺀 program_stem.",
+  "folds": 5,
+  "seed": 42,
+  "min_support": 10,
+  "datasets": {
+    "병합 (2022+2023)": {
+      "rows": 1404,
+      "classes": 19,
+      "groups": 1203,
+      "rows_in_shared_programs": 201,
+      "stratified_kfold": {
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.8405,
+          "macro_f1": 0.7938,
+          "weighted_f1": 0.8395
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.8575,
+          "macro_f1": 0.82,
+          "weighted_f1": 0.8562
+        }
+      },
+      "stratified_group_kfold": {
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.8283,
+          "macro_f1": 0.7834,
+          "weighted_f1": 0.8272
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.8362,
+          "macro_f1": 0.7953,
+          "weighted_f1": 0.8343
+        }
+      }
+    },
+    "병합 전 (2023 단독)": {
+      "rows": 809,
+      "classes": 14,
+      "groups": 806,
+      "rows_in_shared_programs": 3,
+      "stratified_kfold": {
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.796,
+          "macro_f1": 0.7021,
+          "weighted_f1": 0.7911
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.7911,
+          "macro_f1": 0.7037,
+          "weighted_f1": 0.7877
+        }
+      },
+      "stratified_group_kfold": {
+        "TFIDF+LogisticRegression": {
+          "accuracy": 0.7936,
+          "macro_f1": 0.7043,
+          "weighted_f1": 0.7898
+        },
+        "TFIDF+LinearSVM": {
+          "accuracy": 0.7824,
+          "macro_f1": 0.6942,
+          "weighted_f1": 0.7796
+        }
+      }
+    }
+  },
+  "caution": "일반 K-Fold 수치(M06 이 보고하는 값)는 두 해에 걸친 사업 때문에 낙관적으로 치우친다. 운영 성능 추정에는 그룹 CV 값을 쓴다."
+}
