@@ -31,9 +31,31 @@ from amount_parser import parse_support
 warnings.filterwarnings("ignore")
 
 DETAIL = PROC + "/announcement_detail_enriched.parquet"
-# 채택 모델(KLUE-RoBERTa)의 추론 결과. 구버전 LogisticRegression 산출물
-# (announcement_detail_with_support_type.parquet)은 판단보류가 70.5%라 폐기했다.
-CLASSIFIED = PROC + "/openapi_support_type_roberta.parquet"
+
+# 지원성격 라벨의 출처. --support-type-source 로 고른다.
+#
+# 왜 기본값이 m08 인가
+#     예전에는 dl05(KLUE-RoBERTa) 산출물을 고정으로 읽었다. 그런데 dl05 는
+#     deep-learning(5단계) 산출물이고 이 스크립트는 timeseries-analysis(4단계)에
+#     있다. 상류가 하류 산출물을 읽는 역류였고, 파일이 없으면 try/except 가
+#     조용히 삼켜 support_type 이 통째로 결측이 됐다(실측: 이 브랜치에서 100%,
+#     deep-learning 에서 70%). 결측인 채로 a05 까지 흘러가도 티가 나지 않는다.
+#     m08 산출물은 machine-learning(3단계) 것이라 이 브랜치에 반드시 있다.
+#     기본값을 m08 로 두면 어느 브랜치에서 돌려도 같은 결과가 나온다.
+#
+# dl05 를 쓰려면 deep-learning 에서 --support-type-source dl05 를 명시한다.
+# 다만 dl05 는 98.3% 를 '신뢰'로 매기는데 검증된 적이 없다. 같은 표본에서
+# m08 은 50.6% 만 신뢰로 매기고 그 중 78.3% 가 맞았다(M13). 과신 의심이 있어
+# 재학습·검증 전까지는 기본값으로 삼지 않는다.
+SUPPORT_TYPE_SOURCES = {
+    "m08": PROC + "/announcement_detail_with_support_type_v2.parquet",
+    "dl05": PROC + "/openapi_support_type_roberta.parquet",
+}
+COLMAP = {
+    "m08": {"pred": "support_type_pred", "conf": "support_type_confidence",
+            "status": "support_type_status"},
+    "dl05": {"pred": "support_type_pred", "conf": "confidence", "status": "status"},
+}
 MASTER = PROC + "/announcement_master.parquet"
 SAMPLE = PROC + "/list_sample.parquet"
 # E02(pdf-inspector + rhwp)가 있으면 우선 사용한다. HWP 표가 실제로 읽힌다.
@@ -92,21 +114,42 @@ def pick_docs(source, legacy_path):
     return load_docs(legacy_path), "e01"
 
 
-def build_observations():
+def attach_support_type(d, source):
+    """지원성격 라벨을 붙인다. 파일이 없으면 조용히 넘어가지 않고 멈춘다.
+
+    예전에는 try/except 로 감싸 결측으로 떨어뜨렸는데, 그러면 support_type 이
+    통째로 비어도 파이프라인이 끝까지 돌아가 a05 참고범위의 by_type_support 가
+    빈 채로 산출된다. 실제로 그렇게 100% 결측인 산출물이 커밋된 적이 있다.
+    """
+    path = SUPPORT_TYPE_SOURCES[source]
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            "지원성격 산출물이 없다: %s\n"
+            "  --support-type-source m08 은 M08 을, dl05 는 DL05 를 먼저 실행해야 한다.\n"
+            "  dl05 산출물은 deep-learning 브랜치에만 있다." % path)
+    c = COLMAP[source]
+    cls = pd.read_parquet(path)[
+        ["announcement_id", c["pred"], c["conf"], c["status"]]]
+    cls.columns = ["announcement_id", "support_type_pred",
+                   "support_type_confidence", "support_type_status"]
+    # 판단보류는 라벨로 쓰지 않는다. 확신 없는 예측으로 참고범위를 나누면
+    # 그 구간의 통계가 오염된다.
+    hold = cls["support_type_status"] == "판단보류"
+    cls.loc[hold, "support_type_pred"] = np.nan
+    d = d.merge(cls, on="announcement_id", how="left")
+    n = int(d["support_type_pred"].notna().sum())
+    print("지원성격 출처 %s — %d/%d건 라벨 부여 (판단보류 %d건 제외)"
+          % (source, n, len(d), int(hold.sum())))
+    return d
+
+
+def build_observations(source):
     """공고 1건 = 1행. 날짜·대분류·지원성격·금액(의미별)을 붙인 관측 테이블."""
     rows = []
 
     # --- Open API (대부분 2026년, 지원성격 추론값 보유)
     d = pd.read_parquet(DETAIL)
-    try:
-        cls = pd.read_parquet(CLASSIFIED)[
-            ["announcement_id", "support_type_pred", "confidence", "status"]].rename(
-            columns={"confidence": "support_type_confidence", "status": "support_type_status"})
-        d = d.merge(cls, on="announcement_id", how="left")
-    except Exception:
-        d["support_type_pred"] = np.nan
-        d["support_type_confidence"] = np.nan
-        d["support_type_status"] = np.nan
+    d = attach_support_type(d, source)
 
     # 원문이 있으면 재파싱한다(E02는 표 구조가 살아 있어 결과가 낫다).
     # 없으면 parquet에 이미 들어있는 값을 쓴다.
@@ -216,9 +259,13 @@ def aggregate(obs, level="mvp", min_obs=1):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-obs", type=int, default=1)
+    ap.add_argument("--support-type-source", choices=sorted(SUPPORT_TYPE_SOURCES),
+                    default="m08",
+                    help="지원성격 라벨 출처. 기본 m08(상류라 어느 브랜치에서도 재현됨). "
+                         "dl05 는 deep-learning 에서만 쓸 수 있다.")
     args = ap.parse_args()
 
-    obs = build_observations()
+    obs = build_observations(args.support_type_source)
     if obs.empty:
         print("관측치 없음 — 원문 추출을 먼저 수행해야 한다")
         return
@@ -261,6 +308,14 @@ def main():
                     "per_month": round(per_month, 2), "usable": bool(ok)}
 
     save_report("a02_support_timeseries.json", {
+        "support_type_source": args.support_type_source,
+        "support_type_source_path": SUPPORT_TYPE_SOURCES[args.support_type_source],
+        "support_type_coverage": {
+            "labeled": int(obs["support_type"].notna().sum()),
+            "total": int(len(obs)),
+            "note": ("목록 표본(2019~2025)에는 지원성격 라벨이 원래 없다. "
+                     "라벨은 Open API 분에만 붙는다. 판단보류 예측은 라벨로 쓰지 않는다."),
+        },
         "outliers_flagged": int(obs["is_outlier"].sum()),
         "outliers_by_type": obs[obs["is_outlier"]]["amount_type"]
                             .value_counts().to_dict(),

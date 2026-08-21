@@ -7,7 +7,7 @@
     "announcement_id": 0.0,
     "date": 0.0,
     "large_category": 0.0,
-    "support_type": 0.6998,
+    "support_type": 0.8568,
     "support_type_status": 0.6998,
     "amount_type": 0.0,
     "amount_max": 0.0,
@@ -21,8 +21,8 @@
     "is_outlier": 0.0
   },
   "class_min": 1,
-  "class_max": 253,
-  "classes_below_3": 5,
+  "class_max": 438,
+  "classes_below_3": 4,
   "figures": {
     "amount_distribution": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\figures/eda_amount_distribution.png",
     "missing_and_source": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\figures/eda_missing_and_source.png",
