@@ -57,6 +57,9 @@ COLMAP = {
     "dl05": {"pred": "support_type_pred", "conf": "confidence", "status": "status"},
 }
 MASTER = PROC + "/announcement_master.parquet"
+# M14 가 목록 표본(2019~2025)에 붙인 지원성격. machine-learning 단계 산출물이라
+# 이 브랜치에 반드시 있다(상류 -> 하류 방향).
+LIST_CLASSIFIED = PROC + "/list_sample_support_type.parquet"
 SAMPLE = PROC + "/list_sample.parquet"
 # E02(pdf-inspector + rhwp)가 있으면 우선 사용한다. HWP 표가 실제로 읽힌다.
 # 단 PDF 는 EXCLUDE_EXT 로 걸러낸다(아래 근거 참조).
@@ -143,6 +146,27 @@ def attach_support_type(d, source):
     return d
 
 
+def load_list_support_type():
+    """M14 가 목록 표본에 붙인 지원성격 라벨. 판단보류는 라벨로 쓰지 않는다.
+
+    없으면 빈 dict 를 돌려주고 경고만 남긴다. Open API 쪽(attach_support_type)과
+    달리 여기서 멈추지 않는 이유는, 목록 표본 라벨이 없어도 금액 관측 자체는
+    성립하기 때문이다. 다만 그 경우 지원성격 축 분석은 Open API 로만 가능해진다.
+    """
+    if not os.path.exists(LIST_CLASSIFIED):
+        print("[경고] 목록 표본 지원성격 라벨이 없다: %s" % LIST_CLASSIFIED)
+        print("       m14_apply_list_sample.py 를 먼저 실행하면 지원성격 축 커버리지가 크게 는다.")
+        return {}
+    c = pd.read_parquet(LIST_CLASSIFIED)
+    out = {}
+    for pid, pred, status in zip(c["announcement_id"].astype(str),
+                                 c["support_type_pred"], c["support_type_status"]):
+        out[pid] = (np.nan if status == "판단보류" else pred, status)
+    n_lab = sum(1 for v in out.values() if isinstance(v[0], str))
+    print("목록 표본 지원성격 — %d/%d건 라벨 부여 (판단보류 제외)" % (n_lab, len(out)))
+    return out
+
+
 def build_observations(source):
     """공고 1건 = 1행. 날짜·대분류·지원성격·금액(의미별)을 붙인 관측 테이블."""
     rows = []
@@ -187,6 +211,10 @@ def build_observations(source):
         })
 
     # --- 목록 표본 (2019~2025, 장기 시계열의 핵심)
+    # 예전에는 지원성격을 np.nan 으로 두었다. 그래서 모델 2 의 분해 축이
+    # large_category 밖에 없었는데, 그 값은 기업마당이 원천에 담아 주는 필드라
+    # 모델 1 이 모델 2 에 기여하지 못했다. M14 가 이 표본에 라벨을 붙인다.
+    list_cls = load_list_support_type()
     docs, list_ver = pick_docs("list", DOCS_LIST)
     if docs:
         m = pd.read_parquet(MASTER)[
@@ -199,12 +227,13 @@ def build_observations(source):
             amt = parse_support(doc["text"])
             if amt["support_amount_max"] is None:
                 continue
+            lab = list_cls.get(str(r["announcement_id"]), (np.nan, np.nan))
             rows.append({
                 "announcement_id": r["announcement_id"],
                 "date": r["registered_date"],
                 "large_category": r["category_large"],
-                "support_type": np.nan,          # 목록에는 지원성격 라벨 없음
-                "support_type_status": np.nan,
+                "support_type": lab[0],
+                "support_type_status": lab[1],
                 "amount_type": amt["support_amount_type"],
                 "amount_max": amt["support_amount_max"],
                 "amount_min": amt["support_amount_min"],
