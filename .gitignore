@@ -1,36 +1,107 @@
-# Python
-__pycache__/
-*.py[cod]
-.ipynb_checkpoints/
-.venv/
-venv/
-
-# OS
+# ==========================================
+# 1. OS 및 IDE (루트 및 전체)
+# ==========================================
 .DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 ~$*
 
-# ---- ML/DL ----
-# 원천 데이터: 기업마당 CSV 2종(23MB) + 중앙부처 엑셀. Temp/Downloads에서 재취득 가능
-ml/data/raw/
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
 
-# 학습 가중치: RoBERTa-base 기준 1개당 400MB+ → git 부적합
+# ==========================================
+# 2. 보안 파일
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# ==========================================
+# 3. Python 관련 (가상환경, 캐시, 빌드)
+# ==========================================
+**/venv/
+**/.venv/
+**/env/
+**/ENV/
+
+# 파이썬 캐시 및 빌드 파일
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.eggs/
+**/*.egg-info/
+**/dist/
+**/build/
+**/sdist/
+
+# Jupyter Notebook 체크포인트
+**/.ipynb_checkpoints/
+
+# ==========================================
+# 4. 프론트엔드 (Node.js)
+# ==========================================
+**/node_modules/
+**/dist/
+**/.vite/
+**/.npm/
+
+# ==========================================
+# 5. Rust (크롤러 관련)
+# ==========================================
+**/target/
+Cargo.lock
+
+# ==========================================
+# 6. ML/DL 및 데이터 (실험 로그 및 가중치)
+# ==========================================
+# MLflow 및 W&B, 로그
+**/mlruns/
+**/wandb/
+**/*.log
+
+# 딥러닝 가중치 (RoBERTa-base 기준 1개당 400MB+ → git 부적합)
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.h5
+**/*.onnx
+**/*.safetensors
+**/*.bin
 ml/models/
-*.safetensors
-*.bin
-*.pt
-*.ckpt
 
 # 캐시
 ml/.cache/
 .cache/huggingface/
 
-# 커밋 대상(참고): ml/data/processed/*.parquet, ml/reports/*.json, ml/figures/*.png
+# ml/ 원천 데이터: 기업마당 CSV 2종(23MB) + 중앙부처 엑셀.
+# Temp/Downloads에서 재취득 가능하므로 제외한다.
+ml/data/raw/
+
+# 주의: 프로젝트 전체에는 **/*.parquet 나 **/data/ 같은 광범위한 규칙을
+# 두지 않는다. ml/data/processed/*.parquet, ml/reports/*.json,
+# ml/figures/*.png 는 전처리·모델 결과서의 근거 산출물이라 의도적으로
+# 커밋 대상이다. 새로운 데이터 디렉터리를 만들 때는 이 절에 경로를
+# 구체적으로 추가할 것.
 
 # 중간 산출물: 추출 원문 JSONL. 같은 텍스트가 announcement_detail_enriched.parquet에
-# 압축되어 들어가므로 중복 커밋하지 않는다. e02_extract_text_v2.py 로 재생성 가능.
-#   e01_documents.jsonl  15MB / e01_documents_list.jsonl  26MB
-#   e02_documents.jsonl  66MB
+# 압축되어 들어가므로 중복 커밋하지 않는다. e02_extract_text_v2.py로 재생성 가능.
 ml/reports/e01_documents.jsonl
 ml/reports/e01_documents_list.jsonl
 ml/reports/e02_documents.jsonl
+
+# ==========================================
+# 7. Docker 및 기타
+# ==========================================
+.docker/
+docker-data/
