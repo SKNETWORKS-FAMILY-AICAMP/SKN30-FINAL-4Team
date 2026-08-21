@@ -17,13 +17,15 @@ FIGURES = os.path.join(ROOT, "figures")
 for _d in (RAW, PROC, ATT, REPORTS, FIGURES):
     os.makedirs(_d, exist_ok=True)
 
-# 사용자가 지정한 원천 3종
+# 사용자가 지정한 원천 4종
 TEMP = r"C:\Users\playdata2\AppData\Local\Temp"
 DOWNLOADS = r"C:\Users\playdata2\Downloads"
 SRC_API = os.path.join(TEMP, "1. 기업마당 중소기업 지원사업 공고 Open API (5).csv")
 SRC_LIST = os.path.join(TEMP, "2. 기업마당 중소기업 지원사업 목록 파일 (5).csv")
 SRC_EXCEL = os.path.join(
     DOWNLOADS, "2023년 상반기 중앙부처 중소기업지원사업 공고정보(2023년 기준자료).xlsx")
+SRC_EXCEL_2022 = os.path.join(
+    TEMP, "2022년 중앙부처 중소기업지원사업 공고정보 검색.xlsx")
 
 BIZINFO = "https://www.bizinfo.go.kr"
 DETAIL_URL = BIZINFO + "/sii/siia/selectSIIA200Detail.do?pblancId={}"
@@ -45,6 +47,15 @@ def read_api():
 def read_excel():
     import pandas as pd
     return pd.read_excel(SRC_EXCEL, sheet_name="23년 상반기")
+
+
+def read_excel_2022():
+    """2022 중앙부처 엑셀. 본문 구조(【공고이름】/【사업개요】/①~④)는 2023과 같지만
+    컬럼명이 다르다(사업내용/대유형/중유형). 여기서 2023 이름으로 맞춰 내보낸다.
+    2022 에만 있는 '정책목적'·'누리집링크'는 쓰지 않아 그대로 둔다."""
+    import pandas as pd
+    df = pd.read_excel(SRC_EXCEL_2022)
+    return df.rename(columns={"사업내용": "사업개요", "대유형": "대분류", "중유형": "중분류"})
 
 
 # ---------------------------------------------------------------- 분류체계

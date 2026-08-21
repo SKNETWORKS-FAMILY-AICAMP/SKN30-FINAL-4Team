@@ -172,11 +172,13 @@ def main():
     final = results[best_key]
     print("\n채택: %s (사용가능률 %.1f%% 최고)" % (best_key, final["usable_rate"] * 100))
     print("-" * 82)
-    print("판단보류율: %.1f%% (A) → %.1f%% (D)   개선 %+.1f%%p"
-          % (base["hold_rate"] * 100, final["hold_rate"] * 100,
+    # 라벨은 best_key 에서 뽑는다. 예전엔 "D"로 박아뒀는데 실제 채택은 B라 어긋났다.
+    tag = best_key.split(".")[0]
+    print("판단보류율: %.1f%% (A) → %.1f%% (%s)   개선 %+.1f%%p"
+          % (base["hold_rate"] * 100, final["hold_rate"] * 100, tag,
              (final["hold_rate"] - base["hold_rate"]) * 100))
-    print("사용가능:   %d건 (A) → %d건 (D)"
-          % (base["n_trust"] + base["n_ref"], final["n_trust"] + final["n_ref"]))
+    print("사용가능:   %d건 (A) → %d건 (%s)"
+          % (base["n_trust"] + base["n_ref"], final["n_trust"] + final["n_ref"], tag))
 
     # 최종본 저장
     pred, conf, tiers, has_doc = best_pred
@@ -186,7 +188,7 @@ def main():
     out["support_type_status"] = tiers
     out["support_type_has_document"] = has_doc
     out.to_parquet(OUT, index=False)
-    print("\n최종본(D) 저장 → %s" % OUT)
+    print("\n최종본(%s) 저장 → %s" % (tag, OUT))
 
     dist = pd.Series(pred[tiers != "판단보류"]).value_counts().head(10).to_dict()
     print("\n사용가능 예측의 지원성격 분포 (상위 10):")
