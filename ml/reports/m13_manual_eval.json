@@ -1,0 +1,32 @@
+{
+  "labels": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed\\..\\labels\\openapi_manual_50.csv",
+  "n_labeled_total": 50,
+  "n_evaluable": 41,
+  "excluded": {
+    "대상밖-관광": 4,
+    "컷오프미달": 2,
+    "대상밖-개인복지": 1,
+    "대상밖-비지원": 1,
+    "대상밖-복합": 1
+  },
+  "results": [
+    {
+      "model": "M08 LogisticRegression",
+      "scope": "전체(보류 포함)",
+      "n_labeled": 41,
+      "n_missing_pred": 0,
+      "n_scored": 41,
+      "n_correct": 25,
+      "accuracy": 0.6098
+    },
+    {
+      "model": "M08 LogisticRegression",
+      "scope": "판단보류 제외",
+      "n_labeled": 41,
+      "n_missing_pred": 0,
+      "n_scored": 23,
+      "n_correct": 18,
+      "accuracy": 0.7826
+    }
+  ]
+}
