@@ -1,67 +1,288 @@
 {
-  "design": "공고량은 예측(A07), 지원금액은 관측 요약(A02). 성질이 달라 따로 다룬다.",
-  "why_amount_not_forecast": "STL 추세·계절성 강도가 4개 금액유형 전부 0.3 미만이고(A03), 예측에서도 어떤 모델도 Last Value baseline 을 못 이겼다(A04). 지원금액은 사업별 예산·정책이 정하는 값이라 시간의 함수가 아니다.",
+  "design": "금액은 지원성격 축(모델 1 산출), 공고량은 분야 축(원천 제공). 축이 다른 이유와 근거를 아래에 남긴다.",
+  "amount_axis": "support_type",
+  "volume_axis": "large_category",
+  "why_amount_by_support_type": {
+    "reason": "분야는 원천이 이미 주는 값이라 그것만 쓰면 모델 1 이 모델 2 에 기여하지 못한다. 기업의 질문도 '융자를 받으면 얼마쯤'이다.",
+    "variance_explained_same_sample": {
+      "support_type": 55.2,
+      "large_category": 48.4
+    },
+    "spread_example": "융자 중앙값 2.5억원 vs 판로 300만원 (80배)"
+  },
+  "why_volume_not_by_support_type": {
+    "coverage_drift_pct_point": 11.3,
+    "yearly_usable_rate_range": [
+      30.0,
+      41.3
+    ],
+    "composition_bias_tvd": 0.146,
+    "composition_bias_examples": {
+      "사업화": -10.0,
+      "융자": 8.7
+    },
+    "classifier_agreement_when_both_confident": 92.3,
+    "conclusion": "커버리지가 흔들려 건수를 세면 가짜 추세가 나고, 구성비도 편향돼 총량 배분도 못 쓴다. 목록 원문 확보율이 오르기 전에는 제공하지 않는다."
+  },
   "amount_type": "per_company",
   "min_n": 5,
-  "observations_used": 782,
-  "baseline_by_category": {
-    "경영": {
-      "n": 123,
-      "median": 8450000.0,
-      "p25": 1500000.0,
-      "p75": 30000000.0
-    },
-    "금융": {
-      "n": 203,
-      "median": 200000000.0,
-      "p25": 50000000.0,
+  "observations_total": 782,
+  "observations_with_support_type": 379,
+  "support_type_coverage": 0.4847,
+  "by_support_type": [
+    {
+      "support_type": "융자",
+      "n": 98,
+      "median": 250000000.0,
+      "p25": 100000000.0,
       "p75": 500000000.0
     },
-    "기술": {
-      "n": 123,
-      "median": 10500000.0,
+    {
+      "support_type": "설비",
+      "n": 11,
+      "median": 38000000.0,
+      "p25": 14500000.0,
+      "p75": 300000000.0
+    },
+    {
+      "support_type": "사업화",
+      "n": 116,
+      "median": 20000000.0,
+      "p25": 10000000.0,
+      "p75": 45750000.0
+    },
+    {
+      "support_type": "해외인증",
+      "n": 10,
+      "median": 12000000.0,
       "p25": 5000000.0,
-      "p75": 30000000.0
+      "p75": 23750000.0
     },
-    "기타": {
-      "n": 31,
-      "median": 10000000.0,
-      "p25": 4000000.0,
-      "p75": 25000000.0
-    },
-    "내수": {
-      "n": 64,
-      "median": 3000000.0,
-      "p25": 2000000.0,
-      "p75": 8250000.0
-    },
-    "수출": {
-      "n": 126,
-      "median": 5000000.0,
-      "p25": 2425000.0,
+    {
+      "support_type": "고용보조",
+      "n": 32,
+      "median": 7500000.0,
+      "p25": 1800000.0,
       "p75": 20000000.0
     },
-    "인력": {
-      "n": 58,
+    {
+      "support_type": "연구개발",
+      "n": 14,
       "median": 7000000.0,
-      "p25": 2000000.0,
-      "p75": 19300000.0
+      "p25": 2250000.0,
+      "p75": 28500000.0
     },
-    "창업": {
-      "n": 54,
-      "median": 10000000.0,
-      "p25": 4250000.0,
-      "p75": 30000000.0
+    {
+      "support_type": "컨설팅",
+      "n": 31,
+      "median": 5000000.0,
+      "p25": 2000000.0,
+      "p75": 20000000.0
+    },
+    {
+      "support_type": "판로",
+      "n": 58,
+      "median": 3000000.0,
+      "p25": 2000000.0,
+      "p75": 5900000.0
     }
-  },
-  "rows": 35,
-  "amount_basis_dist": {
-    "분야×분기": 32,
-    "분야 전체": 3
-  },
-  "caveat": "분기별 금액은 표본이 얇아 신뢰구간이 넓다. 관측수(n)를 함께 보고, n 이 작은 칸은 분야 전체 기준선으로 대체했다(금액 출처 열 참고). 공고량 전망은 순차 예측이라 뒤로 갈수록 오차가 누적된다.",
+  ],
+  "by_support_type_quarter": [
+    {
+      "support_type": "고용보조",
+      "quarter": 1,
+      "n": 12,
+      "median": 6500000.0,
+      "p25": 2000000.0,
+      "p75": 17900000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "고용보조",
+      "quarter": 2,
+      "n": 8,
+      "median": 15000000.0,
+      "p25": 9750000.0,
+      "p75": 21250000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "고용보조",
+      "quarter": 3,
+      "n": 8,
+      "median": 1625000.0,
+      "p25": 1000000.0,
+      "p75": 3255000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "사업화",
+      "quarter": 1,
+      "n": 33,
+      "median": 25000000.0,
+      "p25": 10000000.0,
+      "p75": 45000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "사업화",
+      "quarter": 2,
+      "n": 33,
+      "median": 20000000.0,
+      "p25": 7000000.0,
+      "p75": 60000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "사업화",
+      "quarter": 3,
+      "n": 43,
+      "median": 20000000.0,
+      "p25": 8250000.0,
+      "p75": 37500000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "사업화",
+      "quarter": 4,
+      "n": 7,
+      "median": 30000000.0,
+      "p25": 15000000.0,
+      "p75": 32500000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "설비",
+      "quarter": 1,
+      "n": 5,
+      "median": 40000000.0,
+      "p25": 38000000.0,
+      "p75": 300000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "연구개발",
+      "quarter": 3,
+      "n": 7,
+      "median": 4500000.0,
+      "p25": 2500000.0,
+      "p75": 15000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "융자",
+      "quarter": 1,
+      "n": 47,
+      "median": 200000000.0,
+      "p25": 100000000.0,
+      "p75": 500000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "융자",
+      "quarter": 2,
+      "n": 22,
+      "median": 500000000.0,
+      "p25": 77500000.0,
+      "p75": 500000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "융자",
+      "quarter": 3,
+      "n": 16,
+      "median": 250000000.0,
+      "p25": 70000000.0,
+      "p75": 750000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "융자",
+      "quarter": 4,
+      "n": 13,
+      "median": 500000000.0,
+      "p25": 100000000.0,
+      "p75": 1000000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "컨설팅",
+      "quarter": 1,
+      "n": 10,
+      "median": 3700000.0,
+      "p25": 2335000.0,
+      "p75": 4875000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "컨설팅",
+      "quarter": 2,
+      "n": 9,
+      "median": 3000000.0,
+      "p25": 2000000.0,
+      "p75": 6100000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "컨설팅",
+      "quarter": 3,
+      "n": 12,
+      "median": 20000000.0,
+      "p25": 8250000.0,
+      "p75": 20000000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "판로",
+      "quarter": 1,
+      "n": 20,
+      "median": 3000000.0,
+      "p25": 2000000.0,
+      "p75": 5625000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "판로",
+      "quarter": 2,
+      "n": 19,
+      "median": 3000000.0,
+      "p25": 2000000.0,
+      "p75": 5160000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "판로",
+      "quarter": 3,
+      "n": 11,
+      "median": 4000000.0,
+      "p25": 2000000.0,
+      "p75": 5300000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "판로",
+      "quarter": 4,
+      "n": 8,
+      "median": 3500000.0,
+      "p25": 1250000.0,
+      "p75": 6250000.0,
+      "amount_basis": "지원성격×분기"
+    },
+    {
+      "support_type": "해외인증",
+      "quarter": 3,
+      "n": 5,
+      "median": 14000000.0,
+      "p25": 5000000.0,
+      "p75": 100000000.0,
+      "amount_basis": "지원성격×분기"
+    }
+  ],
+  "volume_rows": 35,
+  "no_multiplication": "공고량과 기업당 금액을 곱해 총액을 내지 않는다. 공고 1건당 지원 기업 수를 모른다.",
   "outputs": [
-    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_outlook.parquet",
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_outlook_by_type.parquet",
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_outlook_volume.parquet",
     "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports/a09_support_outlook.md"
   ]
 }

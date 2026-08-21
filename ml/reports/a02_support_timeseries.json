@@ -2,7 +2,7 @@
   "support_type_source": "m08",
   "support_type_source_path": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail_with_support_type_v2.parquet",
   "support_type_coverage": {
-    "labeled": 352,
+    "labeled": 1286,
     "total": 2458,
     "note": "목록 표본(2019~2025)에는 지원성격 라벨이 원래 없다. 라벨은 Open API 분에만 붙는다. 판단보류 예측은 라벨로 쓰지 않는다."
   },
