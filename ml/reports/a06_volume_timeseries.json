@@ -1,0 +1,223 @@
+{
+  "source": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_master.parquet",
+  "rows_used": 96446,
+  "partial_month_excluded": "2025-03",
+  "rows_dropped_partial": 1348,
+  "months": 146,
+  "range": [
+    "2013-01",
+    "2025-02"
+  ],
+  "period": 12,
+  "min_months": 36,
+  "condition4_rule": "월수>=36 AND (추세강도>=0.3 OR 계절성강도>=0.3)",
+  "diagnostics": {
+    "전체": {
+      "n_months": 146,
+      "mean": 660.6,
+      "trend_strength": 0.8293,
+      "seasonal_strength": 0.7811,
+      "passed": true
+    },
+    "경영": {
+      "n_months": 146,
+      "mean": 134.0,
+      "trend_strength": 0.8481,
+      "seasonal_strength": 0.6309,
+      "passed": true
+    },
+    "기술": {
+      "n_months": 146,
+      "mean": 163.5,
+      "trend_strength": 0.5904,
+      "seasonal_strength": 0.7476,
+      "passed": true
+    },
+    "수출": {
+      "n_months": 146,
+      "mean": 156.9,
+      "trend_strength": 0.5547,
+      "seasonal_strength": 0.6488,
+      "passed": true
+    },
+    "내수": {
+      "n_months": 146,
+      "mean": 58.7,
+      "trend_strength": 0.8691,
+      "seasonal_strength": 0.7202,
+      "passed": true
+    },
+    "창업": {
+      "n_months": 146,
+      "mean": 45.7,
+      "trend_strength": 0.7208,
+      "seasonal_strength": 0.6498,
+      "passed": true
+    },
+    "인력": {
+      "n_months": 146,
+      "mean": 45.5,
+      "trend_strength": 0.2231,
+      "seasonal_strength": 0.3468,
+      "passed": true
+    },
+    "금융": {
+      "n_months": 146,
+      "mean": 42.7,
+      "trend_strength": 0.3736,
+      "seasonal_strength": 0.6898,
+      "passed": true
+    },
+    "기타": {
+      "n_months": 146,
+      "mean": 13.6,
+      "trend_strength": 0.1586,
+      "seasonal_strength": 0.1008,
+      "passed": false
+    }
+  },
+  "condition4_passed": [
+    "전체",
+    "경영",
+    "기술",
+    "수출",
+    "내수",
+    "창업",
+    "인력",
+    "금융"
+  ],
+  "seasonality_evidence": {
+    "years": [
+      2013,
+      2024
+    ],
+    "n_years": 12,
+    "kendall_w": 0.6845,
+    "kruskal_H": 97.13,
+    "kruskal_p": 6.587580285746085e-16,
+    "first_half_share_pct": 56.96,
+    "second_half_share_pct": 43.04,
+    "dec_is_lowest_years": 10,
+    "monthly": {
+      "1": {
+        "mean_share_pct": 9.58,
+        "mean_rank": 4.0,
+        "rank_std": 3.67
+      },
+      "2": {
+        "mean_share_pct": 9.66,
+        "mean_rank": 4.33,
+        "rank_std": 2.35
+      },
+      "3": {
+        "mean_share_pct": 10.33,
+        "mean_rank": 2.67,
+        "rank_std": 1.78
+      },
+      "4": {
+        "mean_share_pct": 9.81,
+        "mean_rank": 3.83,
+        "rank_std": 2.17
+      },
+      "5": {
+        "mean_share_pct": 8.71,
+        "mean_rank": 6.42,
+        "rank_std": 2.22
+      },
+      "6": {
+        "mean_share_pct": 8.88,
+        "mean_rank": 5.58,
+        "rank_std": 2.15
+      },
+      "7": {
+        "mean_share_pct": 9.77,
+        "mean_rank": 4.12,
+        "rank_std": 1.71
+      },
+      "8": {
+        "mean_share_pct": 8.55,
+        "mean_rank": 6.58,
+        "rank_std": 2.23
+      },
+      "9": {
+        "mean_share_pct": 7.49,
+        "mean_rank": 8.58,
+        "rank_std": 1.62
+      },
+      "10": {
+        "mean_share_pct": 6.89,
+        "mean_rank": 9.29,
+        "rank_std": 1.21
+      },
+      "11": {
+        "mean_share_pct": 5.69,
+        "mean_rank": 10.75,
+        "rank_std": 0.75
+      },
+      "12": {
+        "mean_share_pct": 4.66,
+        "mean_rank": 11.83,
+        "rank_std": 0.39
+      }
+    },
+    "drift": {
+      "split_year": 2018,
+      "spearman_rho": 0.9161,
+      "spearman_p": 2.8428045348547132e-05,
+      "max_abs_change_pct_point": 1.29,
+      "max_change_month": 10,
+      "stable": true,
+      "threshold": 0.8,
+      "meaning": "관측 구간에서 동인이 바뀌지 않았다는 뜻이지, 앞으로도 안 바뀐다는 뜻이 아니다."
+    },
+    "assumed_driver": {
+      "driver": "국가재정법상 회계연도 (1/1~12/31) 와 그에 따른 예산 배정·집행 관행",
+      "mechanism": "예산이 연초에 배정돼 상반기에 공고가 몰리고, 연말은 예산 소진과 차년도 예산 미확정으로 급감한다",
+      "why_stable": "자연적 계절이 아니라 제도가 만드는 리듬이다. 법에 명문화돼 있어 관행보다 잘 바뀌지 않는다. 실측으로도 코로나(2020)에 상반기 비중이 58.6% -> 60.6% 로 거의 흔들리지 않았다.",
+      "invalidated_if": [
+        "회계연도 기준 변경",
+        "추경·이월 관행의 구조적 변화로 연말 공고가 늘어나는 경우",
+        "기업마당 등록 정책 변경(예: 지자체 사업 대량 유입)"
+      ],
+      "recheck": "드리프트 지표(전·후반기 월 프로파일 Spearman rho)가 0.8 아래로 떨어지면 계절성 가정을 다시 검증한다."
+    }
+  },
+  "seasonality_rule": "STL 강도만으로 계절성을 인정하지 않는다. 연도 간 월 순위 일치도(Kendall W)·월 효과 유의성(Kruskal-Wallis)·설명 가능한 제도적 메커니즘 셋을 함께 본다.",
+  "same_month_anomalies": [
+    {
+      "ym": "2013-02",
+      "count": 374,
+      "same_month_median": 811,
+      "ratio_to_median": 0.461,
+      "robust_z": -1.82
+    },
+    {
+      "ym": "2014-11",
+      "count": 207,
+      "same_month_median": 437,
+      "ratio_to_median": 0.474,
+      "robust_z": -2.42
+    },
+    {
+      "ym": "2015-05",
+      "count": 316,
+      "same_month_median": 695,
+      "ratio_to_median": 0.455,
+      "robust_z": -0.99
+    },
+    {
+      "ym": "2016-01",
+      "count": 101,
+      "same_month_median": 785,
+      "ratio_to_median": 0.129,
+      "robust_z": -2.94
+    }
+  ],
+  "anomaly_note": "같은 달의 다른 해와 비교해 크게 벗어난 달. 계절성이 아니라 수집 누락일 수 있어 따로 표시한다.",
+  "note": "지원규모(A03)는 4개 유형 전부 0.3 미만이라 예측을 포기했다. 공고량은 세는 값이라 파싱 오류가 없고 시계열이 길어 조건이 다르다.",
+  "outputs": [
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/volume_monthly_total.parquet",
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/volume_monthly_category.parquet",
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\figures/volume_timeseries.png"
+  ]
+}

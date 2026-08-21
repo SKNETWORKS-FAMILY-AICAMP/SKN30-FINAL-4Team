@@ -1,0 +1,557 @@
+{
+  "target": "월별 공고량 (1개월 ahead)",
+  "validation": "walk-forward expanding window",
+  "validate_years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+  ],
+  "n_eval_months": 60,
+  "features": [
+    "lag_1",
+    "lag_2",
+    "lag_3",
+    "lag_6",
+    "lag_12",
+    "roll_mean_3",
+    "roll_mean_6",
+    "roll_mean_12",
+    "roll_std_12",
+    "yoy_diff",
+    "month_sin",
+    "month_cos",
+    "quarter"
+  ],
+  "leak_control": [
+    "lag/rolling 은 shift(1) 이후 계산",
+    "스케일러는 fold train 에만 fit",
+    "walk-forward, 랜덤 분할 금지"
+  ],
+  "results_total": {
+    "Seasonal Naive": {
+      "MAE": 118.317,
+      "RMSE": 147.171,
+      "sMAPE": 14.842,
+      "direction_acc": 0.8167
+    },
+    "Last Value": {
+      "MAE": 148.183,
+      "RMSE": 199.688,
+      "sMAPE": 19.715,
+      "direction_acc": 0.0
+    },
+    "MA(3)": {
+      "MAE": 206.083,
+      "RMSE": 246.885,
+      "sMAPE": 26.858,
+      "direction_acc": 0.4167
+    },
+    "Ridge": {
+      "MAE": 106.122,
+      "RMSE": 125.55,
+      "sMAPE": 13.486,
+      "direction_acc": 0.7667
+    },
+    "RandomForest": {
+      "MAE": 107.011,
+      "RMSE": 132.052,
+      "sMAPE": 13.522,
+      "direction_acc": 0.8667
+    },
+    "XGBoost": {
+      "MAE": 108.382,
+      "RMSE": 131.275,
+      "sMAPE": 13.663,
+      "direction_acc": 0.7833
+    },
+    "LightGBM": {
+      "MAE": 115.713,
+      "RMSE": 144.09,
+      "sMAPE": 14.541,
+      "direction_acc": 0.7833
+    },
+    "Ensemble(단순평균)": {
+      "MAE": 104.16,
+      "RMSE": 125.71,
+      "sMAPE": 13.182,
+      "direction_acc": 0.8167
+    }
+  },
+  "baseline": "Seasonal Naive (12개월 전 같은 달)",
+  "baseline_MAE": 118.317,
+  "best_model": "Ensemble(단순평균)",
+  "best_MAE": 104.16,
+  "improvement_vs_baseline": 0.1197,
+  "condition5_passed": true,
+  "by_category": {
+    "경영": {
+      "mean": 134.0,
+      "best_model": "Ridge",
+      "best_MAE": 34.618,
+      "baseline_MAE": 40.017,
+      "improvement": 0.1349,
+      "direction_acc": 0.7333,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 40.017,
+          "RMSE": 51.183,
+          "sMAPE": 21.803,
+          "direction_acc": 0.7333
+        },
+        "Last Value": {
+          "MAE": 42.083,
+          "RMSE": 55.173,
+          "sMAPE": 22.487,
+          "direction_acc": 0.0
+        },
+        "MA(3)": {
+          "MAE": 52.861,
+          "RMSE": 64.561,
+          "sMAPE": 27.983,
+          "direction_acc": 0.4333
+        },
+        "Ridge": {
+          "MAE": 34.618,
+          "RMSE": 44.461,
+          "sMAPE": 17.806,
+          "direction_acc": 0.7333
+        },
+        "RandomForest": {
+          "MAE": 40.988,
+          "RMSE": 50.628,
+          "sMAPE": 20.879,
+          "direction_acc": 0.6667
+        },
+        "XGBoost": {
+          "MAE": 42.237,
+          "RMSE": 51.971,
+          "sMAPE": 21.866,
+          "direction_acc": 0.7167
+        },
+        "LightGBM": {
+          "MAE": 41.301,
+          "RMSE": 51.767,
+          "sMAPE": 20.825,
+          "direction_acc": 0.6667
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 36.612,
+          "RMSE": 46.545,
+          "sMAPE": 18.569,
+          "direction_acc": 0.7
+        }
+      }
+    },
+    "금융": {
+      "mean": 42.7,
+      "best_model": "RandomForest",
+      "best_MAE": 16.083,
+      "baseline_MAE": 17.933,
+      "improvement": 0.1032,
+      "direction_acc": 0.7,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 17.933,
+          "RMSE": 22.663,
+          "sMAPE": 35.114,
+          "direction_acc": 0.7
+        },
+        "Last Value": {
+          "MAE": 25.783,
+          "RMSE": 40.885,
+          "sMAPE": 41.965,
+          "direction_acc": 0.0167
+        },
+        "MA(3)": {
+          "MAE": 25.65,
+          "RMSE": 38.62,
+          "sMAPE": 43.608,
+          "direction_acc": 0.5667
+        },
+        "Ridge": {
+          "MAE": 16.71,
+          "RMSE": 22.106,
+          "sMAPE": 32.487,
+          "direction_acc": 0.7
+        },
+        "RandomForest": {
+          "MAE": 16.083,
+          "RMSE": 22.808,
+          "sMAPE": 31.717,
+          "direction_acc": 0.7
+        },
+        "XGBoost": {
+          "MAE": 17.045,
+          "RMSE": 22.571,
+          "sMAPE": 33.135,
+          "direction_acc": 0.7333
+        },
+        "LightGBM": {
+          "MAE": 19.389,
+          "RMSE": 25.078,
+          "sMAPE": 37.059,
+          "direction_acc": 0.6667
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 16.531,
+          "RMSE": 22.006,
+          "sMAPE": 32.462,
+          "direction_acc": 0.7
+        }
+      }
+    },
+    "기술": {
+      "mean": 163.5,
+      "best_model": "Seasonal Naive",
+      "best_MAE": 38.533,
+      "baseline_MAE": 38.533,
+      "improvement": 0.0,
+      "direction_acc": 0.7833,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 38.533,
+          "RMSE": 52.737,
+          "sMAPE": 20.405,
+          "direction_acc": 0.7833
+        },
+        "Last Value": {
+          "MAE": 45.217,
+          "RMSE": 60.876,
+          "sMAPE": 26.633,
+          "direction_acc": 0.0
+        },
+        "MA(3)": {
+          "MAE": 60.061,
+          "RMSE": 73.076,
+          "sMAPE": 34.624,
+          "direction_acc": 0.3333
+        },
+        "Ridge": {
+          "MAE": 39.06,
+          "RMSE": 48.14,
+          "sMAPE": 21.726,
+          "direction_acc": 0.6167
+        },
+        "RandomForest": {
+          "MAE": 40.79,
+          "RMSE": 51.331,
+          "sMAPE": 22.586,
+          "direction_acc": 0.6833
+        },
+        "XGBoost": {
+          "MAE": 44.779,
+          "RMSE": 55.685,
+          "sMAPE": 24.692,
+          "direction_acc": 0.7167
+        },
+        "LightGBM": {
+          "MAE": 43.379,
+          "RMSE": 55.306,
+          "sMAPE": 24.322,
+          "direction_acc": 0.6167
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 41.235,
+          "RMSE": 51.023,
+          "sMAPE": 22.86,
+          "direction_acc": 0.6667
+        }
+      }
+    },
+    "기타": {
+      "mean": 13.6,
+      "best_model": "RandomForest",
+      "best_MAE": 7.094,
+      "baseline_MAE": 9.517,
+      "improvement": 0.2546,
+      "direction_acc": 0.5833,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 9.517,
+          "RMSE": 13.739,
+          "sMAPE": 57.014,
+          "direction_acc": 0.6
+        },
+        "Last Value": {
+          "MAE": 7.283,
+          "RMSE": 10.973,
+          "sMAPE": 41.777,
+          "direction_acc": 0.1
+        },
+        "MA(3)": {
+          "MAE": 8.767,
+          "RMSE": 12.241,
+          "sMAPE": 50.997,
+          "direction_acc": 0.4167
+        },
+        "Ridge": {
+          "MAE": 7.223,
+          "RMSE": 10.753,
+          "sMAPE": 42.152,
+          "direction_acc": 0.5667
+        },
+        "RandomForest": {
+          "MAE": 7.094,
+          "RMSE": 10.305,
+          "sMAPE": 42.855,
+          "direction_acc": 0.5833
+        },
+        "XGBoost": {
+          "MAE": 7.444,
+          "RMSE": 10.923,
+          "sMAPE": 45.37,
+          "direction_acc": 0.6167
+        },
+        "LightGBM": {
+          "MAE": 8.411,
+          "RMSE": 12.306,
+          "sMAPE": 50.892,
+          "direction_acc": 0.55
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 7.161,
+          "RMSE": 10.663,
+          "sMAPE": 42.912,
+          "direction_acc": 0.6167
+        }
+      }
+    },
+    "내수": {
+      "mean": 58.7,
+      "best_model": "Ridge",
+      "best_MAE": 18.697,
+      "baseline_MAE": 19.333,
+      "improvement": 0.0329,
+      "direction_acc": 0.6,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 19.333,
+          "RMSE": 24.761,
+          "sMAPE": 23.242,
+          "direction_acc": 0.6667
+        },
+        "Last Value": {
+          "MAE": 21.533,
+          "RMSE": 27.878,
+          "sMAPE": 26.194,
+          "direction_acc": 0.0333
+        },
+        "MA(3)": {
+          "MAE": 25.678,
+          "RMSE": 36.071,
+          "sMAPE": 29.027,
+          "direction_acc": 0.55
+        },
+        "Ridge": {
+          "MAE": 18.697,
+          "RMSE": 23.305,
+          "sMAPE": 22.772,
+          "direction_acc": 0.6
+        },
+        "RandomForest": {
+          "MAE": 21.72,
+          "RMSE": 25.994,
+          "sMAPE": 25.277,
+          "direction_acc": 0.6167
+        },
+        "XGBoost": {
+          "MAE": 22.861,
+          "RMSE": 28.032,
+          "sMAPE": 26.896,
+          "direction_acc": 0.6333
+        },
+        "LightGBM": {
+          "MAE": 22.927,
+          "RMSE": 27.58,
+          "sMAPE": 27.447,
+          "direction_acc": 0.6167
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 21.077,
+          "RMSE": 24.653,
+          "sMAPE": 24.916,
+          "direction_acc": 0.6167
+        }
+      }
+    },
+    "수출": {
+      "mean": 156.9,
+      "best_model": "Ridge",
+      "best_MAE": 27.059,
+      "baseline_MAE": 29.267,
+      "improvement": 0.0754,
+      "direction_acc": 0.7833,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 29.267,
+          "RMSE": 38.089,
+          "sMAPE": 16.828,
+          "direction_acc": 0.7667
+        },
+        "Last Value": {
+          "MAE": 43.083,
+          "RMSE": 53.601,
+          "sMAPE": 27.297,
+          "direction_acc": 0.0
+        },
+        "MA(3)": {
+          "MAE": 54.289,
+          "RMSE": 66.741,
+          "sMAPE": 34.196,
+          "direction_acc": 0.45
+        },
+        "Ridge": {
+          "MAE": 27.059,
+          "RMSE": 34.354,
+          "sMAPE": 16.505,
+          "direction_acc": 0.7833
+        },
+        "RandomForest": {
+          "MAE": 27.605,
+          "RMSE": 33.451,
+          "sMAPE": 17.711,
+          "direction_acc": 0.7333
+        },
+        "XGBoost": {
+          "MAE": 28.653,
+          "RMSE": 35.553,
+          "sMAPE": 17.918,
+          "direction_acc": 0.75
+        },
+        "LightGBM": {
+          "MAE": 31.848,
+          "RMSE": 38.949,
+          "sMAPE": 19.727,
+          "direction_acc": 0.7667
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 27.825,
+          "RMSE": 33.405,
+          "sMAPE": 17.505,
+          "direction_acc": 0.7333
+        }
+      }
+    },
+    "인력": {
+      "mean": 45.5,
+      "best_model": "Ridge",
+      "best_MAE": 15.242,
+      "baseline_MAE": 15.933,
+      "improvement": 0.0434,
+      "direction_acc": 0.6333,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 15.933,
+          "RMSE": 23.073,
+          "sMAPE": 29.68,
+          "direction_acc": 0.65
+        },
+        "Last Value": {
+          "MAE": 17.083,
+          "RMSE": 26.499,
+          "sMAPE": 31.179,
+          "direction_acc": 0.0667
+        },
+        "MA(3)": {
+          "MAE": 18.089,
+          "RMSE": 26.633,
+          "sMAPE": 34.449,
+          "direction_acc": 0.5
+        },
+        "Ridge": {
+          "MAE": 15.242,
+          "RMSE": 22.639,
+          "sMAPE": 28.8,
+          "direction_acc": 0.6333
+        },
+        "RandomForest": {
+          "MAE": 15.782,
+          "RMSE": 23.335,
+          "sMAPE": 30.006,
+          "direction_acc": 0.5833
+        },
+        "XGBoost": {
+          "MAE": 15.908,
+          "RMSE": 23.398,
+          "sMAPE": 31.263,
+          "direction_acc": 0.5667
+        },
+        "LightGBM": {
+          "MAE": 17.279,
+          "RMSE": 25.217,
+          "sMAPE": 32.447,
+          "direction_acc": 0.6
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 15.617,
+          "RMSE": 23.009,
+          "sMAPE": 29.952,
+          "direction_acc": 0.6167
+        }
+      }
+    },
+    "창업": {
+      "mean": 45.7,
+      "best_model": "Ridge",
+      "best_MAE": 15.638,
+      "baseline_MAE": 18.05,
+      "improvement": 0.1336,
+      "direction_acc": 0.7167,
+      "all": {
+        "Seasonal Naive": {
+          "MAE": 18.05,
+          "RMSE": 23.787,
+          "sMAPE": 29.63,
+          "direction_acc": 0.75
+        },
+        "Last Value": {
+          "MAE": 18.583,
+          "RMSE": 24.988,
+          "sMAPE": 31.839,
+          "direction_acc": 0.0167
+        },
+        "MA(3)": {
+          "MAE": 23.622,
+          "RMSE": 29.206,
+          "sMAPE": 40.028,
+          "direction_acc": 0.4167
+        },
+        "Ridge": {
+          "MAE": 15.638,
+          "RMSE": 20.842,
+          "sMAPE": 25.936,
+          "direction_acc": 0.7167
+        },
+        "RandomForest": {
+          "MAE": 17.392,
+          "RMSE": 22.623,
+          "sMAPE": 28.881,
+          "direction_acc": 0.75
+        },
+        "XGBoost": {
+          "MAE": 19.872,
+          "RMSE": 25.984,
+          "sMAPE": 33.138,
+          "direction_acc": 0.75
+        },
+        "LightGBM": {
+          "MAE": 17.879,
+          "RMSE": 23.732,
+          "sMAPE": 30.218,
+          "direction_acc": 0.7333
+        },
+        "Ensemble(단순평균)": {
+          "MAE": 16.73,
+          "RMSE": 22.171,
+          "sMAPE": 27.803,
+          "direction_acc": 0.75
+        }
+      }
+    }
+  },
+  "forecast_horizon": 12,
+  "forecast_caveat": "순차(recursive) 예측이라 예측값을 다시 입력으로 넣는다. 오차가 누적되므로 뒤로 갈수록 신뢰도가 떨어진다. 1~3개월을 주로 보고 그 이후는 방향 참고용으로 쓴다.",
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/volume_forecast.parquet"
+}
