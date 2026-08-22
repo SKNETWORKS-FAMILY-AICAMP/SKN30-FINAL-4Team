@@ -67,6 +67,65 @@
       "verdict": "추세없음"
     }
   ],
+  "by_support_type_period": [
+    {
+      "support_type": "컨설팅",
+      "n_early": 5,
+      "median_early": 2000000.0,
+      "n_late": 9,
+      "median_late": 4500000.0,
+      "ratio": 2.25,
+      "p": 0.16012885142717748,
+      "q": 0.8006,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "고용보조",
+      "n_early": 8,
+      "median_early": 1900000.0,
+      "n_late": 13,
+      "median_late": 10000000.0,
+      "ratio": 5.263,
+      "p": 0.3640795248170424,
+      "q": 0.9102,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "융자",
+      "n_early": 41,
+      "median_early": 300000000.0,
+      "n_late": 24,
+      "median_late": 450000000.0,
+      "ratio": 1.5,
+      "p": 0.7529397103872519,
+      "q": 0.9667,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "판로",
+      "n_early": 19,
+      "median_early": 2600000.0,
+      "n_late": 19,
+      "median_late": 3000000.0,
+      "ratio": 1.154,
+      "p": 0.918011328511721,
+      "q": 0.9667,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "사업화",
+      "n_early": 47,
+      "median_early": 20000000.0,
+      "n_late": 47,
+      "median_late": 20000000.0,
+      "ratio": 1.0,
+      "p": 0.966693253912846,
+      "q": 0.9667,
+      "verdict": "변화없음"
+    }
+  ],
+  "period_split_year": 2021,
+  "period_note": "지원성격 축은 연도 칸이 대부분 한 자릿수라 연 단위 검정이 거의 무력하다. 두 기간으로 묶어 셀을 두껍게 만든 뒤 Mann-Whitney 로 다시 봤다.",
   "by_large_category": [
     {
       "large_category": "기술",
