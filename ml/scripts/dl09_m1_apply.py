@@ -213,6 +213,10 @@ def main():
         lab = pd.read_csv(LABELS, encoding="utf-8-sig")
         lab["announcement_id"] = lab["announcement_id"].astype(str)
         lab = lab[lab["label_19class"].fillna("").astype(str) != ""]
+        # M13 라벨 파일에도 confidence(사람이 매긴 태깅 확신도) 컬럼이 있어,
+        # 그대로 merge 하면 예측 확신도가 confidence_y 로 밀려 KeyError 가 난다.
+        lab = lab.drop(columns=[c for c in ("confidence", "status", "title")
+                                if c in lab.columns])
         m = lab.merge(out, on="announcement_id", how="left")
         m = m[m["support_type_pred"].notna()]
         all_acc = float((m["support_type_pred"] == m["label_19class"]).mean())
