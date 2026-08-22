@@ -32,10 +32,10 @@ FIELDS = ["announcement_id", "status", "section", "filename", "ext",
 DOC_EXT = ("pdf", "hwp", "hwpx", "docx", "doc")
 
 
-def load_done():
+def load_done(manifest_path=MANIFEST):
     done = set()
-    if os.path.exists(MANIFEST):
-        with open(MANIFEST, encoding="utf-8", newline="") as f:
+    if os.path.exists(manifest_path):
+        with open(manifest_path, encoding="utf-8", newline="") as f:
             for r in csv.DictReader(f):
                 if r.get("status") in ("ok", "no_doc"):
                     done.add(r["announcement_id"])
@@ -80,13 +80,30 @@ def main():
     ap.add_argument("--delay", type=float, default=1.0)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--retries", type=int, default=3)
+    ap.add_argument("--sample", default=SAMPLE,
+                    help="받을 표본 parquet 경로. 기본은 D02 의 5,000건. "
+                         "D02B 겨냥 표본(list_sample_targeted.parquet)을 넘기면 "
+                         "그쪽을 받는다 — 파일 자체(HWP/PDF)는 첨부함(announcement_id)에 "
+                         "묶이므로 어느 표본에서 왔든 저장 위치는 같다.")
+    ap.add_argument("--manifest", default=None,
+                    help="매니페스트 경로. 지정하지 않으면 --sample 이 기본값(D02 5,000건)일 "
+                         "때는 기존 매니페스트를, 그 외(D02B 겨냥 표본 등)에는 자동으로 "
+                         "별도 파일(d03_manifest_<sample명>.csv)을 써서 목적별로 분리한다.")
     args = ap.parse_args()
 
-    s_df = pd.read_parquet(SAMPLE)
+    if args.manifest:
+        manifest_path = args.manifest
+    elif args.sample == SAMPLE:
+        manifest_path = MANIFEST
+    else:
+        stem = os.path.splitext(os.path.basename(args.sample))[0]
+        manifest_path = os.path.join(REPORTS, "d03_manifest_%s.csv" % stem)
+
+    s_df = pd.read_parquet(args.sample)
     ids = s_df["announcement_id"].astype(str).tolist()
     if args.limit:
         ids = ids[: args.limit]
-    done = load_done()
+    done = load_done(manifest_path)
     todo = [i for i in ids if i not in done]
     print(f"표본 {len(ids):,}건 / 완료 {len(done):,}건 / 이번 실행 {len(todo):,}건")
     print(f"공고당 2요청, 간격 {args.delay}s → 예상 {len(todo)*2*args.delay/60:.0f}분\n", flush=True)
@@ -95,8 +112,8 @@ def main():
         return
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    new = not os.path.exists(MANIFEST)
-    mf = open(MANIFEST, "a", encoding="utf-8", newline="")
+    new = not os.path.exists(manifest_path)
+    mf = open(manifest_path, "a", encoding="utf-8", newline="")
     w = csv.DictWriter(mf, fieldnames=FIELDS)
     if new:
         w.writeheader()
@@ -163,12 +180,14 @@ def main():
         time.sleep(args.delay)
 
     mf.close()
-    save_report("d03_download_list.json", {
+    report_tag = "targeted" if args.sample != SAMPLE else "list"
+    save_report("d03_download_%s.json" % report_tag, {
         "sample": len(ids), "attempted": len(todo), "ok": ok,
         "no_doc": nodoc, "fail": fail,
         "success_rate": round(ok / max(len(todo), 1), 4),
         "elapsed_min": round((time.time() - t0) / 60, 1),
-        "delay_sec": args.delay, "out_dir": OUT_DIR, "manifest": MANIFEST,
+        "delay_sec": args.delay, "out_dir": OUT_DIR, "manifest": manifest_path,
+        "sample_source": args.sample,
     })
     print(f"\n완료: 성공 {ok:,} / 문서없음 {nodoc:,} / 실패 {fail:,}")
 
