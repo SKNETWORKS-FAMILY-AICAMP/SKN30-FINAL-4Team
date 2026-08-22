@@ -32,6 +32,12 @@
 검정력
     이 표본이 몇 %의 변화를 잡을 수 있는지 함께 계산한다. "추세 없음"이
     "변화가 없다"인지 "너무 적어서 못 본다"인지 구분해야 한다.
+
+연 단위가 얇아 기간 비교도 같이 한다
+    지원성격 축은 연도 칸이 대부분 한 자릿수라 연 단위 검정이 거의 무력하다.
+    2019~2021 / 2022~2025 두 기간으로 묶어 셀을 두껍게 만든 뒤 Mann-Whitney 로
+    다시 본다. 이렇게 해도 안 잡히면 "표본이 얇아서"가 아니라 "이 데이터에서는
+    변화를 말할 수 없다"에 더 가깝다는 근거가 된다.
 """
 import argparse
 import io
@@ -41,13 +47,15 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from common import PROC, REPORTS, save_report, mark_outliers
+from common import PROC, REPORTS, FIGURES, save_report, mark_outliers
 
 warnings.filterwarnings("ignore")
 
 OBS = PROC + "/support_amount_observations.parquet"
 OUT = PROC + "/amount_trend_by_year.parquet"
 OUT_MD = REPORTS + "/a10_amount_trend.md"
+FIG = FIGURES + "/amount_trend_by_support_type.png"
+SPLIT_YEAR = 2021          # 전반(2019~2021) / 후반(2022~2025)
 
 TREND_SOURCE = "list_sample"       # 동일 표본설계 구간
 TREND_YEARS = (2019, 2025)
@@ -111,6 +119,76 @@ def yearly_table(df, key, years):
         row["n_total"] = int(len(g))
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def period_compare(df, key, split_year, min_n=5):
+    """연 단위가 얇을 때 두 기간으로 묶어 비교. Mann-Whitney + BH."""
+    d = df.copy()
+    d["period"] = np.where(d["year"] <= split_year, "early", "late")
+    rows, keys = [], []
+    for k, g in d.groupby(key, observed=True):
+        a = g[g["period"] == "early"]["amount_max"]
+        b = g[g["period"] == "late"]["amount_max"]
+        if len(a) < min_n or len(b) < min_n:
+            continue
+        _, p = stats.mannwhitneyu(np.log10(a), np.log10(b), alternative="two-sided")
+        rows.append({"n_early": int(len(a)), "median_early": float(a.median()),
+                     "n_late": int(len(b)), "median_late": float(b.median()),
+                     "ratio": round(float(b.median() / a.median()), 3),
+                     "p": float(p)})
+        keys.append(k)
+    if not rows:
+        return []
+    qs = bh([r["p"] for r in rows])
+    out = []
+    for k, r, q in zip(keys, rows, qs):
+        if r["p"] >= ALPHA:
+            v = "변화없음"
+        else:
+            v = ("증가" if r["ratio"] > 1 else "감소") + ("" if q < ALPHA else "(약함)")
+        out.append({key: k, **r, "q": round(float(q), 4), "verdict": v})
+    return sorted(out, key=lambda d: d["p"])
+
+
+def plot_trend(df, key, years, top_n, path):
+    """지원성격별 연도 추이. 관측수가 적은 해는 점을 비워 얇다는 걸 드러낸다."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager, rcParams
+    for f in ("Malgun Gothic", "AppleGothic", "NanumGothic"):
+        if any(f == x.name for x in font_manager.fontManager.ttflist):
+            rcParams["font.family"] = f
+            break
+    rcParams["axes.unicode_minus"] = False
+
+    order = df[key].value_counts().head(top_n).index.tolist()
+    fig, ax = plt.subplots(figsize=(11, 6))
+    for k in order:
+        s = df[df[key] == k]
+        xs, ys, ns = [], [], []
+        for y in years:
+            v = s[s["year"] == y]["amount_max"]
+            if len(v) >= MIN_N_CELL:
+                xs.append(y)
+                ys.append(v.median())
+                ns.append(len(v))
+        if len(xs) >= 3:
+            ax.plot(xs, ys, marker="o", lw=1.8, label="%s (n=%d)" % (k, len(s)))
+            for x, y_, n in zip(xs, ys, ns):
+                ax.annotate(str(n), (x, y_), textcoords="offset points",
+                            xytext=(0, 6), fontsize=7, ha="center", alpha=.7)
+    ax.set_yscale("log")
+    ax.set_xlabel("연도")
+    ax.set_ylabel("기업당 지원금 중앙값 (log 스케일)")
+    ax.set_title("지원성격별 지원규모 추이 — 점 위 숫자는 그 해 관측수\n"
+                 "(관측 %d건 미만인 해는 점을 찍지 않았다)" % MIN_N_CELL)
+    ax.grid(alpha=.3, which="both")
+    ax.legend(fontsize=9, ncol=2)
+    fig.tight_layout()
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
+    print("[figure] %s" % path)
 
 
 def power_note(df):
@@ -224,6 +302,36 @@ def main():
     print("\n지원성격 라벨 보유 %d건 (%.1f%%)" % (len(gt), len(gt) / len(g) * 100))
     tab_t, trend_t = run_axis(gt, "support_type", years, "지원성격", lines)
 
+    # ---- 지원성격 축은 연 단위가 얇다. 기간으로 묶어 재확인 ----
+    per_t = period_compare(gt, "support_type", SPLIT_YEAR)
+    if per_t:
+        print()
+        print("=== 지원성격 × 기간 (연 단위가 얇아 묶어서 재검정) ===")
+        print("%-12s%16s%16s%9s%9s%12s"
+              % ("지원성격", "전반(~%d)" % SPLIT_YEAR, "후반(%d~)" % (SPLIT_YEAR + 1),
+                 "배수", "p", "판정"))
+        print("-" * 76)
+        for r in per_t:
+            print("%-12s%12s(%d)%12s(%d)%9.2f%9.4f%12s"
+                  % (r["support_type"], won(r["median_early"]), r["n_early"],
+                     won(r["median_late"]), r["n_late"], r["ratio"], r["p"], r["verdict"]))
+        lines.append("\n## 지원성격 × 기간 (연 단위가 얇아 묶어서 재검정)\n")
+        lines.append("| 지원성격 | 전반(~%d) | 후반(%d~) | 배수 | p | q(BH) | 판정 |"
+                     % (SPLIT_YEAR, SPLIT_YEAR + 1))
+        lines.append("|---|---:|---:|---:|---:|---:|---|")
+        for r in per_t:
+            lines.append("| %s | %s (%d) | %s (%d) | %.2f | %.4f | %.4f | %s |"
+                         % (r["support_type"], won(r["median_early"]), r["n_early"],
+                            won(r["median_late"]), r["n_late"], r["ratio"],
+                            r["p"], r["q"], r["verdict"]))
+
+    try:
+        plot_trend(gt, "support_type", years, 6, FIG)
+        lines.append("\n![지원성격별 지원규모 추이](../figures/%s)\n"
+                     % FIG.replace("\\", "/").split("/")[-1])
+    except Exception as e:
+        print("[figure] 생략: %s" % e)
+
     # ---- 축 2: 대분류 (원천 제공) ----
     tab_c, trend_c = run_axis(g, "large_category", years, "대분류", lines)
 
@@ -309,6 +417,11 @@ def main():
         "n_with_support_type": int(len(gt)),
         "support_type_coverage": round(len(gt) / len(g), 4),
         "by_support_type": trend_t,
+        "by_support_type_period": per_t,
+        "period_split_year": SPLIT_YEAR,
+        "period_note": ("지원성격 축은 연도 칸이 대부분 한 자릿수라 연 단위 검정이 "
+                        "거의 무력하다. 두 기간으로 묶어 셀을 두껍게 만든 뒤 "
+                        "Mann-Whitney 로 다시 봤다."),
         "by_large_category": trend_c,
         "pooled": pooled,
         "pooled_median_by_year": med,
