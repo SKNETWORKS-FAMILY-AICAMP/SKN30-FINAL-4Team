@@ -24,9 +24,9 @@
       "scope": "판단보류 제외",
       "n_labeled": 41,
       "n_missing_pred": 0,
-      "n_scored": 23,
-      "n_correct": 18,
-      "accuracy": 0.7826
+      "n_scored": 29,
+      "n_correct": 23,
+      "accuracy": 0.7931
     }
   ]
 }
