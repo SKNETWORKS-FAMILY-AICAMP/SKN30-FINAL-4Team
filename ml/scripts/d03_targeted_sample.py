@@ -1,13 +1,13 @@
-"""S01C — 지원성격 부족 셀을 겨냥한 보강 표본.
+"""D03 — 지원성격 부족 셀을 겨냥한 보강 표본.
 
 왜 필요한가
-    S04G(지원규모 연도별 추이)에서 19개 지원성격 중 대부분이 표본 부족으로
+    A03(지원규모 연도별 추이)에서 19개 지원성격 중 대부분이 표본 부족으로
     유의한 추세를 볼 수 없었다. 무작정 표본을 더 늘리기보다, 어떤 지원성격이
     부족한지부터 보고 그것부터 채운다.
 
 겨냥이 가능한 이유 — 대분류가 다운로드 전에 이미 알려진 사전 신호다
     지원성격은 원문을 읽어야 나오지만, 대분류(경영/기술/수출…)는 목록 CSV에
-    이미 있다. 현재 라벨(S05E, 임계값 0.20)로 대분류→지원성격 구성비를 재보면
+    이미 있다. 현재 라벨(M08, 임계값 0.20)로 대분류→지원성격 구성비를 재보면
     상관이 뚜렷하다.
         금융 -> 융자 80.1%   인력 -> 고용보조 72.7%   창업 -> 사업화 75.3%
         경영 -> 설비 11.1%   인력 -> 교육훈련 11.1%
@@ -31,7 +31,7 @@
     부족한 연도에 더 많이 배분한다.
 
 기존 표본과 안 겹치게 한다
-    list_sample.parquet(S01B, 5,000건)에 이미 뽑힌 건은 제외한다.
+    list_sample.parquet(D02, 5,000건)에 이미 뽑힌 건은 제외한다.
 """
 import argparse
 import os
@@ -46,7 +46,7 @@ from common import PROC, norm_category, pblanc_id, read_list, save_report
 OUT = os.path.join(PROC, "list_sample_targeted.parquet")
 EXISTING = os.path.join(PROC, "list_sample.parquet")
 
-# 연도별 raw 배분. S05F/S05E(임계값 0.20) 라벨 기준 부족분을 대분류별 원문->라벨
+# 연도별 raw 배분. M09/M08(임계값 0.20) 라벨 기준 부족분을 대분류별 원문->라벨
 # 수율(설비 0.0538, 교육훈련 0.0521)로 역산해 미리 계산해 둔 값이다.
 # 계산 근거는 세션 기록 및 위 docstring 참고. 값이 바뀌면(재분류 등) 다시 계산해야 한다.
 TARGETS = {
@@ -116,14 +116,14 @@ def main():
     print("겨냥 표본 %d건 -> %s" % (len(s), OUT))
     print(s["target_support_type"].value_counts().to_string())
 
-    save_report("s01c_collect_targeted.json", {
+    save_report("d03_targeted_sample.json", {
         "purpose": "지원성격 19종 중 표본 부족 유형(설비·교육훈련)을 대분류 사전신호로 겨냥 보강",
         "excluded_existing": len(existing_ids),
         "targets": {"%s|%s" % (t, c): by_year for (t, c), by_year in TARGETS.items()},
         "sampled": len(s),
         "by_type": s["target_support_type"].value_counts().to_dict(),
         "note": ("여기서 target_support_type 은 다운로드 우선순위를 정하려는 겨냥일 뿐 "
-                 "확정 라벨이 아니다. 실제 라벨은 다운로드 후 S05E 로 원문 기반 재분류한다. "
+                 "확정 라벨이 아니다. 실제 라벨은 다운로드 후 M08 로 원문 기반 재분류한다. "
                  "제외된 유형(성능인증 등 7종)은 최적 대분류로 겨냥해도 raw 수만 건이 "
                  "필요해(모집단 62,659건 규모를 넘거나 육박) 이 방식으로 못 채운다."),
         "output": OUT,

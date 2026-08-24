@@ -1,4 +1,4 @@
-"""S04D — 학습/추론 입력 형식 정합이 판단보류율에 미치는 영향.
+"""M03 — 학습/추론 입력 형식 정합이 판단보류율에 미치는 영향.
 
 배경
     학습(2023 엑셀)은 `제목 + ①목적 + ②내용 + ③대상` 이라는 구조화된 4요소를 쓴다.
@@ -13,16 +13,16 @@
          추론: "중소기업" (중앙값 4자, 1,218/1,570건이 이 값)
       ③ hashtags_safe 는 학습 입력에 아예 없던 필드인데 추론에만 붙었다
 
-    S05B 에서 원문 품질(S02A/S02A)과 전처리 유무를 4조건으로 갈랐지만, 넷 다
+    M02 에서 원문 품질(E01/E01)과 전처리 유무를 4조건으로 갈랐지만, 넷 다
     "학습과 형식이 다른 입력" 이라는 공통점을 공유했다. 그래서 원문을 더 많이,
     더 좋은 품질로 넣은 조건 D 가 오히려 보류율이 높았다(70.5% -> 73.8%).
     이 스크립트는 그 공통 전제 자체를 바꿔서 측정한다.
 
 측정 설계
-    모델·임계값·학습데이터를 S05B 과 완전히 동일하게 두고 **추론 입력 구성만** 바꾼다.
+    모델·임계값·학습데이터를 M02 과 완전히 동일하게 두고 **추론 입력 구성만** 바꾼다.
     그래야 차이가 입력 형식에서 온 것임이 분리된다.
 
-    E0. 현행 (title + summary + target + hashtags)      <- S05B fallback 과 동일 계열
+    E0. 현행 (title + summary + target + hashtags)      <- M02 fallback 과 동일 계열
     E1. 정합 (title + 목적 + 내용 + 대상)                <- 학습과 같은 4요소·같은 순서
     E2. 정합 - 제목 제외                                  제목 기여 분리
     E3. 정합 + 원문 본문발췌 대체                          원문 경로도 정합 형식으로
@@ -44,12 +44,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
 from common import PROC, REPORTS, save_report
-from s05a_m1_ml import MIN_SUPPORT, coarsen, tfidf
-from s05b_m1_apply import clean_text, load_docs, tier, HOLD_THRESHOLD, TRUST_THRESHOLD
+from m01_support_type import MIN_SUPPORT, coarsen, tfidf
+from m02_apply import clean_text, load_docs, tier, HOLD_THRESHOLD, TRUST_THRESHOLD
 
 TAX = PROC + "/business_taxonomy.parquet"
 DETAIL = PROC + "/announcement_detail.parquet"
-DOCS_E01 = REPORTS + "/s02a_documents_api.jsonl"
+DOCS_E01 = REPORTS + "/e01_documents_api.jsonl"
 
 MARK = "☞"
 
@@ -89,7 +89,7 @@ def build_inputs(d, docs):
         return ["\n".join(x for x in row if x).strip() for row in zip(*cols)]
 
     out = {}
-    # 현행: S05B 이 원문 없는 건에 쓰던 구성 + 해시태그 (p02 의 text_for_model 과 동일 계열)
+    # 현행: M02 이 원문 없는 건에 쓰던 구성 + 해시태그 (p02 의 text_for_model 과 동일 계열)
     out["E0. 현행 (summary 통째 + target + hashtags)"] = join(title, summ, tgt_col, tags)
     # 정합: 학습과 같은 4요소·같은 순서
     out["E1. 정합 (title + 목적 + 내용 + 대상)"] = join(title, purpose, content, target)
@@ -110,7 +110,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
-    # ---- 학습: S05B 과 동일 ----
+    # ---- 학습: M02 과 동일 ----
     t = pd.read_parquet(TAX)
     t["support_type"] = t["middle_category"].map(coarsen)
     sub = t.dropna(subset=["support_type"])
@@ -124,7 +124,7 @@ def main():
             sub["support_type"].values)
     classes = clf.named_steps["m"].classes_
     train_dist = sub["support_type"].value_counts(normalize=True)
-    print("학습 %d건 / %d클래스 (S05B 과 동일 설정)" % (len(sub), len(classes)))
+    print("학습 %d건 / %d클래스 (M02 과 동일 설정)" % (len(sub), len(classes)))
 
     tl = sub["text_for_model"].fillna("").str.len()
     print("학습 입력 길이: 중앙값 %d자\n" % tl.median())
@@ -180,9 +180,9 @@ def main():
     print("예측분포 TVD (학습분포 대비): 현행 %.3f → %s %.3f"
           % (base["pred_dist_tvd_vs_train"], best[0], best[1]["pred_dist_tvd_vs_train"]))
 
-    save_report("s04d_input_alignment.json", {
+    save_report("m03_input_alignment.json", {
         "purpose": "학습/추론 입력 형식 정합이 판단보류율에 미치는 영향 분리 측정",
-        "design": "모델·임계값·학습데이터를 S05B 과 동일하게 고정하고 추론 입력 구성만 변경",
+        "design": "모델·임계값·학습데이터를 M02 과 동일하게 고정하고 추론 입력 구성만 변경",
         "train_rows": len(sub), "train_classes": len(classes),
         "train_input": "title + purpose + content + target_text (2023 엑셀)",
         "train_input_len_median": int(tl.median()),

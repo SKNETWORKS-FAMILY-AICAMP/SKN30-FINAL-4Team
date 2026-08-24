@@ -1,7 +1,7 @@
-"""S04B — 2022 병합이 준 성능 향상이 진짜인지 검증(누수 점검).
+"""M05 — 2022 병합이 준 성능 향상이 진짜인지 검증(누수 점검).
 
 문제
-    2022·2023 은 같은 사업을 해마다 다시 공고한다. S03C 이 본문 유사도 0.9 이상인
+    2022·2023 은 같은 사업을 해마다 다시 공고한다. F03 이 본문 유사도 0.9 이상인
     재공고를 걷어냈지만, 그보다 낮은 유사도로 남은 사업이 아직 215개 있다
     (`program_stem` 이 두 해에 모두 나타나는 경우). 이 사업들은 문구가 조금 달라도
     같은 사업이라, 일반 K-Fold 에서는 2022 판이 학습에 2023 판이 검증에 들어가
@@ -9,7 +9,7 @@
 
 측정
     같은 데이터·같은 모델을 두 가지 분할로 나란히 잰다.
-      ① StratifiedKFold       — S05A 이 쓰는 방식. 같은 사업이 갈라질 수 있다.
+      ① StratifiedKFold       — M01 이 쓰는 방식. 같은 사업이 갈라질 수 있다.
       ② StratifiedGroupKFold  — program_stem 을 그룹으로 묶어 통째로 한쪽에만 넣는다.
     ②가 실제 운영 성능(처음 보는 사업)에 가깝다. ①과 ②의 차이가 누수분이다.
 
@@ -29,14 +29,14 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.svm import LinearSVC
 
 from common import PROC, save_report
-from s05a_m1_ml import MIN_SUPPORT, coarsen, tfidf
+from m01_support_type import MIN_SUPPORT, coarsen, tfidf
 
 warnings.filterwarnings("ignore")
 TAX = PROC + "/business_taxonomy.parquet"
 
 
 def candidates(seed):
-    """S05A 상위 2개(선형 계열)만 본다. 트리 계열은 이 데이터에서 크게 뒤쳐진다."""
+    """M01 상위 2개(선형 계열)만 본다. 트리 계열은 이 데이터에서 크게 뒤쳐진다."""
     return {
         "TFIDF+LogisticRegression": Pipeline([("t", tfidf()), ("m", LogisticRegression(
             max_iter=2000, C=5.0, class_weight="balanced", random_state=seed))]),
@@ -126,14 +126,14 @@ def main():
         print("%-26s 그룹CV 기준 실제 향상: %.4f -> %.4f (%+.4f)"
               % (model, before, after, after - before))
 
-    save_report("s04b_leakage_check.json", {
+    save_report("m05_leakage_check.json", {
         "purpose": "2022 병합의 성능 향상에서 연도 간 재공고 누수분을 분리",
         "design": "같은 데이터·모델을 StratifiedKFold 와 StratifiedGroupKFold 로 각각 측정. "
                   "그룹 키는 제목에서 연도를 뺀 program_stem.",
         "folds": args.folds, "seed": args.seed,
         "min_support": MIN_SUPPORT,
         "datasets": report,
-        "caution": "일반 K-Fold 수치(S05A 이 보고하는 값)는 두 해에 걸친 사업 때문에 "
+        "caution": "일반 K-Fold 수치(M01 이 보고하는 값)는 두 해에 걸친 사업 때문에 "
                    "낙관적으로 치우친다. 운영 성능 추정에는 그룹 CV 값을 쓴다.",
     })
 

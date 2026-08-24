@@ -1,4 +1,4 @@
-"""S03C — business_taxonomy (설계서 4.3) + 라벨 누수 진단.
+"""F03 — business_taxonomy (설계서 4.3) + 라벨 누수 진단.
 
 중앙부처 엑셀은 중분류/업종 라벨의 유일한 출처다. 2022·2023 두 해를 병합해 쓴다.
 본문 구조(【공고이름】/【사업개요】/①~④)가 두 해 완전히 같아 같은 파서로 처리된다.
@@ -130,7 +130,7 @@ def main():
     t.to_parquet(out, index=False)
 
     n_shared = int(t.groupby("program_stem")["source_year"].nunique().gt(1).sum())
-    save_report("s03c_table_taxonomy.json", {
+    save_report("f03_taxonomy.json", {
         "sources": {"2022": len(raw22), "2023": len(raw23)},
         "rows_raw": n_raw, "rows_final": len(t),
         "reannouncement_dedup": {

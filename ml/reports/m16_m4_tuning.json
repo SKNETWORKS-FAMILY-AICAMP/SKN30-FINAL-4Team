@@ -1,0 +1,345 @@
+{
+  "n_rows": 2339,
+  "note": "계획서의 '정상 유지율 82.7%' 는 M13 의 재학습 목록 유지율이지 오탐 지표가 아니다. 정상을 정상으로 두는 비율(specificity)을 여기서 처음 측정했다.",
+  "targets": {
+    "recall": 0.75,
+    "specificity": 0.88
+  },
+  "baseline_m13": {
+    "OneClassSVM_recall": 0.7833
+  },
+  "chosen": {
+    "scaler": "standard",
+    "features": "A_설계핵심",
+    "nu": 0.02,
+    "gamma": "0.5",
+    "threshold_pct": 98
+  },
+  "final": {
+    "recall": 0.8,
+    "specificity": 1.0,
+    "precision": 1.0,
+    "flag_rate": 0.02,
+    "false_positive_rate": 0.0,
+    "n_flagged": 48,
+    "n_flagged_real": 0
+  },
+  "verdict": {
+    "verdict": "Go",
+    "reasons": [
+      "recall 80.0% (목표 75%)",
+      "specificity 100.0% (목표 88%) — 이번에 처음 측정한 값",
+      "precision 100.0% / 경고율 2.0% — specificity 는 경고를 적게 낼수록 저절로 오르므로 이 둘을 함께 봐야 한다",
+      "두 목표를 동시에 만족한다",
+      "조건부 탐지 최고는 support_type 기준 (recall 85.0% / specificity 99.6%)"
+    ]
+  },
+  "scaling": {
+    "results": {
+      "standard": {
+        "recall": 0.7833,
+        "specificity": 0.9944,
+        "precision": 0.7833,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0056,
+        "n_flagged": 60,
+        "n_flagged_real": 13
+      },
+      "robust": {
+        "recall": 0.3833,
+        "specificity": 0.9842,
+        "precision": 0.3833,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0158,
+        "n_flagged": 60,
+        "n_flagged_real": 37
+      }
+    },
+    "chosen": "standard"
+  },
+  "feature_ablation": {
+    "results": {
+      "A_설계핵심": {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12
+      },
+      "B_A+비율단위": {
+        "recall": 0.7833,
+        "specificity": 0.9944,
+        "precision": 0.7833,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0056,
+        "n_flagged": 60,
+        "n_flagged_real": 13
+      },
+      "C_B+성격기관": {
+        "recall": 0.7833,
+        "specificity": 0.9944,
+        "precision": 0.7833,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0056,
+        "n_flagged": 60,
+        "n_flagged_real": 13
+      }
+    },
+    "chosen": "A_설계핵심"
+  },
+  "nu_gamma": {
+    "grid": [
+      {
+        "recall": 0.9,
+        "specificity": 0.9974,
+        "precision": 0.9,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0026,
+        "n_flagged": 60,
+        "n_flagged_real": 6,
+        "nu": 0.02,
+        "gamma": "scale"
+      },
+      {
+        "recall": 0.7667,
+        "specificity": 0.994,
+        "precision": 0.7667,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.006,
+        "n_flagged": 60,
+        "n_flagged_real": 14,
+        "nu": 0.02,
+        "gamma": "0.05"
+      },
+      {
+        "recall": 0.85,
+        "specificity": 0.9962,
+        "precision": 0.85,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0038,
+        "n_flagged": 60,
+        "n_flagged_real": 9,
+        "nu": 0.02,
+        "gamma": "0.1"
+      },
+      {
+        "recall": 0.95,
+        "specificity": 0.9987,
+        "precision": 0.95,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0013,
+        "n_flagged": 60,
+        "n_flagged_real": 3,
+        "nu": 0.02,
+        "gamma": "0.5"
+      },
+      {
+        "recall": 0.8167,
+        "specificity": 0.9953,
+        "precision": 0.8167,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0047,
+        "n_flagged": 60,
+        "n_flagged_real": 11,
+        "nu": 0.03,
+        "gamma": "scale"
+      },
+      {
+        "recall": 0.7667,
+        "specificity": 0.994,
+        "precision": 0.7667,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.006,
+        "n_flagged": 60,
+        "n_flagged_real": 14,
+        "nu": 0.03,
+        "gamma": "0.05"
+      },
+      {
+        "recall": 0.8167,
+        "specificity": 0.9953,
+        "precision": 0.8167,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0047,
+        "n_flagged": 60,
+        "n_flagged_real": 11,
+        "nu": 0.03,
+        "gamma": "0.1"
+      },
+      {
+        "recall": 0.95,
+        "specificity": 0.9987,
+        "precision": 0.95,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0013,
+        "n_flagged": 60,
+        "n_flagged_real": 3,
+        "nu": 0.03,
+        "gamma": "0.5"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.05,
+        "gamma": "scale"
+      },
+      {
+        "recall": 0.75,
+        "specificity": 0.9936,
+        "precision": 0.75,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0064,
+        "n_flagged": 60,
+        "n_flagged_real": 15,
+        "nu": 0.05,
+        "gamma": "0.05"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.05,
+        "gamma": "0.1"
+      },
+      {
+        "recall": 0.9,
+        "specificity": 0.9974,
+        "precision": 0.9,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0026,
+        "n_flagged": 60,
+        "n_flagged_real": 6,
+        "nu": 0.05,
+        "gamma": "0.5"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.08,
+        "gamma": "scale"
+      },
+      {
+        "recall": 0.75,
+        "specificity": 0.9936,
+        "precision": 0.75,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0064,
+        "n_flagged": 60,
+        "n_flagged_real": 15,
+        "nu": 0.08,
+        "gamma": "0.05"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.08,
+        "gamma": "0.1"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.08,
+        "gamma": "0.5"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.1,
+        "gamma": "scale"
+      },
+      {
+        "recall": 0.75,
+        "specificity": 0.9936,
+        "precision": 0.75,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0064,
+        "n_flagged": 60,
+        "n_flagged_real": 15,
+        "nu": 0.1,
+        "gamma": "0.05"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.1,
+        "gamma": "0.1"
+      },
+      {
+        "recall": 0.8,
+        "specificity": 0.9949,
+        "precision": 0.8,
+        "flag_rate": 0.025,
+        "false_positive_rate": 0.0051,
+        "n_flagged": 60,
+        "n_flagged_real": 12,
+        "nu": 0.1,
+        "gamma": "0.5"
+      }
+    ],
+    "chosen": {
+      "nu": 0.02,
+      "gamma": "0.5"
+    }
+  },
+  "conditional": {
+    "support_type": {
+      "n_groups": 7,
+      "fallback_rows": 233,
+      "recall": 0.85,
+      "specificity": 0.9962
+    },
+    "support_method": {
+      "n_groups": 3,
+      "fallback_rows": 157,
+      "recall": 0.7,
+      "specificity": 0.9923
+    }
+  },
+  "calibration": {
+    "recall": 0.8,
+    "specificity": 1.0,
+    "precision": 1.0,
+    "flag_rate": 0.02,
+    "false_positive_rate": 0.0,
+    "n_flagged": 48,
+    "n_flagged_real": 0,
+    "threshold_pct": 98
+  },
+  "runtime_min": 0.07
+}

@@ -1,4 +1,4 @@
-"""S04E — 모델 2~4 착수 전 feature coverage / 실현가능성 게이트.
+"""M10 — 모델 2~4 착수 전 feature coverage / 실현가능성 게이트.
 
 설계서 Step 2 에 해당한다. 모델을 짜기 전에 "그 모델이 요구하는 feature 가
 실제로 몇 %나 있는가"를 재고, 없으면 없다고 적는다.
@@ -174,7 +174,7 @@ def main():
     for m, v in verdict.items():
         print("  %-8s %-12s %s" % (m, v["verdict"], v["reason"]))
 
-    C.save_report("s04e_coverage_gate.json", {
+    C.save_report("m10_design_coverage.json", {
         "rows": int(len(df)),
         "coverage_pct": cov.to_dict(),
         "axis_independence": indep,
@@ -295,7 +295,7 @@ def write_md(cov, indep, sizes, m3_sizes, complete, verdict, df):
           "ministry           bizinfo 목록 표본에는 소관기관이 없다",
           "implementing_agency_type  taxonomy 는 99% 가 central 이라 변별력 0",
           "```", ""]
-    p = os.path.join(C.REPORTS, "s04e_coverage_gate.md")
+    p = os.path.join(C.REPORTS, "m10_design_coverage.md")
     with open(p, "w", encoding="utf-8") as f:
         f.write("\n".join(L))
     print("[report] %s" % p)

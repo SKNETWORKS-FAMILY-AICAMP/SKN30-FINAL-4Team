@@ -1,4 +1,4 @@
-"""S01D — 목록 표본 5,000건의 공고문 원문 다운로드.
+"""D04 — 목록 표본 5,000건의 공고문 원문 다운로드.
 
 목록 CSV에는 파일 URL이 없다. 상세페이지를 1회 요청해
 `/cmm/fms/fileDown.do?atchFileId=...&fileSn=N` 링크를 뽑은 뒤 파일을 받는다.
@@ -24,7 +24,7 @@ from common import (ATT, BIZINFO, DETAIL_URL, PROC, REPORTS, UA, safe_name,
                     save_report)
 
 OUT_DIR = os.path.join(ATT, "list")
-MANIFEST = os.path.join(REPORTS, "s01d_manifest_list.csv")
+MANIFEST = os.path.join(REPORTS, "d04_manifest_list.csv")
 SAMPLE = os.path.join(PROC, "list_sample.parquet")
 FIELDS = ["announcement_id", "status", "section", "filename", "ext",
           "atch_url", "size", "path", "error"]
@@ -81,14 +81,14 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--retries", type=int, default=3)
     ap.add_argument("--sample", default=SAMPLE,
-                    help="받을 표본 parquet 경로. 기본은 S01B 의 5,000건. "
-                         "S01C 겨냥 표본(list_sample_targeted.parquet)을 넘기면 "
+                    help="받을 표본 parquet 경로. 기본은 D02 의 5,000건. "
+                         "D03 겨냥 표본(list_sample_targeted.parquet)을 넘기면 "
                          "그쪽을 받는다 — 파일 자체(HWP/PDF)는 첨부함(announcement_id)에 "
                          "묶이므로 어느 표본에서 왔든 저장 위치는 같다.")
     ap.add_argument("--manifest", default=None,
-                    help="매니페스트 경로. 지정하지 않으면 --sample 이 기본값(S01B 5,000건)일 "
-                         "때는 기존 매니페스트를, 그 외(S01C 겨냥 표본 등)에는 자동으로 "
-                         "별도 파일(s01d_manifest_<sample명>.csv)을 써서 목적별로 분리한다.")
+                    help="매니페스트 경로. 지정하지 않으면 --sample 이 기본값(D02 5,000건)일 "
+                         "때는 기존 매니페스트를, 그 외(D03 겨냥 표본 등)에는 자동으로 "
+                         "별도 파일(d04_manifest_<sample명>.csv)을 써서 목적별로 분리한다.")
     args = ap.parse_args()
 
     if args.manifest:
@@ -97,7 +97,7 @@ def main():
         manifest_path = MANIFEST
     else:
         stem = os.path.splitext(os.path.basename(args.sample))[0]
-        manifest_path = os.path.join(REPORTS, "s01d_manifest_%s.csv" % stem)
+        manifest_path = os.path.join(REPORTS, "d04_manifest_%s.csv" % stem)
 
     s_df = pd.read_parquet(args.sample)
     ids = s_df["announcement_id"].astype(str).tolist()
@@ -181,7 +181,7 @@ def main():
 
     mf.close()
     report_tag = "targeted" if args.sample != SAMPLE else "list"
-    save_report("s01d_download_%s.json" % report_tag, {
+    save_report("d04_download_%s.json" % report_tag, {
         "sample": len(ids), "attempted": len(todo), "ok": ok,
         "no_doc": nodoc, "fail": fail,
         "success_rate": round(ok / max(len(todo), 1), 4),

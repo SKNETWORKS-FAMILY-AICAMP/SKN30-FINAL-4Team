@@ -1,4 +1,4 @@
-"""S08A — 모델 3: 기존 사업 대비 지원규모 상대 비교.
+"""M12 — 모델 3: 기존 사업 대비 지원규모 상대 비교.
 
 이 모델이 하지 않는 것 (설계서 명시)
     지원규모 적정/부적정 판단, 예산 과다/과소 판단, 삭감/증액 제안
@@ -318,7 +318,7 @@ def main():
     print("\n== 판정: %s (Phase A 채택, Phase B %s)"
           % (verdict, "채택" if b["adopt"] else "미채택 — 통계 기준선 유지"))
 
-    C.save_report("s08a_m3_cohort.json", {
+    C.save_report("m12_m3_cohort.json", {
         "n_rows": int(len(d)), "min_cohort": MIN_COHORT, "axes": list(AXES),
         "reference_rows": int(len(ref)),
         "cohorts_ge30": {a: {name: int(((ref["axis"] == a) & (ref["level"] == name)
@@ -419,7 +419,7 @@ def write_md(ref, top, split, demo, b, verdict):
           "- Phase A(통계 기반 percentile) 채택",
           "- Phase B(ML) %s" % ("채택" if b["adopt"]
                                 else "미채택 — 통계 기준선을 유지한다"), ""]
-    p = os.path.join(C.REPORTS, "s08a_m3_cohort.md")
+    p = os.path.join(C.REPORTS, "m12_m3_cohort.md")
     with open(p, "w", encoding="utf-8") as f:
         f.write("\n".join(L))
     print("[report] %s" % p)

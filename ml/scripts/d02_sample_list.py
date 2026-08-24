@@ -1,4 +1,4 @@
-"""S01B — 목록 97,794건에서 층화 표본 5,000건 선정.
+"""D02 — 목록 97,794건에서 층화 표본 5,000건 선정.
 
 전량(약 19.6만 요청, 54시간)은 공공 서버 부담이 커서 표본만 받는다.
 층은 분야(8) × 등록연도(13) = 최대 104셀. 셀별 균등 배분을 목표로 하되
@@ -85,7 +85,7 @@ def main():
     s = s[[c for c in keep if c in s.columns]]
     s.to_parquet(OUT, index=False)
 
-    save_report("s01b_sample.json", {
+    save_report("d02_sample.json", {
         "source_rows": before,
         "min_year": args.min_year,
         "rows_before_year_filter": n_before_year,

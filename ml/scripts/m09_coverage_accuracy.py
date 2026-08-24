@@ -1,11 +1,11 @@
-"""S05F — 커버리지를 올릴 때 정확도·오분류 편향이 어떻게 변하는지 측정.
+"""M09 — 커버리지를 올릴 때 정확도·오분류 편향이 어떻게 변하는지 측정.
 
 왜 필요한가
     지원규모를 지원성격별로 보려는데 라벨 커버리지가 48~53% 라 연도 칸이
-    한 자릿수다(S04G). 커버리지를 올려야 추이를 볼 수 있다. 그런데 임계값만
+    한 자릿수다(A03). 커버리지를 올려야 추이를 볼 수 있다. 그런데 임계값만
     내리면 틀린 라벨이 섞여 들어와, 그 유형의 금액 분포 자체가 오염된다.
 
-    특히 위험한 게 방향성 있는 오염이다. S05D(수동 정답 41건)에서 오답 5건 중
+    특히 위험한 게 방향성 있는 오염이다. M07(수동 정답 41건)에서 오답 5건 중
     3건이 '사업화'로 갔다. 확신이 낮은 건은 최다 클래스로 쏠린다. 그대로
     커버리지를 올리면 사업화 표본에 남의 건이 섞여 사업화 금액 중앙값이
     엉뚱해진다. 커버리지만 보고 정하면 안 되는 이유다.
@@ -32,12 +32,12 @@
 
 검증 설계
     학습셋(1,404건)에 StratifiedGroupKFold 를 적용해 out-of-fold 확률을 얻는다.
-    program_stem 으로 묶어 같은 사업이 학습·검증에 갈리지 않게 한다(S04B 참고).
-    도메인 밖 확인은 S05D 수동 정답 41건으로 따로 한다.
+    program_stem 으로 묶어 같은 사업이 학습·검증에 갈리지 않게 한다(M05 참고).
+    도메인 밖 확인은 M07 수동 정답 41건으로 따로 한다.
 
 주의
     학습셋 정확도는 도메인 내부값이라 실제 적용(2026 지자체 공고)보다 낙관적이다.
-    S05D 대조를 같이 보고, 최종 임계값은 두 곳에서 모두 견디는 값으로 고른다.
+    M07 대조를 같이 보고, 최종 임계값은 두 곳에서 모두 견디는 값으로 고른다.
 """
 import argparse
 import json
@@ -55,7 +55,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from common import PROC, save_report
-from s05a_m1_ml import MIN_SUPPORT, coarsen, tfidf
+from m01_support_type import MIN_SUPPORT, coarsen, tfidf
 
 warnings.filterwarnings("ignore")
 
@@ -220,7 +220,7 @@ def amount_distortion(proba, y, le, thresholds, seed=42, n_boot=400):
         직접 비교할 표본이 안 된다. 그래서 두 재료를 합친다.
           ㄱ. 혼동행렬 — 임계값 t 에서 '유형 X 로 예측된 것' 중 실제 무엇이
               얼마나 섞이는지 (도메인 내부 OOF)
-          ㄴ. 유형별 금액 분포 — 관측 테이블(S03E)에서 유형별 per_company 금액
+          ㄴ. 유형별 금액 분포 — 관측 테이블(F05)에서 유형별 per_company 금액
 
         X 로 예측된 표본을 ㄱ의 비율대로 ㄴ에서 뽑아 섞은 뒤 중앙값을 낸다.
         오염이 없을 때(순수 X)의 중앙값과 비교하면, 임계값을 낮춰 커버리지를
@@ -232,7 +232,7 @@ def amount_distortion(proba, y, le, thresholds, seed=42, n_boot=400):
         밀리는가'라는 상대 비교로만 읽는다.
     """
     # 금액은 이 브랜치(machine-learning)에서 구할 수 있는 것만 쓴다.
-    # support_amount_observations 는 S03E(timeseries-analysis) 산출물이라
+    # support_amount_observations 는 F05(timeseries-analysis) 산출물이라
     # 여기서 읽으면 상류가 하류를 읽는 역류가 된다.
     enr = PROC + "/announcement_detail_enriched.parquet"
     prd = PROC + "/announcement_detail_with_support_type_v2.parquet"
@@ -294,7 +294,7 @@ def amount_distortion(proba, y, le, thresholds, seed=42, n_boot=400):
 
 
 def manual_check(thresholds):
-    """도메인 밖 확인 — S05D 수동 정답 41건. 예측 파일에서 확신도를 읽는다."""
+    """도메인 밖 확인 — M07 수동 정답 41건. 예측 파일에서 확신도를 읽는다."""
     pred_path = PROC + "/announcement_detail_with_support_type_v2.parquet"
     if not (os.path.exists(LABELS) and os.path.exists(pred_path)):
         return []
@@ -421,7 +421,7 @@ def main():
     mc = manual_check(THRESHOLDS)
     if mc:
         print()
-        print("[도메인 밖] S05D 수동 정답 대조 (Open API)")
+        print("[도메인 밖] M07 수동 정답 대조 (Open API)")
         print("%10s%10s%10s%10s" % ("임계값", "채점수", "커버리지", "정확도"))
         print("-" * 42)
         for r in mc:
@@ -432,7 +432,7 @@ def main():
     allsweep = pd.concat([sa, sb], ignore_index=True)
     allsweep.to_parquet(OUT, index=False)
 
-    save_report("s05f_m1_coverage_accuracy.json", {
+    save_report("m09_coverage_accuracy.json", {
         "question": ("커버리지를 올릴 때 정확도·오분류 편향이 어떻게 변하는가. "
                      "지원규모 추정에 쓸 최적 커버리지를 정하기 위한 근거."),
         "cv": "StratifiedGroupKFold (program_stem)",
@@ -449,7 +449,7 @@ def main():
         "manual_check_openapi": mc,
         "amount_distortion": dist,
         "caveat": ("학습셋 정확도는 도메인 내부값이라 실제 적용(2026 지자체 공고)보다 "
-                   "낙관적이다. S05D 대조를 함께 보고 두 곳에서 모두 견디는 값을 고른다."),
+                   "낙관적이다. M07 대조를 함께 보고 두 곳에서 모두 견디는 값을 고른다."),
         "output": OUT,
     })
     print()

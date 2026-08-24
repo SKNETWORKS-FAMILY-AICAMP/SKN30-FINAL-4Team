@@ -1,17 +1,17 @@
-"""S05B — 지원성격 분류기 실전 적용 v2: 원문 품질·전처리 효과 분리 측정.
+"""M02 — 지원성격 분류기 실전 적용 v2: 원문 품질·전처리 효과 분리 측정.
 
 M07 대비 두 가지가 바뀌었다.
-  ① 원문 추출본: S02A(PyMuPDF + pyhwp) → S02A(pdf-inspector + rhwp)
+  ① 원문 추출본: E01(PyMuPDF + pyhwp) → E01(pdf-inspector + rhwp)
      표 구조가 보존되고 HWP 가 실제로 읽힌다.
   ② 입력 전처리: 원문 앞부분을 그대로 자르던 것 → 관인부 제거 + 본문 마커 발췌
 
 두 변경이 동시에 들어가면 무엇이 기여했는지 알 수 없으므로,
 같은 모델·같은 임계값으로 4개 조건을 나란히 측정한다.
 
-  A. S02A 원문 + 전처리 없음   (= M07, 기준)
-  B. S02A 원문 + 전처리
-  C. S02A 원문 + 전처리 없음
-  D. S02A 원문 + 전처리        (최종 후보)
+  A. E01 원문 + 전처리 없음   (= M07, 기준)
+  B. E01 원문 + 전처리
+  C. E01 원문 + 전처리 없음
+  D. E01 원문 + 전처리        (최종 후보)
 
 임계값은 M07 과 동일하게 도메인 내부 CV 기반 0.25 / 0.35 를 쓴다.
 """
@@ -26,17 +26,17 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
 from common import PROC, REPORTS, save_report
-from s05a_m1_ml import MIN_SUPPORT, coarsen, tfidf
+from m01_support_type import MIN_SUPPORT, coarsen, tfidf
 
 TAX = PROC + "/business_taxonomy.parquet"
 DETAIL = PROC + "/announcement_detail.parquet"
-DOCS_E01 = REPORTS + "/s02a_documents_api.jsonl"
-DOCS_E02 = REPORTS + "/s02a_documents.jsonl"
+DOCS_E01 = REPORTS + "/e01_documents_api.jsonl"
+DOCS_E02 = REPORTS + "/e01_documents.jsonl"
 OUT = PROC + "/announcement_detail_with_support_type_v2.parquet"
 
-# 판단보류 임계값. S05F 에서 커버리지·정확도·오분류 편향을 함께 재고 정했다.
+# 판단보류 임계값. M09 에서 커버리지·정확도·오분류 편향을 함께 재고 정했다.
 #
-#   S05D 수동 정답 41건(실제 적용 도메인) 대조
+#   M07 수동 정답 41건(실제 적용 도메인) 대조
 #       0.15  커버리지 87.8%  정확도 69.4%
 #       0.20  커버리지 70.7%  정확도 79.3%   <- 채택
 #       0.25  커버리지 56.1%  정확도 78.3%   <- 이전 값
@@ -128,7 +128,7 @@ def main():
     pids = d["announcement_id"].astype(str).tolist()
     e01 = load_docs(DOCS_E01)
     e02 = load_docs(DOCS_E02, source="api")
-    print("원문 보유 — S02A %d건 / S02A %d건" % (len(e01), len(e02)))
+    print("원문 보유 — E01 %d건 / E01 %d건" % (len(e01), len(e02)))
     print()
 
     fallback = (d["summary_text"].fillna("") + "\n" + d["target_text"].fillna("")).tolist()
@@ -146,10 +146,10 @@ def main():
         return out, np.array(has_doc)
 
     conditions = {
-        "A. S02A + 전처리없음 (=M07)": (e01, False),
-        "B. S02A + 전처리": (e01, True),
-        "C. S02A + 전처리없음": (e02, False),
-        "D. S02A + 전처리": (e02, True),
+        "A. E01 + 전처리없음 (=M07)": (e01, False),
+        "B. E01 + 전처리": (e01, True),
+        "C. E01 + 전처리없음": (e02, False),
+        "D. E01 + 전처리": (e02, True),
     }
 
     results, stash = {}, {}
@@ -183,7 +183,7 @@ def main():
     # 새로 읽히기 시작한 HWP가 학습 텍스트(정제된 요약문)와 더 멀어 불리했다.
     best_key = max(results, key=lambda k: results[k]["usable_rate"])
     best_pred = stash[best_key]
-    base = results["A. S02A + 전처리없음 (=M07)"]
+    base = results["A. E01 + 전처리없음 (=M07)"]
     final = results[best_key]
     print("\n채택: %s (사용가능률 %.1f%% 최고)" % (best_key, final["usable_rate"] * 100))
     print("-" * 82)
@@ -210,7 +210,7 @@ def main():
     for k, v in dist.items():
         print("  %-14s%4d건" % (k, v))
 
-    save_report("s05b_m1_apply.json", {
+    save_report("m02_apply.json", {
         "train_rows": int(len(sub)), "train_classes": int(len(classes)),
         "applied_rows": int(len(d)),
         "thresholds": {"hold": HOLD_THRESHOLD, "trust": TRUST_THRESHOLD},
@@ -219,7 +219,7 @@ def main():
         "chosen_by": "usable_rate 최댓값 (실측 기반, 사전 지정 아님)",
         "hold_rate_change": round(final["hold_rate"] - base["hold_rate"], 4),
         "predicted_class_dist": dist,
-        "note": ("S02A(pdf-inspector+rhwp) 원문과 전처리(관인제거+본문발췌)의 "
+        "note": ("E01(pdf-inspector+rhwp) 원문과 전처리(관인제거+본문발췌)의 "
                  "기여를 분리 측정. 모델·임계값은 M07과 동일."),
         "output": OUT,
     })

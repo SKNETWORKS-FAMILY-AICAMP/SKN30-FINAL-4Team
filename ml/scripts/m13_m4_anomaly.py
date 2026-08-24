@@ -1,4 +1,4 @@
-"""S09A — 모델 4: 사업 설계 이상패턴 탐지.
+"""M13 — 모델 4: 사업 설계 이상패턴 탐지.
 
 한 줄 정의 (설계서)
     과거 지원사업의 다변량 설계 패턴을 학습하여 신규 사업의 희귀성·이례성을
@@ -6,7 +6,7 @@
 
 '이례적'이지 '잘못됐다'가 아니다. 출력 문구를 코드에서 강제한다(ALLOWED/FORBIDDEN).
 
-S04E 가 이 모델에 Conditional 을 준 이유가 하나 있다.
+M10 가 이 모델에 Conditional 을 준 이유가 하나 있다.
     수치 4축(기업당지원액·지원건수·지원비율·사업기간) 중 3축 이상이 채워진 행이
     전체의 22% 뿐이다. 결측을 0이나 중앙값으로 메우고 학습하면 모델이 탐지하는
     것은 '희귀한 설계'가 아니라 '원문에 안 적힌 사업'이 된다.
@@ -110,7 +110,7 @@ def score_drivers(X, names, scores):
 
     IsolationForest 가 합성 이상치를 거의 못 잡은 이유를 여기서 확인했다.
     IF 점수는 결측 지시자와 희귀 범주 빈도에 끌려간다 — 즉 '희귀한 설계'가
-    아니라 '원문에 안 적힌 사업'을 탐지하고 있었다. S04E 가 경고한 실패 모드다.
+    아니라 '원문에 안 적힌 사업'을 탐지하고 있었다. M10 가 경고한 실패 모드다.
     """
     from scipy.stats import spearmanr
     out = {}
@@ -243,7 +243,7 @@ def explain(row, ref):
     같은 사업에 대해 모델 3 과 모델 4 가 서로 다른 비교군을 말하게 된다 —
     특히 지원단위 분리 같은 규칙이 한쪽에만 반영되는 사고가 난다.
     """
-    from s08a_m3_cohort import compare
+    from m12_m3_cohort import compare
 
     notable = []
     for axis, label in AXIS_LABEL.items():
@@ -353,7 +353,7 @@ def main():
         .to_parquet(OUT, index=False)
     print("[data] %s" % OUT)
 
-    C.save_report("s09a_m4_anomaly.json", {
+    C.save_report("m13_m4_anomaly.json", {
         "n_total": int(len(df)), "n_train": int(len(train)), "min_axes": MIN_AXES,
         "contamination": CONTAMINATION, "features": names,
         "synthetic_eval": syn, "best_model": best, "score_drivers": drivers,
@@ -429,7 +429,7 @@ def write_md(syn, best, cont, res, cases, verdict, train, df, drivers):
         L.append("| %s | %s |" % (name, ", ".join("`%s` %.2f" % kv for kv in top5)))
     L += ["",
           "IF 는 **결측 지시자와 희귀 범주 빈도**가 점수를 지배한다. 즉 '희귀한 설계'가",
-          "아니라 '원문에 안 적힌 사업'을 탐지하고 있었다 — S04E 가 경고한 실패 모드 그대로다.",
+          "아니라 '원문에 안 적힌 사업'을 탐지하고 있었다 — M10 가 경고한 실패 모드 그대로다.",
           "합성 이상치를 5건만 넣어도 회수율이 0% 여서 표본 수 문제도 아니었다.", "",
           "## 3. 안정성", "",
           "| 검증 | 결과 |", "|---|---|"]
@@ -460,7 +460,7 @@ def write_md(syn, best, cont, res, cases, verdict, train, df, drivers):
     for r in verdict["reasons"]:
         L.append("- %s" % r)
     L.append("")
-    p = os.path.join(C.REPORTS, "s09a_m4_anomaly.md")
+    p = os.path.join(C.REPORTS, "m13_m4_anomaly.md")
     with open(p, "w", encoding="utf-8") as f:
         f.write("\n".join(L))
     print("[report] %s" % p)
