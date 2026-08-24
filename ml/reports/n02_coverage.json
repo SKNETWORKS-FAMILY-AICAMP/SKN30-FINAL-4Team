@@ -1,0 +1,226 @@
+{
+  "rows": 3963,
+  "coverage_pct": {
+    "bizinfo": {
+      "agency_type": 30.0,
+      "amount_max": 100.0,
+      "amount_type": 100.0,
+      "industry": 0.0,
+      "per_recipient": 51.6,
+      "policy_purpose": 0.0,
+      "project_duration": 22.1,
+      "self_burden_ratio": 0.0,
+      "support_count": 77.1,
+      "support_method": 100.0,
+      "support_ratio": 9.3,
+      "support_target": 0.0,
+      "support_type": 100.0,
+      "support_unit": 54.6
+    },
+    "taxonomy": {
+      "agency_type": 100.0,
+      "amount_max": 77.3,
+      "amount_type": 77.9,
+      "industry": 100.0,
+      "per_recipient": 70.3,
+      "policy_purpose": 100.0,
+      "project_duration": 27.3,
+      "self_burden_ratio": 49.4,
+      "support_count": 58.9,
+      "support_method": 100.0,
+      "support_ratio": 49.4,
+      "support_target": 100.0,
+      "support_type": 96.1,
+      "support_unit": 80.3
+    }
+  },
+  "axis_independence": {
+    "bizinfo": {
+      "cramers_v": 0.332,
+      "n": 2458
+    },
+    "taxonomy": {
+      "cramers_v": 0.489,
+      "n": 1447
+    }
+  },
+  "cohort_sizes": {
+    "bizinfo": {
+      "2단(성격x방식)": {
+        "ge30": 16,
+        "15_29": 10,
+        "lt15": 45,
+        "covered_rows": 2115,
+        "total_rows": 2458
+      },
+      "1단(성격)": {
+        "ge30": 8,
+        "covered_rows": 2355,
+        "total_rows": 2458
+      }
+    },
+    "taxonomy": {
+      "2단(성격x방식)": {
+        "ge30": 10,
+        "15_29": 9,
+        "lt15": 78,
+        "covered_rows": 1001,
+        "total_rows": 1447
+      },
+      "1단(성격)": {
+        "ge30": 8,
+        "covered_rows": 1211,
+        "total_rows": 1447
+      }
+    }
+  },
+  "model3_cohorts": {
+    "bizinfo": {
+      "n_rows": 1225,
+      "ge30_cells": 8,
+      "covered_rows": 1085,
+      "top": {
+        "사업화/grant": 452,
+        "융자/loan": 138,
+        "판로/grant": 123,
+        "컨설팅/grant": 96,
+        "연구개발/grant": 95,
+        "융자/grant": 66,
+        "설비/grant": 59,
+        "고용보조/grant": 56,
+        "해외인증/grant": 17,
+        "수출통관/grant": 14,
+        "컨설팅/guarantee": 13,
+        "사업화/voucher": 12
+      }
+    },
+    "taxonomy": {
+      "n_rows": 1009,
+      "ge30_cells": 6,
+      "covered_rows": 752,
+      "top": {
+        "사업화/grant": 350,
+        "연구개발/grant": 136,
+        "컨설팅/grant": 82,
+        "판로/grant": 70,
+        "설비/grant": 58,
+        "융자/loan": 56,
+        "해외수주·실증/grant": 25,
+        "사업화/voucher": 18,
+        "해외인증/grant": 18,
+        "성능인증/grant": 17,
+        "고용보조/grant": 16,
+        "창업보육/grant": 14
+      }
+    },
+    "pooled": {
+      "n_rows": 2234,
+      "ge30_cells": 10,
+      "covered_rows": 1918
+    }
+  },
+  "model4_complete_rows": {
+    "bizinfo": {
+      "4개_전부": 10,
+      "3개_이상": 291,
+      "2개_이상": 1381,
+      "n": 2458
+    },
+    "taxonomy": {
+      "4개_전부": 172,
+      "3개_이상": 575,
+      "2개_이상": 1050,
+      "n": 1505
+    }
+  },
+  "amount_profile": {
+    "bizinfo/per_company": {
+      "n": 782,
+      "p10": 1000000.0,
+      "p50": 12000000.0,
+      "p90": 500000000.0,
+      "log10_std": 0.964
+    },
+    "bizinfo/per_project": {
+      "n": 119,
+      "p10": 1000000.0,
+      "p50": 35000000.0,
+      "p90": 1000000000.0,
+      "log10_std": 1.131
+    },
+    "bizinfo/periodic": {
+      "n": 228,
+      "p10": 200000.0,
+      "p50": 1800000.0,
+      "p90": 10000000.0,
+      "log10_std": 0.634
+    },
+    "bizinfo/total_budget": {
+      "n": 368,
+      "p10": 8570000.0,
+      "p50": 200000000.0,
+      "p90": 158880000000.00003,
+      "log10_std": 1.51
+    },
+    "bizinfo/unknown": {
+      "n": 889,
+      "p10": 1000000.0,
+      "p50": 30000000.0,
+      "p90": 10000000000.0,
+      "log10_std": 1.625
+    },
+    "taxonomy/per_company": {
+      "n": 955,
+      "p10": 7700000.000000003,
+      "p50": 100000000.0,
+      "p90": 1000000000.0,
+      "log10_std": 0.822
+    },
+    "taxonomy/per_project": {
+      "n": 49,
+      "p10": 44000000.0,
+      "p50": 300000000.0,
+      "p90": 904000000.0000011,
+      "log10_std": 0.606
+    },
+    "taxonomy/periodic": {
+      "n": 44,
+      "p10": 330000.0,
+      "p50": 2063500.0,
+      "p90": 23550000.000000004,
+      "log10_std": 0.76
+    },
+    "taxonomy/total_budget": {
+      "n": 10,
+      "p10": 28000000.0,
+      "p50": 650000000.0,
+      "p90": 9499999999.999985,
+      "log10_std": 1.085
+    },
+    "taxonomy/unknown": {
+      "n": 57,
+      "p10": 5600000.000000001,
+      "p50": 50000000.0,
+      "p90": 5399999999.999998,
+      "log10_std": 1.387
+    }
+  },
+  "gates": {
+    "min_cohort": 30,
+    "min_reference": 15
+  },
+  "verdict": {
+    "model2": {
+      "verdict": "Go",
+      "reason": "taxonomy 평균 커버리지 80%, 지원방식이 지원성격과 독립적(V=0.49)"
+    },
+    "model3": {
+      "verdict": "Go",
+      "reason": "금액 확보 2234행 중 86%가 30건 이상 비교군에 속한다(10칸)"
+    },
+    "model4": {
+      "verdict": "Conditional",
+      "reason": "수치 3축 이상 채워진 행이 866건(22%)뿐이다 — 결측 자체가 이상치로 잡히지 않도록 결측 지시자를 분리하고 완결 행만 학습해야 한다"
+    }
+  }
+}
