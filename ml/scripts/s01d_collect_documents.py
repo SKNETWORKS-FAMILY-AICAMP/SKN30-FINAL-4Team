@@ -97,7 +97,7 @@ def main():
         manifest_path = MANIFEST
     else:
         stem = os.path.splitext(os.path.basename(args.sample))[0]
-        manifest_path = os.path.join(REPORTS, "d03_manifest_%s.csv" % stem)
+        manifest_path = os.path.join(REPORTS, "s01d_manifest_%s.csv" % stem)
 
     s_df = pd.read_parquet(args.sample)
     ids = s_df["announcement_id"].astype(str).tolist()
