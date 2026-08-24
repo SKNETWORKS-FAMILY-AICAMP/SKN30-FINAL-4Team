@@ -1,0 +1,918 @@
+{
+  "n_rows": 1447,
+  "n_input_axes": 50,
+  "hdbscan": {
+    "min_cluster_size": 15,
+    "min_samples": null,
+    "cluster_selection_method": "eom"
+  },
+  "scoring": "군집은 AE 잠재공간, 점수는 N03 과 같은 Gower 거리",
+  "base_config": {
+    "latent": 8,
+    "hidden": 64,
+    "epochs": 500,
+    "lr": 0.001,
+    "dropout": 0.1,
+    "denoising": 0.1
+  },
+  "base_result": {
+    "n_clusters": 12,
+    "noise_ratio": 0.3421,
+    "n_ge30": 8,
+    "n_15_29": 4,
+    "largest_share": 0.2668,
+    "silhouette": 0.0106,
+    "davies_bouldin": 0.8627,
+    "ari_support_type": 0.241,
+    "ami_support_type": 0.3476,
+    "recon_mse": 0.02835
+  },
+  "ablation": {
+    "latent": {
+      "2": {
+        "n_clusters": 19,
+        "noise_ratio": 0.2467,
+        "n_ge30": 9,
+        "n_15_29": 10,
+        "largest_share": 0.2183,
+        "silhouette": -0.0287,
+        "davies_bouldin": 0.46,
+        "ari_support_type": 0.2321,
+        "ami_support_type": 0.3192,
+        "recon_mse": 0.0653
+      },
+      "4": {
+        "n_clusters": 14,
+        "noise_ratio": 0.3248,
+        "n_ge30": 12,
+        "n_15_29": 2,
+        "largest_share": 0.1433,
+        "silhouette": -0.0157,
+        "davies_bouldin": 0.7121,
+        "ari_support_type": 0.2008,
+        "ami_support_type": 0.3443,
+        "recon_mse": 0.04257
+      },
+      "8": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3421,
+        "n_ge30": 8,
+        "n_15_29": 4,
+        "largest_share": 0.2668,
+        "silhouette": 0.0106,
+        "davies_bouldin": 0.8627,
+        "ari_support_type": 0.241,
+        "ami_support_type": 0.3476,
+        "recon_mse": 0.02835,
+        "note": "기준 설정"
+      },
+      "16": {
+        "n_clusters": 13,
+        "noise_ratio": 0.2101,
+        "n_ge30": 9,
+        "n_15_29": 4,
+        "largest_share": 0.245,
+        "silhouette": 0.0402,
+        "davies_bouldin": 1.0121,
+        "ari_support_type": 0.2217,
+        "ami_support_type": 0.3371,
+        "recon_mse": 0.0223
+      }
+    },
+    "hidden": {
+      "32": {
+        "n_clusters": 15,
+        "noise_ratio": 0.3815,
+        "n_ge30": 10,
+        "n_15_29": 5,
+        "largest_share": 0.1844,
+        "silhouette": -0.0184,
+        "davies_bouldin": 0.7183,
+        "ari_support_type": 0.2054,
+        "ami_support_type": 0.3583,
+        "recon_mse": 0.04335
+      },
+      "64": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3421,
+        "n_ge30": 8,
+        "n_15_29": 4,
+        "largest_share": 0.2668,
+        "silhouette": 0.0106,
+        "davies_bouldin": 0.8627,
+        "ari_support_type": 0.241,
+        "ami_support_type": 0.3476,
+        "recon_mse": 0.02835,
+        "note": "기준 설정"
+      },
+      "128": {
+        "n_clusters": 13,
+        "noise_ratio": 0.3269,
+        "n_ge30": 10,
+        "n_15_29": 3,
+        "largest_share": 0.2444,
+        "silhouette": 0.0612,
+        "davies_bouldin": 0.9279,
+        "ari_support_type": 0.2523,
+        "ami_support_type": 0.3704,
+        "recon_mse": 0.01684
+      }
+    },
+    "epochs": {
+      "200": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3628,
+        "n_ge30": 10,
+        "n_15_29": 2,
+        "largest_share": 0.256,
+        "silhouette": 0.0354,
+        "davies_bouldin": 0.8547,
+        "ari_support_type": 0.2444,
+        "ami_support_type": 0.344,
+        "recon_mse": 0.04607
+      },
+      "500": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3421,
+        "n_ge30": 8,
+        "n_15_29": 4,
+        "largest_share": 0.2668,
+        "silhouette": 0.0106,
+        "davies_bouldin": 0.8627,
+        "ari_support_type": 0.241,
+        "ami_support_type": 0.3476,
+        "recon_mse": 0.02835,
+        "note": "기준 설정"
+      },
+      "1000": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3635,
+        "n_ge30": 9,
+        "n_15_29": 3,
+        "largest_share": 0.4083,
+        "silhouette": 0.018,
+        "davies_bouldin": 0.8349,
+        "ari_support_type": 0.315,
+        "ami_support_type": 0.3797,
+        "recon_mse": 0.0205
+      }
+    },
+    "lr": {
+      "0.0003": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3269,
+        "n_ge30": 10,
+        "n_15_29": 2,
+        "largest_share": 0.2413,
+        "silhouette": 0.0288,
+        "davies_bouldin": 0.89,
+        "ari_support_type": 0.2245,
+        "ami_support_type": 0.3275,
+        "recon_mse": 0.04723
+      },
+      "0.001": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3421,
+        "n_ge30": 8,
+        "n_15_29": 4,
+        "largest_share": 0.2668,
+        "silhouette": 0.0106,
+        "davies_bouldin": 0.8627,
+        "ari_support_type": 0.241,
+        "ami_support_type": 0.3476,
+        "recon_mse": 0.02835,
+        "note": "기준 설정"
+      },
+      "0.003": {
+        "n_clusters": 12,
+        "noise_ratio": 0.2979,
+        "n_ge30": 10,
+        "n_15_29": 2,
+        "largest_share": 0.2392,
+        "silhouette": -0.0097,
+        "davies_bouldin": 1.0624,
+        "ari_support_type": 0.2537,
+        "ami_support_type": 0.3409,
+        "recon_mse": 0.02192
+      }
+    },
+    "dropout": {
+      "0.0": {
+        "n_clusters": 12,
+        "noise_ratio": 0.2916,
+        "n_ge30": 9,
+        "n_15_29": 3,
+        "largest_share": 0.2507,
+        "silhouette": 0.03,
+        "davies_bouldin": 0.9148,
+        "ari_support_type": 0.224,
+        "ami_support_type": 0.3453,
+        "recon_mse": 0.02644
+      },
+      "0.1": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3421,
+        "n_ge30": 8,
+        "n_15_29": 4,
+        "largest_share": 0.2668,
+        "silhouette": 0.0106,
+        "davies_bouldin": 0.8627,
+        "ari_support_type": 0.241,
+        "ami_support_type": 0.3476,
+        "recon_mse": 0.02835,
+        "note": "기준 설정"
+      },
+      "0.3": {
+        "n_clusters": 13,
+        "noise_ratio": 0.3193,
+        "n_ge30": 9,
+        "n_15_29": 4,
+        "largest_share": 0.2629,
+        "silhouette": 0.0157,
+        "davies_bouldin": 0.8547,
+        "ari_support_type": 0.2298,
+        "ami_support_type": 0.3408,
+        "recon_mse": 0.03115
+      }
+    },
+    "denoising": {
+      "0.0": {
+        "n_clusters": 14,
+        "noise_ratio": 0.2937,
+        "n_ge30": 9,
+        "n_15_29": 5,
+        "largest_share": 0.2652,
+        "silhouette": -0.0136,
+        "davies_bouldin": 0.9272,
+        "ari_support_type": 0.2347,
+        "ami_support_type": 0.3393,
+        "recon_mse": 0.02537
+      },
+      "0.1": {
+        "n_clusters": 12,
+        "noise_ratio": 0.3421,
+        "n_ge30": 8,
+        "n_15_29": 4,
+        "largest_share": 0.2668,
+        "silhouette": 0.0106,
+        "davies_bouldin": 0.8627,
+        "ari_support_type": 0.241,
+        "ami_support_type": 0.3476,
+        "recon_mse": 0.02835,
+        "note": "기준 설정"
+      },
+      "0.2": {
+        "n_clusters": 14,
+        "noise_ratio": 0.3186,
+        "n_ge30": 9,
+        "n_15_29": 5,
+        "largest_share": 0.2414,
+        "silhouette": 0.0004,
+        "davies_bouldin": 0.8594,
+        "ari_support_type": 0.2454,
+        "ami_support_type": 0.3425,
+        "recon_mse": 0.02769
+      }
+    }
+  },
+  "tuned_config": {
+    "latent": 16,
+    "hidden": 128,
+    "epochs": 200,
+    "lr": 0.0003,
+    "dropout": 0.0,
+    "denoising": 0.1
+  },
+  "tuned_result": {
+    "n_clusters": 11,
+    "noise_ratio": 0.378,
+    "n_ge30": 8,
+    "n_15_29": 3,
+    "largest_share": 0.2144,
+    "silhouette": 0.0447,
+    "davies_bouldin": 0.9874,
+    "ari_support_type": 0.248,
+    "ami_support_type": 0.372,
+    "recon_mse": 0.05613
+  },
+  "ml_reference": {
+    "n_clusters": 20,
+    "noise_ratio": 0.4105,
+    "silhouette": 0.6012,
+    "ari_support_type": 0.2245,
+    "n_ge30": 12
+  },
+  "profile": {
+    "0": {
+      "n": 26,
+      "log_per_recipient": {
+        "n": 0,
+        "median": null
+      },
+      "log_support_count": {
+        "n": 0,
+        "median": null
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 26,
+        "median": 10.0
+      },
+      "support_method": {
+        "top": "loan",
+        "share": 1.0
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 0.846
+      },
+      "category_large": {
+        "top": "금융",
+        "share": 1.0
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 0.577
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 1.0
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 0.846
+      },
+      "support_type": {
+        "top": "융자",
+        "share": 1.0
+      },
+      "per_recipient_median_won": null,
+      "support_count_median": null,
+      "examples": [
+        "2022년 장애인 고용시설자금 융자",
+        "2023년 국민체육진흥기금 스포츠산업융자(튼튼론)",
+        "2023년 신·재생에너지 금융지원"
+      ],
+      "tag": "장기 금융지원형"
+    },
+    "1": {
+      "n": 53,
+      "log_per_recipient": {
+        "n": 53,
+        "median": 8.699
+      },
+      "log_support_count": {
+        "n": 2,
+        "median": 0.301
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 53,
+        "median": 5.0
+      },
+      "support_method": {
+        "top": "loan",
+        "share": 0.925
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 0.981
+      },
+      "category_large": {
+        "top": "금융",
+        "share": 0.943
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 0.604
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 0.981
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 1.0
+      },
+      "support_type": {
+        "top": "융자",
+        "share": 0.906
+      },
+      "per_recipient_median_won": 499999999.99999994,
+      "support_count_median": 2.0,
+      "examples": [
+        "2023년 사회적기업육성사업(사업개발비)",
+        "2023년 산재예방시설 융자금 지원",
+        "2023년 정보통신응용기술개발지원(융자)사업"
+      ],
+      "tag": "소수기업·고액·장기 금융지원형"
+    },
+    "2": {
+      "n": 108,
+      "log_per_recipient": {
+        "n": 108,
+        "median": 8.86
+      },
+      "log_support_count": {
+        "n": 108,
+        "median": 1.0
+      },
+      "support_ratio": {
+        "n": 108,
+        "median": 80.0
+      },
+      "project_duration": {
+        "n": 108,
+        "median": 2.0
+      },
+      "support_method": {
+        "top": "grant",
+        "share": 0.972
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 0.981
+      },
+      "category_large": {
+        "top": "기술",
+        "share": 0.861
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 0.361
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 1.0
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 0.981
+      },
+      "support_type": {
+        "top": "연구개발",
+        "share": 0.787
+      },
+      "per_recipient_median_won": 724568837.3094721,
+      "support_count_median": 10.0,
+      "examples": [
+        "2023년 AI반도체 응용실증지원",
+        "2023년 ICT미래시장최적화협업기술개발사업",
+        "2023년 기업부설연구소 R&D역량강화 지원사업"
+      ],
+      "tag": "소수기업·고액·장기 직접지원형"
+    },
+    "3": {
+      "n": 17,
+      "log_per_recipient": {
+        "n": 0,
+        "median": null
+      },
+      "log_support_count": {
+        "n": 0,
+        "median": null
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 17,
+        "median": 2.0
+      },
+      "support_method": {
+        "top": "other",
+        "share": 0.647
+      },
+      "support_unit": {
+        "top": "person",
+        "share": 0.765
+      },
+      "category_large": {
+        "top": "인력",
+        "share": 0.824
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 1.0
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 1.0
+      },
+      "amount_type": {
+        "top": "periodic",
+        "share": 0.765
+      },
+      "support_type": {
+        "top": "고용보조",
+        "share": 0.824
+      },
+      "per_recipient_median_won": null,
+      "support_count_median": null,
+      "examples": [
+        "2023년 고령자 고용지원금",
+        "2023년 고령자 계속고용장려금",
+        "2023년 고용안정장려금(워라밸일자리 장려금)"
+      ],
+      "tag": "장기 직접지원형"
+    },
+    "4": {
+      "n": 132,
+      "log_per_recipient": {
+        "n": 0,
+        "median": null
+      },
+      "log_support_count": {
+        "n": 132,
+        "median": 1.477
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "service",
+        "share": 0.545
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 0.326
+      },
+      "category_large": {
+        "top": "경영",
+        "share": 0.333
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 0.455
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 0.992
+      },
+      "amount_type": {
+        "top": "periodic",
+        "share": 0.015
+      },
+      "support_type": {
+        "top": "판로",
+        "share": 0.379
+      },
+      "per_recipient_median_won": null,
+      "support_count_median": 29.999999999999996,
+      "examples": [
+        "2023년 빅데이터 아카데미",
+        "2022년 해외진출 집중성장캠프",
+        "2023년 K-Global 창업멘토링 지원"
+      ],
+      "tag": "다수기업·금액미기재 서비스제공형"
+    },
+    "5": {
+      "n": 92,
+      "log_per_recipient": {
+        "n": 0,
+        "median": null
+      },
+      "log_support_count": {
+        "n": 0,
+        "median": null
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "service",
+        "share": 0.717
+      },
+      "support_unit": {
+        "top": "person",
+        "share": 0.043
+      },
+      "category_large": {
+        "top": "경영",
+        "share": 0.511
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 0.946
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 1.0
+      },
+      "amount_type": {
+        "top": "unknown",
+        "share": 0.174
+      },
+      "support_type": {
+        "top": "컨설팅",
+        "share": 0.283
+      },
+      "per_recipient_median_won": null,
+      "support_count_median": null,
+      "examples": [
+        "2023년 국가인적자원개발컨소시엄지원",
+        "2023년 케이-디지털 플랫폼(K-Digital Flatform)",
+        "2023년 근로자지원프로그램"
+      ],
+      "tag": "금액미기재 서비스제공형"
+    },
+    "6": {
+      "n": 20,
+      "log_per_recipient": {
+        "n": 0,
+        "median": null
+      },
+      "log_support_count": {
+        "n": 0,
+        "median": null
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "other",
+        "share": 0.8
+      },
+      "support_unit": null,
+      "category_large": {
+        "top": "수출",
+        "share": 0.75
+      },
+      "industry_grp": {
+        "top": "기타업종",
+        "share": 0.75
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 1.0
+      },
+      "amount_type": {
+        "top": "unknown",
+        "share": 0.15
+      },
+      "support_type": {
+        "top": "판로",
+        "share": 0.5
+      },
+      "per_recipient_median_won": null,
+      "support_count_median": null,
+      "examples": [
+        "2023년 기상기후산업 종합수출 지원",
+        "2023년 농식품 수출물류비 지원",
+        "2022년 MICE기업 디지털전환 지원"
+      ],
+      "tag": "직접지원형"
+    },
+    "7": {
+      "n": 38,
+      "log_per_recipient": {
+        "n": 38,
+        "median": 7.602
+      },
+      "log_support_count": {
+        "n": 0,
+        "median": null
+      },
+      "support_ratio": {
+        "n": 0,
+        "median": null
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "grant",
+        "share": 0.921
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 0.868
+      },
+      "category_large": {
+        "top": "경영",
+        "share": 0.421
+      },
+      "industry_grp": {
+        "top": "기타업종",
+        "share": 0.316
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 0.974
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 1.0
+      },
+      "support_type": {
+        "top": "사업화",
+        "share": 0.421
+      },
+      "per_recipient_median_won": 40000000.00000001,
+      "support_count_median": null,
+      "examples": [
+        "2023년 지역SW서비스사업화(지역선도기업사업화지원)",
+        "2023년 한국식품산업클러스터진흥원 지원(공동기술개발)",
+        "2023년 한국식품산업클러스터진흥원 지원(기업공동사업)"
+      ],
+      "tag": "소액 직접지원형"
+    },
+    "8": {
+      "n": 31,
+      "log_per_recipient": {
+        "n": 31,
+        "median": 7.778
+      },
+      "log_support_count": {
+        "n": 0,
+        "median": null
+      },
+      "support_ratio": {
+        "n": 31,
+        "median": 50.0
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "grant",
+        "share": 0.968
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 1.0
+      },
+      "category_large": {
+        "top": "경영",
+        "share": 0.645
+      },
+      "industry_grp": {
+        "top": "기타업종",
+        "share": 0.516
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 1.0
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 1.0
+      },
+      "support_type": {
+        "top": "컨설팅",
+        "share": 0.355
+      },
+      "per_recipient_median_won": 60000000.00000003,
+      "support_count_median": null,
+      "examples": [
+        "2023년 재택·원격근무 인프라 구축비 지원",
+        "2023년 안전투자 혁신사업",
+        "2023년 물류효율화 사업(물류기업 해외진출 지원)"
+      ],
+      "tag": "중액 직접지원형"
+    },
+    "9": {
+      "n": 193,
+      "log_per_recipient": {
+        "n": 193,
+        "median": 8.0
+      },
+      "log_support_count": {
+        "n": 193,
+        "median": 1.0
+      },
+      "support_ratio": {
+        "n": 193,
+        "median": 80.0
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "grant",
+        "share": 0.979
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 1.0
+      },
+      "category_large": {
+        "top": "경영",
+        "share": 0.472
+      },
+      "industry_grp": {
+        "top": "기타업종",
+        "share": 0.611
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 0.99
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 0.99
+      },
+      "support_type": {
+        "top": "사업화",
+        "share": 0.694
+      },
+      "per_recipient_median_won": 100000000.0,
+      "support_count_median": 10.0,
+      "examples": [
+        "2023년 개인정보 보호·활용 기술개발 스타트업챌린지 지원",
+        "2023년 크리에이터 미디어 융합 사업화 지원",
+        "2023년 3D프린팅 기술활용 활성화 지원"
+      ],
+      "tag": "소수기업·중액 직접지원형"
+    },
+    "10": {
+      "n": 190,
+      "log_per_recipient": {
+        "n": 190,
+        "median": 7.699
+      },
+      "log_support_count": {
+        "n": 102,
+        "median": 1.204
+      },
+      "support_ratio": {
+        "n": 88,
+        "median": 80.0
+      },
+      "project_duration": {
+        "n": 0,
+        "median": null
+      },
+      "support_method": {
+        "top": "grant",
+        "share": 0.921
+      },
+      "support_unit": {
+        "top": "company",
+        "share": 0.974
+      },
+      "category_large": {
+        "top": "경영",
+        "share": 0.411
+      },
+      "industry_grp": {
+        "top": "전업종",
+        "share": 0.384
+      },
+      "agency_type": {
+        "top": "central",
+        "share": 0.979
+      },
+      "amount_type": {
+        "top": "per_company",
+        "share": 1.0
+      },
+      "support_type": {
+        "top": "사업화",
+        "share": 0.447
+      },
+      "per_recipient_median_won": 49999999.99999999,
+      "support_count_median": 16.0,
+      "examples": [
+        "2023년 데이터기업 해외진출 지원(DATA-Global)(해외마케팅)",
+        "2023년 데이터 활용 사업화 지원(DATA-Stars)",
+        "2023년 공개SW 기술확산 지원(공개SW 기업성장 지원)"
+      ],
+      "tag": "다수기업·소액 직접지원형"
+    }
+  },
+  "verdict": {
+    "verdict": "미채택",
+    "reasons": [
+      "지원성격 복제 아님 (ARI 0.248)",
+      "실루엣 0.0447 <= ML 0.6012 — AE 잠재공간이 Gower 거리보다 낫지 않다",
+      "노이즈 37.8% (ML 41.0%) / ≥30군집 8개 (ML 12개)"
+    ]
+  },
+  "runtime_min": 1.51
+}
