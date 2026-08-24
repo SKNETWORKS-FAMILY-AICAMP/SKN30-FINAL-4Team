@@ -95,10 +95,10 @@ ml/data/raw/
 # 구체적으로 추가할 것.
 
 # 중간 산출물: 추출 원문 JSONL. 같은 텍스트가 announcement_detail_enriched.parquet에
-# 압축되어 들어가므로 중복 커밋하지 않는다. s02a_extract_text.py로 재생성 가능.
-ml/reports/s02a_documents.jsonl
-ml/reports/s02a_documents_api.jsonl
-ml/reports/s02a_documents_list.jsonl
+# 압축되어 들어가므로 중복 커밋하지 않는다. e01_extract_text.py로 재생성 가능.
+ml/reports/e01_documents.jsonl
+ml/reports/e01_documents_api.jsonl
+ml/reports/e01_documents_list.jsonl
 
 # ==========================================
 # 7. Docker 및 기타
