@@ -1,4 +1,4 @@
-"""M14 — 지원성격 분류기를 목록 표본(2019~2025)에 적용.
+"""S05E — 지원성격 분류기를 목록 표본(2019~2025)에 적용.
 
 왜 필요한가
     모델 2(지원규모·공고량)의 분해 축이 그동안 `large_category`(경영/기술/수출…)
@@ -11,19 +11,19 @@
     실측으로도 같은 표본에서 지원성격이 금액 분산을 더 잘 설명한다
     (support_type 56.2% vs large_category 52.7%).
 
-    막혀 있던 건 커버리지였다. M08 은 Open API(2025~2026) 1,570건만 다루고,
+    막혀 있던 건 커버리지였다. S05B 은 Open API(2025~2026) 1,570건만 다루고,
     장기 시계열의 뼈대인 목록 표본(2019~2025)에는 라벨이 없었다. 이 스크립트가
     그 구멍을 메운다.
 
-적용 조건 — M08 과 맞춘다
+적용 조건 — S05B 과 맞춘다
     학습        business_taxonomy 전량 (2022+2023, MIN_SUPPORT=10 → 19클래스)
-    입력        e02_documents.jsonl 의 source="list" 원문 + clean_text 전처리
-    임계값      0.25 / 0.35 (M08 과 동일)
-    PDF 제외    표 셀이 뭉쳐 원문이 깨진다. A02 가 같은 이유로 이미 제외하고 있어,
+    입력        s02a_documents.jsonl 의 source="list" 원문 + clean_text 전처리
+    임계값      0.25 / 0.35 (S05B 과 동일)
+    PDF 제외    표 셀이 뭉쳐 원문이 깨진다. S03E 가 같은 이유로 이미 제외하고 있어,
                 목록 표본 관측 1,720건은 전부 HWP 계열이다. 여기서도 같게 맞춘다.
 
-    M08 은 조건 B(E01 원문 + 전처리)를 골랐지만, 목록 표본 쪽은 A02 가 E02 를
-    쓰므로 여기서도 E02 로 맞춘다. 같은 문서를 두 스크립트가 다르게 읽으면
+    S05B 은 조건 B(S02A 원문 + 전처리)를 골랐지만, 목록 표본 쪽은 S03E 가 S02A 를
+    쓰므로 여기서도 S02A 로 맞춘다. 같은 문서를 두 스크립트가 다르게 읽으면
     관측과 라벨이 어긋난다.
 
 한계
@@ -41,24 +41,24 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
 from common import PROC, REPORTS, save_report
-from m06_support_type import MIN_SUPPORT, coarsen, tfidf
-from m08_apply_v2 import HOLD_THRESHOLD, TRUST_THRESHOLD, clean_text, tier
+from s05a_m1_ml import MIN_SUPPORT, coarsen, tfidf
+from s05b_m1_apply import HOLD_THRESHOLD, TRUST_THRESHOLD, clean_text, tier
 
 TAX = PROC + "/business_taxonomy.parquet"
 MASTER = PROC + "/announcement_master.parquet"
-DOCS = REPORTS + "/e02_documents.jsonl"
+DOCS = REPORTS + "/s02a_documents.jsonl"
 OUT = PROC + "/list_sample_support_type.parquet"
 
-EXCLUDE_EXT = {"pdf"}          # A02 와 동일 기준
+EXCLUDE_EXT = {"pdf"}          # S03E 와 동일 기준
 DOC_SOURCE = "list"
 
 
 def load_list_docs(path, exclude_ext=EXCLUDE_EXT):
-    """source=list 원문 중 가장 긴 것을 공고별로 하나 고른다(A02 와 같은 규칙)."""
+    """source=list 원문 중 가장 긴 것을 공고별로 하나 고른다(S03E 와 같은 규칙)."""
     best = {}
     if not os.path.exists(path):
         raise FileNotFoundError(
-            "원문 추출본이 없다: %s\n  e02_extract_text_v2.py 를 먼저 실행해야 한다." % path)
+            "원문 추출본이 없다: %s\n  s02a_extract_text.py 를 먼저 실행해야 한다." % path)
     with open(path, encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
@@ -77,7 +77,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
-    # ---- 학습: M08 과 동일 설정 ----
+    # ---- 학습: S05B 과 동일 설정 ----
     t = pd.read_parquet(TAX)
     t["support_type"] = t["middle_category"].map(coarsen)
     sub = t.dropna(subset=["support_type"])
@@ -90,7 +90,7 @@ def main():
     clf.fit(sub["text_for_model"].fillna("").astype(str).values,
             sub["support_type"].values)
     classes = clf.named_steps["m"].classes_
-    print("학습: %d건 / %d클래스 (M08 과 동일)" % (len(sub), len(classes)))
+    print("학습: %d건 / %d클래스 (S05B 과 동일)" % (len(sub), len(classes)))
 
     # ---- 적용 대상: 목록 표본 중 원문이 있는 건 ----
     docs = load_list_docs(DOCS)
@@ -133,7 +133,7 @@ def main():
     print()
     print("연도별 사용가능률:", by_year)
 
-    save_report("m14_apply_list_sample.json", {
+    save_report("s05e_m1_apply_list.json", {
         "purpose": ("모델 2 의 분해 축을 large_category(원천 제공 필드)에서 "
                     "support_type(모델 1 산출)으로 바꾸기 위해, 장기 시계열의 뼈대인 "
                     "목록 표본에 지원성격 라벨을 부여한다."),
@@ -141,7 +141,7 @@ def main():
         "applied_rows": int(len(out)),
         "doc_source": DOC_SOURCE,
         "excluded_ext": sorted(EXCLUDE_EXT),
-        "exclusion_reason": ("PDF 는 표 셀이 뭉쳐 원문이 깨진다. A02 가 같은 기준으로 "
+        "exclusion_reason": ("PDF 는 표 셀이 뭉쳐 원문이 깨진다. S03E 가 같은 기준으로 "
                              "이미 제외하고 있어 목록 표본 관측은 전부 HWP 계열이다."),
         "thresholds": {"hold": HOLD_THRESHOLD, "trust": TRUST_THRESHOLD},
         "n_hold": n_hold,

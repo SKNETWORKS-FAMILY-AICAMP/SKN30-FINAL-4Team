@@ -1,4 +1,4 @@
-"""F04 — 공고문 원문 추출본을 announcement_detail에 병합하고 지원규모를 재계산.
+"""S03D — 공고문 원문 추출본을 announcement_detail에 병합하고 지원규모를 재계산.
 
 CSV 요약(bsnsSumryCn)에는 "④ 규모" 한 줄뿐이라 금액의 의미가 자주 unknown으로 남는다.
 공고문 원문에는 지원조건이 표로 들어있어 의미 확정률이 크게 오른다.
@@ -18,16 +18,16 @@ from common import PROC, REPORTS, save_report
 from amount_parser import parse_support
 
 DETAIL = PROC + "/announcement_detail.parquet"
-# E02(pdf-inspector + rhwp)를 우선 쓰고 없으면 E01로 폴백한다. A02와 같은 규칙.
-DOCS_V2 = REPORTS + "/e02_documents.jsonl"
-DOCS_LEGACY = REPORTS + "/e01_documents.jsonl"
+# S02A(pdf-inspector + rhwp)를 우선 쓰고 없으면 E01로 폴백한다. A02와 같은 규칙.
+DOCS_V2 = REPORTS + "/s02a_documents.jsonl"
+DOCS_LEGACY = REPORTS + "/s02a_documents_api.jsonl"
 OUT = PROC + "/announcement_detail_enriched.parquet"
 
 # PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다.
 #   - 한 셀에 금액 3개 이상 병합: 표 보유 PDF 의 13.6% (HWP 는 0.0%)
 #   - 예: "238만원|119만원|476만원|1,900만원" 4행이 뭉쳐 39억원으로 파싱
-# A02 가 이미 같은 기준으로 PDF 를 빼고 있는데 이 병합본만 PDF 값을 갖고 있으면
-# A02 의 요약문 폴백 경로로 오염된 금액이 되돌아온다. 기준을 맞춘다.
+# S03E 가 이미 같은 기준으로 PDF 를 빼고 있는데 이 병합본만 PDF 값을 갖고 있으면
+# S03E 의 요약문 폴백 경로로 오염된 금액이 되돌아온다. 기준을 맞춘다.
 EXCLUDE_EXT = {"pdf"}
 
 TYPED = {"per_company", "per_project", "total_budget", "periodic"}
@@ -40,7 +40,7 @@ AMT_COLS = ["support_amount_raw", "support_amount_min", "support_amount_max",
 def load_docs(path, source=None, exclude_ext=EXCLUDE_EXT):
     """공고 1건에 문서가 여러 개면 가장 긴 본문을 대표로 삼는다.
 
-    source 를 주면 해당 출처만 추린다(E02 는 api/list 를 한 파일에 담는다).
+    source 를 주면 해당 출처만 추린다(S02A 는 api/list 를 한 파일에 담는다).
     exclude_ext 에 든 확장자는 대표 선정에서 제외한다.
     """
     best = {}
@@ -62,7 +62,7 @@ def load_docs(path, source=None, exclude_ext=EXCLUDE_EXT):
 
 
 def pick_docs():
-    """E02 가 있으면 그것을, 없으면 E01 결과를 쓴다."""
+    """S02A 가 있으면 그것을, 없으면 S02A 결과를 쓴다."""
     d = load_docs(DOCS_V2, source="api")
     if d:
         return d, "e02"
@@ -146,12 +146,12 @@ def main():
         "excluded_ext": sorted(EXCLUDE_EXT),
         "exclusion_reason": (
             "PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 "
-            "13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), A02 도 같은 기준으로 "
-            "PDF 를 제외한다. 이 병합본만 PDF 값을 가지면 A02 의 요약문 폴백 경로로 "
+            "13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), S03E 도 같은 기준으로 "
+            "PDF 를 제외한다. 이 병합본만 PDF 값을 가지면 S03E 의 요약문 폴백 경로로 "
             "오염된 금액이 되돌아온다."),
         "output": OUT,
     }
-    save_report("f04_merge_documents.json", rep)
+    save_report("s03d_table_documents.json", rep)
 
     print("원문 보유 %d건 (%.1f%%) / OCR대기 %d건"
           % (rep["with_document"], rep["document_coverage"] * 100, rep["needs_ocr"]))

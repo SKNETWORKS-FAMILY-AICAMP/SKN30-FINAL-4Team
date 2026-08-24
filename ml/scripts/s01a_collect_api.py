@@ -1,4 +1,4 @@
-"""D01 — Open API 1,570건 공고문 원문 다운로드.
+"""S01A — Open API 1,570건 공고문 원문 다운로드.
 
 printFlpthNm에 직접 다운로드 URL(/cmm/fms/getImageFile.do)이 이미 있어
 상세페이지 크롤링 없이 파일당 1회 요청으로 받는다.
@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (ATT, DETAIL_URL, REPORTS, UA, read_api, safe_name, save_report)
 
 OUT_DIR = os.path.join(ATT, "api")
-MANIFEST = os.path.join(REPORTS, "d01_manifest_api.csv")
+MANIFEST = os.path.join(REPORTS, "s01a_manifest_api.csv")
 FIELDS = ["pblancId", "seq", "url", "status", "http", "content_type",
           "filename", "size", "path", "error"]
 
@@ -135,7 +135,7 @@ def main():
         time.sleep(args.delay)
 
     mf.close()
-    save_report("d01_download_api.json", {
+    save_report("s01a_collect_api.json", {
         "targets": len(tasks), "attempted": len(todo), "ok": ok, "fail": fail,
         "success_rate": round(ok / max(len(todo), 1), 4),
         "elapsed_min": round((time.time() - t0) / 60, 1),

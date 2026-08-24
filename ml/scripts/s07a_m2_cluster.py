@@ -1,4 +1,4 @@
-"""N03 — 모델 2: 사업 설계유형 군집.
+"""S07A — 모델 2: 사업 설계유형 군집.
 
 묻는 것은 "이 사업이 어떤 지원성격인가"(모델 1)가 아니라
 "이 사업이 어떤 방식으로 설계됐는가"다.
@@ -324,7 +324,7 @@ def main():
        "project_duration", "industry_grp", "cluster", "cluster_source"]] \
         .to_parquet(OUT, index=False)
     print("[data] %s" % OUT)
-    C.save_report("n03_m2_cluster.json",
+    C.save_report("s07a_m2_cluster.json",
                   {"n_rows": int(len(t)), "seed": SEED, "ari_fail_threshold": ARI_FAIL,
                    "results": results, "verdict": verdict})
     write_md(results, verdict, t)
@@ -435,7 +435,7 @@ def write_md(res, verdict, t):
           "                                  설계 구조가 아니라 문체를 따라간다)",
           "self_burden_ratio                support_ratio 와 100 합이라 중복이다",
           "```", ""]
-    p = os.path.join(C.REPORTS, "n03_m2_cluster.md")
+    p = os.path.join(C.REPORTS, "s07a_m2_cluster.md")
     with open(p, "w", encoding="utf-8") as f:
         f.write("\n".join(L))
     print("[report] %s" % p)

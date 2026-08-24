@@ -1,4 +1,4 @@
-"""M10 — Open API 추론 표본을 학습 입력 형태로 변환.
+"""S05C — Open API 추론 표본을 학습 입력 형태로 변환.
 
 배경
     모델 1은 2023 중앙부처 엑셀(909건)로 학습하는데, 그 입력은
@@ -37,7 +37,7 @@ from common import PROC, REPORTS, CORE8, save_report
 
 DETAIL = PROC + "/announcement_detail.parquet"
 OUT_PARQUET = PROC + "/inference_sample_aligned.parquet"
-OUT_MD = REPORTS + "/m10_inference_sample.md"
+OUT_MD = REPORTS + "/s05c_m1_inference_sample.md"
 
 MARK = "☞"
 
@@ -54,7 +54,7 @@ def split_summary(s):
 
 
 def build(d):
-    """학습(F03)과 같은 4요소·같은 순서로 재조립."""
+    """학습(S03C)과 같은 4요소·같은 순서로 재조립."""
     rows = []
     for _, r in d.iterrows():
         purpose, target, content = split_summary(r["summary_text"])
@@ -97,7 +97,7 @@ def main():
     # 사람이 눈으로 대조할 마크다운
     lines = ["# 추론 표본 — 학습 입력 형태로 재조립", "",
              f"Open API {len(d):,}건에서 대분류 균등 배분으로 {len(out)}건을 뽑았다.",
-             "학습(F03)과 같은 순서 `제목 + 목적 + 내용 + 대상` 으로 맞췄다.", "",
+             "학습(S03C)과 같은 순서 `제목 + 목적 + 내용 + 대상` 으로 맞췄다.", "",
              "> `target_text` 원본 필드는 쓰지 않았다. 학습의 ③대상과 이름만 같고",
              "> 내용이 다르다(대부분 \"중소기업\" 4자). 진짜 대상은 요약문의 ☞ 첫 항목에 있다.", ""]
     for c in cats:
@@ -122,7 +122,7 @@ def main():
     print("→ %s" % OUT_PARQUET)
     print("→ %s" % OUT_MD)
 
-    save_report("m10_inference_sample.json", {
+    save_report("s05c_m1_inference_sample.json", {
         "purpose": "학습·추론 입력을 눈으로 대조하기 위한 균등 표본",
         "source_rows": len(d), "sample_rows": len(out),
         "per_category": per, "categories": cats,

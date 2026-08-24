@@ -1,12 +1,12 @@
-"""E02 — 공고문 원문 텍스트 추출 v2 (표 구조 보존).
+"""S02A — 공고문 원문 텍스트 추출 v2 (표 구조 보존).
 
-E01(PyMuPDF + LibreOffice) 대비 두 가지를 개선한다.
+S02A(PyMuPDF + LibreOffice) 대비 두 가지를 개선한다.
 
   PDF  : pdf-inspector (Rust)
          - extract_pages_markdown 이 표를 마크다운 표로 복원한다.
            PyMuPDF 는 셀을 줄바꿈으로 흩어놓아 행-열 관계가 소실됐다.
          - classify_pdf 가 스캔본/텍스트본을 판별한다(신뢰도 포함).
-           E01 은 '페이지당 50자 미만' 휴리스틱을 썼다.
+           S02A 은 '페이지당 50자 미만' 휴리스틱을 썼다.
 
   HWP  : rhwp-python (edwardkim/rhwp 의 PyO3 바인딩)
          - pyhwp 는 표 내용을 '<표>' 로 비워버려 지원규모가 통째로 날아갔다.
@@ -123,7 +123,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", choices=["api", "list", "all"], default="all")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--out", default=REPORTS + "/e02_documents.jsonl")
+    ap.add_argument("--out", default=REPORTS + "/s02a_documents.jsonl")
     args = ap.parse_args()
 
     roots = ["api", "list"] if args.source == "all" else [args.source]
@@ -165,7 +165,7 @@ def main():
                       % (i, len(files), stats["ok"], stats["fail"],
                          stats["with_table"], stats["needs_ocr"]), flush=True)
 
-    save_report("e02_extract.json", {
+    save_report("s02a_extract.json", {
         "files": len(files), **stats,
         "success_rate": round(stats["ok"] / max(len(files), 1), 4),
         "table_preserved_rate": round(stats["with_table"] / max(stats["ok"], 1), 4),

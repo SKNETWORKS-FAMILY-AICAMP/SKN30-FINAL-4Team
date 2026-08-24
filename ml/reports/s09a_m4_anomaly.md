@@ -41,7 +41,7 @@ IF 점수가 무엇에 끌려가는지 축별로 쟀다(스피어만 상관, 절
 | OneClassSVM | `category_large__freq` 0.36, `project_duration` 0.32, `project_duration__missing` 0.32, `log_per_recipient__missing` 0.26, `log_support_count__missing` 0.26 |
 
 IF 는 **결측 지시자와 희귀 범주 빈도**가 점수를 지배한다. 즉 '희귀한 설계'가
-아니라 '원문에 안 적힌 사업'을 탐지하고 있었다 — N02 가 경고한 실패 모드 그대로다.
+아니라 '원문에 안 적힌 사업'을 탐지하고 있었다 — S04E 가 경고한 실패 모드 그대로다.
 합성 이상치를 5건만 넣어도 회수율이 0% 여서 표본 수 문제도 아니었다.
 
 ## 3. 안정성

@@ -1,4 +1,4 @@
-"""N01 — 모델 2~4 공통 '사업 설계' feature 테이블.
+"""S03F — 모델 2~4 공통 '사업 설계' feature 테이블.
 
 모델 2(설계유형 군집)·3(지원규모 상대비교)·4(설계 이상탐지)는 모두
 "이 사업이 어떻게 설계됐는가"를 수치·범주로 읽는다. 세 스크립트가 각자
@@ -24,7 +24,7 @@ support_method 를 지원성격이 아니라 '원문 텍스트'에서 먼저 뽑
     설계서는 비교군을 '지원성격 + 지원방식' 2단으로 자르라고 한다. 그런데
     지원방식을 지원성격에서 유도하면 두 축이 같은 축이 되어 비교군이
     1단으로 붕괴한다. 텍스트에서 독립적으로 뽑은 뒤, 두 축이 실제로
-    얼마나 겹치는지(Cramer's V)를 n02 에서 측정해 판단 근거로 남긴다.
+    얼마나 겹치는지(Cramer's V)를 s04e 에서 측정해 판단 근거로 남긴다.
 """
 import os
 import re
@@ -35,7 +35,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common as C
-from m06_support_type import coarsen
+from s05a_m1_ml import coarsen
 
 TAX = os.path.join(C.PROC, "business_taxonomy.parquet")
 DET = os.path.join(C.PROC, "announcement_detail_with_support_type_v2.parquet")
@@ -330,7 +330,7 @@ def main():
         print("  per_recipient:", dict(g["per_recipient_basis"].value_counts(dropna=False)))
         print("  금액 파싱오류 플래그: %d건" % int(g["amount_outlier"].sum()))
 
-    C.save_report("n01_design_features.json", {
+    C.save_report("s03f_table_design_features.json", {
         "rows": int(len(df)),
         "by_cohort": {k: int(v) for k, v in df["cohort"].value_counts().items()},
         "derived": ["support_method", "support_unit", "per_recipient", "agency_type"],

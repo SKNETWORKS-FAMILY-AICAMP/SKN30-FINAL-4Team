@@ -1,4 +1,4 @@
-"""M12 — 학습 제외 기준(MIN_SUPPORT)을 실측으로 정한다.
+"""S04C — 학습 제외 기준(MIN_SUPPORT)을 실측으로 정한다.
 
 문제
     '연구장비'(4건) 같은 클래스는 개념이 잘못된 게 아니라 표본이 없어서 측정이
@@ -46,7 +46,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from common import PROC, save_report
-from m06_support_type import coarsen, tfidf
+from s05a_m1_ml import coarsen, tfidf
 
 warnings.filterwarnings("ignore")
 TAX = PROC + "/business_taxonomy.parquet"
@@ -284,7 +284,7 @@ def main():
         report["seed_stability"] = seed_stability(full, SEEDS, args.folds)
         report["seeds"] = SEEDS
 
-    save_report("m12_min_support.json", report)
+    save_report("s04c_min_support.json", report)
 
 
 if __name__ == "__main__":

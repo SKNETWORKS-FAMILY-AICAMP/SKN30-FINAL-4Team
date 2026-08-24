@@ -1,4 +1,4 @@
-"""M13 — 사람이 붙인 정답과 모델 예측을 대조해 실제 정확도를 잰다.
+"""S05D — 사람이 붙인 정답과 모델 예측을 대조해 실제 정확도를 잰다.
 
 왜 필요한가
     추론 대상인 Open API 에는 정답 라벨이 없다. 그동안 판단보류율·확신도만 봤는데,
@@ -27,7 +27,7 @@
 주의
     50건은 클래스당 표본이 매우 적다(융자 6건, 나머지 대부분 1~4건).
     전체 정확도는 참고가 되지만 클래스별 수치는 신뢰구간이 매우 넓다.
-    M12 와 같은 이유다. 점추정만 보고 판단하지 말 것.
+    S04C 와 같은 이유다. 점추정만 보고 판단하지 말 것.
 """
 import argparse
 import io
@@ -39,7 +39,7 @@ import pandas as pd
 from common import PROC, save_report
 
 LABELS = os.path.join(PROC, "..", "labels", "openapi_manual_50.csv")
-PRED_ML = PROC + "/announcement_detail_with_support_type_v2.parquet"   # M08 (LogisticRegression)
+PRED_ML = PROC + "/announcement_detail_with_support_type_v2.parquet"   # S05B (LogisticRegression)
 PRED_DL = PROC + "/openapi_support_type_roberta.parquet"               # DL05 (KLUE-RoBERTa)
 
 
@@ -126,7 +126,7 @@ def main():
     }
 
     dumps = []
-    for name, path in (("M08 LogisticRegression", PRED_ML),
+    for name, path in (("S05B LogisticRegression", PRED_ML),
                        ("DL05 KLUE-RoBERTa", PRED_DL)):
         pred = load_pred(path)
         if pred is None:
@@ -162,7 +162,7 @@ def main():
                                "○" if r["correct"] else "×"))
         print("건별 대조표 → %s" % args.dump)
 
-    save_report("m13_manual_eval.json", report)
+    save_report("s05d_m1_manual_eval.json", report)
 
 
 if __name__ == "__main__":

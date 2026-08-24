@@ -1,4 +1,4 @@
-"""F02 — announcement_detail (설계서 4.2). Open API 1,570건 텍스트/지원규모 구조화.
+"""S03B — announcement_detail (설계서 4.2). Open API 1,570건 텍스트/지원규모 구조화.
 
 해시태그 첫 토큰이 분야 라벨과 동일해 그대로 쓰면 라벨 누수다.
 분야명과 겹치는 토큰을 제거한 hashtags_safe를 별도로 만든다.
@@ -91,7 +91,7 @@ def main():
     out = f"{PROC}/announcement_detail.parquet"
     d.to_parquet(out, index=False)
     TYPED = ["per_company", "per_project", "total_budget", "periodic"]
-    save_report("f02_detail.json", {
+    save_report("s03b_table_detail.json", {
         "rows_raw": n_raw, "rows_final": len(d), "duplicate_dropped": n_dup,
         "hashtag_label_leak_rate": round(leak, 4),
         "hashtag_leak_note": "hashtags 첫 토큰이 분야 라벨과 동일 → hashtags_safe 사용",
@@ -103,7 +103,7 @@ def main():
         "amount_type_dist": d["support_amount_type"].value_counts(dropna=False).to_dict(),
         "mean_confidence": round(float(d["extraction_confidence"].mean()), 4),
         "region_coverage": round(float(d["region"].notna().mean()), 4),
-        "note": "지원규모는 CSV 요약 기준. 공고 원문 추출본(E01) 병합 후 재계산 예정",
+        "note": "지원규모는 CSV 요약 기준. 공고 원문 추출본(S02A) 병합 후 재계산 예정",
         "output": out,
     })
     print(f"announcement_detail {len(d):,}행 → {out}")
