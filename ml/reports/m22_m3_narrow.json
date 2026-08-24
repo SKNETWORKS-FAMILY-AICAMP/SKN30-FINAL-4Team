@@ -1,0 +1,155 @@
+{
+  "n_rows": 2205,
+  "min_cal": 25,
+  "nominal": 0.8,
+  "target_coverage": [
+    0.78,
+    0.82
+  ],
+  "m19_global": {
+    "coverage": 0.8118,
+    "width_median": 1.6401
+  },
+  "results": {
+    "전역": {
+      "coverage": 0.8118,
+      "width_median": 1.6401,
+      "width_mean": 1.6811,
+      "crossing_rate": 0.0,
+      "pinball_lo": 0.12456,
+      "pinball_hi": 0.12162,
+      "MAE_log10": 0.5164,
+      "MedAE_log10": 0.3897,
+      "pinball_mid": 0.2582,
+      "n_cohort_specific": 0,
+      "n_fallback": 2205,
+      "n_cohorts": 1
+    },
+    "지원성격": {
+      "coverage": 0.8195,
+      "width_median": 1.645,
+      "width_mean": 1.7045,
+      "crossing_rate": 0.0,
+      "pinball_lo": 0.12517,
+      "pinball_hi": 0.12138,
+      "MAE_log10": 0.5164,
+      "MedAE_log10": 0.3897,
+      "pinball_mid": 0.2582,
+      "n_cohort_specific": 1901,
+      "n_fallback": 304,
+      "n_cohorts": 23
+    },
+    "지원방식": {
+      "coverage": 0.8082,
+      "width_median": 1.621,
+      "width_mean": 1.6632,
+      "crossing_rate": 0.0,
+      "pinball_lo": 0.12449,
+      "pinball_hi": 0.12177,
+      "MAE_log10": 0.5164,
+      "MedAE_log10": 0.3897,
+      "pinball_mid": 0.2582,
+      "n_cohort_specific": 1717,
+      "n_fallback": 488,
+      "n_cohorts": 4
+    },
+    "성격x방식": {
+      "coverage": 0.8027,
+      "width_median": 1.6139,
+      "width_mean": 1.6697,
+      "crossing_rate": 0.0,
+      "pinball_lo": 0.12507,
+      "pinball_hi": 0.12063,
+      "MAE_log10": 0.5164,
+      "MedAE_log10": 0.3897,
+      "pinball_mid": 0.2582,
+      "n_cohort_specific": 1560,
+      "n_fallback": 645,
+      "n_cohorts": 51
+    }
+  },
+  "chosen": "성격x방식",
+  "per_cohort": [
+    {
+      "cohort": "사업화 / grant",
+      "n": 802,
+      "coverage": 0.7955,
+      "width_median": 1.5566,
+      "width_x": 36.0
+    },
+    {
+      "cohort": "연구개발 / grant",
+      "n": 231,
+      "coverage": 0.8095,
+      "width_median": 1.2742,
+      "width_x": 18.8
+    },
+    {
+      "cohort": "융자 / loan",
+      "n": 194,
+      "coverage": 0.8041,
+      "width_median": 1.6237,
+      "width_x": 42.0
+    },
+    {
+      "cohort": "판로 / grant",
+      "n": 193,
+      "coverage": 0.8238,
+      "width_median": 1.3884,
+      "width_x": 24.5
+    },
+    {
+      "cohort": "컨설팅 / grant",
+      "n": 178,
+      "coverage": 0.8427,
+      "width_median": 1.8649,
+      "width_x": 73.3
+    },
+    {
+      "cohort": "설비 / grant",
+      "n": 117,
+      "coverage": 0.8632,
+      "width_median": 2.5661,
+      "width_x": 368.2
+    },
+    {
+      "cohort": "고용보조 / grant",
+      "n": 72,
+      "coverage": 0.6944,
+      "width_median": 1.6021,
+      "width_x": 40.0
+    },
+    {
+      "cohort": "융자 / grant",
+      "n": 66,
+      "coverage": 0.6818,
+      "width_median": 1.877,
+      "width_x": 75.3
+    },
+    {
+      "cohort": "해외인증 / grant",
+      "n": 35,
+      "coverage": 0.8571,
+      "width_median": 1.5281,
+      "width_x": 33.7
+    },
+    {
+      "cohort": "사업화 / voucher",
+      "n": 30,
+      "coverage": 0.7667,
+      "width_median": 1.5757,
+      "width_x": 37.6
+    }
+  ],
+  "verdict": {
+    "verdict": "개선 미미 — 전역 보정 유지",
+    "reasons": [
+      "전역 보정 43.7배 -> 성격x방식 기준 보정 41.1배 (6% 축소)",
+      "커버리지 81.2% -> 80.3% (목표 78~82%)",
+      "칸별 커버리지 68.2~86.3% (10칸) — 전체만 맞고 특정 칸이 무너지지 않았는지 확인",
+      "칸별 구간폭이 18.8배(연구개발 / grant)에서 368배(설비 / grant)까지 갈린다 — 중앙값은 안 좁아져도 어떤 비교군은 쓸 만하다. 서비스에서 전체 하나가 아니라 해당 칸의 폭을 함께 보여야 하는 이유다",
+      "비교군별로 나눠도 구간이 거의 안 좁아진다. 칸마다 예측 난이도가 비슷하다는 뜻이라 전역 보정을 그대로 쓰는 편이 단순하다"
+    ]
+  },
+  "runtime_min": 1.04
+}
