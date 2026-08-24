@@ -554,21 +554,21 @@ for w in (3, 6, 12):
 
 | 모델 | 파일 | 역할 |
 |---|---|---|
-| 1 | `m06_support_type.py` | 지원성격 26클래스 ML 6종 비교 |
-| 1 | `dl01_transformer_clf.py` | KLUE-RoBERTa / KoELECTRA 비교 |
-| 1 | `dl02_ablation.py` | Ablation study (6개 축) |
-| 1 | `dl03_early_stopping.py` | Early stopping vs 고정 epoch (nested split) |
-| 1 | `dl04_mc_dropout.py` | MC Dropout 불확실성 분해 |
-| 1 | `m08_apply_v2.py` / `dl05_apply_roberta.py` | 실전 적용 |
-| 공통 | `a02_support_timeseries.py` | 지원규모 **관측 테이블** 생성 (이름만 시계열) |
+| 1 | `s05a_m1_ml.py` | 지원성격 26클래스 ML 6종 비교 |
+| 1 | `s06a_m1_dl.py` | KLUE-RoBERTa / KoELECTRA 비교 |
+| 1 | `s06b_m1_dl_ablation.py` | Ablation study (6개 축) |
+| 1 | `s06c_m1_dl_early_stopping.py` | Early stopping vs 고정 epoch (nested split) |
+| 1 | `s06d_m1_dl_mc_dropout.py` | MC Dropout 불확실성 분해 |
+| 1 | `s05b_m1_apply.py` / `s06e_m1_dl_apply.py` | 실전 적용 |
+| 공통 | `s03e_table_amount_obs.py` | 지원규모 **관측 테이블** 생성 |
 
 ### 모델 산출물 (`ml/data/processed/`)
 
 | 파일 | 생성 |
 |---|---|
-| `announcement_detail_with_support_type_v2.parquet` | `m08_apply_v2.py` — 지원성격 적용 (조건 B) |
-| `openapi_support_type_roberta.parquet` | `dl05_apply_roberta.py` — RoBERTa 추론 + 불확실성 |
-| `cohort_reference.parquet` | `n04_m3_cohort.py` — 비교군 참고분포 (구 `a05` 를 대체) |
+| `announcement_detail_with_support_type_v2.parquet` | `s05b_m1_apply.py` — 지원성격 적용 (조건 B) |
+| `openapi_support_type_roberta.parquet` | `s06e_m1_dl_apply.py` — RoBERTa 추론 + 불확실성 |
+| `cohort_reference.parquet` | `s08a_m3_cohort.py` — 비교군 참고분포 (구 `a05` 를 대체) |
 
 기준 테이블 8종은 `01_데이터_전처리_결과서.md` 부록 참조.
 
@@ -577,14 +577,14 @@ for w in (3, 6, 12):
 - `ml/reports/m06*.json`, `m08*.json` — 모델 1 ML 측정값
 - `ml/reports/dl/*.json` — 모델 1 딥러닝 측정값
 - `ml/reports/n0*.json`, `n0*.md` — 모델 2·3·4 (ML/DL) 측정값
-- `ml/reports/a02_support_timeseries.json` — 관측 테이블 생성 기록
+- `ml/reports/s03e_table_amount_obs.json` — 관측 테이블 생성 기록
 
 **시계열을 쓰지 않는 판단의 근거** — 스크립트는 제거하고 측정값만 보존합니다.
 
 | 보존 | 내용 |
 |---|---|
-| `ml/reports/a03_support_stl.json` | STL — trend 0.15 / seasonal 0.00 / ACF12 0.01 |
-| `ml/reports/a10_amount_trend.json`·`.md` | 추세 검정 — 지원성격 6종·대분류 8종 전부 '추세없음' |
+| `ml/reports/s04f_ts_stl_diagnosis.json` | STL — trend 0.15 / seasonal 0.00 / ACF12 0.01 |
+| `ml/reports/s04g_ts_trend_test.json`·`.md` | 추세 검정 — 지원성격 6종·대분류 8종 전부 '추세없음' |
 | `ml/reports/a04_support_forecast.json` | (제거됨) 최고 모델이 Last Value 였다는 기록은 커밋 이력에 |
 | `ml/figures/stl_support_amount.png` | STL 분해 그림 |
 | `ml/figures/amount_trend_by_support_type.png` | 지원성격별 지원규모 추이 |
@@ -598,8 +598,8 @@ for w in (3, 6, 12):
 > 2차 (설계서 개정으로 모델 2 재정의): `a04_support_forecast.py`, `a06_volume_timeseries.py`,
 > `a07_volume_forecast.py`, `a09_support_outlook.py`, `dl07_m2_ablation.py`, `dl08_m2_grid.py`
 >
-> 3차 (시계열 진단 정리): `a03_support_stl.py`, `a10_amount_trend.py` — 측정값 리포트는 남김.
-> `a05_support_reference.py` 와 `19_지원규모_참고범위.md` — `n04_m3_cohort.py` 가 대체.
+> 3차 (시계열 진단 정리): `s04f_ts_stl_diagnosis.py`, `s04g_ts_trend_test.py` — 측정값 리포트는 남김.
+> `a05_support_reference.py` 와 `19_지원규모_참고범위.md` — `s08a_m3_cohort.py` 가 대체.
 > `a02` 는 남기되 월별 집계·시계열 가용성 판정 부분만 떼어냈습니다 (관측 테이블 생성기로만 씁니다).
 >
 > `timeseries-analysis` 브랜치는 삭제했습니다. 파일은 전부 `deep-learning` 에 있습니다.
