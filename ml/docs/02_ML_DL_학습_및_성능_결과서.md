@@ -560,10 +560,7 @@ for w in (3, 6, 12):
 | 1 | `dl03_early_stopping.py` | Early stopping vs 고정 epoch (nested split) |
 | 1 | `dl04_mc_dropout.py` | MC Dropout 불확실성 분해 |
 | 1 | `m08_apply_v2.py` / `dl05_apply_roberta.py` | 실전 적용 |
-| 시계열 진단 | `a02_support_timeseries.py` | 지원규모 관측·집계 |
-| 시계열 진단 | `a03_support_stl.py` | 지원규모 STL EDA |
-| 시계열 진단 | `a05_support_reference.py` | 관측 기반 참고범위 |
-| 시계열 진단 | `a10_amount_trend.py` | 연도별 증감 추세 검정 |
+| 공통 | `a02_support_timeseries.py` | 지원규모 **관측 테이블** 생성 (이름만 시계열) |
 
 ### 모델 산출물 (`ml/data/processed/`)
 
@@ -571,19 +568,38 @@ for w in (3, 6, 12):
 |---|---|
 | `announcement_detail_with_support_type_v2.parquet` | `m08_apply_v2.py` — 지원성격 적용 (조건 B) |
 | `openapi_support_type_roberta.parquet` | `dl05_apply_roberta.py` — RoBERTa 추론 + 불확실성 |
-| `reference_support_amount.parquet` | `a05_support_reference.py` — 관측 기반 참고범위 |
+| `cohort_reference.parquet` | `n04_m3_cohort.py` — 비교군 참고분포 (구 `a05` 를 대체) |
 
 기준 테이블 8종은 `01_데이터_전처리_결과서.md` 부록 참조.
 
 ### 측정 리포트
 
-- `ml/reports/m06*.json`, `m08*.json`, `a0*.json` — ML·시계열 측정값
-- `ml/reports/dl/*.json` — 딥러닝 측정값
-- `ml/reports/19_지원규모_참고범위.md` — 관측 기반 참고범위
-- `ml/figures/stl_support_amount.png`
+- `ml/reports/m06*.json`, `m08*.json` — 모델 1 ML 측정값
+- `ml/reports/dl/*.json` — 모델 1 딥러닝 측정값
+- `ml/reports/n0*.json`, `n0*.md` — 모델 2·3·4 (ML/DL) 측정값
+- `ml/reports/a02_support_timeseries.json` — 관측 테이블 생성 기록
 
-> 공고량 예측(폐기된 모델) 관련 스크립트·리포트·산출물(`p04_timeseries.py`(당시 이름), `m02_forecast.py`, `a01_stl_eda.py`,
-> `a06_timeaxis_compare.py`, `a07_paired_test.py`, `dl06_lstm_forecast.py`, `timeseries_aggregate.parquet`,
-> `stl_decomposition.png`)은 제거했습니다. 원본은 커밋 이력에 보존되어 있습니다
-> (`machine-learning`·`timeseries-analysis`·`deep-learning` 각 브랜치의 "모델 2 제거" 커밋 직전 — 커밋 메시지는
-> 삭제 당시 번호인 "모델 2"를 그대로 씁니다).
+**시계열을 쓰지 않는 판단의 근거** — 스크립트는 제거하고 측정값만 보존합니다.
+
+| 보존 | 내용 |
+|---|---|
+| `ml/reports/a03_support_stl.json` | STL — trend 0.15 / seasonal 0.00 / ACF12 0.01 |
+| `ml/reports/a10_amount_trend.json`·`.md` | 추세 검정 — 지원성격 6종·대분류 8종 전부 '추세없음' |
+| `ml/reports/a04_support_forecast.json` | (제거됨) 최고 모델이 Last Value 였다는 기록은 커밋 이력에 |
+| `ml/figures/stl_support_amount.png` | STL 분해 그림 |
+| `ml/figures/amount_trend_by_support_type.png` | 지원성격별 지원규모 추이 |
+
+> **제거한 것** — 원본은 전부 커밋 이력에 보존되어 있습니다.
+>
+> 1차 (공고량 예측 폐기): `p04_timeseries.py`(당시 이름), `m02_forecast.py`, `a01_stl_eda.py`,
+> `a06_timeaxis_compare.py`, `a07_paired_test.py`, `dl06_lstm_forecast.py`,
+> `timeseries_aggregate.parquet`, `stl_decomposition.png`
+>
+> 2차 (설계서 개정으로 모델 2 재정의): `a04_support_forecast.py`, `a06_volume_timeseries.py`,
+> `a07_volume_forecast.py`, `a09_support_outlook.py`, `dl07_m2_ablation.py`, `dl08_m2_grid.py`
+>
+> 3차 (시계열 진단 정리): `a03_support_stl.py`, `a10_amount_trend.py` — 측정값 리포트는 남김.
+> `a05_support_reference.py` 와 `19_지원규모_참고범위.md` — `n04_m3_cohort.py` 가 대체.
+> `a02` 는 남기되 월별 집계·시계열 가용성 판정 부분만 떼어냈습니다 (관측 테이블 생성기로만 씁니다).
+>
+> `timeseries-analysis` 브랜치는 삭제했습니다. 파일은 전부 `deep-learning` 에 있습니다.

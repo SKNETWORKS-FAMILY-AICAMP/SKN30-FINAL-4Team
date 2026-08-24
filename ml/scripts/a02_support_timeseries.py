@@ -1,20 +1,27 @@
-"""A02 — 지원규모 시계열 집계 (설계서 v3 4.6 / 15 / 16장).
+"""A02 — 지원규모 관측 테이블 생성.
 
-설계서 v3에서 모델 3은 '지원규모 3등급 분류'가 아니라
-'정보추출 → 의미별 정규화 → 월별 집계 → 시계열 분석 → 조건부 예측'으로 재정의됐다.
-이 스크립트는 그 중 집계 단계를 담당한다.
+이름은 '시계열'로 남아 있지만 지금 이 스크립트가 하는 일은 시계열이 아니다.
+공고문 원문에서 금액을 뽑아 의미별로 정규화한 **관측 테이블**을 만든다.
+    support_amount_observations.parquet
+
+이 테이블은 파이프라인의 뿌리다. 아래가 전부 이걸 읽는다.
+    n01_design_features   모델 2·3·4 공통 feature
+    m15_coverage_accuracy 커버리지-정확도 트레이드오프
+    a08_eda_plots         전처리 검증 EDA
+
+시계열 분석(월별 집계·STL·추세검정·예측)은 전부 제거했다. 금액 축에 시간
+구조가 없다는 것이 측정으로 확인됐기 때문이다.
+    STL      trend 0.15 / seasonal 0.00 / ACF12 0.01  -> 조건4 미충족
+    예측     최고 모델이 Last Value(MAE_log10 0.322), 트리계열 전부 그 아래
+    추세검정 지원성격 6종·대분류 8종 전부 '추세없음'
+근거 수치는 `ml/reports/a03_support_stl.json` 과 `a10_amount_trend.md` 에 남아
+있다. 스크립트는 지웠고 리포트만 보존한다.
 
 핵심 원칙 (설계서 6.1 / 24장 규칙 8)
     per_company / per_project / total_budget / periodic / ratio 를 절대 섞지 않는다.
     같은 support_amount 컬럼에 넣고 평균 내면 무의미한 값이 나온다.
-    따라서 집계 단위에 amount_type 을 반드시 포함한다.
 
-집계 단위 (설계서 16장)
-    1차 MVP : 월 × 대분류 × 지원규모타입
-    2차     : 월 × 대분류 × 지원성격 × 지원규모타입
-              (모델 1 신뢰등급이 충분한 건에 한해)
-
-지표 (설계서 15장)
+지표
     지원규모는 이상치가 강해 평균만 쓰지 않고 중앙값·분위수를 함께 낸다.
 """
 import argparse
@@ -39,7 +46,7 @@ DETAIL = PROC + "/announcement_detail_enriched.parquet"
 #     deep-learning(5단계) 산출물이고 이 스크립트는 timeseries-analysis(4단계)에
 #     있다. 상류가 하류 산출물을 읽는 역류였고, 파일이 없으면 try/except 가
 #     조용히 삼켜 support_type 이 통째로 결측이 됐다(실측: 이 브랜치에서 100%,
-#     deep-learning 에서 70%). 결측인 채로 a05 까지 흘러가도 티가 나지 않는다.
+#     deep-learning 에서 70%). 결측인 채로 하류까지 흘러가도 티가 나지 않는다.
 #     m08 산출물은 machine-learning(3단계) 것이라 이 브랜치에 반드시 있다.
 #     기본값을 m08 로 두면 어느 브랜치에서 돌려도 같은 결과가 나온다.
 #
@@ -68,7 +75,6 @@ DOCS_API = REPORTS + "/e01_documents.jsonl"
 DOCS_LIST = REPORTS + "/e01_documents_list.jsonl"
 
 OUT_LONG = PROC + "/support_amount_observations.parquet"
-OUT_TS = PROC + "/timeseries_support_amount.parquet"
 
 TYPES = ["per_company", "per_project", "total_budget", "periodic"]
 
@@ -121,7 +127,7 @@ def attach_support_type(d, source):
     """지원성격 라벨을 붙인다. 파일이 없으면 조용히 넘어가지 않고 멈춘다.
 
     예전에는 try/except 로 감싸 결측으로 떨어뜨렸는데, 그러면 support_type 이
-    통째로 비어도 파이프라인이 끝까지 돌아가 a05 참고범위의 by_type_support 가
+    통째로 비어도 파이프라인이 끝까지 돌아가 하류의 지원성격별 집계가
     빈 채로 산출된다. 실제로 그렇게 100% 결측인 산출물이 커밋된 적이 있다.
     """
     path = SUPPORT_TYPE_SOURCES[source]
@@ -250,39 +256,11 @@ def build_observations(source):
     obs = obs.dropna(subset=["date"])
     obs["ym"] = obs["date"].dt.to_period("M").astype(str)
     obs["year"] = obs["date"].dt.year
-    # 상식 범위 밖 = 파싱 오류. 행을 지우지 않고 플래그만 붙여 하류(a03/a04/a05)가
+    # 상식 범위 밖 = 파싱 오류. 행을 지우지 않고 플래그만 붙여 하류(n01/n04/n05)가
     # 같은 기준으로 제외하게 한다. 몇 건을 왜 뺐는지 추적 가능하다.
     obs["is_outlier"] = mark_outliers(obs)
     return obs.reset_index(drop=True)
 
-
-def aggregate(obs, level="mvp", min_obs=1):
-    """설계서 15장 지표로 월별 집계. level='mvp'면 지원성격 축 제외."""
-    keys = ["ym", "large_category", "amount_type"]
-    if level == "full":
-        keys.insert(2, "support_type")
-
-    sub = obs[obs["amount_type"].isin(TYPES) & ~obs.get("is_outlier", False)].copy()
-    if sub.empty:
-        return pd.DataFrame()
-
-    g = sub.groupby(keys, observed=True)["amount_max"]
-    agg = g.agg(
-        amount_observation_count="count",
-        median_amount="median",
-        mean_amount="mean",
-        p25_amount=lambda s: s.quantile(0.25),
-        p75_amount=lambda s: s.quantile(0.75),
-        sum_amount="sum",
-    ).reset_index()
-
-    # 지원비율 / 지원기업수는 별도 집계 (설계서 15.3, 15.4)
-    r = sub.groupby(keys, observed=True)["support_ratio"].median().rename("median_support_ratio")
-    c = sub.groupby(keys, observed=True)["support_count"].agg(["median", "sum"])
-    c.columns = ["median_support_count", "sum_support_count"]
-    agg = agg.merge(r, on=keys, how="left").merge(c, on=keys, how="left")
-
-    return agg[agg["amount_observation_count"] >= min_obs].reset_index(drop=True)
 
 
 def main():
@@ -309,32 +287,6 @@ def main():
     print("연도별 관측치 (의미 확정분만):")
     typed = obs[obs["amount_type"].isin(TYPES)]
     print(typed.groupby(["year"]).size().to_string())
-
-    ts = aggregate(obs, "mvp", args.min_obs)
-    ts.to_parquet(OUT_TS, index=False)
-    print()
-    print("=== 1차 MVP 집계: 월 × 대분류 × 금액의미 ===")
-    print("%d행 → %s" % (len(ts), OUT_TS))
-
-    # 시계열로 쓸 수 있는지 판정 (설계서 18장 조건 1,3)
-    print()
-    print("=== 금액의미별 시계열 가용성 ===")
-    print("%-14s%8s%10s%12s%14s" % ("금액의미", "관측수", "개월수", "월평균관측", "판정"))
-    print("-" * 60)
-    avail = {}
-    for t in TYPES:
-        s = typed[typed["amount_type"] == t]
-        if s.empty:
-            print("%-14s%8d%10d%12s%14s" % (t, 0, 0, "-", "불가(관측없음)"))
-            avail[t] = {"n": 0, "months": 0, "usable": False}
-            continue
-        months = s["ym"].nunique()
-        per_month = len(s) / months if months else 0
-        ok = months >= 24 and per_month >= 3
-        print("%-14s%8d%10d%12.1f%14s"
-              % (t, len(s), months, per_month, "가능" if ok else "부족"))
-        avail[t] = {"n": int(len(s)), "months": int(months),
-                    "per_month": round(per_month, 2), "usable": bool(ok)}
 
     save_report("a02_support_timeseries.json", {
         "support_type_source": args.support_type_source,
@@ -363,11 +315,10 @@ def main():
         "typed_observations": int(len(typed)),
         "year_range": [int(typed["year"].min()), int(typed["year"].max())] if len(typed) else None,
         "by_year": typed.groupby("year").size().to_dict(),
-        "mvp_rows": int(len(ts)),
-        "availability": avail,
-        "criteria": "개월수>=24 AND 월평균 관측>=3 이면 시계열 분석 가능(설계서 18장)",
         "note": "설계서 24장 규칙8 — per_company/total_budget/per_project/periodic 을 섞지 않는다",
-        "outputs": {"observations": OUT_LONG, "timeseries": OUT_TS},
+        "outputs": {"observations": OUT_LONG},
+        "removed": ("월별 집계·시계열 가용성 판정은 제거했다. 금액 축에 시간 구조가 "
+                    "없음이 확인돼(a03 STL / a10 추세검정) 소비처가 전부 사라졌다."),
     })
 
 

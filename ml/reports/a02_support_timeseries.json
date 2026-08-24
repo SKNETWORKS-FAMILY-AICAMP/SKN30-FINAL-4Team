@@ -63,37 +63,9 @@
     "2025": 102,
     "2026": 445
   },
-  "mvp_rows": 750,
-  "availability": {
-    "per_company": {
-      "n": 807,
-      "months": 82,
-      "per_month": 9.84,
-      "usable": true
-    },
-    "per_project": {
-      "n": 125,
-      "months": 56,
-      "per_month": 2.23,
-      "usable": false
-    },
-    "total_budget": {
-      "n": 386,
-      "months": 82,
-      "per_month": 4.71,
-      "usable": true
-    },
-    "periodic": {
-      "n": 251,
-      "months": 69,
-      "per_month": 3.64,
-      "usable": true
-    }
-  },
-  "criteria": "개월수>=24 AND 월평균 관측>=3 이면 시계열 분석 가능(설계서 18장)",
   "note": "설계서 24장 규칙8 — per_company/total_budget/per_project/periodic 을 섞지 않는다",
   "outputs": {
-    "observations": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_amount_observations.parquet",
-    "timeseries": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/timeseries_support_amount.parquet"
-  }
+    "observations": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_amount_observations.parquet"
+  },
+  "removed": "월별 집계·시계열 가용성 판정은 제거했다. 금액 축에 시간 구조가 없음이 확인돼(a03 STL / a10 추세검정) 소비처가 전부 사라졌다."
 }
