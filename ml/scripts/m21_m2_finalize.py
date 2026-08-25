@@ -19,6 +19,16 @@
 
     C 가 갈리면 겹침은 '분야마다 전형적인 설계 규모가 다르다'는 실제 구조를
     반영한 것이고, 안 갈리면 분야를 다른 이름으로 부른 것뿐이다.
+
+실측 결과 — grant 만 통과했다
+    grant   A=0.36, C 검증 3셀 전부 재분리(금액 최대 25.9배) -> 설계 구조
+    service A=0.78, C 검증 불가(셀 표본 부족)                -> 분야 복제
+    other   A=0.83, C 검증 불가(셀 표본 부족)                -> 분야 복제
+
+    분야 복제로 판명된 그룹은 **최종 산출물(design_type)에 태깅하지 않는다.**
+    "새 설계유형을 발견했다"고 내보내면서 실제로는 이미 있는 분야 라벨을
+    군집 알고리즘으로 다시 그린 것이면 오해를 부른다. 리포트에는 시도했다는
+    사실과 왜 뺐는지를 남기고, 데이터에는 안 남긴다.
 """
 import argparse
 import json
@@ -288,6 +298,17 @@ def main():
                       % (c["category_large"], c["n"], c["n_clusters"],
                          c["silhouette"], c["amount_spread_x"]))
 
+        # 분야 복제 판정 — B 판정과 같은 규칙을 여기서 먼저 적용한다.
+        # A(분야만으로 자른 군집)가 최종 군집을 MAX_CATEGORY_ARI 이상 재현하고,
+        # C(분야 고정 후 재군집)로 반박할 근거도 없으면 '분야를 다시 그린 것'이다.
+        ari_a = (ov.get("A_분야만") or {}).get("ari_vs_final")
+        c_split = [c for c in (ov.get("C_분야고정") or []) if c["n_clusters"] >= 2]
+        is_replication = (ari_a is not None and ari_a >= MAX_CATEGORY_ARI
+                          and not c_split)
+        category_replication = "분야 복제" if is_replication else "분야와 구별됨"
+        if ov:
+            print("      -> %s" % category_replication)
+
         out["groups"][method] = {
             "n": int(len(g)), "params": params,
             "tags": {str(k): v for k, v in tags.items()},
@@ -296,7 +317,13 @@ def main():
                               repr_features(prof, NUM, CAT).items()},
             "overlap_test": ov,
             "ari_category_large": ari_vs(lab, g["category_large"].fillna("__na__")),
+            "category_replication": category_replication,
+            "included_in_output": not is_replication,
         }
+        if is_replication:
+            print("   -> 분야 복제로 판명 — 최종 산출물에 태깅하지 않는다"
+                 " (리포트에만 보존)")
+            continue
         idx = g["index"].to_numpy()
         labels_all.loc[idx] = [int(x) for x in lab]
         tag_all.loc[idx] = [tags.get(int(x)) if x >= 0 else None for x in lab]
@@ -338,47 +365,42 @@ def main():
 
 def judge(out):
     reasons, v = [], "채택"
-    # 분야 중복성 — C 검증이 결정적이다
-    decisive, replicated = [], []
+    replicated = [m for m, g in out["groups"].items()
+                 if g.get("category_replication") == "분야 복제"]
+    included = [m for m, g in out["groups"].items()
+               if g.get("included_in_output")]
+
     for m, g in out["groups"].items():
         ov = g.get("overlap_test") or {}
-        cells = ov.get("C_분야고정") or []
-        split = [c for c in cells if c["n_clusters"] >= 2]
-        if cells:
-            decisive.append((m, len(split), len(cells),
-                             max((c["amount_spread_x"] or 0) for c in cells)))
         a = (ov.get("A_분야만") or {}).get("ari_vs_final")
         b = (ov.get("B_설계수치만") or {}).get("ari_vs_final")
         if a is not None and b is not None:
-            va = "분야 복제" if a >= MAX_CATEGORY_ARI else "분야와 구별됨"
             reasons.append("%s: 분야만으로 자르면 최종과 ARI %.2f, 설계수치만 %.2f -> %s"
-                           % (m, a, b, va))
-            g["category_replication"] = va
-            if a >= MAX_CATEGORY_ARI and not (ov.get("C_분야고정") or []):
-                replicated.append(m)
-    for m, split, total, spread in decisive:
-        if split:
+                           % (m, a, b, g.get("category_replication")))
+        cells = ov.get("C_분야고정") or []
+        split = [c for c in cells if c["n_clusters"] >= 2]
+        if cells:
+            spread = max((c["amount_spread_x"] or 0) for c in cells)
             reasons.append("%s: 분야를 고정한 %d개 셀 중 %d개에서 설계가 다시 갈린다 "
-                           "(금액 최대 %.1f배) — 분야 복제가 아니다" % (m, total, split, spread))
-        else:
-            reasons.append("%s: 분야를 고정하면 더 갈리지 않는다 — 분야 복제 의심"
-                           % m)
-            v = "조건부 채택"
+                           "(금액 최대 %.1f배)" % (m, len(cells), len(split), spread))
 
+    reasons.append("최종 산출물에 태깅한 그룹: %s" % (", ".join(included) or "없음"))
     if replicated:
-        v = "조건부 채택"
-        reasons.append("%s 는 분야만으로 잘라도 최종 군집이 재현된다(ARI >= %.2f). "
-                       "표본이 얇아 분야 고정 검증(C)도 못 돌렸다 — 설계유형이 아니라 "
-                       "분야를 다시 그린 것으로 보고 태깅에서 빼거나 별도 표기해야 한다"
-                       % (", ".join(replicated), MAX_CATEGORY_ARI))
+        v = "부분 채택"
+        reasons.append("%s 는 분야 복제로 판명돼 최종 산출물에서 뺐다. 탐색 결과로만 "
+                       "리포트에 보존한다" % ", ".join(replicated))
+    if not included:
+        v = "미채택"
+        reasons.append("최종 산출물에 남는 그룹이 없다")
 
-    dup = [m for m, g in out["groups"].items()
-           if g["n_unique_tags"] < len(g["tags"])]
+    dup = [m for m in included if out["groups"][m]["n_unique_tags"]
+           < len(out["groups"][m]["tags"])]
     if dup:
         reasons.append("이름이 여전히 중복되는 그룹: %s" % ", ".join(dup))
-        v = "조건부 채택"
-    else:
-        reasons.append("모든 군집에 고유한 이름을 붙였다")
+        if v == "채택":
+            v = "부분 채택"
+    elif included:
+        reasons.append("최종 산출물에 남은 그룹은 모두 고유한 이름을 붙였다")
 
     lp = out.get("loan_policy", {})
     reasons.append("loan %d건 -> %s" % (lp.get("n", 0), lp.get("decision", "?")))
@@ -462,16 +484,24 @@ def write_md(out, verdict):
         L += ["> %s" % lp["reason"], ""]
 
     L += ["## 4. 결론 — 그룹마다 다르다", "",
-          "| 지원방식 | 분야만으로 재현(ARI) | 판정 |", "|---|---:|---|"]
+          "| 지원방식 | 분야만으로 재현(ARI) | 판정 | 최종 산출물 |",
+          "|---|---:|---|---|"]
     for m, g in out["groups"].items():
         ov = g.get("overlap_test") or {}
         a = (ov.get("A_분야만") or {}).get("ari_vs_final")
-        L.append("| %s | %s | %s |" % (m, a, g.get("category_replication", "—")))
+        inc = "포함" if g.get("included_in_output") else "**제외**"
+        L.append("| %s | %s | %s | %s |"
+                 % (m, a, g.get("category_replication", "—"), inc))
     L += ["",
           "> **grant 만 설계 구조입니다.** 분야만으로 자르면 최종과 거의 안 맞고(ARI 0.36),",
           "> 분야를 고정한 세 개 셀에서 모두 설계가 다시 갈립니다(금액 최대 25.9배).",
           "> service·other 는 분야만으로 잘라도 78~83% 재현됩니다 — 설계유형이 아니라",
           "> 분야를 다른 이름으로 부른 것에 가깝습니다.", "",
+          "> **그래서 service·other 의 군집은 최종 산출물(`design_type`)에 태깅하지",
+          "> 않습니다.** 새 설계유형을 발견했다고 내보내면서 실제로는 이미 있는 분야",
+          "> 라벨을 군집 알고리즘으로 다시 그린 것이면 오해를 부릅니다. 여기 리포트에",
+          "> 시도했다는 사실과 군집 이름·프로파일은 남기되(2절), 배포 데이터에는",
+          "> 넣지 않습니다.", "",
           "## 5. 판정", "", "**%s**" % verdict["verdict"], ""]
     for r in verdict["reasons"]:
         L.append("- %s" % r)
