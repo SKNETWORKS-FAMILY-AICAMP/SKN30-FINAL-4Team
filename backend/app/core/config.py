@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     cpl_prompt_version: str = Field(default="cpl-semantic-v0.1", min_length=1)
     cpl_ruleset_version: str = Field(default="cpl-alpha-v0.1", min_length=1)
     cpl_llm_timeout_seconds: int = Field(default=30, ge=1)
+    fit_ruleset_version: str = Field(default="fit-v0.1", min_length=1)
+    fit_prompt_version: str = Field(default="fit-v0.1", min_length=1)
+    fit_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
+    fit_scoring_path: Path = PROJECT_ROOT / "backend" / "config" / "fit_scoring.json"
+    fit_prompt_path: Path = (
+        PROJECT_ROOT / "backend" / "config" / "prompts" / "fit-v0.1.txt"
+    )
 
     @field_validator("database_url")
     @classmethod
@@ -38,3 +45,11 @@ class Settings(BaseSettings):
     @classmethod
     def empty_openai_key_means_disabled(cls, value: object) -> object:
         return None if value == "" else value
+
+    @field_validator("fit_scoring_path", "fit_prompt_path", mode="before")
+    @classmethod
+    def resolve_project_path(cls, value: object) -> object:
+        path = Path(value) if isinstance(value, (str, Path)) else value
+        if isinstance(path, Path) and not path.is_absolute():
+            return PROJECT_ROOT / path
+        return path

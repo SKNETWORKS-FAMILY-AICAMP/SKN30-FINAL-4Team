@@ -49,9 +49,11 @@ def create_app(
                     api_key=runtime_settings.openai_api_key.get_secret_value(),
                     base_url=str(runtime_settings.openai_base_url),
                     model_profiles={
-                        runtime_settings.cpl_model_profile: (
-                            runtime_settings.cpl_model_profile
-                        )
+                        profile: profile
+                        for profile in {
+                            runtime_settings.cpl_model_profile,
+                            runtime_settings.fit_model_profile,
+                        }
                     },
                     timeout_seconds=runtime_settings.cpl_llm_timeout_seconds,
                 )
