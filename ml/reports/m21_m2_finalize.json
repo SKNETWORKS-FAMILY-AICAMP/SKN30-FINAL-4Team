@@ -352,7 +352,8 @@
         ]
       },
       "ari_category_large": 0.6013,
-      "category_replication": "분야와 구별됨"
+      "category_replication": "분야와 구별됨",
+      "included_in_output": true
     },
     "service": {
       "n": 184,
@@ -621,7 +622,8 @@
         "C_분야고정": []
       },
       "ari_category_large": 0.6926,
-      "category_replication": "분야 복제"
+      "category_replication": "분야 복제",
+      "included_in_output": false
     },
     "other": {
       "n": 110,
@@ -852,7 +854,8 @@
         "C_분야고정": []
       },
       "ari_category_large": 0.7403,
-      "category_replication": "분야 복제"
+      "category_replication": "분야 복제",
+      "included_in_output": false
     }
   },
   "loan_policy": {
@@ -895,20 +898,21 @@
     "reason": "최대군집 비중 73.6% — 나눠도 한 덩어리다. 태깅에서 빼면 융자사업이 유형 없음으로 남으니 '융자형' 하나로 두는 편이 낫다"
   },
   "n_rows": 1447,
-  "n_tagged": 777,
-  "tag_coverage": 0.537,
+  "n_tagged": 586,
+  "tag_coverage": 0.405,
   "min_cell": 60,
   "verdict": {
-    "verdict": "조건부 채택",
+    "verdict": "부분 채택",
     "reasons": [
       "grant: 분야만으로 자르면 최종과 ARI 0.36, 설계수치만 0.00 -> 분야와 구별됨",
+      "grant: 분야를 고정한 3개 셀 중 3개에서 설계가 다시 갈린다 (금액 최대 25.9배)",
       "service: 분야만으로 자르면 최종과 ARI 0.78, 설계수치만 0.02 -> 분야 복제",
       "other: 분야만으로 자르면 최종과 ARI 0.83, 설계수치만 0.42 -> 분야 복제",
-      "grant: 분야를 고정한 3개 셀 중 3개에서 설계가 다시 갈린다 (금액 최대 25.9배) — 분야 복제가 아니다",
-      "service, other 는 분야만으로 잘라도 최종 군집이 재현된다(ARI >= 0.70). 표본이 얇아 분야 고정 검증(C)도 못 돌렸다 — 설계유형이 아니라 분야를 다시 그린 것으로 보고 태깅에서 빼거나 별도 표기해야 한다",
-      "모든 군집에 고유한 이름을 붙였다",
+      "최종 산출물에 태깅한 그룹: grant",
+      "service, other 는 분야 복제로 판명돼 최종 산출물에서 뺐다. 탐색 결과로만 리포트에 보존한다",
+      "최종 산출물에 남은 그룹은 모두 고유한 이름을 붙였다",
       "loan 127건 -> 단일 유형으로 처리",
-      "설계유형 태깅 커버리지 53.7%"
+      "설계유형 태깅 커버리지 40.5%"
     ]
   },
   "runtime_min": 0.16
