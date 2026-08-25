@@ -1,0 +1,178 @@
+{
+  "질문": "이 사업의 설계 조합이 과거 비교군 대비 얼마나 드문가",
+  "model": "OneClassSVM(rbf, nu=0.02, gamma=0.5) / features=A_설계핵심 / scaler=standard",
+  "n_train": 2339,
+  "alert_rate": 0.02,
+  "n_alerted_population": 47,
+  "threshold": -0.508066,
+  "holdout": {
+    "n_labeled": 50,
+    "n_matched": 50,
+    "n_missing_in_train": 0,
+    "labels": {
+      "경계": 18,
+      "정상": 17,
+      "비전형": 15
+    },
+    "비전형_하위유형": {
+      "데이터": 8,
+      "설계": 7
+    }
+  },
+  "results": {
+    "엄격(비전형만)": {
+      "n": 50,
+      "n_positive": 15,
+      "n_flagged": 20,
+      "TP": 5,
+      "FP": 15,
+      "FN": 10,
+      "TN": 20,
+      "recall": 0.3333,
+      "precision": 0.25,
+      "f1": 0.2857,
+      "specificity": 0.5714
+    },
+    "넓게(비전형+경계)": {
+      "n": 50,
+      "n_positive": 33,
+      "n_flagged": 20,
+      "TP": 10,
+      "FP": 10,
+      "FN": 23,
+      "TN": 7,
+      "recall": 0.303,
+      "precision": 0.5,
+      "f1": 0.3774,
+      "specificity": 0.4118
+    },
+    "설계이상만(데이터오류 행 제외)": {
+      "n": 42,
+      "n_positive": 7,
+      "n_flagged": 17,
+      "TP": 2,
+      "FP": 15,
+      "FN": 5,
+      "TN": 20,
+      "recall": 0.2857,
+      "precision": 0.1176,
+      "f1": 0.1667,
+      "specificity": 0.5714
+    },
+    "노출 3건 제외(엄격)": {
+      "n": 47,
+      "n_positive": 14,
+      "n_flagged": 19,
+      "TP": 5,
+      "FP": 14,
+      "FN": 9,
+      "TN": 19,
+      "recall": 0.3571,
+      "precision": 0.2632,
+      "f1": 0.303,
+      "specificity": 0.5758
+    }
+  },
+  "results_equal_budget": {
+    "n_alerts_within_holdout": 20,
+    "엄격(비전형만)": {
+      "n": 50,
+      "n_positive": 15,
+      "n_flagged": 20,
+      "TP": 5,
+      "FP": 15,
+      "FN": 10,
+      "TN": 20,
+      "recall": 0.3333,
+      "precision": 0.25,
+      "f1": 0.2857,
+      "specificity": 0.5714
+    },
+    "넓게(비전형+경계)": {
+      "n": 50,
+      "n_positive": 33,
+      "n_flagged": 20,
+      "TP": 10,
+      "FP": 10,
+      "FN": 23,
+      "TN": 7,
+      "recall": 0.303,
+      "precision": 0.5,
+      "f1": 0.3774,
+      "specificity": 0.4118
+    },
+    "설계이상만(데이터오류 행 제외)": {
+      "n": 42,
+      "n_positive": 7,
+      "n_flagged": 17,
+      "TP": 2,
+      "FP": 15,
+      "FN": 5,
+      "TN": 20,
+      "recall": 0.2857,
+      "precision": 0.1176,
+      "f1": 0.1667,
+      "specificity": 0.5714
+    },
+    "노출 3건 제외(엄격)": {
+      "n": 47,
+      "n_positive": 14,
+      "n_flagged": 19,
+      "TP": 5,
+      "FP": 14,
+      "FN": 9,
+      "TN": 19,
+      "recall": 0.3571,
+      "precision": 0.2632,
+      "f1": 0.303,
+      "specificity": 0.5758
+    }
+  },
+  "rank_quality": {
+    "엄격(비전형만)": {
+      "pr_auc": 0.345,
+      "roc_auc": 0.48
+    },
+    "넓게(비전형+경계)": {
+      "pr_auc": 0.6491,
+      "roc_auc": 0.3895
+    }
+  },
+  "score_pct_by_label": [
+    {
+      "판단": "경계",
+      "n": 18,
+      "중앙값": 92.77,
+      "최소": 12.78,
+      "최대": 99.96
+    },
+    {
+      "판단": "비전형",
+      "n": 15,
+      "중앙값": 93.03,
+      "최소": 32.36,
+      "최대": 99.79
+    },
+    {
+      "판단": "정상",
+      "n": 17,
+      "중앙값": 98.29,
+      "최소": 32.19,
+      "최대": 99.83
+    }
+  ],
+  "synthetic_reference": {
+    "source": "m20_m4_threshold.json",
+    "note": "합성 이상치 60건 x 시드 5회"
+  },
+  "labeling": {
+    "labeler": "claude (blind — 시트에 점수 없음, 순서 무작위)",
+    "leaked_rows": [
+      "EXCEL2023_0194",
+      "EXCEL2023_0575",
+      "EXCEL2022_0775"
+    ],
+    "caveat": "라벨러 1인. 라벨러 간 일치도 없음. 경계 칸이 그 대용이다.",
+    "not_used_for": "threshold tuning (경고율 2%는 M20 에서 이미 고정)"
+  }
+}

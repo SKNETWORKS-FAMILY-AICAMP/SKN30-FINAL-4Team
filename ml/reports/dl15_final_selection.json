@@ -1,0 +1,1676 @@
+{
+  "principle": "ML = baseline / DL = challenger / 최종 = 외부 검증 승자",
+  "picks": {
+    "1. 지원성격 분류": {
+      "adopted": "KLUE-BERT",
+      "family": "DL(파인튜닝)",
+      "decided_by": "외부 hold-out 131건 정확도 (시드 3개 평균)",
+      "score": "0.8422 ± 0.0072",
+      "vs_ml_baseline": 0.117
+    },
+    "2. 지원규모 상대비교": {
+      "adopted": "LightGBM",
+      "family": "ML",
+      "decided_by": "동일 GroupKFold(5) MAE(log10), 판정선 = LGBM fold σ 0.0096",
+      "score": "LGBM 0.5074 vs FT 0.5468 ± 0.0027",
+      "verdict": "LGBM 유지 — FT-Transformer 가 fold σ 이상 더 나쁘다"
+    },
+    "3. 설계 이상탐지": {
+      "adopted": "보류 — 어느 쪽도 운영 경고로 내보낼 근거가 없다",
+      "family": "-",
+      "decided_by": "사람 라벨 50건 (비전형 15건)",
+      "score": "OneClassSVM ROC-AUC 0.480 / Deep SVDD 0.849 ± 0.054",
+      "ocsvm_recall_at_2pct": 0.3333,
+      "ocsvm_precision_at_2pct": 0.25
+    }
+  },
+  "model1": {
+    "meta": {
+      "n_train": 1404,
+      "n_classes": 19,
+      "n_external": 131,
+      "external_classes_present": 15,
+      "folds": 5,
+      "fixed": {
+        "epochs": 8,
+        "batch": 16,
+        "max_len": 256,
+        "class_weight": true
+      }
+    },
+    "candidates": [
+      {
+        "model": "KLUE-BERT",
+        "family": "DL(파인튜닝)",
+        "lr": 5e-05,
+        "cv_macro_f1": 0.835,
+        "cv_accuracy": 0.8632,
+        "ext_acc_mean": 0.8422,
+        "ext_acc_std": 0.0072,
+        "ext_macro_f1_mean": 0.7755,
+        "n_seeds": 3,
+        "per_class": [
+          {
+            "class": "판로",
+            "n_true": 35,
+            "recall": 0.9429,
+            "precision": 1.0
+          },
+          {
+            "class": "컨설팅",
+            "n_true": 25,
+            "recall": 0.76,
+            "precision": 0.9048
+          },
+          {
+            "class": "융자",
+            "n_true": 14,
+            "recall": 0.8571,
+            "precision": 1.0
+          },
+          {
+            "class": "사업화",
+            "n_true": 11,
+            "recall": 1.0,
+            "precision": 0.4231
+          },
+          {
+            "class": "고용보조",
+            "n_true": 10,
+            "recall": 0.7,
+            "precision": 1.0
+          },
+          {
+            "class": "보증",
+            "n_true": 10,
+            "recall": 0.9,
+            "precision": 1.0
+          },
+          {
+            "class": "설비",
+            "n_true": 7,
+            "recall": 0.5714,
+            "precision": 0.8
+          },
+          {
+            "class": "수출물류",
+            "n_true": 7,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "창업보육",
+            "n_true": 4,
+            "recall": 0.75,
+            "precision": 1.0
+          },
+          {
+            "class": "경진대회",
+            "n_true": 2,
+            "recall": 0.5,
+            "precision": 1.0
+          },
+          {
+            "class": "성능인증",
+            "n_true": 2,
+            "recall": 0.5,
+            "precision": 0.5
+          },
+          {
+            "class": "SW·솔루션",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "기술·IP평가",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "상담",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "연구개발",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": null
+          }
+        ],
+        "confusions": [
+          {
+            "true": "컨설팅",
+            "pred": "사업화",
+            "n": 5
+          },
+          {
+            "true": "판로",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "고용보조",
+            "pred": "교육훈련",
+            "n": 2
+          },
+          {
+            "true": "융자",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "경진대회",
+            "pred": "컨설팅",
+            "n": 1
+          },
+          {
+            "true": "설비",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "연구개발",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "SW·솔루션",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "성능인증",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "보증",
+            "pred": "설비",
+            "n": 1
+          },
+          {
+            "true": "설비",
+            "pred": "성능인증",
+            "n": 1
+          },
+          {
+            "true": "고용보조",
+            "pred": "사업화",
+            "n": 1
+          }
+        ]
+      },
+      {
+        "model": "KLUE-RoBERTa",
+        "family": "DL(파인튜닝)",
+        "lr": 5e-05,
+        "cv_macro_f1": 0.8364,
+        "cv_accuracy": 0.8682,
+        "ext_acc_mean": 0.8143,
+        "ext_acc_std": 0.0157,
+        "ext_macro_f1_mean": 0.7627,
+        "n_seeds": 3,
+        "per_class": [
+          {
+            "class": "판로",
+            "n_true": 35,
+            "recall": 0.8571,
+            "precision": 0.9677
+          },
+          {
+            "class": "컨설팅",
+            "n_true": 25,
+            "recall": 0.8,
+            "precision": 0.7143
+          },
+          {
+            "class": "융자",
+            "n_true": 14,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "사업화",
+            "n_true": 11,
+            "recall": 0.8182,
+            "precision": 0.5294
+          },
+          {
+            "class": "고용보조",
+            "n_true": 10,
+            "recall": 0.7,
+            "precision": 1.0
+          },
+          {
+            "class": "보증",
+            "n_true": 10,
+            "recall": 0.9,
+            "precision": 1.0
+          },
+          {
+            "class": "설비",
+            "n_true": 7,
+            "recall": 0.7143,
+            "precision": 1.0
+          },
+          {
+            "class": "수출물류",
+            "n_true": 7,
+            "recall": 1.0,
+            "precision": 0.875
+          },
+          {
+            "class": "창업보육",
+            "n_true": 4,
+            "recall": 0.75,
+            "precision": 1.0
+          },
+          {
+            "class": "경진대회",
+            "n_true": 2,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "성능인증",
+            "n_true": 2,
+            "recall": 0.5,
+            "precision": 1.0
+          },
+          {
+            "class": "SW·솔루션",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "기술·IP평가",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "상담",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "연구개발",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 0.3333
+          }
+        ],
+        "confusions": [
+          {
+            "true": "컨설팅",
+            "pred": "사업화",
+            "n": 3
+          },
+          {
+            "true": "판로",
+            "pred": "컨설팅",
+            "n": 2
+          },
+          {
+            "true": "판로",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "설비",
+            "pred": "컨설팅",
+            "n": 2
+          },
+          {
+            "true": "고용보조",
+            "pred": "교육훈련",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "연구개발",
+            "n": 2
+          },
+          {
+            "true": "경진대회",
+            "pred": "컨설팅",
+            "n": 1
+          },
+          {
+            "true": "성능인증",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "보증",
+            "pred": "컨설팅",
+            "n": 1
+          },
+          {
+            "true": "고용보조",
+            "pred": "컨설팅",
+            "n": 1
+          },
+          {
+            "true": "창업보육",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "사업화",
+            "pred": "판로",
+            "n": 1
+          }
+        ]
+      },
+      {
+        "model": "KoELECTRA",
+        "family": "DL(파인튜닝)",
+        "lr": 5e-05,
+        "cv_macro_f1": 0.7477,
+        "cv_accuracy": 0.7657,
+        "ext_acc_mean": 0.7583,
+        "ext_acc_std": 0.0072,
+        "ext_macro_f1_mean": 0.6041,
+        "n_seeds": 3,
+        "per_class": [
+          {
+            "class": "판로",
+            "n_true": 35,
+            "recall": 0.9429,
+            "precision": 1.0
+          },
+          {
+            "class": "컨설팅",
+            "n_true": 25,
+            "recall": 0.88,
+            "precision": 0.5641
+          },
+          {
+            "class": "융자",
+            "n_true": 14,
+            "recall": 0.7857,
+            "precision": 1.0
+          },
+          {
+            "class": "사업화",
+            "n_true": 11,
+            "recall": 0.7273,
+            "precision": 0.6667
+          },
+          {
+            "class": "고용보조",
+            "n_true": 10,
+            "recall": 0.5,
+            "precision": 0.5
+          },
+          {
+            "class": "보증",
+            "n_true": 10,
+            "recall": 0.5,
+            "precision": 0.7143
+          },
+          {
+            "class": "설비",
+            "n_true": 7,
+            "recall": 0.4286,
+            "precision": 1.0
+          },
+          {
+            "class": "수출물류",
+            "n_true": 7,
+            "recall": 0.8571,
+            "precision": 1.0
+          },
+          {
+            "class": "창업보육",
+            "n_true": 4,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "경진대회",
+            "n_true": 2,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "성능인증",
+            "n_true": 2,
+            "recall": 0.5,
+            "precision": 1.0
+          },
+          {
+            "class": "SW·솔루션",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "기술·IP평가",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "상담",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "연구개발",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": 0.0
+          }
+        ],
+        "confusions": [
+          {
+            "true": "설비",
+            "pred": "컨설팅",
+            "n": 4
+          },
+          {
+            "true": "고용보조",
+            "pred": "컨설팅",
+            "n": 4
+          },
+          {
+            "true": "보증",
+            "pred": "고용보조",
+            "n": 3
+          },
+          {
+            "true": "사업화",
+            "pred": "컨설팅",
+            "n": 3
+          },
+          {
+            "true": "판로",
+            "pred": "컨설팅",
+            "n": 2
+          },
+          {
+            "true": "융자",
+            "pred": "보증",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "경진대회",
+            "pred": "컨설팅",
+            "n": 1
+          },
+          {
+            "true": "보증",
+            "pred": "해외인증",
+            "n": 1
+          },
+          {
+            "true": "연구개발",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "성능인증",
+            "pred": "컨설팅",
+            "n": 1
+          },
+          {
+            "true": "수출물류",
+            "pred": "고용보조",
+            "n": 1
+          }
+        ]
+      },
+      {
+        "model": "TF-IDF + LinearSVM",
+        "family": "ML",
+        "lr": null,
+        "cv_macro_f1": 0.7953,
+        "cv_accuracy": 0.8362,
+        "ext_acc_mean": 0.7252,
+        "ext_acc_std": 0.0,
+        "ext_macro_f1_mean": 0.6252,
+        "n_seeds": 3,
+        "per_class": [
+          {
+            "class": "판로",
+            "n_true": 35,
+            "recall": 0.8571,
+            "precision": 0.9375
+          },
+          {
+            "class": "컨설팅",
+            "n_true": 25,
+            "recall": 0.68,
+            "precision": 0.85
+          },
+          {
+            "class": "융자",
+            "n_true": 14,
+            "recall": 0.9286,
+            "precision": 0.7222
+          },
+          {
+            "class": "사업화",
+            "n_true": 11,
+            "recall": 0.7273,
+            "precision": 0.381
+          },
+          {
+            "class": "고용보조",
+            "n_true": 10,
+            "recall": 0.8,
+            "precision": 0.7273
+          },
+          {
+            "class": "보증",
+            "n_true": 10,
+            "recall": 0.2,
+            "precision": 1.0
+          },
+          {
+            "class": "설비",
+            "n_true": 7,
+            "recall": 0.8571,
+            "precision": 0.75
+          },
+          {
+            "class": "수출물류",
+            "n_true": 7,
+            "recall": 0.7143,
+            "precision": 0.8333
+          },
+          {
+            "class": "창업보육",
+            "n_true": 4,
+            "recall": 0.75,
+            "precision": 0.75
+          },
+          {
+            "class": "경진대회",
+            "n_true": 2,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "성능인증",
+            "n_true": 2,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "SW·솔루션",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "기술·IP평가",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "상담",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "연구개발",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": 0.0
+          }
+        ],
+        "confusions": [
+          {
+            "true": "보증",
+            "pred": "융자",
+            "n": 5
+          },
+          {
+            "true": "판로",
+            "pred": "사업화",
+            "n": 3
+          },
+          {
+            "true": "경진대회",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "성능인증",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "연구개발",
+            "n": 2
+          },
+          {
+            "true": "보증",
+            "pred": "연구개발",
+            "n": 1
+          },
+          {
+            "true": "컨설팅",
+            "pred": "판로",
+            "n": 1
+          },
+          {
+            "true": "연구개발",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "수출물류",
+            "pred": "고용보조",
+            "n": 1
+          },
+          {
+            "true": "고용보조",
+            "pred": "교육훈련",
+            "n": 1
+          },
+          {
+            "true": "고용보조",
+            "pred": "사업화",
+            "n": 1
+          }
+        ]
+      },
+      {
+        "model": "SBERT + LogReg",
+        "family": "DL(임베딩)",
+        "lr": null,
+        "cv_macro_f1": 0.7762,
+        "cv_accuracy": 0.8056,
+        "ext_acc_mean": 0.7176,
+        "ext_acc_std": 0.0,
+        "ext_macro_f1_mean": 0.6167,
+        "n_seeds": 3,
+        "per_class": [
+          {
+            "class": "판로",
+            "n_true": 35,
+            "recall": 0.9429,
+            "precision": 0.8919
+          },
+          {
+            "class": "컨설팅",
+            "n_true": 25,
+            "recall": 0.6,
+            "precision": 0.8824
+          },
+          {
+            "class": "융자",
+            "n_true": 14,
+            "recall": 0.7143,
+            "precision": 0.7692
+          },
+          {
+            "class": "사업화",
+            "n_true": 11,
+            "recall": 0.5455,
+            "precision": 0.4
+          },
+          {
+            "class": "고용보조",
+            "n_true": 10,
+            "recall": 0.7,
+            "precision": 1.0
+          },
+          {
+            "class": "보증",
+            "n_true": 10,
+            "recall": 0.7,
+            "precision": 0.7
+          },
+          {
+            "class": "설비",
+            "n_true": 7,
+            "recall": 0.7143,
+            "precision": 0.625
+          },
+          {
+            "class": "수출물류",
+            "n_true": 7,
+            "recall": 0.5714,
+            "precision": 1.0
+          },
+          {
+            "class": "창업보육",
+            "n_true": 4,
+            "recall": 0.5,
+            "precision": 0.5
+          },
+          {
+            "class": "경진대회",
+            "n_true": 2,
+            "recall": 1.0,
+            "precision": 0.5
+          },
+          {
+            "class": "성능인증",
+            "n_true": 2,
+            "recall": 0.5,
+            "precision": 1.0
+          },
+          {
+            "class": "SW·솔루션",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": 0.0
+          },
+          {
+            "class": "기술·IP평가",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "상담",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 0.5
+          },
+          {
+            "class": "연구개발",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": 0.0
+          }
+        ],
+        "confusions": [
+          {
+            "true": "수출물류",
+            "pred": "판로",
+            "n": 3
+          },
+          {
+            "true": "융자",
+            "pred": "보증",
+            "n": 3
+          },
+          {
+            "true": "컨설팅",
+            "pred": "창업보육",
+            "n": 2
+          },
+          {
+            "true": "보증",
+            "pred": "융자",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "사업화",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "연구개발",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "판로",
+            "n": 1
+          },
+          {
+            "true": "설비",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "사업화",
+            "pred": "연구개발",
+            "n": 1
+          },
+          {
+            "true": "연구개발",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "SW·솔루션",
+            "pred": "사업화",
+            "n": 1
+          },
+          {
+            "true": "성능인증",
+            "pred": "사업화",
+            "n": 1
+          }
+        ]
+      },
+      {
+        "model": "SBERT + LinearSVM",
+        "family": "DL(임베딩)",
+        "lr": null,
+        "cv_macro_f1": 0.755,
+        "cv_accuracy": 0.7984,
+        "ext_acc_mean": 0.5878,
+        "ext_acc_std": 0.0,
+        "ext_macro_f1_mean": 0.4939,
+        "n_seeds": 3,
+        "per_class": [
+          {
+            "class": "판로",
+            "n_true": 35,
+            "recall": 0.9429,
+            "precision": 0.7174
+          },
+          {
+            "class": "컨설팅",
+            "n_true": 25,
+            "recall": 0.4,
+            "precision": 0.7692
+          },
+          {
+            "class": "융자",
+            "n_true": 14,
+            "recall": 0.5,
+            "precision": 0.875
+          },
+          {
+            "class": "사업화",
+            "n_true": 11,
+            "recall": 0.2727,
+            "precision": 0.3333
+          },
+          {
+            "class": "고용보조",
+            "n_true": 10,
+            "recall": 0.4,
+            "precision": 1.0
+          },
+          {
+            "class": "보증",
+            "n_true": 10,
+            "recall": 0.4,
+            "precision": 0.5714
+          },
+          {
+            "class": "설비",
+            "n_true": 7,
+            "recall": 1.0,
+            "precision": 0.4118
+          },
+          {
+            "class": "수출물류",
+            "n_true": 7,
+            "recall": 0.5714,
+            "precision": 1.0
+          },
+          {
+            "class": "창업보육",
+            "n_true": 4,
+            "recall": 0.5,
+            "precision": 0.4
+          },
+          {
+            "class": "경진대회",
+            "n_true": 2,
+            "recall": 0.0,
+            "precision": 0.0
+          },
+          {
+            "class": "성능인증",
+            "n_true": 2,
+            "recall": 0.5,
+            "precision": 1.0
+          },
+          {
+            "class": "SW·솔루션",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": null
+          },
+          {
+            "class": "기술·IP평가",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 1.0
+          },
+          {
+            "class": "상담",
+            "n_true": 1,
+            "recall": 1.0,
+            "precision": 0.5
+          },
+          {
+            "class": "연구개발",
+            "n_true": 1,
+            "recall": 0.0,
+            "precision": 0.0
+          }
+        ],
+        "confusions": [
+          {
+            "true": "컨설팅",
+            "pred": "판로",
+            "n": 4
+          },
+          {
+            "true": "컨설팅",
+            "pred": "연구개발",
+            "n": 4
+          },
+          {
+            "true": "수출물류",
+            "pred": "판로",
+            "n": 3
+          },
+          {
+            "true": "컨설팅",
+            "pred": "창업보육",
+            "n": 3
+          },
+          {
+            "true": "사업화",
+            "pred": "설비",
+            "n": 3
+          },
+          {
+            "true": "융자",
+            "pred": "보증",
+            "n": 3
+          },
+          {
+            "true": "판로",
+            "pred": "설비",
+            "n": 2
+          },
+          {
+            "true": "고용보조",
+            "pred": "교육훈련",
+            "n": 2
+          },
+          {
+            "true": "고용보조",
+            "pred": "설비",
+            "n": 2
+          },
+          {
+            "true": "보증",
+            "pred": "판로",
+            "n": 2
+          },
+          {
+            "true": "컨설팅",
+            "pred": "교육훈련",
+            "n": 2
+          },
+          {
+            "true": "사업화",
+            "pred": "경진대회",
+            "n": 2
+          }
+        ]
+      }
+    ],
+    "accuracy_by_label_batch": {
+      "KLUE-BERT": {
+        "M07": 0.7317,
+        "M28": 0.8778,
+        "n_by_batch": {
+          "M07": 41,
+          "M28": 90
+        }
+      },
+      "KLUE-RoBERTa": {
+        "M07": 0.8049,
+        "M28": 0.8444,
+        "n_by_batch": {
+          "M07": 41,
+          "M28": 90
+        }
+      },
+      "KoELECTRA": {
+        "M07": 0.6585,
+        "M28": 0.8111,
+        "n_by_batch": {
+          "M07": 41,
+          "M28": 90
+        }
+      },
+      "TF-IDF + LinearSVM": {
+        "M07": 0.7073,
+        "M28": 0.7333,
+        "n_by_batch": {
+          "M07": 41,
+          "M28": 90
+        }
+      },
+      "SBERT + LogReg": {
+        "M07": 0.6829,
+        "M28": 0.7333,
+        "n_by_batch": {
+          "M07": 41,
+          "M28": 90
+        }
+      },
+      "SBERT + LinearSVM": {
+        "M07": 0.6098,
+        "M28": 0.5778,
+        "n_by_batch": {
+          "M07": 41,
+          "M28": 90
+        }
+      }
+    },
+    "paired_tests_seed42": [
+      {
+        "a": "KLUE-BERT",
+        "b": "TF-IDF + LinearSVM",
+        "a_only_correct": 24,
+        "b_only_correct": 10,
+        "p_value": 0.0243,
+        "verdict": "차이 있음"
+      },
+      {
+        "a": "KLUE-RoBERTa",
+        "b": "TF-IDF + LinearSVM",
+        "a_only_correct": 20,
+        "b_only_correct": 6,
+        "p_value": 0.0094,
+        "verdict": "차이 있음"
+      },
+      {
+        "a": "KoELECTRA",
+        "b": "TF-IDF + LinearSVM",
+        "a_only_correct": 17,
+        "b_only_correct": 12,
+        "p_value": 0.4583,
+        "verdict": "이 표본으로는 구별되지 않음"
+      },
+      {
+        "a": "SBERT + LogReg",
+        "b": "TF-IDF + LinearSVM",
+        "a_only_correct": 16,
+        "b_only_correct": 17,
+        "p_value": 1.0,
+        "verdict": "이 표본으로는 구별되지 않음"
+      },
+      {
+        "a": "SBERT + LinearSVM",
+        "b": "TF-IDF + LinearSVM",
+        "a_only_correct": 9,
+        "b_only_correct": 27,
+        "p_value": 0.0039,
+        "verdict": "차이 있음"
+      },
+      {
+        "a": "KLUE-BERT",
+        "b": "KLUE-RoBERTa",
+        "a_only_correct": 10,
+        "b_only_correct": 10,
+        "p_value": 1.0,
+        "verdict": "이 표본으로는 구별되지 않음"
+      }
+    ],
+    "reversal_check_vs_dl07": {
+      "n_m07": 41,
+      "n_labels_changed": 5,
+      "models": {
+        "KLUE-BERT": {
+          "acc_41_old_labels": 0.6585,
+          "acc_41_fixed_labels": 0.7317,
+          "acc_131": 0.8422
+        },
+        "KLUE-RoBERTa": {
+          "acc_41_old_labels": 0.7073,
+          "acc_41_fixed_labels": 0.8049,
+          "acc_131": 0.8143
+        },
+        "KoELECTRA": {
+          "acc_41_old_labels": 0.561,
+          "acc_41_fixed_labels": 0.6585,
+          "acc_131": 0.7583
+        },
+        "TF-IDF + LinearSVM": {
+          "acc_41_old_labels": 0.6829,
+          "acc_41_fixed_labels": 0.7073,
+          "acc_131": 0.7252
+        },
+        "SBERT + LogReg": {
+          "acc_41_old_labels": 0.6585,
+          "acc_41_fixed_labels": 0.6829,
+          "acc_131": 0.7176
+        },
+        "SBERT + LinearSVM": {
+          "acc_41_old_labels": 0.5854,
+          "acc_41_fixed_labels": 0.6098,
+          "acc_131": 0.5878
+        }
+      }
+    },
+    "abstention_adopted_model": {
+      "max_proba": [
+        {
+          "coverage": 1.0,
+          "n": 131,
+          "accuracy_mean": 0.8422,
+          "accuracy_std": 0.0072,
+          "threshold_mean": 0.3578
+        },
+        {
+          "coverage": 0.95,
+          "n": 124,
+          "accuracy_mean": 0.8602,
+          "accuracy_std": 0.0038,
+          "threshold_mean": 0.5659
+        },
+        {
+          "coverage": 0.9,
+          "n": 118,
+          "accuracy_mean": 0.8785,
+          "accuracy_std": 0.02,
+          "threshold_mean": 0.6722
+        },
+        {
+          "coverage": 0.85,
+          "n": 111,
+          "accuracy_mean": 0.9009,
+          "accuracy_std": 0.0127,
+          "threshold_mean": 0.7698
+        },
+        {
+          "coverage": 0.8,
+          "n": 105,
+          "accuracy_mean": 0.9111,
+          "accuracy_std": 0.0162,
+          "threshold_mean": 0.872
+        },
+        {
+          "coverage": 0.75,
+          "n": 98,
+          "accuracy_mean": 0.9184,
+          "accuracy_std": 0.0144,
+          "threshold_mean": 0.9174
+        },
+        {
+          "coverage": 0.7,
+          "n": 92,
+          "accuracy_mean": 0.9275,
+          "accuracy_std": 0.0136,
+          "threshold_mean": 0.9452
+        },
+        {
+          "coverage": 0.65,
+          "n": 85,
+          "accuracy_mean": 0.949,
+          "accuracy_std": 0.0111,
+          "threshold_mean": 0.9643
+        },
+        {
+          "coverage": 0.6,
+          "n": 79,
+          "accuracy_mean": 0.9494,
+          "accuracy_std": 0.0103,
+          "threshold_mean": 0.9757
+        },
+        {
+          "coverage": 0.5,
+          "n": 66,
+          "accuracy_mean": 0.9596,
+          "accuracy_std": 0.0072,
+          "threshold_mean": 0.9865
+        },
+        {
+          "coverage": 0.4,
+          "n": 52,
+          "accuracy_mean": 0.9744,
+          "accuracy_std": 0.0091,
+          "threshold_mean": 0.9901
+        }
+      ],
+      "top2_gap": [
+        {
+          "coverage": 1.0,
+          "n": 131,
+          "accuracy_mean": 0.8422,
+          "accuracy_std": 0.0072,
+          "threshold_mean": 0.0201
+        },
+        {
+          "coverage": 0.95,
+          "n": 124,
+          "accuracy_mean": 0.8629,
+          "accuracy_std": 0.0066,
+          "threshold_mean": 0.2681
+        },
+        {
+          "coverage": 0.9,
+          "n": 118,
+          "accuracy_mean": 0.8785,
+          "accuracy_std": 0.02,
+          "threshold_mean": 0.4766
+        },
+        {
+          "coverage": 0.85,
+          "n": 111,
+          "accuracy_mean": 0.8949,
+          "accuracy_std": 0.017,
+          "threshold_mean": 0.6655
+        },
+        {
+          "coverage": 0.8,
+          "n": 105,
+          "accuracy_mean": 0.9143,
+          "accuracy_std": 0.0134,
+          "threshold_mean": 0.8031
+        },
+        {
+          "coverage": 0.75,
+          "n": 98,
+          "accuracy_mean": 0.915,
+          "accuracy_std": 0.0173,
+          "threshold_mean": 0.8739
+        },
+        {
+          "coverage": 0.7,
+          "n": 92,
+          "accuracy_mean": 0.9311,
+          "accuracy_std": 0.0185,
+          "threshold_mean": 0.92
+        },
+        {
+          "coverage": 0.65,
+          "n": 85,
+          "accuracy_mean": 0.9529,
+          "accuracy_std": 0.0096,
+          "threshold_mean": 0.95
+        },
+        {
+          "coverage": 0.6,
+          "n": 79,
+          "accuracy_mean": 0.9536,
+          "accuracy_std": 0.0059,
+          "threshold_mean": 0.9673
+        },
+        {
+          "coverage": 0.5,
+          "n": 66,
+          "accuracy_mean": 0.9596,
+          "accuracy_std": 0.0072,
+          "threshold_mean": 0.9816
+        },
+        {
+          "coverage": 0.4,
+          "n": 52,
+          "accuracy_mean": 0.9872,
+          "accuracy_std": 0.0091,
+          "threshold_mean": 0.9877
+        }
+      ]
+    },
+    "abstention": {
+      "max_score": {
+        "coverage": 0.7073,
+        "threshold": -0.1975,
+        "accuracy": 0.9305,
+        "macro_f1": 0.8935
+      },
+      "top2_gap": {
+        "coverage": 0.7073,
+        "threshold": 0.3792,
+        "accuracy": 0.9396,
+        "macro_f1": 0.9015
+      },
+      "LR proba (비교)": {
+        "coverage": 0.7073,
+        "threshold": 0.3475,
+        "accuracy": 0.9194,
+        "macro_f1": 0.8928
+      }
+    },
+    "production_lr": null
+  },
+  "model2": {
+    "comparison": {
+      "ft_minus_lgbm_MAE": 0.0394,
+      "significance_margin_fold_std": 0.0096,
+      "ft_improvement_vs_cohort_pct": 19.5,
+      "lgbm_improvement_vs_cohort_pct": 25.3,
+      "verdict": "LGBM 유지 — FT-Transformer 가 fold σ 이상 더 나쁘다"
+    },
+    "lightgbm": {
+      "params": {
+        "num_leaves": 63,
+        "max_depth": 8,
+        "min_child_samples": 5,
+        "learning_rate": 0.02,
+        "n_estimators": 800,
+        "colsample_bytree": 0.6,
+        "subsample": 1.0,
+        "reg_alpha": 0.0,
+        "reg_lambda": 1.0
+      },
+      "MAE_log10": 0.5074,
+      "MedAE_log10": 0.382,
+      "RMSE_log10": 0.6898,
+      "geo_mean_error_x": 3.216,
+      "within_2x": 0.41,
+      "fold_mae": [
+        0.5192,
+        0.5088,
+        0.5152,
+        0.4926,
+        0.501
+      ],
+      "fold_std": 0.0096
+    },
+    "ft_transformer": {
+      "MAE_log10_mean": 0.5468,
+      "MAE_log10_std": 0.0027,
+      "MAE_log10_best": 0.5442,
+      "MedAE_log10_mean": 0.4022,
+      "within_2x_mean": 0.3909,
+      "fold_std_mean": 0.013
+    },
+    "cohort_baseline": {
+      "MAE_log10": 0.6791,
+      "MedAE_log10": 0.5528,
+      "RMSE_log10": 0.8976,
+      "geo_mean_error_x": 4.777,
+      "within_2x": 0.2608,
+      "fold_mae": [
+        0.676,
+        0.6763,
+        0.6891,
+        0.6525,
+        0.7016
+      ],
+      "fold_std": 0.0163
+    },
+    "interval_usability": {
+      "n_judged": 1918,
+      "usable": {
+        "n": 424,
+        "share": 0.2211
+      },
+      "usable_or_wide": {
+        "n": 1801,
+        "share": 0.939
+      },
+      "unusable": {
+        "n": 117,
+        "share": 0.061
+      },
+      "not_judged": 287
+    }
+  },
+  "model3": {
+    "ocsvm_real": {
+      "엄격(비전형만)": {
+        "n": 50,
+        "n_positive": 15,
+        "n_flagged": 20,
+        "TP": 5,
+        "FP": 15,
+        "FN": 10,
+        "TN": 20,
+        "recall": 0.3333,
+        "precision": 0.25,
+        "f1": 0.2857,
+        "specificity": 0.5714
+      },
+      "넓게(비전형+경계)": {
+        "n": 50,
+        "n_positive": 33,
+        "n_flagged": 20,
+        "TP": 10,
+        "FP": 10,
+        "FN": 23,
+        "TN": 7,
+        "recall": 0.303,
+        "precision": 0.5,
+        "f1": 0.3774,
+        "specificity": 0.4118
+      },
+      "설계이상만(데이터오류 행 제외)": {
+        "n": 42,
+        "n_positive": 7,
+        "n_flagged": 17,
+        "TP": 2,
+        "FP": 15,
+        "FN": 5,
+        "TN": 20,
+        "recall": 0.2857,
+        "precision": 0.1176,
+        "f1": 0.1667,
+        "specificity": 0.5714
+      },
+      "노출 3건 제외(엄격)": {
+        "n": 47,
+        "n_positive": 14,
+        "n_flagged": 19,
+        "TP": 5,
+        "FP": 14,
+        "FN": 9,
+        "TN": 19,
+        "recall": 0.3571,
+        "precision": 0.2632,
+        "f1": 0.303,
+        "specificity": 0.5758
+      }
+    },
+    "ocsvm_real_equal_budget": {
+      "n_alerts_within_holdout": 20,
+      "엄격(비전형만)": {
+        "n": 50,
+        "n_positive": 15,
+        "n_flagged": 20,
+        "TP": 5,
+        "FP": 15,
+        "FN": 10,
+        "TN": 20,
+        "recall": 0.3333,
+        "precision": 0.25,
+        "f1": 0.2857,
+        "specificity": 0.5714
+      },
+      "넓게(비전형+경계)": {
+        "n": 50,
+        "n_positive": 33,
+        "n_flagged": 20,
+        "TP": 10,
+        "FP": 10,
+        "FN": 23,
+        "TN": 7,
+        "recall": 0.303,
+        "precision": 0.5,
+        "f1": 0.3774,
+        "specificity": 0.4118
+      },
+      "설계이상만(데이터오류 행 제외)": {
+        "n": 42,
+        "n_positive": 7,
+        "n_flagged": 17,
+        "TP": 2,
+        "FP": 15,
+        "FN": 5,
+        "TN": 20,
+        "recall": 0.2857,
+        "precision": 0.1176,
+        "f1": 0.1667,
+        "specificity": 0.5714
+      },
+      "노출 3건 제외(엄격)": {
+        "n": 47,
+        "n_positive": 14,
+        "n_flagged": 19,
+        "TP": 5,
+        "FP": 14,
+        "FN": 9,
+        "TN": 19,
+        "recall": 0.3571,
+        "precision": 0.2632,
+        "f1": 0.303,
+        "specificity": 0.5758
+      }
+    },
+    "ocsvm_rank": {
+      "엄격(비전형만)": {
+        "pr_auc": 0.345,
+        "roc_auc": 0.48
+      },
+      "넓게(비전형+경계)": {
+        "pr_auc": 0.6491,
+        "roc_auc": 0.3895
+      }
+    },
+    "deepsvdd": {
+      "엄격(비전형만)": {
+        "recall": {
+          "mean": 0.08,
+          "std": 0.1067
+        },
+        "precision": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.1313,
+          "std": 0.1712
+        }
+      },
+      "넓게(비전형+경계)": {
+        "recall": {
+          "mean": 0.0364,
+          "std": 0.0485
+        },
+        "precision": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.0661,
+          "std": 0.0871
+        }
+      },
+      "설계이상만(데이터오류 행 제외)": {
+        "recall": {
+          "mean": 0.1143,
+          "std": 0.14
+        },
+        "precision": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.1778,
+          "std": 0.2177
+        }
+      },
+      "노출 3건 제외(엄격)": {
+        "recall": {
+          "mean": 0.0857,
+          "std": 0.1143
+        },
+        "precision": {
+          "mean": 1.0,
+          "std": 0.0
+        },
+        "f1": {
+          "mean": 0.1389,
+          "std": 0.1809
+        }
+      }
+    },
+    "deepsvdd_equal_budget": {
+      "n_alerts_within_holdout": 20,
+      "엄격(비전형만)": {
+        "recall": {
+          "mean": 0.7467,
+          "std": 0.0777
+        },
+        "precision": {
+          "mean": 0.5543,
+          "std": 0.0554
+        },
+        "f1": {
+          "mean": 0.6362,
+          "std": 0.0645
+        }
+      },
+      "넓게(비전형+경계)": {
+        "recall": {
+          "mean": 0.5758,
+          "std": 0.0192
+        },
+        "precision": {
+          "mean": 0.9405,
+          "std": 0.0203
+        },
+        "f1": {
+          "mean": 0.7142,
+          "std": 0.0198
+        }
+      },
+      "설계이상만(데이터오류 행 제외)": {
+        "recall": {
+          "mean": 0.9143,
+          "std": 0.07
+        },
+        "precision": {
+          "mean": 0.4175,
+          "std": 0.0472
+        },
+        "f1": {
+          "mean": 0.5729,
+          "std": 0.0567
+        }
+      },
+      "노출 3건 제외(엄격)": {
+        "recall": {
+          "mean": 0.7286,
+          "std": 0.0833
+        },
+        "precision": {
+          "mean": 0.5602,
+          "std": 0.0616
+        },
+        "f1": {
+          "mean": 0.6333,
+          "std": 0.0705
+        }
+      }
+    },
+    "deepsvdd_rank": {
+      "roc_auc": 0.8488,
+      "roc_auc_std": 0.0539,
+      "pr_auc": 0.7205,
+      "pr_auc_std": 0.1194
+    },
+    "deepsvdd_seed_stability": {
+      "mean": 0.48,
+      "min": 0.3667,
+      "pairs": 10
+    },
+    "synthetic_reference": "m20_m4_threshold.json"
+  },
+  "previous_verdict_m14": null
+}

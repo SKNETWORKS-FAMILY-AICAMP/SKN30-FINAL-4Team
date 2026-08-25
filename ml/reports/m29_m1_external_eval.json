@@ -1,0 +1,500 @@
+{
+  "labelset": "data\\labels\\openapi_manual_150.csv",
+  "n_labelset": 150,
+  "n_evaluable": 131,
+  "n_excluded": 19,
+  "excluded_reasons": {
+    "컷오프미달": 7,
+    "대상밖-관광": 6,
+    "대상밖-비지원": 3,
+    "대상밖-개인복지": 2,
+    "대상밖-복합": 1
+  },
+  "label_alignment": [
+    {
+      "announcement_id": "PBLN_000000000119107",
+      "title": "[전남] 2026년 IP(지식재산) 디딤돌 프로그램 (권리화 지원사업) 지원대상 모집 공고",
+      "before": "기술·IP평가",
+      "after": "컨설팅",
+      "why": "IP디딤돌 권리화. 학습셋 'IP(지식재산)디딤돌 프로그램 → 컨설팅' 과 맞춘다"
+    },
+    {
+      "announcement_id": "PBLN_000000000120681",
+      "title": "[전남] 2026년 IP(지식재산) 디딤돌 프로그램 후속지원사업 지원대상 모집 공고",
+      "before": "기술·IP평가",
+      "after": "컨설팅",
+      "why": "IP디딤돌 후속지원. 위와 같은 사업 계열"
+    },
+    {
+      "announcement_id": "PBLN_000000000119083",
+      "title": "[충북] 2026년 소상공인 IP출원(상표출원) 지원 사업 소상공인 수혜자 모집 공고",
+      "before": "기술·IP평가",
+      "after": "컨설팅",
+      "why": "상표출원 비용. 학습셋 '상표권 출원지원 → 컨설팅' 과 맞춘다"
+    },
+    {
+      "announcement_id": "PBLN_000000000117597",
+      "title": "[강원] 태백시 2026년 소상공인 특례보증ㆍ이차보전 지원 계획 공고",
+      "before": "융자",
+      "after": "보증",
+      "why": "소상공인 특례보증·이차보전. 학습셋 '보증' 은 보증서 발급 사업"
+    },
+    {
+      "announcement_id": "PBLN_000000000117498",
+      "title": "[충남]  공주시 2026년 소상공인 특례보증 지원계획 공고",
+      "before": "융자",
+      "after": "보증",
+      "why": "소상공인 특례보증. 위와 같은 기준"
+    }
+  ],
+  "label_distribution": {
+    "판로": 35,
+    "컨설팅": 25,
+    "융자": 14,
+    "사업화": 11,
+    "보증": 10,
+    "고용보조": 10,
+    "설비": 7,
+    "수출물류": 7,
+    "창업보육": 4,
+    "경진대회": 2,
+    "성능인증": 2,
+    "기술·IP평가": 1,
+    "연구개발": 1,
+    "SW·솔루션": 1,
+    "상담": 1
+  },
+  "classes_absent_in_external": [
+    "교육훈련",
+    "수출통관",
+    "해외수주·실증",
+    "해외인증"
+  ],
+  "n_train": 1404,
+  "n_with_document": {
+    "운영 입력(e01_documents_api)": 16,
+    "원문 E01 전체(e01_documents)": 131
+  },
+  "results": {
+    "M02 LogisticRegression (운영 산출물)": {
+      "전체 150건": {
+        "n": 131,
+        "n_correct": 91,
+        "accuracy": 0.6947,
+        "acc_ci95": [
+          0.6112,
+          0.767
+        ],
+        "macro_f1_on_present_classes": 0.5895,
+        "n_classes_present": 15
+      },
+      "기존 41건(M07 배치)": {
+        "n": 41,
+        "n_correct": 25,
+        "accuracy": 0.6098,
+        "acc_ci95": [
+          0.4573,
+          0.7434
+        ],
+        "macro_f1_on_present_classes": 0.5276,
+        "n_classes_present": 14
+      },
+      "추가 90건(M28 배치)": {
+        "n": 90,
+        "n_correct": 66,
+        "accuracy": 0.7333,
+        "acc_ci95": [
+          0.6338,
+          0.8138
+        ],
+        "macro_f1_on_present_classes": 0.5822,
+        "n_classes_present": 12
+      }
+    },
+    "LinearSVM (운영 입력)": {
+      "전체 150건": {
+        "n": 131,
+        "n_correct": 95,
+        "accuracy": 0.7252,
+        "acc_ci95": [
+          0.6432,
+          0.7944
+        ],
+        "macro_f1_on_present_classes": 0.6252,
+        "n_classes_present": 15
+      },
+      "기존 41건(M07 배치)": {
+        "n": 41,
+        "n_correct": 29,
+        "accuracy": 0.7073,
+        "acc_ci95": [
+          0.5552,
+          0.8239
+        ],
+        "macro_f1_on_present_classes": 0.6004,
+        "n_classes_present": 14
+      },
+      "추가 90건(M28 배치)": {
+        "n": 90,
+        "n_correct": 66,
+        "accuracy": 0.7333,
+        "acc_ci95": [
+          0.6338,
+          0.8138
+        ],
+        "macro_f1_on_present_classes": 0.6029,
+        "n_classes_present": 12
+      }
+    },
+    "LogisticRegression (운영 입력 재학습)": {
+      "전체 150건": {
+        "n": 131,
+        "n_correct": 91,
+        "accuracy": 0.6947,
+        "acc_ci95": [
+          0.6112,
+          0.767
+        ],
+        "macro_f1_on_present_classes": 0.5895,
+        "n_classes_present": 15
+      },
+      "기존 41건(M07 배치)": {
+        "n": 41,
+        "n_correct": 25,
+        "accuracy": 0.6098,
+        "acc_ci95": [
+          0.4573,
+          0.7434
+        ],
+        "macro_f1_on_present_classes": 0.5276,
+        "n_classes_present": 14
+      },
+      "추가 90건(M28 배치)": {
+        "n": 90,
+        "n_correct": 66,
+        "accuracy": 0.7333,
+        "acc_ci95": [
+          0.6338,
+          0.8138
+        ],
+        "macro_f1_on_present_classes": 0.5822,
+        "n_classes_present": 12
+      }
+    },
+    "LinearSVM (원문 E01 전체 입력)": {
+      "전체 150건": {
+        "n": 131,
+        "n_correct": 91,
+        "accuracy": 0.6947,
+        "acc_ci95": [
+          0.6112,
+          0.767
+        ],
+        "macro_f1_on_present_classes": 0.5927,
+        "n_classes_present": 15
+      },
+      "기존 41건(M07 배치)": {
+        "n": 41,
+        "n_correct": 26,
+        "accuracy": 0.6341,
+        "acc_ci95": [
+          0.4812,
+          0.7641
+        ],
+        "macro_f1_on_present_classes": 0.5112,
+        "n_classes_present": 14
+      },
+      "추가 90건(M28 배치)": {
+        "n": 90,
+        "n_correct": 65,
+        "accuracy": 0.7222,
+        "acc_ci95": [
+          0.622,
+          0.8042
+        ],
+        "macro_f1_on_present_classes": 0.6762,
+        "n_classes_present": 12
+      }
+    },
+    "LogisticRegression (원문 E01 전체 입력)": {
+      "전체 150건": {
+        "n": 131,
+        "n_correct": 78,
+        "accuracy": 0.5954,
+        "acc_ci95": [
+          0.5098,
+          0.6756
+        ],
+        "macro_f1_on_present_classes": 0.4257,
+        "n_classes_present": 15
+      },
+      "기존 41건(M07 배치)": {
+        "n": 41,
+        "n_correct": 20,
+        "accuracy": 0.4878,
+        "acc_ci95": [
+          0.3425,
+          0.6352
+        ],
+        "macro_f1_on_present_classes": 0.3701,
+        "n_classes_present": 14
+      },
+      "추가 90건(M28 배치)": {
+        "n": 90,
+        "n_correct": 58,
+        "accuracy": 0.6444,
+        "acc_ci95": [
+          0.5415,
+          0.7356
+        ],
+        "macro_f1_on_present_classes": 0.5342,
+        "n_classes_present": 12
+      }
+    }
+  },
+  "with_abstention": {
+    "M02 LogisticRegression (판단보류 제외)": {
+      "n": 101,
+      "n_correct": 80,
+      "accuracy": 0.7921,
+      "acc_ci95": [
+        0.703,
+        0.8598
+      ],
+      "macro_f1_on_present_classes": 0.6486,
+      "n_classes_present": 15
+    },
+    "LinearSVM (top2_gap 상위 70% 만)": {
+      "n": 92,
+      "n_correct": 80,
+      "accuracy": 0.8696,
+      "acc_ci95": [
+        0.7857,
+        0.9238
+      ],
+      "macro_f1_on_present_classes": 0.7254,
+      "n_classes_present": 13
+    },
+    "LogisticRegression (proba>=0.35)": {
+      "n": 45,
+      "n_correct": 39,
+      "accuracy": 0.8667,
+      "acc_ci95": [
+        0.7382,
+        0.9374
+      ],
+      "macro_f1_on_present_classes": 0.787,
+      "n_classes_present": 7
+    }
+  },
+  "best_model": "LinearSVM (운영 입력)",
+  "label_rule_sensitivity": {
+    "기준: 특례보증 = 보증 (채택)": {
+      "n": 131,
+      "n_correct": 95,
+      "accuracy": 0.7252,
+      "acc_ci95": [
+        0.6432,
+        0.7944
+      ],
+      "macro_f1_on_present_classes": 0.6252,
+      "n_classes_present": 15
+    },
+    "대안: 특례보증 = 융자": {
+      "n": 131,
+      "n_correct": 100,
+      "accuracy": 0.7634,
+      "acc_ci95": [
+        0.6837,
+        0.828
+      ],
+      "macro_f1_on_present_classes": 0.653,
+      "n_classes_present": 14
+    }
+  },
+  "per_class_best": [
+    {
+      "class": "판로",
+      "n_true": 35,
+      "recall": 0.8571,
+      "n_pred": 32,
+      "precision": 0.9375
+    },
+    {
+      "class": "컨설팅",
+      "n_true": 25,
+      "recall": 0.68,
+      "n_pred": 20,
+      "precision": 0.85
+    },
+    {
+      "class": "융자",
+      "n_true": 14,
+      "recall": 0.9286,
+      "n_pred": 18,
+      "precision": 0.7222
+    },
+    {
+      "class": "사업화",
+      "n_true": 11,
+      "recall": 0.7273,
+      "n_pred": 21,
+      "precision": 0.381
+    },
+    {
+      "class": "고용보조",
+      "n_true": 10,
+      "recall": 0.8,
+      "n_pred": 11,
+      "precision": 0.7273
+    },
+    {
+      "class": "보증",
+      "n_true": 10,
+      "recall": 0.2,
+      "n_pred": 2,
+      "precision": 1.0
+    },
+    {
+      "class": "설비",
+      "n_true": 7,
+      "recall": 0.8571,
+      "n_pred": 8,
+      "precision": 0.75
+    },
+    {
+      "class": "수출물류",
+      "n_true": 7,
+      "recall": 0.7143,
+      "n_pred": 6,
+      "precision": 0.8333
+    },
+    {
+      "class": "창업보육",
+      "n_true": 4,
+      "recall": 0.75,
+      "n_pred": 4,
+      "precision": 0.75
+    },
+    {
+      "class": "경진대회",
+      "n_true": 2,
+      "recall": 0.0,
+      "n_pred": 0,
+      "precision": null
+    },
+    {
+      "class": "성능인증",
+      "n_true": 2,
+      "recall": 0.0,
+      "n_pred": 0,
+      "precision": null
+    },
+    {
+      "class": "SW·솔루션",
+      "n_true": 1,
+      "recall": 1.0,
+      "n_pred": 1,
+      "precision": 1.0
+    },
+    {
+      "class": "기술·IP평가",
+      "n_true": 1,
+      "recall": 1.0,
+      "n_pred": 1,
+      "precision": 1.0
+    },
+    {
+      "class": "상담",
+      "n_true": 1,
+      "recall": 1.0,
+      "n_pred": 1,
+      "precision": 1.0
+    },
+    {
+      "class": "연구개발",
+      "n_true": 1,
+      "recall": 0.0,
+      "n_pred": 4,
+      "precision": 0.0
+    }
+  ],
+  "confusions_best": [
+    {
+      "true": "보증",
+      "pred": "융자",
+      "n": 5
+    },
+    {
+      "true": "판로",
+      "pred": "사업화",
+      "n": 3
+    },
+    {
+      "true": "경진대회",
+      "pred": "사업화",
+      "n": 2
+    },
+    {
+      "true": "성능인증",
+      "pred": "사업화",
+      "n": 2
+    },
+    {
+      "true": "컨설팅",
+      "pred": "사업화",
+      "n": 2
+    },
+    {
+      "true": "컨설팅",
+      "pred": "연구개발",
+      "n": 2
+    },
+    {
+      "true": "보증",
+      "pred": "연구개발",
+      "n": 1
+    },
+    {
+      "true": "컨설팅",
+      "pred": "판로",
+      "n": 1
+    },
+    {
+      "true": "연구개발",
+      "pred": "사업화",
+      "n": 1
+    },
+    {
+      "true": "수출물류",
+      "pred": "고용보조",
+      "n": 1
+    },
+    {
+      "true": "고용보조",
+      "pred": "교육훈련",
+      "n": 1
+    },
+    {
+      "true": "고용보조",
+      "pred": "사업화",
+      "n": 1
+    },
+    {
+      "true": "보증",
+      "pred": "수출물류",
+      "n": 1
+    },
+    {
+      "true": "컨설팅",
+      "pred": "창업보육",
+      "n": 1
+    },
+    {
+      "true": "컨설팅",
+      "pred": "설비",
+      "n": 1
+    }
+  ],
+  "labeling_caveat": "라벨은 첨부 원문(HWP/HWPX)의 지원내용 절을 읽고 붙였고, 애매한 계열은 학습 원천의 같은 사업명 용법을 따랐다. 확신도(confidence) 컬럼에 높음/보통/낮음을 남겼으니 낮음 건은 사람이 다시 볼 것."
+}

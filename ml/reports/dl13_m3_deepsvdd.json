@@ -1,0 +1,858 @@
+{
+  "질문": "이 사업의 설계 조합이 과거 비교군 대비 얼마나 드문가",
+  "model": "Deep SVDD (bias-free MLP 8-32-8, epochs 200, lr 1e-03)",
+  "n_train": 2339,
+  "n_features": 8,
+  "feature_names": [
+    "log_per_recipient",
+    "log_per_recipient__missing",
+    "log_support_count",
+    "log_support_count__missing",
+    "project_duration",
+    "project_duration__missing",
+    "support_method__freq",
+    "amount_type__freq"
+  ],
+  "alert_rate": 0.02,
+  "n_alerted_population": 47,
+  "seeds": [
+    42,
+    7,
+    2024,
+    1234,
+    99
+  ],
+  "per_seed": [
+    {
+      "seed": 42,
+      "threshold": 0.000189,
+      "results": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 2,
+          "TP": 2,
+          "FP": 0,
+          "FN": 13,
+          "TN": 35,
+          "recall": 0.1333,
+          "precision": 1.0,
+          "f1": 0.2353,
+          "specificity": 1.0
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 2,
+          "TP": 2,
+          "FP": 0,
+          "FN": 31,
+          "TN": 17,
+          "recall": 0.0606,
+          "precision": 1.0,
+          "f1": 0.1143,
+          "specificity": 1.0
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 2,
+          "TP": 2,
+          "FP": 0,
+          "FN": 5,
+          "TN": 35,
+          "recall": 0.2857,
+          "precision": 1.0,
+          "f1": 0.4444,
+          "specificity": 1.0
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 2,
+          "TP": 2,
+          "FP": 0,
+          "FN": 12,
+          "TN": 33,
+          "recall": 0.1429,
+          "precision": 1.0,
+          "f1": 0.25,
+          "specificity": 1.0
+        }
+      },
+      "results_equal_budget": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 20,
+          "TP": 13,
+          "FP": 7,
+          "FN": 2,
+          "TN": 28,
+          "recall": 0.8667,
+          "precision": 0.65,
+          "f1": 0.7429,
+          "specificity": 0.8
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 20,
+          "TP": 19,
+          "FP": 1,
+          "FN": 14,
+          "TN": 16,
+          "recall": 0.5758,
+          "precision": 0.95,
+          "f1": 0.717,
+          "specificity": 0.9412
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 14,
+          "TP": 7,
+          "FP": 7,
+          "FN": 0,
+          "TN": 28,
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6667,
+          "specificity": 0.8
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 18,
+          "TP": 12,
+          "FP": 6,
+          "FN": 2,
+          "TN": 27,
+          "recall": 0.8571,
+          "precision": 0.6667,
+          "f1": 0.75,
+          "specificity": 0.8182
+        }
+      },
+      "rank_quality_strict": {
+        "pr_auc": 0.8261,
+        "roc_auc": 0.9029
+      }
+    },
+    {
+      "seed": 7,
+      "threshold": 0.000222,
+      "results": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 15,
+          "TN": 35,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 33,
+          "TN": 17,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 7,
+          "TN": 35,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 14,
+          "TN": 33,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        }
+      },
+      "results_equal_budget": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 20,
+          "TP": 10,
+          "FP": 10,
+          "FN": 5,
+          "TN": 25,
+          "recall": 0.6667,
+          "precision": 0.5,
+          "f1": 0.5714,
+          "specificity": 0.7143
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 20,
+          "TP": 19,
+          "FP": 1,
+          "FN": 14,
+          "TN": 16,
+          "recall": 0.5758,
+          "precision": 0.95,
+          "f1": 0.717,
+          "specificity": 0.9412
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 16,
+          "TP": 6,
+          "FP": 10,
+          "FN": 1,
+          "TN": 25,
+          "recall": 0.8571,
+          "precision": 0.375,
+          "f1": 0.5217,
+          "specificity": 0.7143
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 18,
+          "TP": 9,
+          "FP": 9,
+          "FN": 5,
+          "TN": 24,
+          "recall": 0.6429,
+          "precision": 0.5,
+          "f1": 0.5625,
+          "specificity": 0.7273
+        }
+      },
+      "rank_quality_strict": {
+        "pr_auc": 0.7233,
+        "roc_auc": 0.8248
+      }
+    },
+    {
+      "seed": 2024,
+      "threshold": 0.000238,
+      "results": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 4,
+          "TP": 4,
+          "FP": 0,
+          "FN": 11,
+          "TN": 35,
+          "recall": 0.2667,
+          "precision": 1.0,
+          "f1": 0.4211,
+          "specificity": 1.0
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 4,
+          "TP": 4,
+          "FP": 0,
+          "FN": 29,
+          "TN": 17,
+          "recall": 0.1212,
+          "precision": 1.0,
+          "f1": 0.2162,
+          "specificity": 1.0
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 2,
+          "TP": 2,
+          "FP": 0,
+          "FN": 5,
+          "TN": 35,
+          "recall": 0.2857,
+          "precision": 1.0,
+          "f1": 0.4444,
+          "specificity": 1.0
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 4,
+          "TP": 4,
+          "FP": 0,
+          "FN": 10,
+          "TN": 33,
+          "recall": 0.2857,
+          "precision": 1.0,
+          "f1": 0.4444,
+          "specificity": 1.0
+        }
+      },
+      "results_equal_budget": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 21,
+          "TP": 12,
+          "FP": 9,
+          "FN": 3,
+          "TN": 26,
+          "recall": 0.8,
+          "precision": 0.5714,
+          "f1": 0.6667,
+          "specificity": 0.7429
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 21,
+          "TP": 20,
+          "FP": 1,
+          "FN": 13,
+          "TN": 16,
+          "recall": 0.6061,
+          "precision": 0.9524,
+          "f1": 0.7407,
+          "specificity": 0.9412
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 16,
+          "TP": 7,
+          "FP": 9,
+          "FN": 0,
+          "TN": 26,
+          "recall": 1.0,
+          "precision": 0.4375,
+          "f1": 0.6087,
+          "specificity": 0.7429
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 19,
+          "TP": 11,
+          "FP": 8,
+          "FN": 3,
+          "TN": 25,
+          "recall": 0.7857,
+          "precision": 0.5789,
+          "f1": 0.6667,
+          "specificity": 0.7576
+        }
+      },
+      "rank_quality_strict": {
+        "pr_auc": 0.7995,
+        "roc_auc": 0.8819
+      }
+    },
+    {
+      "seed": 1234,
+      "threshold": 0.000244,
+      "results": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 15,
+          "TN": 35,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 33,
+          "TN": 17,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 7,
+          "TN": 35,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 14,
+          "TN": 33,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        }
+      },
+      "results_equal_budget": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 20,
+          "TP": 10,
+          "FP": 10,
+          "FN": 5,
+          "TN": 25,
+          "recall": 0.6667,
+          "precision": 0.5,
+          "f1": 0.5714,
+          "specificity": 0.7143
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 20,
+          "TP": 18,
+          "FP": 2,
+          "FN": 15,
+          "TN": 15,
+          "recall": 0.5455,
+          "precision": 0.9,
+          "f1": 0.6792,
+          "specificity": 0.8824
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 16,
+          "TP": 6,
+          "FP": 10,
+          "FN": 1,
+          "TN": 25,
+          "recall": 0.8571,
+          "precision": 0.375,
+          "f1": 0.5217,
+          "specificity": 0.7143
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 18,
+          "TP": 9,
+          "FP": 9,
+          "FN": 5,
+          "TN": 24,
+          "recall": 0.6429,
+          "precision": 0.5,
+          "f1": 0.5625,
+          "specificity": 0.7273
+        }
+      },
+      "rank_quality_strict": {
+        "pr_auc": 0.4921,
+        "roc_auc": 0.7543
+      }
+    },
+    {
+      "seed": 99,
+      "threshold": 0.000328,
+      "results": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 15,
+          "TN": 35,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 33,
+          "TN": 17,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 7,
+          "TN": 35,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 0,
+          "TP": 0,
+          "FP": 0,
+          "FN": 14,
+          "TN": 33,
+          "recall": 0.0,
+          "precision": null,
+          "f1": 0.0,
+          "specificity": 1.0
+        }
+      },
+      "results_equal_budget": {
+        "엄격(비전형만)": {
+          "n": 50,
+          "n_positive": 15,
+          "n_flagged": 20,
+          "TP": 11,
+          "FP": 9,
+          "FN": 4,
+          "TN": 26,
+          "recall": 0.7333,
+          "precision": 0.55,
+          "f1": 0.6286,
+          "specificity": 0.7429
+        },
+        "넓게(비전형+경계)": {
+          "n": 50,
+          "n_positive": 33,
+          "n_flagged": 20,
+          "TP": 19,
+          "FP": 1,
+          "FN": 14,
+          "TN": 16,
+          "recall": 0.5758,
+          "precision": 0.95,
+          "f1": 0.717,
+          "specificity": 0.9412
+        },
+        "설계이상만(데이터오류 행 제외)": {
+          "n": 42,
+          "n_positive": 7,
+          "n_flagged": 15,
+          "TP": 6,
+          "FP": 9,
+          "FN": 1,
+          "TN": 26,
+          "recall": 0.8571,
+          "precision": 0.4,
+          "f1": 0.5455,
+          "specificity": 0.7429
+        },
+        "노출 3건 제외(엄격)": {
+          "n": 47,
+          "n_positive": 14,
+          "n_flagged": 18,
+          "TP": 10,
+          "FP": 8,
+          "FN": 4,
+          "TN": 25,
+          "recall": 0.7143,
+          "precision": 0.5556,
+          "f1": 0.625,
+          "specificity": 0.7576
+        }
+      },
+      "rank_quality_strict": {
+        "pr_auc": 0.7617,
+        "roc_auc": 0.88
+      }
+    }
+  ],
+  "summary_mean_std": {
+    "엄격(비전형만)": {
+      "recall": {
+        "mean": 0.08,
+        "std": 0.1067
+      },
+      "precision": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f1": {
+        "mean": 0.1313,
+        "std": 0.1712
+      }
+    },
+    "넓게(비전형+경계)": {
+      "recall": {
+        "mean": 0.0364,
+        "std": 0.0485
+      },
+      "precision": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f1": {
+        "mean": 0.0661,
+        "std": 0.0871
+      }
+    },
+    "설계이상만(데이터오류 행 제외)": {
+      "recall": {
+        "mean": 0.1143,
+        "std": 0.14
+      },
+      "precision": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f1": {
+        "mean": 0.1778,
+        "std": 0.2177
+      }
+    },
+    "노출 3건 제외(엄격)": {
+      "recall": {
+        "mean": 0.0857,
+        "std": 0.1143
+      },
+      "precision": {
+        "mean": 1.0,
+        "std": 0.0
+      },
+      "f1": {
+        "mean": 0.1389,
+        "std": 0.1809
+      }
+    }
+  },
+  "summary_equal_budget_mean_std": {
+    "n_alerts_within_holdout": 20,
+    "엄격(비전형만)": {
+      "recall": {
+        "mean": 0.7467,
+        "std": 0.0777
+      },
+      "precision": {
+        "mean": 0.5543,
+        "std": 0.0554
+      },
+      "f1": {
+        "mean": 0.6362,
+        "std": 0.0645
+      }
+    },
+    "넓게(비전형+경계)": {
+      "recall": {
+        "mean": 0.5758,
+        "std": 0.0192
+      },
+      "precision": {
+        "mean": 0.9405,
+        "std": 0.0203
+      },
+      "f1": {
+        "mean": 0.7142,
+        "std": 0.0198
+      }
+    },
+    "설계이상만(데이터오류 행 제외)": {
+      "recall": {
+        "mean": 0.9143,
+        "std": 0.07
+      },
+      "precision": {
+        "mean": 0.4175,
+        "std": 0.0472
+      },
+      "f1": {
+        "mean": 0.5729,
+        "std": 0.0567
+      }
+    },
+    "노출 3건 제외(엄격)": {
+      "recall": {
+        "mean": 0.7286,
+        "std": 0.0833
+      },
+      "precision": {
+        "mean": 0.5602,
+        "std": 0.0616
+      },
+      "f1": {
+        "mean": 0.6333,
+        "std": 0.0705
+      }
+    }
+  },
+  "rank_quality_strict_mean": {
+    "roc_auc": 0.8488,
+    "roc_auc_std": 0.0539,
+    "pr_auc": 0.7205,
+    "pr_auc_std": 0.1194
+  },
+  "seed_top30_overlap": {
+    "mean": 0.48,
+    "min": 0.3667,
+    "pairs": 10
+  },
+  "ocsvm_same_holdout": {
+    "results": {
+      "엄격(비전형만)": {
+        "n": 50,
+        "n_positive": 15,
+        "n_flagged": 20,
+        "TP": 5,
+        "FP": 15,
+        "FN": 10,
+        "TN": 20,
+        "recall": 0.3333,
+        "precision": 0.25,
+        "f1": 0.2857,
+        "specificity": 0.5714
+      },
+      "넓게(비전형+경계)": {
+        "n": 50,
+        "n_positive": 33,
+        "n_flagged": 20,
+        "TP": 10,
+        "FP": 10,
+        "FN": 23,
+        "TN": 7,
+        "recall": 0.303,
+        "precision": 0.5,
+        "f1": 0.3774,
+        "specificity": 0.4118
+      },
+      "설계이상만(데이터오류 행 제외)": {
+        "n": 42,
+        "n_positive": 7,
+        "n_flagged": 17,
+        "TP": 2,
+        "FP": 15,
+        "FN": 5,
+        "TN": 20,
+        "recall": 0.2857,
+        "precision": 0.1176,
+        "f1": 0.1667,
+        "specificity": 0.5714
+      },
+      "노출 3건 제외(엄격)": {
+        "n": 47,
+        "n_positive": 14,
+        "n_flagged": 19,
+        "TP": 5,
+        "FP": 14,
+        "FN": 9,
+        "TN": 19,
+        "recall": 0.3571,
+        "precision": 0.2632,
+        "f1": 0.303,
+        "specificity": 0.5758
+      }
+    },
+    "results_equal_budget": {
+      "n_alerts_within_holdout": 20,
+      "엄격(비전형만)": {
+        "n": 50,
+        "n_positive": 15,
+        "n_flagged": 20,
+        "TP": 5,
+        "FP": 15,
+        "FN": 10,
+        "TN": 20,
+        "recall": 0.3333,
+        "precision": 0.25,
+        "f1": 0.2857,
+        "specificity": 0.5714
+      },
+      "넓게(비전형+경계)": {
+        "n": 50,
+        "n_positive": 33,
+        "n_flagged": 20,
+        "TP": 10,
+        "FP": 10,
+        "FN": 23,
+        "TN": 7,
+        "recall": 0.303,
+        "precision": 0.5,
+        "f1": 0.3774,
+        "specificity": 0.4118
+      },
+      "설계이상만(데이터오류 행 제외)": {
+        "n": 42,
+        "n_positive": 7,
+        "n_flagged": 17,
+        "TP": 2,
+        "FP": 15,
+        "FN": 5,
+        "TN": 20,
+        "recall": 0.2857,
+        "precision": 0.1176,
+        "f1": 0.1667,
+        "specificity": 0.5714
+      },
+      "노출 3건 제외(엄격)": {
+        "n": 47,
+        "n_positive": 14,
+        "n_flagged": 19,
+        "TP": 5,
+        "FP": 14,
+        "FN": 9,
+        "TN": 19,
+        "recall": 0.3571,
+        "precision": 0.2632,
+        "f1": 0.303,
+        "specificity": 0.5758
+      }
+    },
+    "rank_quality": {
+      "엄격(비전형만)": {
+        "pr_auc": 0.345,
+        "roc_auc": 0.48
+      },
+      "넓게(비전형+경계)": {
+        "pr_auc": 0.6491,
+        "roc_auc": 0.3895
+      }
+    },
+    "model": "OneClassSVM(rbf, nu=0.02, gamma=0.5) / features=A_설계핵심 / scaler=standard"
+  },
+  "note": "경고선·feature·스케일러·hold-out·정답 정의를 M30 과 동일하게 뒀다. 다른 것은 모델 구조뿐이다."
+}

@@ -1,0 +1,141 @@
+{
+  "질문": "이 사업의 지원규모가 과거 유사사업 대비 어느 위치에 있는가",
+  "n": 2205,
+  "n_groups": 2075,
+  "cv": "GroupKFold(5) by program_stem — 셔플 없는 결정적 분할",
+  "feature_set": "+자부담·추출신뢰도",
+  "cat_features": [
+    "support_type",
+    "support_method",
+    "support_unit",
+    "category_large",
+    "industry_grp",
+    "agency_type",
+    "amount_type",
+    "per_recipient_basis"
+  ],
+  "num_features": [
+    "support_count",
+    "support_ratio",
+    "project_duration",
+    "year",
+    "self_burden_ratio",
+    "extraction_confidence"
+  ],
+  "target": "log10(기업/과제당 지원액)",
+  "ft_transformer": {
+    "arch": "d_token 32 / blocks 3 / heads 4 / dropout 0.1 / L1 loss / epochs 200",
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE_log10": 0.5506,
+        "MedAE_log10": 0.4111,
+        "RMSE_log10": 0.767,
+        "geo_mean_error_x": 3.553,
+        "within_2x": 0.3882,
+        "fold_mae": [
+          0.5534,
+          0.5597,
+          0.5597,
+          0.5453,
+          0.5351
+        ],
+        "fold_std": 0.0094
+      },
+      {
+        "seed": 7,
+        "MAE_log10": 0.5442,
+        "MedAE_log10": 0.401,
+        "RMSE_log10": 0.7659,
+        "geo_mean_error_x": 3.501,
+        "within_2x": 0.3968,
+        "fold_mae": [
+          0.5391,
+          0.5668,
+          0.5632,
+          0.5189,
+          0.5331
+        ],
+        "fold_std": 0.0182
+      },
+      {
+        "seed": 2024,
+        "MAE_log10": 0.5457,
+        "MedAE_log10": 0.3944,
+        "RMSE_log10": 0.7501,
+        "geo_mean_error_x": 3.513,
+        "within_2x": 0.3878,
+        "fold_mae": [
+          0.5471,
+          0.562,
+          0.553,
+          0.531,
+          0.5353
+        ],
+        "fold_std": 0.0114
+      }
+    ],
+    "summary": {
+      "MAE_log10_mean": 0.5468,
+      "MAE_log10_std": 0.0027,
+      "MAE_log10_best": 0.5442,
+      "MedAE_log10_mean": 0.4022,
+      "within_2x_mean": 0.3909,
+      "fold_std_mean": 0.013
+    }
+  },
+  "lightgbm": {
+    "params": {
+      "num_leaves": 63,
+      "max_depth": 8,
+      "min_child_samples": 5,
+      "learning_rate": 0.02,
+      "n_estimators": 800,
+      "colsample_bytree": 0.6,
+      "subsample": 1.0,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0
+    },
+    "MAE_log10": 0.5074,
+    "MedAE_log10": 0.382,
+    "RMSE_log10": 0.6898,
+    "geo_mean_error_x": 3.216,
+    "within_2x": 0.41,
+    "fold_mae": [
+      0.5192,
+      0.5088,
+      0.5152,
+      0.4926,
+      0.501
+    ],
+    "fold_std": 0.0096
+  },
+  "cohort_median_baseline": {
+    "MAE_log10": 0.6791,
+    "MedAE_log10": 0.5528,
+    "RMSE_log10": 0.8976,
+    "geo_mean_error_x": 4.777,
+    "within_2x": 0.2608,
+    "fold_mae": [
+      0.676,
+      0.6763,
+      0.6891,
+      0.6525,
+      0.7016
+    ],
+    "fold_std": 0.0163
+  },
+  "comparison": {
+    "ft_minus_lgbm_MAE": 0.0394,
+    "significance_margin_fold_std": 0.0096,
+    "ft_improvement_vs_cohort_pct": 19.5,
+    "lgbm_improvement_vs_cohort_pct": 25.3,
+    "verdict": "LGBM 유지 — FT-Transformer 가 fold σ 이상 더 나쁘다"
+  },
+  "runtime_min": 41.4
+}
