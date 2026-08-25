@@ -84,3 +84,4 @@ Cargo.lock
 # ==========================================
 .docker/
 docker-data/
+/backend/storage/

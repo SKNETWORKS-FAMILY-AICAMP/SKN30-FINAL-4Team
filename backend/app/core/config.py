@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = Field(default=3, ge=1)
     jwt_secret: SecretStr = Field(min_length=32)
     jwt_access_token_expire_minutes: int = Field(default=30, ge=1)
+    local_storage_root: Path = PROJECT_ROOT / "backend" / "storage"
 
     @field_validator("database_url")
     @classmethod

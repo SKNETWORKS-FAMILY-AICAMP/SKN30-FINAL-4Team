@@ -6,9 +6,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.request_body_limit import RequestBodyLimitMiddleware
 from app.api.router import router
 from app.core.config import Settings
+from app.core.upload_limits import MAX_MULTIPART_BODY_BYTES
 from app.db.session import create_database_engine
+from app.infrastructure.local_object_storage import LocalObjectStorage
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -21,6 +24,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         application.state.database_engine = engine
         application.state.settings = runtime_settings
+        application.state.object_storage = LocalObjectStorage(
+            runtime_settings.local_storage_root
+        )
         try:
             yield
         finally:
@@ -30,6 +36,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="SIMS Pre-review API",
         version="0.1.0",
         lifespan=lifespan,
+    )
+    application.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=MAX_MULTIPART_BODY_BYTES,
     )
 
     @application.exception_handler(RequestValidationError)
