@@ -11,10 +11,17 @@ from app.api.router import router
 from app.core.config import Settings
 from app.core.upload_limits import MAX_MULTIPART_BODY_BYTES
 from app.db.session import create_database_engine
+from app.infrastructure.in_process_job_dispatcher import InProcessJobDispatcher
 from app.infrastructure.local_object_storage import LocalObjectStorage
+from app.parsers.hwp_parser import RhwpDocumentParser
+from app.ports.document_parser import DocumentParser
+from app.services.document_parsing import run_case_parsing
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    document_parser: DocumentParser | None = None,
+) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         runtime_settings = settings or Settings()
@@ -24,12 +31,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         application.state.database_engine = engine
         application.state.settings = runtime_settings
-        application.state.object_storage = LocalObjectStorage(
+        object_storage = LocalObjectStorage(
             runtime_settings.local_storage_root
         )
+        active_parser = document_parser or RhwpDocumentParser()
+        dispatcher = InProcessJobDispatcher(
+            lambda case_id: run_case_parsing(
+                engine,
+                object_storage,
+                active_parser,
+                case_id,
+            )
+        )
+        application.state.object_storage = object_storage
+        application.state.document_parser = active_parser
+        application.state.job_dispatcher = dispatcher
         try:
             yield
         finally:
+            await dispatcher.shutdown()
             engine.dispose()
 
     application = FastAPI(
