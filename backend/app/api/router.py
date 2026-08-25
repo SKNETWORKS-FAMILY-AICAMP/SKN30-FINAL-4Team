@@ -1,0 +1,26 @@
+import logging
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from app.db.session import check_database_ready
+
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.get("/health/live")
+def live() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.get("/health/ready")
+def ready(request: Request) -> JSONResponse:
+    try:
+        check_database_ready(request.app.state.database_engine)
+    except Exception as error:
+        logger.warning("Database readiness check failed: %s", type(error).__name__)
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+
+    return JSONResponse(content={"status": "ready"})
