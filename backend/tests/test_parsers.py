@@ -289,7 +289,9 @@ def test_analysis_persists_parse_snapshot_and_moves_to_checking(
         jwt_secret=JWT_SECRET,
         local_storage_root=tmp_path,
     )
-    with TestClient(create_app(settings, FakeParser(partial=partial))) as client:
+    with TestClient(
+        create_app(settings, FakeParser(partial=partial), None)
+    ) as client:
         headers = bearer_for(client, login_id)
         upload = client.post(
             "/api/v1/cases",
@@ -355,7 +357,7 @@ def test_parser_failure_is_safe_and_terminal(
         jwt_secret=JWT_SECRET,
         local_storage_root=tmp_path,
     )
-    with TestClient(create_app(settings, FakeParser(fail=True))) as client:
+    with TestClient(create_app(settings, FakeParser(fail=True), None)) as client:
         headers = bearer_for(client, login_id)
         upload = client.post(
             "/api/v1/cases",
@@ -389,11 +391,19 @@ def test_parser_failure_is_safe_and_terminal(
             ),
             {"case_id": case_id},
         ).mappings().one()
+        cpl_count = connection.scalar(
+            text(
+                "SELECT count(*) FROM sims.request_extraction "
+                "WHERE inspection_case_id = :case_id"
+            ),
+            {"case_id": case_id},
+        )
     assert row["status"] == "FAILED"
     assert row["error_code"] == "DOCUMENT_PARSE_FAILED"
     assert row["error_message"] == "The uploaded document could not be parsed"
     assert "sensitive" not in row["error_message"]
     assert row["finished_at"] is not None
+    assert cpl_count == 0
 
 
 def test_changed_stored_source_is_rejected_before_parser(
@@ -409,7 +419,7 @@ def test_changed_stored_source_is_rejected_before_parser(
         jwt_secret=JWT_SECRET,
         local_storage_root=tmp_path,
     )
-    with TestClient(create_app(settings, FakeParser())) as client:
+    with TestClient(create_app(settings, FakeParser(), None)) as client:
         headers = bearer_for(client, login_id)
         upload = client.post(
             "/api/v1/cases",
@@ -461,7 +471,7 @@ def test_cancelled_enqueue_does_not_leave_case_parsing(
         jwt_secret=JWT_SECRET,
         local_storage_root=tmp_path,
     )
-    with TestClient(create_app(settings, FakeParser())) as client:
+    with TestClient(create_app(settings, FakeParser(), None)) as client:
         headers = bearer_for(client, login_id)
         upload = client.post(
             "/api/v1/cases",
@@ -511,7 +521,7 @@ def test_analysis_is_owner_scoped_and_cannot_start_twice(
         jwt_secret=JWT_SECRET,
         local_storage_root=tmp_path,
     )
-    with TestClient(create_app(settings, FakeParser())) as client:
+    with TestClient(create_app(settings, FakeParser(), None)) as client:
         owner_headers = bearer_for(client, owner)
         stranger_headers = bearer_for(client, stranger)
         upload = client.post(
