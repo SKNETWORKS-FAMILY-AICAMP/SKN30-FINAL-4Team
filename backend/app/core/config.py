@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import Field, PostgresDsn, field_validator
+from pydantic import Field, PostgresDsn, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,10 +12,13 @@ class Settings(BaseSettings):
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     database_url: PostgresDsn
     database_connect_timeout_seconds: int = Field(default=3, ge=1)
+    jwt_secret: SecretStr = Field(min_length=32)
+    jwt_access_token_expire_minutes: int = Field(default=30, ge=1)
 
     @field_validator("database_url")
     @classmethod

@@ -1,0 +1,89 @@
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from pydantic import BaseModel, Field, SecretStr
+
+from app.api.deps import CurrentUser, unauthorized
+from app.core.security import create_access_token
+from app.services.auth import (
+    InvalidCredentialsError,
+    PasswordUnchangedError,
+    change_password,
+    login,
+)
+
+
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+class LoginRequest(BaseModel):
+    login_id: str = Field(min_length=1, max_length=255)
+    password: SecretStr = Field(min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: SecretStr = Field(min_length=1, max_length=128)
+    new_password: SecretStr = Field(min_length=12, max_length=128)
+
+
+class MeResponse(BaseModel):
+    id: int
+    login_id: str
+
+
+@router.post("/login", response_model=TokenResponse)
+def login_user(request: Request, body: LoginRequest) -> TokenResponse:
+    try:
+        user = login(
+            request.app.state.database_engine,
+            body.login_id,
+            body.password.get_secret_value(),
+        )
+    except InvalidCredentialsError:
+        raise unauthorized() from None
+
+    settings = request.app.state.settings
+    return TokenResponse(
+        access_token=create_access_token(
+            user.id,
+            settings.jwt_secret.get_secret_value(),
+            settings.jwt_access_token_expire_minutes * 60,
+        )
+    )
+
+
+@router.get("/me", response_model=MeResponse)
+def me(user: CurrentUser) -> MeResponse:
+    return MeResponse(id=user.id, login_id=user.login_id)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+def update_password(
+    request: Request,
+    body: ChangePasswordRequest,
+    user: CurrentUser,
+) -> Response:
+    try:
+        change_password(
+            request.app.state.database_engine,
+            user.id,
+            body.current_password.get_secret_value(),
+            body.new_password.get_secret_value(),
+        )
+    except (InvalidCredentialsError, PasswordUnchangedError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password change failed",
+        ) from None
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(_: CurrentUser) -> Response:
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

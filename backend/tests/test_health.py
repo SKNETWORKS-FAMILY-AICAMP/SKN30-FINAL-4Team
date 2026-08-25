@@ -11,10 +11,15 @@ from main import create_app
 UNREACHABLE_DATABASE_URL = (
     "postgresql+psycopg://postgres:test@127.0.0.1:1/sims"
 )
+TEST_JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
+
+
+def settings_for(database_url: str) -> Settings:
+    return Settings(database_url=database_url, jwt_secret=TEST_JWT_SECRET)
 
 
 def test_live_works_while_database_is_unreachable() -> None:
-    with TestClient(create_app(UNREACHABLE_DATABASE_URL)) as client:
+    with TestClient(create_app(settings_for(UNREACHABLE_DATABASE_URL))) as client:
         response = client.get("/health/live")
 
     assert response.status_code == 200
@@ -22,7 +27,7 @@ def test_live_works_while_database_is_unreachable() -> None:
 
 
 def test_ready_is_unavailable_without_leaking_database_details() -> None:
-    with TestClient(create_app(UNREACHABLE_DATABASE_URL)) as client:
+    with TestClient(create_app(settings_for(UNREACHABLE_DATABASE_URL))) as client:
         response = client.get("/health/ready")
 
     assert response.status_code == 503
@@ -42,7 +47,7 @@ def test_ready_is_unavailable_without_leaking_database_details() -> None:
 )
 def test_invalid_database_configuration_is_rejected(database_url: str) -> None:
     with pytest.raises(ValidationError):
-        create_app(database_url)
+        settings_for(database_url)
 
 
 @pytest.mark.parametrize("connect_timeout_seconds", [0, -1])
@@ -53,11 +58,12 @@ def test_invalid_database_connect_timeout_is_rejected(
         Settings(
             database_url=UNREACHABLE_DATABASE_URL,
             database_connect_timeout_seconds=connect_timeout_seconds,
+            jwt_secret=TEST_JWT_SECRET,
         )
 
 
 def test_unknown_route_uses_fastapi_default_error() -> None:
-    with TestClient(create_app(UNREACHABLE_DATABASE_URL)) as client:
+    with TestClient(create_app(settings_for(UNREACHABLE_DATABASE_URL))) as client:
         response = client.get("/not-found")
 
     assert response.status_code == 404
@@ -69,7 +75,7 @@ def test_ready_connects_to_real_postgresql() -> None:
     if database_url is None:
         pytest.fail("TEST_DATABASE_URL is required for PostgreSQL integration")
 
-    with TestClient(create_app(database_url)) as client:
+    with TestClient(create_app(settings_for(database_url))) as client:
         response = client.get("/health/ready")
 
     assert response.status_code == 200
