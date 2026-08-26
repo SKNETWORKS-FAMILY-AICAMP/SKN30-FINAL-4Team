@@ -20,8 +20,23 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr = Field(min_length=32)
     jwt_access_token_expire_minutes: int = Field(default=30, ge=1)
     local_storage_root: Path = PROJECT_ROOT / "backend" / "storage"
+    bizinfo_api_key: SecretStr | None = None
+    bizinfo_api_url: AnyHttpUrl = (
+        "https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do"
+    )
+    bizinfo_timeout_seconds: int = Field(default=30, ge=1)
     openai_api_key: SecretStr | None = None
     openai_base_url: AnyHttpUrl = "https://api.openai.com/v1"
+    embedding_model_name: str = Field(
+        default="text-embedding-3-small", min_length=1
+    )
+    embedding_profile_name: str = Field(default="bizinfo-summary", min_length=1)
+    embedding_profile_version: int = Field(default=1, ge=1)
+    embedding_preprocessing_version: str = Field(
+        default="detail-ref-v1", min_length=1
+    )
+    embedding_timeout_seconds: int = Field(default=30, ge=1)
+    embedding_batch_size: int = Field(default=100, ge=1, le=2048)
     cpl_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
     cpl_prompt_version: str = Field(default="cpl-semantic-v0.1", min_length=1)
     cpl_ruleset_version: str = Field(default="cpl-alpha-v0.1", min_length=1)
@@ -41,9 +56,9 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must use postgresql+psycopg")
         return database_url
 
-    @field_validator("openai_api_key", mode="before")
+    @field_validator("bizinfo_api_key", "openai_api_key", mode="before")
     @classmethod
-    def empty_openai_key_means_disabled(cls, value: object) -> object:
+    def empty_external_key_means_disabled(cls, value: object) -> object:
         return None if value == "" else value
 
     @field_validator("fit_scoring_path", "fit_prompt_path", mode="before")

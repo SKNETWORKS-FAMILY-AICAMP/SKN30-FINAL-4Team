@@ -14,20 +14,24 @@ from app.core.upload_limits import MAX_MULTIPART_BODY_BYTES
 from app.db.session import create_database_engine
 from app.infrastructure.in_process_job_dispatcher import InProcessJobDispatcher
 from app.infrastructure.local_object_storage import LocalObjectStorage
+from app.infrastructure.openai_embedding_client import OpenAIEmbeddingClient
 from app.infrastructure.openai_llm_client import OpenAILLMClient
 from app.parsers.hwp_parser import RhwpDocumentParser
 from app.ports.document_parser import DocumentParser
+from app.ports.embedding_client import EmbeddingClient
 from app.ports.llm_client import LLMClient
 from app.services.analysis_pipeline import run_analysis_pipeline
 
 
 _LLM_FROM_SETTINGS = object()
+_EMBEDDING_FROM_SETTINGS = object()
 
 
 def create_app(
     settings: Settings | None = None,
     document_parser: DocumentParser | None = None,
     llm_client: LLMClient | None | object = _LLM_FROM_SETTINGS,
+    embedding_client: EmbeddingClient | None | object = _EMBEDDING_FROM_SETTINGS,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -59,6 +63,20 @@ def create_app(
                 )
         else:
             active_llm_client = cast(LLMClient | None, llm_client)
+        if embedding_client is _EMBEDDING_FROM_SETTINGS:
+            active_embedding_client: EmbeddingClient | None = None
+            if runtime_settings.openai_api_key is not None:
+                active_embedding_client = OpenAIEmbeddingClient(
+                    api_key=runtime_settings.openai_api_key.get_secret_value(),
+                    base_url=str(runtime_settings.openai_base_url),
+                    model_name=runtime_settings.embedding_model_name,
+                    timeout_seconds=runtime_settings.embedding_timeout_seconds,
+                )
+        else:
+            active_embedding_client = cast(
+                EmbeddingClient | None,
+                embedding_client,
+            )
         dispatcher = InProcessJobDispatcher(
             lambda case_id: run_analysis_pipeline(
                 engine,
@@ -67,11 +85,13 @@ def create_app(
                 active_llm_client,
                 runtime_settings,
                 case_id,
+                active_embedding_client,
             )
         )
         application.state.object_storage = object_storage
         application.state.document_parser = active_parser
         application.state.llm_client = active_llm_client
+        application.state.embedding_client = active_embedding_client
         application.state.job_dispatcher = dispatcher
         try:
             yield

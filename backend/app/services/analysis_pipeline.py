@@ -7,6 +7,12 @@ from sqlalchemy import Engine, text
 
 from app.core.config import Settings
 from app.ports.document_parser import DocumentParser
+from app.ports.embedding_client import (
+    EmbeddingClient,
+    EmbeddingInvalidResponseError,
+    EmbeddingTimeoutError,
+    EmbeddingUnavailableError,
+)
 from app.ports.llm_client import (
     LLMClient,
     LLMInvalidResponseError,
@@ -25,11 +31,17 @@ from app.services.cpl.logic_validator import (
     merge_llm_result,
 )
 from app.services.document_parsing import run_case_parsing
+from app.services.retrieval.retrieval import (
+    RetrievalNotReadyError,
+    compose_inspection_embedding_text,
+    retrieve_top_five,
+)
 
 
 logger = logging.getLogger(__name__)
 SAFE_FAILURE_CODE = "CPL_ANALYSIS_FAILED"
 SAFE_FAILURE_MESSAGE = "The document checklist could not be completed"
+RETRIEVAL_FAILURE_MESSAGE = "Similar-program retrieval could not be completed"
 
 
 async def run_analysis_pipeline(
@@ -39,8 +51,9 @@ async def run_analysis_pipeline(
     llm_client: LLMClient | None,
     settings: Settings,
     case_id: int,
+    embedding_client: EmbeddingClient | None = None,
 ) -> None:
-    """Run Slice 5 parsing, then persist the Slice 6 CPL snapshot."""
+    """Run parsing and CPL, then retrieve the current Top-5 when configured."""
     await run_case_parsing(engine, storage, parser, case_id)
     if _case_status(engine, case_id) != "CHECKING":
         return
@@ -84,6 +97,75 @@ async def run_analysis_pipeline(
             type(error).__name__,
         )
         _record_cpl_failure(engine, case_id)
+        return
+
+    await _run_retrieval(engine, embedding_client, case_id, result)
+
+
+async def _run_retrieval(
+    engine: Engine,
+    client: EmbeddingClient | None,
+    case_id: int,
+    cpl_result: CplResult,
+) -> None:
+    if client is None:
+        logger.warning("Retrieval skipped for case %s: embedding client disabled", case_id)
+        _record_retrieval_failure(engine, case_id, "RETRIEVAL_UNAVAILABLE")
+        return
+    axes = {
+        field_code: _cpl_axis_text(cpl_result, field_code)
+        for field_code in (
+            CplFieldCode.PURPOSE_GOAL,
+            CplFieldCode.TARGET_AND_CONDITIONS,
+            CplFieldCode.SUPPORT_CONTENT_AND_SCALE,
+        )
+    }
+    try:
+        input_text = compose_inspection_embedding_text(
+            purpose=axes[CplFieldCode.PURPOSE_GOAL],
+            target=axes[CplFieldCode.TARGET_AND_CONDITIONS],
+            content=axes[CplFieldCode.SUPPORT_CONTENT_AND_SCALE],
+        )
+        await retrieve_top_five(
+            engine,
+            client,
+            case_id=case_id,
+            input_text=input_text,
+        )
+    except asyncio.CancelledError:
+        _record_retrieval_failure(engine, case_id, "RETRIEVAL_CANCELLED")
+        raise
+    except EmbeddingTimeoutError:
+        failure_code = "RETRIEVAL_TIMEOUT"
+    except EmbeddingUnavailableError:
+        failure_code = "RETRIEVAL_UNAVAILABLE"
+    except EmbeddingInvalidResponseError:
+        failure_code = "RETRIEVAL_INVALID_RESPONSE"
+    except RetrievalNotReadyError:
+        failure_code = "RETRIEVAL_NOT_READY"
+    except ValueError:
+        failure_code = "RETRIEVAL_INPUT_INVALID"
+    except Exception as error:
+        failure_code = "RETRIEVAL_FAILED"
+        logger.warning(
+            "Retrieval incomplete for case %s: %s",
+            case_id,
+            type(error).__name__,
+        )
+    else:
+        return
+    logger.warning("Retrieval incomplete for case %s: %s", case_id, failure_code)
+    _record_retrieval_failure(engine, case_id, failure_code)
+
+
+def _cpl_axis_text(result: CplResult, field_code: CplFieldCode) -> str:
+    item = next(item for item in result.items if item.field_code == field_code)
+    values = dict.fromkeys(
+        occurrence.raw_text.strip()
+        for occurrence in item.occurrences
+        if occurrence.raw_text.strip()
+    )
+    return "\n".join(values)
 
 
 async def _complete_semantic_review(
@@ -228,5 +310,29 @@ def _record_cpl_failure(engine: Engine, case_id: int) -> None:
                 "case_id": case_id,
                 "failure_code": SAFE_FAILURE_CODE,
                 "failure_message": SAFE_FAILURE_MESSAGE,
+            },
+        )
+
+
+def _record_retrieval_failure(
+    engine: Engine,
+    case_id: int,
+    failure_code: str,
+) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE sims.inspection_case
+                SET status = 'FAILED',
+                    failure_code = :failure_code,
+                    failure_message = :failure_message
+                WHERE id = :case_id AND status = 'CHECKING'
+                """
+            ),
+            {
+                "case_id": case_id,
+                "failure_code": failure_code,
+                "failure_message": RETRIEVAL_FAILURE_MESSAGE,
             },
         )

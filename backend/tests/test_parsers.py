@@ -275,7 +275,7 @@ def test_hwpx_preflight_rejects_unsafe_or_excessively_compressed_entries(
 
 
 @pytest.mark.parametrize("partial", [False, True])
-def test_analysis_persists_parse_snapshot_and_moves_to_checking(
+def test_analysis_keeps_parse_snapshot_when_retrieval_is_unavailable(
     database_url: str,
     engine: Engine,
     tmp_path: Path,
@@ -290,7 +290,7 @@ def test_analysis_persists_parse_snapshot_and_moves_to_checking(
         local_storage_root=tmp_path,
     )
     with TestClient(
-        create_app(settings, FakeParser(partial=partial), None)
+        create_app(settings, FakeParser(partial=partial), None, None)
     ) as client:
         headers = bearer_for(client, login_id)
         upload = client.post(
@@ -305,11 +305,12 @@ def test_analysis_persists_parse_snapshot_and_moves_to_checking(
         assert started.json()["case_id"] == case_id
         assert started.json()["status"] == "PARSING"
         assert started.json()["job_id"]
-        wait_for_internal_status(engine, case_id, "CHECKING")
+        wait_for_internal_status(engine, case_id, "FAILED")
         public_status = client.get(
             f"/api/v1/cases/{case_id}/status", headers=headers
         )
-        assert public_status.json()["status"] == "분석 중"
+        assert public_status.json()["status"] == "분석 실패"
+        assert public_status.json()["failure_code"] == "RETRIEVAL_UNAVAILABLE"
 
     with engine.connect() as connection:
         row = connection.execute(

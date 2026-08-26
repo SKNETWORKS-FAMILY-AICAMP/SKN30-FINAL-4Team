@@ -423,7 +423,7 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
         jwt_secret=JWT_SECRET,
         local_storage_root=tmp_path,
     )
-    with TestClient(create_app(settings, CplFakeParser(), None)) as client:
+    with TestClient(create_app(settings, CplFakeParser(), None, None)) as client:
         token = client.post(
             "/api/v1/auth/login",
             json={"login_id": login_id, "password": PASSWORD},
@@ -475,7 +475,7 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
             text(
                 """
                 SELECT e.request_reason, e.status, e.raw_extraction,
-                       c.status AS case_status
+                       c.status AS case_status, c.failure_code
                 FROM sims.request_extraction e
                 JOIN sims.inspection_case c ON c.id = e.inspection_case_id
                 WHERE e.inspection_case_id = :case_id
@@ -513,7 +513,8 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
     snapshot = extraction["raw_extraction"]
     assert extraction["request_reason"] == "DETAIL_NEW"
     assert extraction["status"] == "SUCCESS"
-    assert extraction["case_status"] == "CHECKING"
+    assert extraction["case_status"] == "FAILED"
+    assert extraction["failure_code"] == "RETRIEVAL_UNAVAILABLE"
     assert len(snapshot["items"]) == 13
     assert snapshot["confirmed_count"] == 3
     assert snapshot["total_count"] == 13
