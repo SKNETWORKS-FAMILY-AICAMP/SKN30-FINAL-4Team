@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
@@ -11,6 +12,7 @@ from app.services.case_upload import (
     UploadTooLargeError,
     create_case_from_upload,
 )
+from app.services.document_parsing import list_cases
 
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
@@ -19,6 +21,27 @@ router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 class CreateCaseResponse(BaseModel):
     case_id: int
     status: Literal["UPLOADED"]
+
+
+class CaseSummaryResponse(BaseModel):
+    case_id: int
+    title: str | None
+    status: Literal["분석 중", "분석 완료", "분석 실패"]
+    created_at: datetime
+
+
+class CaseListResponse(BaseModel):
+    cases: list[CaseSummaryResponse]
+
+
+@router.get("", response_model=CaseListResponse)
+def list_case_history(request: Request, user: CurrentUser) -> CaseListResponse:
+    return CaseListResponse(
+        cases=[
+            CaseSummaryResponse(**summary.__dict__)
+            for summary in list_cases(request.app.state.database_engine, user.id)
+        ]
+    )
 
 
 @router.post("", response_model=CreateCaseResponse, status_code=status.HTTP_201_CREATED)

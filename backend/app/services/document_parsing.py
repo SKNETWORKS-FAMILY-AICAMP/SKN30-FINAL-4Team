@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import BinaryIO, Literal
 
 from sqlalchemy import Engine, text
@@ -38,6 +39,19 @@ class CaseStatus:
     status: Literal["분석 중", "분석 완료", "분석 실패"]
     failure_code: str | None
     failure_message: str | None
+
+
+# ponytail: 데모 계정 하나의 이력은 수십 건 규모라 고정 상한으로 충분하다.
+# 프론트가 실제로 더 요구하면 그때 페이지네이션을 넣는다.
+MAX_HISTORY_ITEMS = 50
+
+
+@dataclass(frozen=True)
+class CaseSummary:
+    case_id: int
+    title: str | None
+    status: Literal["분석 중", "분석 완료", "분석 실패"]
+    created_at: datetime
 
 
 async def start_analysis(
@@ -243,6 +257,39 @@ def get_case_status(
         failure_code=row["failure_code"],
         failure_message=row["failure_message"],
     )
+
+
+def list_cases(engine: Engine, owner_user_id: int) -> list[CaseSummary]:
+    """Return one owner's analysis history, newest first."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT c.id, c.status, c.created_at, f.original_filename
+                FROM sims.inspection_case c
+                LEFT JOIN sims.uploaded_document d
+                       ON d.inspection_case_id = c.id
+                LEFT JOIN sims.file_asset f
+                       ON f.id = d.file_asset_id
+                WHERE c.owner_user_id = :owner_user_id
+                ORDER BY c.created_at DESC, c.id DESC
+                LIMIT :limit
+                """
+            ),
+            {"owner_user_id": owner_user_id, "limit": MAX_HISTORY_ITEMS},
+        ).mappings().all()
+
+    # ADR-006: 요청서에서 추출한 사업명을 쓰고, 없으면 원본 파일명을 쓴다.
+    # 사업명 추출은 아직 없으므로 지금은 파일명만 채운다.
+    return [
+        CaseSummary(
+            case_id=row["id"],
+            title=row["original_filename"],
+            status=_ui_status(row["status"]),
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
 
 
 def _claim_parse_run(engine: Engine, case_id: int) -> tuple[dict, int]:
