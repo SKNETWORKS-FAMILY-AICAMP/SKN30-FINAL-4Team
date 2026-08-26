@@ -1,0 +1,409 @@
+{
+  "질문": "현재 feature 에 사람이 정의한 atypical_design 을 설명할 signal 이 있는가",
+  "model": "OneClassSVM(rbf, nu=0.02, gamma=0.5) / StandardScaler",
+  "n_train": 1948,
+  "eval_set": {
+    "n": 35,
+    "positive": 10,
+    "definition": "normal vs atypical_design (data_error·uncertain 제외)"
+  },
+  "full": {
+    "roc_auc": 0.704,
+    "pr_auc": 0.4152,
+    "operating_2pct": {
+      "n_flagged": 2,
+      "TP": 0,
+      "FP": 2,
+      "FN": 10,
+      "recall": 0.0,
+      "precision": 0.0
+    },
+    "equal_budget_top7": {
+      "n_flagged": 7,
+      "TP": 2,
+      "FP": 5,
+      "FN": 8,
+      "recall": 0.2,
+      "precision": 0.2857
+    },
+    "roc_auc_ci95": [
+      0.512,
+      0.88
+    ]
+  },
+  "ablation": {
+    "amount": {
+      "roc_auc": 0.632,
+      "pr_auc": 0.4659,
+      "operating_2pct": {
+        "n_flagged": 3,
+        "TP": 1,
+        "FP": 2,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 0.3333
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 4,
+        "FP": 3,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.5714
+      },
+      "delta_roc": -0.072
+    },
+    "count": {
+      "roc_auc": 0.716,
+      "pr_auc": 0.559,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 1,
+        "FP": 0,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 1.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 4,
+        "FP": 3,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.5714
+      },
+      "delta_roc": 0.012
+    },
+    "duration": {
+      "roc_auc": 0.756,
+      "pr_auc": 0.5219,
+      "operating_2pct": {
+        "n_flagged": 0,
+        "TP": 0,
+        "FP": 0,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": null
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      },
+      "delta_roc": 0.052
+    },
+    "ratio": {
+      "roc_auc": 0.848,
+      "pr_auc": 0.6693,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 1,
+        "FP": 0,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 1.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 3,
+        "FP": 4,
+        "FN": 7,
+        "recall": 0.3,
+        "precision": 0.4286
+      },
+      "delta_roc": 0.144
+    },
+    "method": {
+      "roc_auc": 0.672,
+      "pr_auc": 0.4136,
+      "operating_2pct": {
+        "n_flagged": 0,
+        "TP": 0,
+        "FP": 0,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": null
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 2,
+        "FP": 5,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.2857
+      },
+      "delta_roc": -0.032
+    },
+    "amount_type": {
+      "roc_auc": 0.648,
+      "pr_auc": 0.3744,
+      "operating_2pct": {
+        "n_flagged": 0,
+        "TP": 0,
+        "FP": 0,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": null
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 1,
+        "FP": 6,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 0.1429
+      },
+      "delta_roc": -0.056
+    },
+    "support_type": {
+      "roc_auc": 0.648,
+      "pr_auc": 0.5425,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 1,
+        "FP": 0,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 1.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 4,
+        "FP": 3,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.5714
+      },
+      "delta_roc": -0.056
+    },
+    "unit": {
+      "roc_auc": 0.822,
+      "pr_auc": 0.6134,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 0,
+        "FP": 1,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": 0.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      },
+      "delta_roc": 0.118
+    }
+  },
+  "single": {
+    "amount": {
+      "roc_auc": 0.544,
+      "pr_auc": 0.351,
+      "operating_2pct": {
+        "n_flagged": 0,
+        "TP": 0,
+        "FP": 0,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": null
+      },
+      "equal_budget_top7": {
+        "n_flagged": 8,
+        "TP": 2,
+        "FP": 6,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.25
+      }
+    },
+    "count": {
+      "roc_auc": 0.674,
+      "pr_auc": 0.437,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 1,
+        "FP": 0,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 1.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 14,
+        "TP": 5,
+        "FP": 9,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.3571
+      }
+    },
+    "duration": {
+      "roc_auc": 0.192,
+      "pr_auc": 0.2017,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 0,
+        "FP": 1,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": 0.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 29,
+        "TP": 4,
+        "FP": 25,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.1379
+      }
+    },
+    "ratio": {
+      "roc_auc": 0.382,
+      "pr_auc": 0.2568,
+      "operating_2pct": {
+        "n_flagged": 9,
+        "TP": 2,
+        "FP": 7,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.2222
+      },
+      "equal_budget_top7": {
+        "n_flagged": 9,
+        "TP": 2,
+        "FP": 7,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.2222
+      }
+    },
+    "method": {
+      "roc_auc": 0.63,
+      "pr_auc": 0.3721,
+      "operating_2pct": {
+        "n_flagged": 4,
+        "TP": 2,
+        "FP": 2,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.5
+      },
+      "equal_budget_top7": {
+        "n_flagged": 33,
+        "TP": 10,
+        "FP": 23,
+        "FN": 0,
+        "recall": 1.0,
+        "precision": 0.303
+      }
+    },
+    "amount_type": {
+      "roc_auc": 0.456,
+      "pr_auc": 0.2778,
+      "operating_2pct": {
+        "n_flagged": 1,
+        "TP": 0,
+        "FP": 1,
+        "FN": 10,
+        "recall": 0.0,
+        "precision": 0.0
+      },
+      "equal_budget_top7": {
+        "n_flagged": 29,
+        "TP": 8,
+        "FP": 21,
+        "FN": 2,
+        "recall": 0.8,
+        "precision": 0.2759
+      }
+    },
+    "support_type": {
+      "roc_auc": 0.614,
+      "pr_auc": 0.376,
+      "operating_2pct": {
+        "n_flagged": 11,
+        "TP": 4,
+        "FP": 7,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.3636
+      },
+      "equal_budget_top7": {
+        "n_flagged": 11,
+        "TP": 4,
+        "FP": 7,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.3636
+      }
+    },
+    "unit": {
+      "roc_auc": 0.526,
+      "pr_auc": 0.2986,
+      "operating_2pct": {
+        "n_flagged": 30,
+        "TP": 9,
+        "FP": 21,
+        "FN": 1,
+        "recall": 0.9,
+        "precision": 0.3
+      },
+      "equal_budget_top7": {
+        "n_flagged": 30,
+        "TP": 9,
+        "FP": 21,
+        "FN": 1,
+        "recall": 0.9,
+        "precision": 0.3
+      }
+    }
+  },
+  "shuffle": {
+    "amount": {
+      "roc_auc_mean": 0.7028,
+      "roc_auc_std": 0.0636,
+      "delta_roc": -0.0012
+    },
+    "count": {
+      "roc_auc_mean": 0.7224,
+      "roc_auc_std": 0.0594,
+      "delta_roc": 0.0184
+    },
+    "duration": {
+      "roc_auc_mean": 0.7532,
+      "roc_auc_std": 0.0541,
+      "delta_roc": 0.0492
+    },
+    "ratio": {
+      "roc_auc_mean": 0.7956,
+      "roc_auc_std": 0.0613,
+      "delta_roc": 0.0916
+    },
+    "method": {
+      "roc_auc_mean": 0.7212,
+      "roc_auc_std": 0.0656,
+      "delta_roc": 0.0172
+    },
+    "amount_type": {
+      "roc_auc_mean": 0.7856,
+      "roc_auc_std": 0.031,
+      "delta_roc": 0.0816
+    },
+    "support_type": {
+      "roc_auc_mean": 0.6902,
+      "roc_auc_std": 0.0497,
+      "delta_roc": -0.0138
+    },
+    "unit": {
+      "roc_auc_mean": 0.7432,
+      "roc_auc_std": 0.0539,
+      "delta_roc": 0.0392
+    }
+  },
+  "not_used_for": "feature 선택. 여기 결과로 축을 고르면 hold-out 을 튜닝셋으로 쓰는 것이다"
+}
