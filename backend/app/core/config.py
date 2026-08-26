@@ -44,12 +44,12 @@ class Settings(BaseSettings):
     cpl_prompt_path: Path = (
         PROJECT_ROOT / "backend" / "config" / "prompts" / "cpl-v0.2.txt"
     )
-    fit_ruleset_version: str = Field(default="fit-v0.1", min_length=1)
-    fit_prompt_version: str = Field(default="fit-v0.1", min_length=1)
+    fit_ruleset_version: str = Field(default="fit-v0.2", min_length=1)
+    fit_prompt_version: str = Field(default="fit-v0.2", min_length=1)
     fit_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
     fit_scoring_path: Path = PROJECT_ROOT / "backend" / "config" / "fit_scoring.json"
     fit_prompt_path: Path = (
-        PROJECT_ROOT / "backend" / "config" / "prompts" / "fit-v0.1.txt"
+        PROJECT_ROOT / "backend" / "config" / "prompts" / "fit-v0.2.txt"
     )
 
     @field_validator("database_url")

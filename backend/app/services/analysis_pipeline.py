@@ -23,6 +23,7 @@ from app.ports.llm_client import (
 )
 from app.ports.object_storage import ObjectStorage
 from app.schemas.cpl import CplFieldCode, CplResult, CplSemanticResponse, CplStatus
+from app.schemas.fit import FitResult
 from app.schemas.parsed_document import ParsedDocument
 from app.services.cpl.checker import request_reason_from_result, run_cpl
 from app.services.cpl.logic_validator import (
@@ -34,6 +35,7 @@ from app.services.cpl.logic_validator import (
     semantic_fragments,
 )
 from app.services.document_parsing import run_case_parsing
+from app.services.fit.fit_engine import analyze_fit, load_fit_prompt, load_fit_scoring
 from app.services.retrieval.retrieval import (
     RetrievalNotReadyError,
     compose_inspection_embedding_text,
@@ -55,8 +57,8 @@ async def run_analysis_pipeline(
     settings: Settings,
     case_id: int,
     embedding_client: EmbeddingClient | None = None,
-) -> None:
-    """Run parsing and CPL, then retrieve the current Top-5 when configured."""
+) -> FitResult | None:
+    """Run parsing, CPL, FIT, then retrieve the current Top-5 when configured."""
     await run_case_parsing(engine, storage, parser, case_id)
     if _case_status(engine, case_id) != "CHECKING":
         return
@@ -102,7 +104,36 @@ async def run_analysis_pipeline(
         _record_cpl_failure(engine, case_id)
         return
 
+    fit_result = await _run_fit(result, llm_client, settings, case_id)
     await _run_retrieval(engine, embedding_client, case_id, result)
+    return fit_result
+
+
+async def _run_fit(
+    cpl_result: CplResult,
+    llm_client: LLMClient | None,
+    settings: Settings,
+    case_id: int,
+) -> FitResult | None:
+    try:
+        return await analyze_fit(
+            cpl_result,
+            llm_client,
+            scoring=load_fit_scoring(settings.fit_scoring_path),
+            prompt=load_fit_prompt(settings.fit_prompt_path),
+            ruleset_version=settings.fit_ruleset_version,
+            prompt_version=settings.fit_prompt_version,
+            model_profile=settings.fit_model_profile,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logger.warning(
+            "FIT analysis failed for case %s: %s",
+            case_id,
+            type(error).__name__,
+        )
+        return None
 
 
 async def _run_retrieval(
