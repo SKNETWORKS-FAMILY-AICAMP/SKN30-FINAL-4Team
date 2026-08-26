@@ -27,9 +27,15 @@ v2 정의 — 축 개수에 중립적인 이상도
     M34 7/35, M42 20%). **라벨 결과를 보고 고른 값이 아니다.**
 
     사람 판단은 그대로 남는다 — v1 과 같은 구조다
-        후보  -> 사업 유형으로 설명되면 `normal` 로 내린다
-        비후보 -> 설명되지 않는 실질적 이유가 있으면 `atypical_design` 으로 올린다
-        양방향 모두 근거를 남기고 몇 건이 움직였는지 보고한다
+        후보  -> 사업 유형으로 설명되면 `normal` 로 내린다   (DOWN)
+        후보  -> 설명되지 않으면 그대로 둔다                 (KEEP)
+
+        **하향만 쓴다.** 상향(비후보 -> atypical)은 규칙상 열려 있으나 쓰지
+        않았다. 허용하면 경계 아래 행마다 사후 논리를 만들어 올릴 수 있어
+        규칙이 무력해진다. v1(M33/M41)도 하향 조항만 있었다.
+
+        판단과 근거는 아래 DOWN/KEEP 에 코드로 들어 있다. 중간 CSV 를
+        주고받지 않으므로 **이 스크립트가 곧 라벨링 기록이다.**
 
 바꾸지 않은 것
     `data_error` / `uncertain` 정의는 v1 그대로다. 축 개수 편향과 무관하고,
@@ -41,7 +47,6 @@ v2 정의 — 축 개수에 중립적인 이상도
     그래서 기계적 후보 판정을 먼저 코드로 확정하고(사람 개입 0),
     사람이 움직인 행만 따로 세어 보고한다.
 """
-import argparse
 import os
 import sys
 
@@ -52,13 +57,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common as C
 from m12_m3_cohort import compare
 from m13_m4_anomaly import AXIS_LABEL, MIN_AXES, REF, SRC, prepare
-from m41_m3_labelset2 import OUT as HOLDOUT2
+from m41_m3_labelset2 import OUT as HOLDOUT2_V1
 
 AXES = list(AXIS_LABEL)
 TOP_FRAC = 0.20          # 후보 상위 비율. 프로젝트 공통 경고 예산과 같은 값
-SHEET = os.path.join(C.REPORTS, "m43_rule_v2_sheet.csv")
 OUT = os.path.join(C.DATA, "labels", "m3_holdout2_v2.csv")
 POOL_CACHE = os.path.join(C.PROC, "m43_extremity_pool.parquet")
+
+# 기계 후보에 대한 사람 판단. 후보 목록과 어긋나면 build_labels 가 멈춘다.
+DOWN = {   # 후보였으나 사업 유형으로 설명돼 normal 로 내린 행
+    "EXCEL2022_0105": "후속연계 개발은 1년 단기가 설계 전제이고(기간 P10), 자부담 20%(비율 P90)는 중소기업 R&D 통상 출연비율이다. 두 축 모두 사업 유형으로 설명된다",
+    "PBLN_000000000104669": "비교 가능 축이 지원비율 1개뿐이라 설계 '조합'을 말할 수 없다. 지자체 시설개선 80% 보조는 통상 보조율이다",
+    "PBLN_000000000103925": "비교 가능 축이 지원비율 1개뿐이라 설계 '조합'을 말할 수 없다. 사회적기업가 육성 90% 지원은 통상 구조다",
+    "PBLN_000000000118209": "기업수 P100(775개사)은 전국 단위 연구인력 인건비 지원의 실제 규모이고, 나머지 축(한도 P72)은 중앙 근처다",
+}
+KEEP = {   # 후보를 그대로 atypical_design 으로 둔 행
+    "PBLN_000000000106847": "과제당 4.6억 P100 + 지원비율 P90. 사업화 project 비교군 최상단 조합이고 사업 유형으로 설명되지 않는다",
+    "EXCEL2022_0570": "기업수 P10 + 비율 P90 + 한도 P18. 소수·소액·고지원율이 한 방향으로 겹친 드문 조합",
+    "PBLN_000000000048393": "과제당 45억 P90 + 비율 P90. 인재양성 R&D 로도 단가와 지원율이 함께 최상단이다",
+    "EXCEL2023_0653": "기업수 P0 + 한도 P90 + 비율 P90. 세 축 동시 극단",
+    "EXCEL2023_0873": "115개사 P100 규모에서 기업당 3억 P75 를 동시에 준다. 규모와 단가가 함께 상단인 드문 조합 — '원래 큰 사업'은 하향 근거가 되지 못한다",
+}
 
 
 def axis_devs(row, ref):
@@ -98,103 +117,85 @@ def within_group_pct(pool, n_comp, value):
     return float((g <= value).mean()) * 100
 
 
-def build_sheet():
+def build_labels():
+    """기계 후보 판정 -> 사람 판단 적용 -> v2 라벨 확정. 한 번에 돈다.
+
+    예전에는 시트 CSV 를 내보내고 사람이 채워 다시 읽는 2단계였다. 사람 판단이
+    DOWN/KEEP 에 근거와 함께 코드로 들어와 있으므로 중간 파일이 필요 없다.
+    스크립트가 곧 라벨링 기록이다.
+    """
     df = prepare(pd.read_parquet(SRC))
     train = df[df["n_axes"] >= MIN_AXES].reset_index(drop=True)
     ref = pd.read_parquet(REF)
-    hold = pd.read_csv(HOLDOUT2, encoding="utf-8-sig")
+    hold = pd.read_csv(HOLDOUT2_V1, encoding="utf-8-sig")
 
     print("M43 — 라벨 기준 v2 (축 개수 중립)")
     print("  pool %d행에서 이상도 기준 분포를 만든다..." % len(train))
     pool = build_pool(train, ref)
     print("  n_comp 별 pool 분포: %s"
           % {int(k): int(v) for k, v in pool["n_comp"].value_counts().sort_index().items()})
+    print("  n_comp 별 상위 %.0f%% 임계 E: %s"
+          % (TOP_FRAC * 100,
+             {int(k): round(float(np.quantile(g["extremity"], 1 - TOP_FRAC)), 3)
+              for k, g in pool[pool["extremity"].notna()].groupby("n_comp")}))
 
     feat = train.drop_duplicates("row_id").set_index("row_id")
     rows = []
     for _, h in hold.iterrows():
-        rid = h["row_id"]
-        r = feat.loc[rid]
+        r = feat.loc[h["row_id"]]
         d = axis_devs(r, ref)
         devs = [v[0] for v in d.values()]
         E = float(np.mean(devs)) if devs else np.nan
-        mx = float(np.max(devs)) if devs else np.nan
-        p = within_group_pct(pool, len(devs), E)
         rows.append({
-            "row_id": rid, "사업명": h["사업명"],
+            "row_id": h["row_id"], "사업명": h["사업명"],
             "지원성격": h["지원성격"], "지원방식": h["지원방식"], "지원단위": h["지원단위"],
             "수치축_개수": int(r["n_axes"]), "비교가능축": len(devs),
             "이상도_E": round(E, 4) if devs else None,
-            "최대이탈": round(mx, 4) if devs else None,
-            "축보정_백분위": round(p, 1) if devs else None,
-            "축별_이탈": " / ".join(
-                "%s P%.0f(dev %.2f)" % (AXIS_LABEL[a], v[1], v[0])
-                for a, v in sorted(d.items(), key=lambda kv: -kv[1][0])),
-            "v1_라벨": h["라벨"],
-            "기계후보_v2": "", "v2_라벨": "", "v2_근거": "",
-            "층_품질": h["층_품질"], "층_축수": h["층_축수"],
+            "최대이탈": round(float(np.max(devs)), 4) if devs else None,
+            "축보정_백분위": round(within_group_pct(pool, len(devs), E), 1) if devs else None,
+            "축별_이탈": " / ".join("%s P%.0f(dev %.2f)" % (AXIS_LABEL[a], v[1], v[0])
+                                 for a, v in sorted(d.items(), key=lambda kv: -kv[1][0])),
+            "v1_라벨": h["라벨"], "층_품질": h["층_품질"], "층_축수": h["층_축수"],
             "원문발췌": h["원문발췌"],
         })
     s = pd.DataFrame(rows)
 
-    # 기계 후보 — 사람 개입 0. clean 대상(normal/atypical_design)만 판정한다.
     clean = s["v1_라벨"].isin(["normal", "atypical_design"])
     cand = clean & (s["축보정_백분위"] >= (1 - TOP_FRAC) * 100)
     s["기계후보_v2"] = np.where(clean, np.where(cand, "candidate", "-"), "n/a")
-    s.to_csv(SHEET, index=False, encoding="utf-8-sig")
+    if set(s.loc[cand, "row_id"]) != set(DOWN) | set(KEEP):
+        sys.exit("기계 후보 목록이 기록된 사람 판단과 어긋납니다:\n  후보 %s\n  기록 %s"
+                 % (sorted(set(s.loc[cand, "row_id"])), sorted(set(DOWN) | set(KEEP))))
 
-    print("\n  clean 대상 %d건 / 기계 후보 %d건 (상위 %.0f%%)"
-          % (int(clean.sum()), int(cand.sum()), TOP_FRAC * 100))
-    print("\n== 축 개수별 기계 후보율 — 중립성 1차 확인")
-    for k, g in s[clean].groupby("수치축_개수"):
-        c = int((g["기계후보_v2"] == "candidate").sum())
-        print("  축%d  n=%-3d 후보 %-2d (%.1f%%)" % (k, len(g), c, c / len(g) * 100))
-    print("\n[sheet] %s" % SHEET)
-    print("  사람 판단 단계: 후보를 사업 유형으로 설명할 수 있으면 normal 로 내리고,")
-    print("  비후보라도 설명되지 않는 이유가 있으면 atypical_design 으로 올린다.")
+    s["v2_라벨"] = s["v1_라벨"]                      # data_error / uncertain 은 그대로
+    s.loc[clean, "v2_라벨"] = "normal"
+    s.loc[s["row_id"].isin(KEEP), "v2_라벨"] = "atypical_design"
+    s["v2_근거"] = np.where(clean, "기계 비후보 (축보정 백분위 상위 %.0f%% 밖)" % (TOP_FRAC * 100),
+                          "v1 유지 (축 개수 편향과 무관)")
+    for rid, why in {**DOWN, **KEEP}.items():
+        s.loc[s["row_id"] == rid, "v2_근거"] = why
+    s.to_csv(OUT, index=False, encoding="utf-8-sig")
 
-
-def finalize(filled):
-    f = pd.read_csv(filled, encoding="utf-8-sig")
-    bad = set(f["v2_라벨"].dropna()) - {"normal", "atypical_design", "data_error", "uncertain"}
-    if bad:
-        sys.exit("허용되지 않은 라벨: %s" % bad)
-    if f["v2_라벨"].isna().any():
-        sys.exit("비어 있는 v2_라벨 %d건" % int(f["v2_라벨"].isna().sum()))
-
-    # data_error / uncertain 은 v1 그대로여야 한다 — 바꾼 것이 규칙뿐임을 보장
-    fixed = f["v1_라벨"].isin(["data_error", "uncertain"])
-    if not (f.loc[fixed, "v2_라벨"] == f.loc[fixed, "v1_라벨"]).all():
-        sys.exit("data_error/uncertain 은 v1 을 그대로 유지해야 합니다")
-
-    f.to_csv(OUT, index=False, encoding="utf-8-sig")
-    clean = f[f["v1_라벨"].isin(["normal", "atypical_design"])].copy()
-
-    print("M43 — v2 라벨 확정")
+    cl = s[clean].copy()
+    print("\n  clean 대상 %d건 / 기계 후보 %d건 / 사람 하향 %d건 / 사람 상향 0건"
+          % (len(cl), int(cand.sum()), len(DOWN)))
     print("  [labels] %s" % OUT)
     print("\n== v2 라벨 분포")
-    for k, v in f["v2_라벨"].value_counts().items():
+    for k, v in s["v2_라벨"].value_counts().items():
         print("  %-16s %d" % (k, v))
 
-    ct = pd.crosstab(f["v1_라벨"], f["v2_라벨"])
+    ct = pd.crosstab(s["v1_라벨"], s["v2_라벨"])
     print("\n== v1 x v2")
     print(ct.to_string())
 
-    moved_dn = clean[(clean["기계후보_v2"] == "candidate")
-                     & (clean["v2_라벨"] == "normal")]
-    moved_up = clean[(clean["기계후보_v2"] == "-")
-                     & (clean["v2_라벨"] == "atypical_design")]
-    print("\n== 사람이 기계 후보에서 움직인 행")
-    print("  후보 -> normal        %d건" % len(moved_dn))
-    for _, r in moved_dn.iterrows():
-        print("    %-44s %s" % (str(r["사업명"])[:42], str(r["v2_근거"])[:64]))
-    print("  비후보 -> atypical    %d건" % len(moved_up))
-    for _, r in moved_up.iterrows():
-        print("    %-44s %s" % (str(r["사업명"])[:42], str(r["v2_근거"])[:64]))
+    print("\n== 사람이 기계 후보에서 움직인 행 (하향 %d / 상향 0)" % len(DOWN))
+    for rid, why in DOWN.items():
+        nm = str(s.loc[s["row_id"] == rid, "사업명"].iloc[0])[:44]
+        print("    %-46s %s" % (nm, why[:62]))
 
     print("\n== 축 개수별 양성률 — v1 vs v2 (핵심)")
     bias = {}
-    for k, g in clean.groupby("수치축_개수"):
+    for k, g in cl.groupby("수치축_개수"):
         r1 = float((g["v1_라벨"] == "atypical_design").mean())
         r2 = float((g["v2_라벨"] == "atypical_design").mean())
         bias[int(k)] = {"n": int(len(g)),
@@ -206,14 +207,14 @@ def finalize(filled):
                  bias[int(k)]["v2_positive"], r2 * 100))
 
     from sklearn.metrics import roc_auc_score
-    ax = clean["수치축_개수"].to_numpy(float)
-    a1 = float(roc_auc_score((clean["v1_라벨"] == "atypical_design").astype(int), ax))
-    a2 = float(roc_auc_score((clean["v2_라벨"] == "atypical_design").astype(int), ax))
-    spread1 = max(v["v1_rate"] for v in bias.values()) - min(v["v1_rate"] for v in bias.values())
-    spread2 = max(v["v2_rate"] for v in bias.values()) - min(v["v2_rate"] for v in bias.values())
+    ax = cl["수치축_개수"].to_numpy(float)
+    a1 = float(roc_auc_score((cl["v1_라벨"] == "atypical_design").astype(int), ax))
+    a2 = float(roc_auc_score((cl["v2_라벨"] == "atypical_design").astype(int), ax))
+    sp1 = max(v["v1_rate"] for v in bias.values()) - min(v["v1_rate"] for v in bias.values())
+    sp2 = max(v["v2_rate"] for v in bias.values()) - min(v["v2_rate"] for v in bias.values())
     print("\n  n_axes 로 라벨을 맞히는 정도 (낮을수록 중립)")
-    print("    v1 ROC-AUC %.4f  양성률 폭 %.3f" % (a1, spread1))
-    print("    v2 ROC-AUC %.4f  양성률 폭 %.3f" % (a2, spread2))
+    print("    v1 ROC-AUC %.4f  양성률 폭 %.3f" % (a1, sp1))
+    print("    v2 ROC-AUC %.4f  양성률 폭 %.3f" % (a2, sp2))
 
     rep = {
         "정의": {
@@ -221,23 +222,26 @@ def finalize(filled):
             "extremity": "비교 가능한 축들의 dev 평균 (세지 않고 평균)",
             "correction": "같은 비교가능축 개수(n_comp) pool 안에서의 백분위",
             "cut": "상위 %.0f%% (프로젝트 공통 경고 예산 비율)" % (TOP_FRAC * 100),
-            "human": "후보->normal 하향 / 비후보->atypical 상향 모두 허용, 근거 기록",
+            "human": "후보->normal 하향만 사용. 상향 조항은 열어 뒀으나 쓰지 않았다",
             "unchanged": "data_error / uncertain 은 v1 그대로. 모델도 그대로",
         },
-        "n": int(len(f)), "n_clean": int(len(clean)),
-        "label_dist_v2": {k: int(v) for k, v in f["v2_라벨"].value_counts().items()},
+        "n": int(len(s)), "n_clean": int(len(cl)),
+        "n_machine_candidate": int(cand.sum()),
+        "label_dist_v2": {k: int(v) for k, v in s["v2_라벨"].value_counts().items()},
         "v1_vs_v2": {str(a): {str(b): int(c) for b, c in row.items()}
                      for a, row in ct.iterrows()},
         "human_moves": {
-            "candidate_to_normal": [{"row_id": r["row_id"], "사업명": r["사업명"],
-                                     "근거": r["v2_근거"]} for _, r in moved_dn.iterrows()],
-            "noncandidate_to_atypical": [{"row_id": r["row_id"], "사업명": r["사업명"],
-                                          "근거": r["v2_근거"]} for _, r in moved_up.iterrows()],
+            "candidate_to_normal": [
+                {"row_id": rid, "사업명": str(s.loc[s["row_id"] == rid, "사업명"].iloc[0]),
+                 "근거": why} for rid, why in DOWN.items()],
+            "noncandidate_to_atypical": [],
         },
+        "machine_kept": [{"row_id": rid, "사업명": str(s.loc[s["row_id"] == rid, "사업명"].iloc[0]),
+                          "근거": why} for rid, why in KEEP.items()],
         "naxes_bias": {
             "by_n_axes": bias,
             "label_roc_auc_from_n_axes": {"v1": round(a1, 4), "v2": round(a2, 4)},
-            "positive_rate_spread": {"v1": round(spread1, 4), "v2": round(spread2, 4)},
+            "positive_rate_spread": {"v1": round(sp1, 4), "v2": round(sp2, 4)},
         },
     }
     C.save_report("m43_m3_label_rule_v2.json", rep)
@@ -315,8 +319,4 @@ def write_md(r):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--sheet", action="store_true", help="기계 후보 + 검토 시트 생성")
-    ap.add_argument("--finalize", metavar="FILLED", help="채워진 시트로 v2 라벨 확정")
-    a = ap.parse_args()
-    finalize(a.finalize) if a.finalize else build_sheet()
+    build_labels()

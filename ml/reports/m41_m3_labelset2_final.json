@@ -52,5 +52,82 @@
     "main_eval_n": 88,
     "main_eval_positive": 19
   },
+  "dual_labeling": {
+    "n_dual": 20,
+    "subset_seed": 777,
+    "selection": "70건에서 무작위 20건 (1차 라벨을 보지 않고 시드로 선정)",
+    "labeler_A": "claude-A (전체 70건)",
+    "labeler_B": "claude-B (서브에이전트, 20건, A의 라벨 미열람)",
+    "caveat": "두 라벨러가 모두 같은 모델(Claude)이다. 사람 2인이 아니므로 inter-annotator agreement 의 대용치로만 읽어야 한다.",
+    "agreement": 0.9,
+    "n_agree": 18,
+    "cohen_kappa": 0.7895,
+    "confusion_A_rows_B_cols": {
+      "normal": {
+        "normal": 14,
+        "atypical_design": 0,
+        "data_error": 0,
+        "uncertain": 0
+      },
+      "atypical_design": {
+        "normal": 0,
+        "atypical_design": 1,
+        "data_error": 0,
+        "uncertain": 0
+      },
+      "data_error": {
+        "normal": 0,
+        "atypical_design": 1,
+        "data_error": 0,
+        "uncertain": 1
+      },
+      "uncertain": {
+        "normal": 0,
+        "atypical_design": 0,
+        "data_error": 0,
+        "uncertain": 3
+      }
+    },
+    "per_class_A": {
+      "normal": {
+        "n_A": 14,
+        "agree": 14,
+        "rate": 1.0
+      },
+      "atypical_design": {
+        "n_A": 1,
+        "agree": 1,
+        "rate": 1.0
+      },
+      "data_error": {
+        "n_A": 2,
+        "agree": 0,
+        "rate": 0.0
+      },
+      "uncertain": {
+        "n_A": 3,
+        "agree": 3,
+        "rate": 1.0
+      }
+    },
+    "disagreements": [
+      {
+        "row_id": "PBLN_000000000047357",
+        "A": "data_error",
+        "B": "uncertain",
+        "A_reason": "총예산 5000만원/350 = 기업당 14.3만원. 산불피해복구 지원으로 성립하지 않고 성격도 컨설팅으로 잘못 붙었다",
+        "B_reason": "비교군 부족이라 14.3만원의 이례성을 판단할 근거가 없다",
+        "affects_clean_set": false
+      },
+      {
+        "row_id": "PBLN_000000000077818",
+        "A": "data_error",
+        "B": "atypical_design",
+        "A_reason": "총예산 5000만원을 기업수 1로 나눈 값. 참여기업 모집 공고인데 기업수 1은 성립하지 않는다",
+        "B_reason": "기업수 P0이 극단인데 R&D 공개모집에서 1개사는 설명되지 않는다",
+        "affects_clean_set": true
+      }
+    ]
+  },
   "holdout": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\labels\\m3_holdout2.csv"
 }

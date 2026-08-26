@@ -27,6 +27,330 @@
     "C_의심 · 축3": 1,
     "C_의심 · 축4": 1
   },
+  "stage2_allocation": [
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "사업화 · grant · company",
+      "pool": 250,
+      "quota": 5,
+      "drawn": 5
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "기타성격 · grant · company",
+      "pool": 78,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "융자 · loan · company",
+      "pool": 110,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "잔여조합",
+      "pool": 77,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "컨설팅 · grant · company",
+      "pool": 79,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "판로 · grant · company",
+      "pool": 107,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "고용보조 · grant · company",
+      "pool": 37,
+      "quota": 2,
+      "drawn": 2
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "사업화 · grant · project",
+      "pool": 46,
+      "quota": 2,
+      "drawn": 2
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "설비 · grant · company",
+      "pool": 30,
+      "quota": 2,
+      "drawn": 2
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "사업화 · voucher · company",
+      "pool": 13,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "연구개발 · grant · company",
+      "pool": 19,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "연구개발 · grant · project",
+      "pool": 18,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축2",
+      "stage2": "융자 · grant · company",
+      "pool": 18,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "사업화 · grant · company",
+      "pool": 207,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "기타성격 · grant · company",
+      "pool": 66,
+      "quota": 2,
+      "drawn": 2
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "고용보조 · grant · company",
+      "pool": 6,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "사업화 · grant · project",
+      "pool": 7,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "사업화 · voucher · company",
+      "pool": 10,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "설비 · grant · company",
+      "pool": 25,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "연구개발 · grant · company",
+      "pool": 27,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "연구개발 · grant · project",
+      "pool": 6,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "융자 · grant · company",
+      "pool": 7,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "융자 · loan · company",
+      "pool": 14,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "잔여조합",
+      "pool": 20,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "컨설팅 · grant · company",
+      "pool": 25,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축3",
+      "stage2": "판로 · grant · company",
+      "pool": 32,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "잔여조합",
+      "pool": 154,
+      "quota": 3,
+      "drawn": 3
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "사업화 · grant · 단위미상",
+      "pool": 74,
+      "quota": 2,
+      "drawn": 2
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "고용보조 · grant · company",
+      "pool": 4,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "사업화 · grant · company",
+      "pool": 15,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "설비 · grant · 단위미상",
+      "pool": 12,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "연구개발 · grant · company",
+      "pool": 5,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "연구개발 · grant · 단위미상",
+      "pool": 28,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축2",
+      "stage2": "융자 · loan · 단위미상",
+      "pool": 9,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축4",
+      "stage2": "연구개발 · grant · company",
+      "pool": 94,
+      "quota": 2,
+      "drawn": 2
+    },
+    {
+      "stage1": "A_직접기재 · 축4",
+      "stage2": "사업화 · grant · company",
+      "pool": 28,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축4",
+      "stage2": "사업화 · grant · project",
+      "pool": 4,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축4",
+      "stage2": "설비 · grant · company",
+      "pool": 6,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "A_직접기재 · 축4",
+      "stage2": "연구개발 · grant · project",
+      "pool": 11,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "C_의심 · 축2",
+      "stage2": "연구개발 · grant · project",
+      "pool": 4,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "C_의심 · 축2",
+      "stage2": "융자 · loan · 단위미상",
+      "pool": 14,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "C_의심 · 축2",
+      "stage2": "잔여조합",
+      "pool": 21,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축3",
+      "stage2": "사업화 · grant · 단위미상",
+      "pool": 11,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "B_파생 · 축3",
+      "stage2": "설비 · grant · 단위미상",
+      "pool": 7,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "C_의심 · 축3",
+      "stage2": "설비 · grant · company",
+      "pool": 3,
+      "quota": 1,
+      "drawn": 1
+    },
+    {
+      "stage1": "C_의심 · 축4",
+      "stage2": "사업화 · grant · company",
+      "pool": 1,
+      "quota": 1,
+      "drawn": 1
+    }
+  ],
   "marginals": {
     "데이터품질": {
       "A_직접기재": {
@@ -204,6 +528,5 @@
   },
   "independence": "기존 50건의 row_id 와 program_stem 을 pool 에서 뺐다. 새 표본 안에서도 program_stem 중복을 허용하지 않았다.",
   "label_rule": "M33 과 동일 (normal / atypical_design / data_error / uncertain)",
-  "sheet": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\m41_labelset2_sheet.csv",
-  "plan": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\m41_labelset2_plan.csv"
+  "sheet": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\m41_labelset2_sheet.csv"
 }
