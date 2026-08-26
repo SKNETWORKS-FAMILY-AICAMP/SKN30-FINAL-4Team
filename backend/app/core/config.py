@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     fit_prompt_path: Path = (
         PROJECT_ROOT / "backend" / "config" / "prompts" / "fit-v0.2.txt"
     )
+    sim_ruleset_version: str = Field(default="sim-v0.1", min_length=1)
+    sim_prompt_version: str = Field(default="sim-v0.1", min_length=1)
+    sim_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
+    sim_scoring_path: Path = PROJECT_ROOT / "backend" / "config" / "sim_scoring.json"
+    sim_prompt_path: Path = (
+        PROJECT_ROOT / "backend" / "config" / "prompts" / "sim-v0.1.txt"
+    )
 
     @field_validator("database_url")
     @classmethod
@@ -68,6 +75,8 @@ class Settings(BaseSettings):
         "cpl_prompt_path",
         "fit_scoring_path",
         "fit_prompt_path",
+        "sim_scoring_path",
+        "sim_prompt_path",
         mode="before",
     )
     @classmethod

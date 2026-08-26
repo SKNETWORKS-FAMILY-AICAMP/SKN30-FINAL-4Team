@@ -1,7 +1,9 @@
 import asyncio
+import json
 import os
 import uuid
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,6 +14,16 @@ from app.infrastructure.bizinfo_public_data_client import BizinfoPublicDataClien
 from app.infrastructure.openai_embedding_client import OpenAIEmbeddingClient
 from app.ports.embedding_client import EmbeddingBatch
 from app.ports.public_data_client import PublicAnnouncement
+from app.schemas.cpl import (
+    CPL_FIELDS,
+    CplAxisCode,
+    CplFieldCode,
+    CplItem,
+    CplOccurrence,
+    CplResult,
+    CplStatus,
+)
+from app.schemas.sim import SimSemanticResponse
 from app.services.retrieval.announcement_sync import (
     announcement_embedding_text,
     normalize_announcement,
@@ -23,6 +35,11 @@ from app.services.retrieval.retrieval import (
     _display_score,
     compose_inspection_embedding_text,
     retrieve_top_five,
+)
+from app.services.sim.sim_engine import (
+    analyze_sim_candidates,
+    load_sim_prompt,
+    load_sim_scoring,
 )
 
 
@@ -199,6 +216,91 @@ class FakeEmbeddingClient:
         )
 
 
+class FakeSimLlm:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate_structured(self, **kwargs) -> SimSemanticResponse:
+        self.calls += 1
+        call_no = self.calls
+        payload = json.loads(kwargs["messages"][1].content)
+        axes = {}
+        for axis, values in payload["axes"].items():
+            request_refs = [item["evidence_ref"] for item in values["request_evidence"]]
+            candidate_refs = [
+                item["evidence_ref"] for item in values["candidate_evidence"]
+            ]
+            assessable = bool(request_refs and candidate_refs)
+            axes[axis] = {
+                "status": "SIMILAR" if assessable else "INSUFFICIENT",
+                "summary": (
+                    "양쪽 근거에서 공통점을 확인했습니다."
+                    if assessable
+                    else "비교 근거가 부족합니다."
+                ),
+                "common_points": ["명시된 공통점"] if assessable else [],
+                "differences": [],
+                "request_evidence_refs": (
+                    ["request:invalid"]
+                    if call_no == 1 and axis == "purpose"
+                    else request_refs[:1]
+                ),
+                "candidate_evidence_refs": candidate_refs[:1],
+                "reason_code": None if assessable else "COMPARISON_EVIDENCE_MISSING",
+            }
+        return SimSemanticResponse.model_validate(
+            {"axes": axes, "comparison_summary": "후보별 4축 비교 결과입니다."}
+        )
+
+
+def sim_cpl_result() -> CplResult:
+    axes = {
+        CplFieldCode.PURPOSE_GOAL: (
+            CplAxisCode.PURPOSE_SPECIFIC_OBJECTIVE,
+            "지역기업 생산성 향상",
+        ),
+        CplFieldCode.TARGET_AND_CONDITIONS: (
+            CplAxisCode.TARGET_GROUP,
+            "중소기업",
+        ),
+        CplFieldCode.SUPPORT_CONTENT_AND_SCALE: (
+            CplAxisCode.SUPPORT_ACTIVITY,
+            "설비·컨설팅 지원",
+        ),
+        CplFieldCode.DELIVERY_SYSTEM: (
+            CplAxisCode.DELIVERY_ORG_NAME,
+            "전담기관",
+        ),
+    }
+    return CplResult(
+        ruleset_version="cpl-alpha-v0.2",
+        prompt_version="cpl-semantic-v0.2",
+        items=[
+            CplItem(
+                field_code=field_code,
+                status=CplStatus.PRESENT if field_code in axes else CplStatus.MISSING,
+                occurrences=(
+                    [
+                        CplOccurrence(
+                            raw_text=axes[field_code][1],
+                            normalized_value={"text": axes[field_code][1]},
+                            axis_code=axes[field_code][0],
+                            page_no=1,
+                            section_path=[field_code.value],
+                            source_locator={"paragraph_index": 0},
+                            block_id=f"block:{field_code.value}",
+                            extraction_method="LLM",
+                        )
+                    ]
+                    if field_code in axes
+                    else []
+                ),
+            )
+            for field_code in CPL_FIELDS
+        ],
+    )
+
+
 @pytest.mark.parametrize(
     ("similarity", "expected"),
     [
@@ -339,9 +441,63 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
     assert [candidate.rank for candidate in result.candidates] == [1, 2, 3, 4, 5]
     assert result.candidates[0].title == titles[0]
     assert result.candidates[0].semantic_similarity_display == 100
-    unknown = next(candidate for candidate in result.candidates if candidate.title == titles[1])
+    unknown = next(
+        candidate for candidate in result.candidates if candidate.title == titles[1]
+    )
     assert unknown.search_status == "UNKNOWN"
     assert titles[6] not in {candidate.title for candidate in result.candidates}
+
+    sim_llm = FakeSimLlm()
+    sim_results = asyncio.run(
+        analyze_sim_candidates(
+            engine,
+            result,
+            sim_cpl_result(),
+            sim_llm,
+            scoring=load_sim_scoring(Path("config/sim_scoring.json")),
+            prompt=load_sim_prompt(Path("config/prompts/sim-v0.1.txt")),
+            ruleset_version="sim-v0.1",
+            prompt_version="sim-v0.1",
+            model_profile="gpt-4o-mini",
+        )
+    )
+    assert len(sim_results) == 5
+    assert sim_llm.calls == 5
+    assert [item.rank for item in sim_results] == [1, 2, 3, 4, 5]
+    assert sim_results[0].review_grade == "ON_HOLD"
+    assert all(item.review_grade == "FOCUS_REVIEW" for item in sim_results[1:])
+    assert (
+        sim_results[0].announcement_version_id
+        == result.candidates[0].announcement_version_id
+    )
+    with engine.connect() as connection:
+        persisted_sim = connection.execute(
+            text(
+                """
+                SELECT rc.rank_no, rc.comparison_result,
+                       count(ce.id) AS evidence_count
+                FROM sims.retrieval_candidate rc
+                LEFT JOIN sims.candidate_evidence ce
+                  ON ce.retrieval_candidate_id = rc.id
+                WHERE rc.retrieval_run_id = :retrieval_run_id
+                GROUP BY rc.id, rc.rank_no
+                ORDER BY rc.rank_no
+                """
+            ),
+            {"retrieval_run_id": result.retrieval_run_id},
+        ).mappings().all()
+    assert len(persisted_sim) == 5
+    assert (
+        persisted_sim[0]["comparison_result"]["axes"]["purpose"]["axis_id"]
+        == "SIM-1"
+    )
+    assert all(row["evidence_count"] > 0 for row in persisted_sim)
+    assert persisted_sim[0]["comparison_result"]["warnings"][-1].endswith(
+        "LLM_INVALID_RESPONSE"
+    )
+    assert "unparsed detail attachment" in persisted_sim[1]["comparison_result"][
+        "warnings"
+    ][0]
 
     changed_items = list(items)
     changed_items[0] = announcement(ids[0], title=f"{titles[0]}-변경")

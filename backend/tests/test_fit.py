@@ -594,7 +594,7 @@ def test_pipeline_fit_boundary_uses_runtime_contract() -> None:
     assert result.prompt_version == "fit-v0.2"
 
 
-def test_analysis_pipeline_calls_fit_between_cpl_and_retrieval(monkeypatch) -> None:
+def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
     cpl = complete_cpl_result()
     calls: list[str] = []
     fit_marker = object()
@@ -610,8 +610,15 @@ def test_analysis_pipeline_calls_fit_between_cpl_and_retrieval(monkeypatch) -> N
         calls.append("fit")
         return fit_marker
 
+    retrieval_marker = object()
+
     async def retrieval(*_args):
         calls.append("retrieval")
+        return retrieval_marker
+
+    async def sim(*args):
+        calls.append("sim")
+        assert args[1] is retrieval_marker
 
     monkeypatch.setattr(analysis_pipeline, "run_case_parsing", parse)
     monkeypatch.setattr(analysis_pipeline, "_case_status", lambda *_args: "CHECKING")
@@ -634,6 +641,7 @@ def test_analysis_pipeline_calls_fit_between_cpl_and_retrieval(monkeypatch) -> N
     )
     monkeypatch.setattr(analysis_pipeline, "_run_fit", fit)
     monkeypatch.setattr(analysis_pipeline, "_run_retrieval", retrieval)
+    monkeypatch.setattr(analysis_pipeline, "_run_sim", sim)
 
     result = asyncio.run(
         analysis_pipeline.run_analysis_pipeline(
@@ -646,7 +654,7 @@ def test_analysis_pipeline_calls_fit_between_cpl_and_retrieval(monkeypatch) -> N
         )
     )
     assert result is fit_marker
-    assert calls == ["parse", "cpl", "fit", "retrieval"]
+    assert calls == ["parse", "cpl", "fit", "retrieval", "sim"]
 
 
 def test_relative_fit_config_paths_resolve_from_project_root() -> None:

@@ -37,9 +37,15 @@ from app.services.cpl.logic_validator import (
 from app.services.document_parsing import run_case_parsing
 from app.services.fit.fit_engine import analyze_fit, load_fit_prompt, load_fit_scoring
 from app.services.retrieval.retrieval import (
+    RetrievalResult,
     RetrievalNotReadyError,
     compose_inspection_embedding_text,
     retrieve_top_five,
+)
+from app.services.sim.sim_engine import (
+    analyze_sim_candidates,
+    load_sim_prompt,
+    load_sim_scoring,
 )
 
 
@@ -58,7 +64,7 @@ async def run_analysis_pipeline(
     case_id: int,
     embedding_client: EmbeddingClient | None = None,
 ) -> FitResult | None:
-    """Run parsing, CPL, FIT, then retrieve the current Top-5 when configured."""
+    """Run parsing, CPL, FIT, retrieval, then candidate-by-candidate SIM."""
     await run_case_parsing(engine, storage, parser, case_id)
     if _case_status(engine, case_id) != "CHECKING":
         return
@@ -105,7 +111,21 @@ async def run_analysis_pipeline(
         return
 
     fit_result = await _run_fit(result, llm_client, settings, case_id)
-    await _run_retrieval(engine, embedding_client, case_id, result)
+    retrieval_result = await _run_retrieval(
+        engine,
+        embedding_client,
+        case_id,
+        result,
+    )
+    if retrieval_result is not None:
+        await _run_sim(
+            engine,
+            retrieval_result,
+            result,
+            llm_client,
+            settings,
+            case_id,
+        )
     return fit_result
 
 
@@ -141,7 +161,7 @@ async def _run_retrieval(
     client: EmbeddingClient | None,
     case_id: int,
     cpl_result: CplResult,
-) -> None:
+) -> RetrievalResult | None:
     if client is None:
         logger.warning("Retrieval skipped for case %s: embedding client disabled", case_id)
         _record_retrieval_failure(engine, case_id, "RETRIEVAL_UNAVAILABLE")
@@ -160,7 +180,7 @@ async def _run_retrieval(
             target=axes[CplFieldCode.TARGET_AND_CONDITIONS],
             content=axes[CplFieldCode.SUPPORT_CONTENT_AND_SCALE],
         )
-        await retrieve_top_five(
+        return await retrieve_top_five(
             engine,
             client,
             case_id=case_id,
@@ -186,10 +206,39 @@ async def _run_retrieval(
             case_id,
             type(error).__name__,
         )
-    else:
-        return
     logger.warning("Retrieval incomplete for case %s: %s", case_id, failure_code)
     _record_retrieval_failure(engine, case_id, failure_code)
+    return None
+
+
+async def _run_sim(
+    engine: Engine,
+    retrieval_result: RetrievalResult,
+    cpl_result: CplResult,
+    llm_client: LLMClient | None,
+    settings: Settings,
+    case_id: int,
+) -> None:
+    try:
+        await analyze_sim_candidates(
+            engine,
+            retrieval_result,
+            cpl_result,
+            llm_client,
+            scoring=load_sim_scoring(settings.sim_scoring_path),
+            prompt=load_sim_prompt(settings.sim_prompt_path),
+            ruleset_version=settings.sim_ruleset_version,
+            prompt_version=settings.sim_prompt_version,
+            model_profile=settings.sim_model_profile,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logger.warning(
+            "SIM analysis incomplete for case %s: %s",
+            case_id,
+            type(error).__name__,
+        )
 
 
 def _cpl_axis_text(result: CplResult, field_code: CplFieldCode) -> str:
