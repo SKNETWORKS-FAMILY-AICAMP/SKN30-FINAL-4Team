@@ -38,9 +38,12 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: int = Field(default=30, ge=1)
     embedding_batch_size: int = Field(default=100, ge=1, le=2048)
     cpl_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
-    cpl_prompt_version: str = Field(default="cpl-semantic-v0.1", min_length=1)
-    cpl_ruleset_version: str = Field(default="cpl-alpha-v0.1", min_length=1)
+    cpl_prompt_version: str = Field(default="cpl-semantic-v0.2", min_length=1)
+    cpl_ruleset_version: str = Field(default="cpl-alpha-v0.2", min_length=1)
     cpl_llm_timeout_seconds: int = Field(default=30, ge=1)
+    cpl_prompt_path: Path = (
+        PROJECT_ROOT / "backend" / "config" / "prompts" / "cpl-v0.2.txt"
+    )
     fit_ruleset_version: str = Field(default="fit-v0.1", min_length=1)
     fit_prompt_version: str = Field(default="fit-v0.1", min_length=1)
     fit_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
@@ -61,7 +64,12 @@ class Settings(BaseSettings):
     def empty_external_key_means_disabled(cls, value: object) -> object:
         return None if value == "" else value
 
-    @field_validator("fit_scoring_path", "fit_prompt_path", mode="before")
+    @field_validator(
+        "cpl_prompt_path",
+        "fit_scoring_path",
+        "fit_prompt_path",
+        mode="before",
+    )
     @classmethod
     def resolve_project_path(cls, value: object) -> object:
         path = Path(value) if isinstance(value, (str, Path)) else value

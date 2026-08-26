@@ -155,6 +155,8 @@ def run_cpl(
                     "section_path": occurrence.section_path,
                     "source_locator": occurrence.source_locator,
                     "extraction_method": occurrence.extraction_method,
+                    "axis_code": occurrence.axis_code,
+                    "source_role": occurrence.source_role,
                 }
                 for occurrence in item.occurrences
             ]

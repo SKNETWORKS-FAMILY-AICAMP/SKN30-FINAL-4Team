@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from pathlib import Path
 
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
@@ -26,9 +27,11 @@ from app.schemas.parsed_document import ParsedDocument
 from app.services.cpl.checker import request_reason_from_result, run_cpl
 from app.services.cpl.logic_validator import (
     CPL_SEMANTIC_FIELDS,
+    CPL_FIELD_AXES,
     evaluate_cpl_rules,
     ground_llm_response,
     merge_llm_result,
+    semantic_fragments,
 )
 from app.services.document_parsing import run_case_parsing
 from app.services.retrieval.retrieval import (
@@ -186,7 +189,11 @@ async def _complete_semantic_review(
     try:
         response = await llm_client.generate_structured(
             task_name="cpl_semantic_evidence",
-            messages=_semantic_messages(document, semantic_fields),
+            messages=_semantic_messages(
+                document,
+                semantic_fields,
+                load_cpl_prompt(settings.cpl_prompt_path),
+            ),
             response_schema=CplSemanticResponse,
             model_profile=settings.cpl_model_profile,
         )
@@ -196,7 +203,6 @@ async def _complete_semantic_review(
         result = merge_llm_result(
             rule_result,
             candidates,
-            valid_block_ids={block.block_id for block in document.blocks},
         )
     except LLMTimeoutError:
         result = merge_llm_result(rule_result, llm_error="LLM_TIMEOUT")
@@ -210,18 +216,15 @@ async def _complete_semantic_review(
 def _semantic_messages(
     document: ParsedDocument,
     semantic_fields: set[CplFieldCode],
+    prompt: str,
 ) -> list[Message]:
-    blocks = [
+    fragments = [
         {
-            "block_id": block.block_id,
-            "text": block.text,
-            "table_cell_texts": [
-                cell["text"]
-                for cell in block.source_locator.get("cells", [])
-                if isinstance(cell, dict) and isinstance(cell.get("text"), str)
-            ],
+            "evidence_ref": fragment.evidence_ref,
+            "source_role": fragment.source_role,
+            "text": fragment.text,
         }
-        for block in document.blocks
+        for fragment in semantic_fragments(document)
     ]
     requested = [
         field.value for field in CplFieldCode if field in semantic_fields
@@ -229,22 +232,33 @@ def _semantic_messages(
     return [
         Message(
             role="developer",
-            content=(
-                "Extract only explicit CPL evidence from the supplied parser blocks. "
-                "Return exactly one item for every requested field. Quote raw_text "
-                "verbatim and use only a supplied block_id. Do not invent evidence, "
-                "source locations, policy judgments, or NOT_APPLICABLE decisions. "
-                "Use NEEDS_CONFIRMATION for ambiguous or conflicting content."
-            ),
+            content=prompt,
         ),
         Message(
             role="user",
             content=json.dumps(
-                {"requested_fields": requested, "blocks": blocks},
+                {
+                    "requested_fields": requested,
+                    "allowed_axes": {
+                        field.value: sorted(
+                            axis.value for axis in CPL_FIELD_AXES[field]
+                        )
+                        for field in CplFieldCode
+                        if field in semantic_fields
+                    },
+                    "fragments": fragments,
+                },
                 ensure_ascii=False,
             ),
         ),
     ]
+
+
+def load_cpl_prompt(path: Path) -> str:
+    prompt = path.read_text(encoding="utf-8").strip()
+    if not prompt:
+        raise ValueError("CPL prompt must not be blank")
+    return prompt
 
 
 def _with_runtime_metadata(result: CplResult, settings: Settings) -> CplResult:
