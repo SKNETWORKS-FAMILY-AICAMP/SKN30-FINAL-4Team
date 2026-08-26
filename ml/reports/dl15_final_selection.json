@@ -1420,6 +1420,23 @@
         "share": 0.061
       },
       "not_judged": 287
+    },
+    "superseded_by": {
+      "note": "이 섹션(n=2205)은 M12 타깃(한도·평균 혼재, 출처 사다리 안쪽) 기준이다. M45 가 타깃을 stated_cap 만 남기고 출처를 필수 축으로 올려 재정의했고, DL19 가 같은 재정의된 타깃으로 FT-Transformer·Quantile MLP 를 재대결시켰다. 최종 판정은 아래 값을 따른다.",
+      "target": "log10(기업당 지원액) — M45 prepare(), stated_cap 만",
+      "n": 1877,
+      "cv": "GroupKFold(5) by program_stem — 동일 fold 를 LGBM/FT/MLP 가 공유",
+      "cohort_median_baseline_MAE": 0.5315,
+      "lightgbm_quantile50_MAE": 0.4681,
+      "lightgbm_MAE_this_run": 0.4645,
+      "ft_transformer_MAE_mean": 0.5024,
+      "ft_transformer_MAE_std": 0.0086,
+      "quantile_mlp_MAE_mean": 0.4883,
+      "quantile_mlp_MAE_std": 0.0035,
+      "significance_margin_fold_std": 0.0109,
+      "verdict": "LGBM-quantile50 유지 — FT-Transformer, Quantile MLP 모두 fold σ 이상 더 나쁘다",
+      "report": "dl19_m2_amount_v2.json / dl19_m2_amount_v2.md",
+      "run_env": "RunPod RTX 4090, torch 2.8.0+cu128"
     }
   },
   "model3": {
@@ -1670,7 +1687,8 @@
       "min": 0.3667,
       "pairs": 10
     },
-    "synthetic_reference": "m20_m4_threshold.json"
+    "synthetic_reference": "m20_m4_threshold.json",
+    "staleness_note": "이 섹션의 OneClassSVM/Deep SVDD 비교는 M31(파서 오류 감사)까지만 반영된 라벨·데이터 위에서 나온 값이다. machine-learning 브랜치는 그 뒤 M32(파서 수정)부터 M44(구조 Freeze, 독립 라벨셋 재검증)까지 13단계를 거치며 탐지 방법 자체를 바꿨다 — OneClassSVM/오토인코더 계열에서 '비교군 대표벡터와의 차이벡터 거리'로. 라벨 정의(atypical_design)도 M42~M43 에서 축 개수 중립으로 다시 정의됐다. 즉 이 섹션은 낡은 수치가 아니라 낡은 방법론이다 — DL14 때처럼 같은 방법을 같은 자로 재대결시키는 걸로는 해결되지 않고, M32~M44 전체를 이 브랜치로 옮긴 뒤에야 공정한 DL 재도전이 가능하다. 현재 기준 실제 최종값은 machine-learning:ml/reports/m44_m3_final_test.md — ROC-AUC 0.7542 [0.575, 0.908] (독립 라벨셋 53건, 양성 5건, 재튜닝 없음)."
   },
   "previous_verdict_m14": null
 }

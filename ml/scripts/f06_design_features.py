@@ -184,7 +184,7 @@ COLS = ["row_id", "cohort", "year", "title", "program_stem", "support_type",
         "agency_type", "support_method", "method_hits", "support_unit",
         "amount_type", "amount_type_source", "amount_max", "amount_min", "amount_unit_raw",
         "support_count", "support_ratio", "self_burden_ratio", "project_duration",
-        "per_recipient", "per_recipient_basis", "extraction_confidence",
+        "duration_basis", "per_recipient", "per_recipient_basis", "extraction_confidence",
         "evidence_text", "source_url"]
 
 
@@ -237,6 +237,7 @@ def build_taxonomy():
         "support_ratio": t["support_ratio"].values,
         "self_burden_ratio": t["self_payment_ratio"].values,
         "project_duration": t["support_period_year"].values,
+        "duration_basis": t["support_period_basis"].values,
         "per_recipient": [v for v, _ in pr],
         "per_recipient_basis": [b for _, b in pr],
         "extraction_confidence": t["extraction_confidence"].values,
@@ -245,7 +246,7 @@ def build_taxonomy():
     })[COLS]
 
 
-def _pack_bizinfo(df, evidence, agency, executor, duration):
+def _pack_bizinfo(df, evidence, agency, executor, duration, duration_basis=None):
     # bizinfo 는 지원규모 원문과 사업설명이 한 덩어리로 들어온다. 나눌 근거가 없으니
     # 같은 텍스트를 두 역할에 함께 넘긴다(taxonomy 만큼 정밀하지 않음을 인정한다).
     txt = evidence.fillna("")
@@ -281,6 +282,8 @@ def _pack_bizinfo(df, evidence, agency, executor, duration):
         "support_ratio": df["support_ratio"].values,
         "self_burden_ratio": np.nan,
         "project_duration": duration.values,
+        "duration_basis": (duration_basis.values if duration_basis is not None
+                           else [None] * n),
         "per_recipient": [v for v, _ in pr],
         "per_recipient_basis": [b for _, b in pr],
         "extraction_confidence": np.nan,
@@ -295,13 +298,14 @@ def build_bizinfo():
 
     ao = obs[obs["source"] == "openapi"].merge(
         d[["announcement_id", "title", "agency", "executor", "summary_text",
-           "support_amount_raw", "support_period_year", "support_type_pred",
-           "support_type_confidence"]],
+           "support_amount_raw", "support_period_year", "support_period_basis",
+           "support_type_pred", "support_type_confidence"]],
         on="announcement_id", how="left")
     api = _pack_bizinfo(
         ao,
         ao["support_amount_raw"].fillna("") + " \n" + ao["summary_text"].fillna(""),
-        ao["agency"], ao["executor"], ao["support_period_year"])
+        ao["agency"], ao["executor"], ao["support_period_year"],
+        ao["support_period_basis"])
 
     # 목록 표본은 지원성격 예측(LST)과 금액 관측(OBS)이 따로 있다. 금액이 있는 쪽만 쓴다.
     lst = pd.read_parquet(LST)[["announcement_id", "title", "support_type_pred",
