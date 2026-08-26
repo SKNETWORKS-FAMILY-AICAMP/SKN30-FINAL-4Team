@@ -1,0 +1,102 @@
+{
+  "정의": {
+    "dev": "축별 이탈량 |pct-50|/50",
+    "extremity": "비교 가능한 축들의 dev 평균 (세지 않고 평균)",
+    "correction": "같은 비교가능축 개수(n_comp) pool 안에서의 백분위",
+    "cut": "상위 20% (프로젝트 공통 경고 예산 비율)",
+    "human": "후보->normal 하향 / 비후보->atypical 상향 모두 허용, 근거 기록",
+    "unchanged": "data_error / uncertain 은 v1 그대로. 모델도 그대로"
+  },
+  "n": 70,
+  "n_clean": 53,
+  "label_dist_v2": {
+    "normal": 48,
+    "data_error": 14,
+    "atypical_design": 5,
+    "uncertain": 3
+  },
+  "v1_vs_v2": {
+    "atypical_design": {
+      "atypical_design": 4,
+      "data_error": 0,
+      "normal": 5,
+      "uncertain": 0
+    },
+    "data_error": {
+      "atypical_design": 0,
+      "data_error": 14,
+      "normal": 0,
+      "uncertain": 0
+    },
+    "normal": {
+      "atypical_design": 1,
+      "data_error": 0,
+      "normal": 43,
+      "uncertain": 0
+    },
+    "uncertain": {
+      "atypical_design": 0,
+      "data_error": 0,
+      "normal": 0,
+      "uncertain": 3
+    }
+  },
+  "human_moves": {
+    "candidate_to_normal": [
+      {
+        "row_id": "PBLN_000000000104669",
+        "사업명": "[경기] 안산시 2025년 현장노동자 휴게시설 개선 지원사업 공고",
+        "근거": "비교 가능 축이 지원비율 1개뿐이라 설계 '조합'을 말할 수 없다. 지자체 시설개선 80% 보조는 통상 보조율이다"
+      },
+      {
+        "row_id": "EXCEL2022_0105",
+        "사업명": "2022년 디지털전환 K-SW기술개발지원사업(후속연계 개발 R&D)",
+        "근거": "후속연계 개발은 1년 단기가 설계 전제이고(기간 P10), 자부담 20%(비율 P90)는 중소기업 R&D 통상 출연비율이다. 두 축 모두 사업 유형으로 설명된다"
+      },
+      {
+        "row_id": "PBLN_000000000118209",
+        "사업명": "2026년 중소기업 연구인력지원사업 공고",
+        "근거": "기업수 P100(775개사)은 전국 단위 연구인력 인건비 지원의 실제 규모이고, 나머지 축(한도 P72)은 중앙 근처다"
+      },
+      {
+        "row_id": "PBLN_000000000103925",
+        "사업명": "2025년 익산형 사회적기업가 육성사업 참여자 모집 공고",
+        "근거": "비교 가능 축이 지원비율 1개뿐이라 설계 '조합'을 말할 수 없다. 사회적기업가 육성 90% 지원은 통상 구조다"
+      }
+    ],
+    "noncandidate_to_atypical": []
+  },
+  "naxes_bias": {
+    "by_n_axes": {
+      "2": {
+        "n": 30,
+        "v1_positive": 1,
+        "v2_positive": 1,
+        "v1_rate": 0.0333,
+        "v2_rate": 0.0333
+      },
+      "3": {
+        "n": 17,
+        "v1_positive": 5,
+        "v2_positive": 3,
+        "v1_rate": 0.2941,
+        "v2_rate": 0.1765
+      },
+      "4": {
+        "n": 6,
+        "v1_positive": 3,
+        "v2_positive": 1,
+        "v1_rate": 0.5,
+        "v2_rate": 0.1667
+      }
+    },
+    "label_roc_auc_from_n_axes": {
+      "v1": 0.8005,
+      "v2": 0.7
+    },
+    "positive_rate_spread": {
+      "v1": 0.4667,
+      "v2": 0.1432
+    }
+  }
+}
