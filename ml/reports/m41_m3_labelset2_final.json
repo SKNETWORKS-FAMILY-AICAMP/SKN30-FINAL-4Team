@@ -1,0 +1,56 @@
+{
+  "n": 70,
+  "label_dist": {
+    "normal": 44,
+    "data_error": 14,
+    "atypical_design": 9,
+    "uncertain": 3
+  },
+  "main_eval_n": 53,
+  "main_eval_positive": 9,
+  "by_dq": {
+    "A_직접기재": {
+      "atypical_design": 9,
+      "data_error": 3,
+      "normal": 40,
+      "uncertain": 0
+    },
+    "B_파생": {
+      "atypical_design": 0,
+      "data_error": 6,
+      "normal": 4,
+      "uncertain": 3
+    },
+    "C_의심": {
+      "atypical_design": 0,
+      "data_error": 5,
+      "normal": 0,
+      "uncertain": 0
+    }
+  },
+  "by_axes": {
+    "축2": {
+      "atypical_design": 1,
+      "data_error": 11,
+      "normal": 29,
+      "uncertain": 3
+    },
+    "축3": {
+      "atypical_design": 5,
+      "data_error": 2,
+      "normal": 12,
+      "uncertain": 0
+    },
+    "축4": {
+      "atypical_design": 3,
+      "data_error": 1,
+      "normal": 3,
+      "uncertain": 0
+    }
+  },
+  "combined_with_m33": {
+    "main_eval_n": 88,
+    "main_eval_positive": 19
+  },
+  "holdout": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\labels\\m3_holdout2.csv"
+}
