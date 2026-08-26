@@ -1,0 +1,80 @@
+﻿stage1,stage2,pool,quota,drawn
+A_직접기재 · 축2,사업화 · grant · company,250,5,5
+A_직접기재 · 축2,기타성격 · grant · company,78,3,3
+A_직접기재 · 축2,융자 · loan · company,110,3,3
+A_직접기재 · 축2,잔여조합,77,3,3
+A_직접기재 · 축2,컨설팅 · grant · company,79,3,3
+A_직접기재 · 축2,판로 · grant · company,107,3,3
+A_직접기재 · 축2,고용보조 · grant · company,37,2,2
+A_직접기재 · 축2,사업화 · grant · project,46,2,2
+A_직접기재 · 축2,설비 · grant · company,30,2,2
+A_직접기재 · 축2,사업화 · voucher · company,13,1,1
+A_직접기재 · 축2,연구개발 · grant · company,19,1,1
+A_직접기재 · 축2,연구개발 · grant · project,18,1,1
+A_직접기재 · 축2,융자 · grant · company,18,1,1
+A_직접기재 · 축3,사업화 · grant · company,207,3,3
+A_직접기재 · 축3,기타성격 · grant · company,66,2,2
+A_직접기재 · 축3,고용보조 · grant · company,6,1,1
+A_직접기재 · 축3,사업화 · grant · project,7,1,1
+A_직접기재 · 축3,사업화 · voucher · company,10,1,1
+A_직접기재 · 축3,설비 · grant · company,25,1,1
+A_직접기재 · 축3,연구개발 · grant · company,27,1,1
+A_직접기재 · 축3,연구개발 · grant · project,6,1,1
+A_직접기재 · 축3,융자 · grant · company,7,1,1
+A_직접기재 · 축3,융자 · loan · company,14,1,1
+A_직접기재 · 축3,잔여조합,20,1,1
+A_직접기재 · 축3,컨설팅 · grant · company,25,1,1
+A_직접기재 · 축3,판로 · grant · company,32,1,1
+B_파생 · 축2,잔여조합,154,3,3
+B_파생 · 축2,사업화 · grant · 단위미상,74,2,2
+B_파생 · 축2,고용보조 · grant · company,4,1,1
+B_파생 · 축2,사업화 · grant · company,15,1,1
+B_파생 · 축2,설비 · grant · 단위미상,12,1,1
+B_파생 · 축2,연구개발 · grant · company,5,1,1
+B_파생 · 축2,연구개발 · grant · 단위미상,28,1,1
+B_파생 · 축2,융자 · loan · 단위미상,9,1,1
+B_파생 · 축2,기타성격 · grant · company,1,0,0
+B_파생 · 축2,설비 · grant · company,1,0,0
+B_파생 · 축2,연구개발 · grant · project,1,0,0
+B_파생 · 축2,융자 · loan · company,2,0,0
+B_파생 · 축2,컨설팅 · grant · company,2,0,0
+B_파생 · 축2,판로 · grant · company,2,0,0
+A_직접기재 · 축4,연구개발 · grant · company,94,2,2
+A_직접기재 · 축4,사업화 · grant · company,28,1,1
+A_직접기재 · 축4,사업화 · grant · project,4,1,1
+A_직접기재 · 축4,설비 · grant · company,6,1,1
+A_직접기재 · 축4,연구개발 · grant · project,11,1,1
+A_직접기재 · 축4,고용보조 · grant · company,3,0,0
+A_직접기재 · 축4,기타성격 · grant · company,1,0,0
+A_직접기재 · 축4,잔여조합,4,0,0
+A_직접기재 · 축4,컨설팅 · grant · company,2,0,0
+C_의심 · 축2,연구개발 · grant · project,4,1,1
+C_의심 · 축2,융자 · loan · 단위미상,14,1,1
+C_의심 · 축2,잔여조합,21,1,1
+C_의심 · 축2,기타성격 · grant · company,1,0,0
+C_의심 · 축2,사업화 · grant · 단위미상,1,0,0
+C_의심 · 축2,설비 · grant · company,2,0,0
+C_의심 · 축2,설비 · grant · 단위미상,1,0,0
+C_의심 · 축2,연구개발 · grant · company,2,0,0
+C_의심 · 축2,연구개발 · grant · 단위미상,1,0,0
+C_의심 · 축2,융자 · grant · company,3,0,0
+C_의심 · 축2,판로 · grant · company,4,0,0
+B_파생 · 축3,사업화 · grant · 단위미상,11,1,1
+B_파생 · 축3,설비 · grant · 단위미상,7,1,1
+B_파생 · 축3,고용보조 · grant · company,2,0,0
+B_파생 · 축3,사업화 · grant · company,2,0,0
+B_파생 · 축3,융자 · loan · company,1,0,0
+B_파생 · 축3,융자 · loan · 단위미상,2,0,0
+B_파생 · 축3,잔여조합,7,0,0
+C_의심 · 축3,설비 · grant · company,3,1,1
+C_의심 · 축3,기타성격 · grant · company,1,0,0
+C_의심 · 축3,사업화 · grant · company,2,0,0
+C_의심 · 축3,설비 · grant · 단위미상,1,0,0
+C_의심 · 축3,연구개발 · grant · company,3,0,0
+C_의심 · 축3,연구개발 · grant · project,1,0,0
+C_의심 · 축3,융자 · loan · company,1,0,0
+C_의심 · 축3,융자 · loan · 단위미상,3,0,0
+C_의심 · 축3,잔여조합,1,0,0
+C_의심 · 축4,사업화 · grant · company,1,1,1
+C_의심 · 축4,설비 · grant · 단위미상,1,0,0
+C_의심 · 축4,잔여조합,1,0,0

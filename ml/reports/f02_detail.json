@@ -30,7 +30,7 @@
     "per_project": 15,
     "total_budget": 7
   },
-  "mean_confidence": 0.1737,
+  "mean_confidence": 0.1622,
   "region_coverage": 0.7255,
   "note": "지원규모는 CSV 요약 기준. 공고 원문 추출본(E01) 병합 후 재계산 예정",
   "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail.parquet"

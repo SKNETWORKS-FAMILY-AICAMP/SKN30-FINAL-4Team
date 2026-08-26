@@ -1,0 +1,209 @@
+{
+  "목적": "M39 남은것 1 — 모델 점수에 의존하지 않는 두 번째 라벨 세트",
+  "n_target": 70,
+  "n_drawn": 70,
+  "seed": 20260827,
+  "pool": {
+    "train_rows": 1948,
+    "pool_rows": 1902,
+    "excluded_row_id": 42,
+    "excluded_same_stem": 4
+  },
+  "stratification": {
+    "stage1": "데이터품질(A_직접기재/B_파생/C_의심) x 수치축(2/3/4)",
+    "stage2": "지원성격(상위7+기타) x 지원방식(grant/loan/voucher+기타) x 지원단위",
+    "rule": "1단 비례배분(power=1.0)+셀당 최소 1건, 2단 제곱근배분(power=0.5). pool 20건 미만 2단 조합은 '잔여조합' 로 합침",
+    "min_cell": 20,
+    "power_stage2": 0.5,
+    "why_stage1_first": "n_axes 단독 ROC-AUC 0.704(M40 §3), M30 '비전형' 15건 중 8건이 값 오류(M33)"
+  },
+  "stage1_allocation": {
+    "A_직접기재 · 축2": 30,
+    "A_직접기재 · 축3": 16,
+    "B_파생 · 축2": 11,
+    "A_직접기재 · 축4": 6,
+    "C_의심 · 축2": 3,
+    "B_파생 · 축3": 2,
+    "C_의심 · 축3": 1,
+    "C_의심 · 축4": 1
+  },
+  "marginals": {
+    "데이터품질": {
+      "A_직접기재": {
+        "pool": 78.2,
+        "sample": 74.3,
+        "sample_n": 52
+      },
+      "B_파생": {
+        "pool": 18.0,
+        "sample": 18.6,
+        "sample_n": 13
+      },
+      "C_의심": {
+        "pool": 3.8,
+        "sample": 7.1,
+        "sample_n": 5
+      }
+    },
+    "수치축": {
+      "축2": {
+        "pool": 65.5,
+        "sample": 62.9,
+        "sample_n": 44
+      },
+      "축3": {
+        "pool": 26.3,
+        "sample": 27.1,
+        "sample_n": 19
+      },
+      "축4": {
+        "pool": 8.2,
+        "sample": 10.0,
+        "sample_n": 7
+      }
+    },
+    "지원성격": {
+      "고용보조": {
+        "pool": 4.8,
+        "sample": 7.1,
+        "sample_n": 5
+      },
+      "기타성격": {
+        "pool": 10.1,
+        "sample": 8.6,
+        "sample_n": 6
+      },
+      "사업화": {
+        "pool": 39.2,
+        "sample": 31.4,
+        "sample_n": 22
+      },
+      "설비": {
+        "pool": 5.6,
+        "sample": 10.0,
+        "sample_n": 7
+      },
+      "연구개발": {
+        "pool": 12.3,
+        "sample": 14.3,
+        "sample_n": 10
+      },
+      "융자": {
+        "pool": 10.9,
+        "sample": 12.9,
+        "sample_n": 9
+      },
+      "컨설팅": {
+        "pool": 8.2,
+        "sample": 8.6,
+        "sample_n": 6
+      },
+      "판로": {
+        "pool": 8.8,
+        "sample": 7.1,
+        "sample_n": 5
+      }
+    },
+    "지원방식": {
+      "grant": {
+        "pool": 81.0,
+        "sample": 82.9,
+        "sample_n": 58
+      },
+      "loan": {
+        "pool": 10.3,
+        "sample": 11.4,
+        "sample_n": 8
+      },
+      "voucher": {
+        "pool": 2.9,
+        "sample": 4.3,
+        "sample_n": 3
+      },
+      "기타방식": {
+        "pool": 5.8,
+        "sample": 1.4,
+        "sample_n": 1
+      }
+    },
+    "지원단위": {
+      "company": {
+        "pool": 75.3,
+        "sample": 70.0,
+        "sample_n": 49
+      },
+      "project": {
+        "pool": 6.2,
+        "sample": 11.4,
+        "sample_n": 8
+      },
+      "기타단위": {
+        "pool": 3.4,
+        "sample": 1.4,
+        "sample_n": 1
+      },
+      "단위미상": {
+        "pool": 15.0,
+        "sample": 17.1,
+        "sample_n": 12
+      }
+    }
+  },
+  "under_covered": [
+    "지원방식/기타방식 (pool 5.8% -> 표본 1.4%)",
+    "지원단위/기타단위 (pool 3.4% -> 표본 1.4%)"
+  ],
+  "m38_balance_check": {
+    "note": "균형 확인용 보조 변수. 이 값으로 표본을 다시 뽑지 않았다.",
+    "pool_n": 1948,
+    "sample_n": 70,
+    "decile_edges": [
+      0,
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      70,
+      80,
+      90,
+      100
+    ],
+    "pool_share": [
+      0.0878,
+      0.0975,
+      0.0914,
+      0.095,
+      0.0991,
+      0.0975,
+      0.1057,
+      0.0996,
+      0.1093,
+      0.117
+    ],
+    "sample_share": [
+      0.0714,
+      0.1,
+      0.1286,
+      0.0857,
+      0.1143,
+      0.0571,
+      0.0714,
+      0.1286,
+      0.1286,
+      0.1143
+    ],
+    "empty_deciles": [],
+    "ks_stat": 0.0789,
+    "ks_p": 0.7633,
+    "sample_median_pct": 48.47,
+    "pool_median_pct": 52.7,
+    "operating_cut_p98": 98.52,
+    "sample_above_operating_cut": 2
+  },
+  "independence": "기존 50건의 row_id 와 program_stem 을 pool 에서 뺐다. 새 표본 안에서도 program_stem 중복을 허용하지 않았다.",
+  "label_rule": "M33 과 동일 (normal / atypical_design / data_error / uncertain)",
+  "sheet": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\m41_labelset2_sheet.csv",
+  "plan": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\m41_labelset2_plan.csv"
+}

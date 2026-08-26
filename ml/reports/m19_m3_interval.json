@@ -1,49 +1,49 @@
 {
   "raw": {
-    "coverage": 0.6104,
-    "width_median": 1.1108,
-    "width_mean": 1.1479,
-    "crossing_rate": 0.0027,
-    "pinball_lo": 0.13137,
-    "pinball_hi": 0.12774,
-    "MAE_log10": 0.5028,
-    "MedAE_log10": 0.3804,
-    "pinball_mid": 0.25142
+    "coverage": 0.5957,
+    "width_median": 1.0835,
+    "width_mean": 1.129,
+    "crossing_rate": 0.0019,
+    "pinball_lo": 0.13257,
+    "pinball_hi": 0.12325,
+    "MAE_log10": 0.498,
+    "MedAE_log10": 0.3722,
+    "pinball_mid": 0.24901
   },
   "conformal": {
-    "coverage": 0.8118,
-    "width_median": 1.6401,
-    "width_mean": 1.6811,
+    "coverage": 0.7922,
+    "width_median": 1.5674,
+    "width_mean": 1.6327,
     "crossing_rate": 0.0,
-    "pinball_lo": 0.12456,
-    "pinball_hi": 0.12162,
-    "MAE_log10": 0.5164,
-    "MedAE_log10": 0.3897,
-    "pinball_mid": 0.2582,
-    "conformal_delta_mean": 0.2997
+    "pinball_lo": 0.12485,
+    "pinball_hi": 0.11912,
+    "MAE_log10": 0.525,
+    "MedAE_log10": 0.4039,
+    "pinball_mid": 0.26252,
+    "conformal_delta_mean": 0.2759
   },
   "year_holdout": {
-    "coverage": 0.4727,
-    "width_median": 1.4804,
-    "width_mean": 1.4463,
-    "crossing_rate": 0.0027,
-    "pinball_lo": 0.30372,
-    "pinball_hi": 0.16012,
-    "MAE_log10": 0.8564,
-    "MedAE_log10": 0.7334,
-    "pinball_mid": 0.42819,
+    "coverage": 0.433,
+    "width_median": 1.109,
+    "width_mean": 1.0959,
+    "crossing_rate": 0.0028,
+    "pinball_lo": 0.29786,
+    "pinball_hi": 0.14406,
+    "MAE_log10": 0.7618,
+    "MedAE_log10": 0.6244,
+    "pinball_mid": 0.3809,
     "train_cohort": {
       "taxonomy": 980,
-      "bizinfo": 859
+      "bizinfo": 796
     },
     "test_cohort": {
-      "bizinfo": 366
+      "bizinfo": 351
     },
     "cutoff_year": 2026.0,
-    "n_train": 1839,
-    "n_test": 366,
-    "baseline_MAE": 1.0915,
-    "vs_baseline": 0.2154
+    "n_train": 1776,
+    "n_test": 351,
+    "baseline_MAE": 1.0805,
+    "vs_baseline": 0.295
   },
   "mlp_reference": null,
   "feature_set": "+자부담·추출신뢰도",
@@ -67,14 +67,14 @@
   "verdict": {
     "verdict": "채택",
     "reasons": [
-      "보정 전 커버리지 61.0% -> 보정 후 81.2% (명목 80%)",
+      "보정 전 커버리지 59.6% -> 보정 후 79.2% (명목 80%)",
       "계획서 목표 구간(78~82%) 안에 들어왔다",
-      "구간폭 1.111 -> 1.640 log10 (12.9배 -> 43.7배)",
-      "다만 44배 구간은 실무에서 좁다고 말하기 어렵다. 커버리지를 맞춘 대가이며, 좁히려면 비교군을 더 잘게 나누거나 feature 를 늘려야 한다",
-      "점추정은 보정과 무관하다 — MAE 0.5164 그대로",
-      "연도 hold-out(2026년 기준) MAE 0.8564, 같은 구간 기준선 대비 +21.5%",
-      "주의: 연도 분할이 출처 분할과 겹친다 (학습 {'taxonomy': 980, 'bizinfo': 859} / 테스트 {'bizinfo': 366}). 연도 일반화가 아니라 모집단 차이를 잰 것에 가깝다"
+      "구간폭 1.083 -> 1.567 log10 (12.1배 -> 36.9배)",
+      "다만 37배 구간은 실무에서 좁다고 말하기 어렵다. 커버리지를 맞춘 대가이며, 좁히려면 비교군을 더 잘게 나누거나 feature 를 늘려야 한다",
+      "점추정은 보정과 무관하다 — MAE 0.5250 그대로",
+      "연도 hold-out(2026년 기준) MAE 0.7618, 같은 구간 기준선 대비 +29.5%",
+      "주의: 연도 분할이 출처 분할과 겹친다 (학습 {'taxonomy': 980, 'bizinfo': 796} / 테스트 {'bizinfo': 351}). 연도 일반화가 아니라 모집단 차이를 잰 것에 가깝다"
     ]
   },
-  "runtime_min": 0.46
+  "runtime_min": 0.43
 }

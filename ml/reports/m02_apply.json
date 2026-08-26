@@ -27,7 +27,7 @@
       "hold_rate": 0.3217,
       "usable_rate": 0.6783
     },
-    "C. E02 + 전처리없음": {
+    "C. E01 + 전처리없음": {
       "n_with_document": 1411,
       "mean_confidence": 0.2673,
       "mean_conf_with_doc": 0.2577,
@@ -37,7 +37,7 @@
       "hold_rate": 0.3522,
       "usable_rate": 0.6478
     },
-    "D. E02 + 전처리": {
+    "D. E01 + 전처리": {
       "n_with_document": 1411,
       "mean_confidence": 0.2831,
       "mean_conf_with_doc": 0.2753,
@@ -63,6 +63,6 @@
     "창업보육": 12,
     "해외인증": 10
   },
-  "note": "E02(pdf-inspector+rhwp) 원문과 전처리(관인제거+본문발췌)의 기여를 분리 측정. 모델·임계값은 M07과 동일.",
+  "note": "E01(pdf-inspector+rhwp) 원문과 전처리(관인제거+본문발췌)의 기여를 분리 측정. 모델·임계값은 M07과 동일.",
   "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail_with_support_type_v2.parquet"
 }
