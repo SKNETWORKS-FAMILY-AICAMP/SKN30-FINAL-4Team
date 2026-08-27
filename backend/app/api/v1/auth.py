@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr
 
 from app.api.deps import CurrentUser, unauthorized
+from app.api.v1.responses import BAD_REQUEST, UNAUTHORIZED
 from app.core.security import create_access_token
 from app.services.auth import (
     InvalidCredentialsError,
@@ -13,7 +14,7 @@ from app.services.auth import (
 )
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"], responses=UNAUTHORIZED)
 
 
 class LoginRequest(BaseModel):
@@ -62,7 +63,11 @@ def me(user: CurrentUser) -> MeResponse:
     return MeResponse(id=user.id, login_id=user.login_id)
 
 
-@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=BAD_REQUEST,
+)
 def update_password(
     request: Request,
     body: ChangePasswordRequest,

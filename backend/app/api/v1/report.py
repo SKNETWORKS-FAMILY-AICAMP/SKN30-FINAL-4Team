@@ -5,6 +5,12 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
 from app.api.deps import CurrentUser
+from app.api.v1.responses import (
+    CONFLICT,
+    NOT_FOUND,
+    SERVICE_UNAVAILABLE,
+    UNAUTHORIZED,
+)
 from app.schemas.report import ReportResponse
 from app.services.reporting import (
     ReportFileUnavailableError,
@@ -15,10 +21,14 @@ from app.services.reporting import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["reports"])
+router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORIZED)
 
 
-@router.get("/{case_id}/report", response_model=ReportResponse)
+@router.get(
+    "/{case_id}/report",
+    response_model=ReportResponse,
+    responses={**NOT_FOUND, **CONFLICT},
+)
 def report_result(case_id: int, request: Request, user: CurrentUser) -> ReportResponse:
     try:
         return get_report(request.app.state.database_engine, user.id, case_id)
@@ -31,7 +41,10 @@ def report_result(case_id: int, request: Request, user: CurrentUser) -> ReportRe
         ) from None
 
 
-@router.get("/{case_id}/report.pdf")
+@router.get(
+    "/{case_id}/report.pdf",
+    responses={**NOT_FOUND, **CONFLICT, **SERVICE_UNAVAILABLE},
+)
 async def report_pdf(
     case_id: int,
     request: Request,

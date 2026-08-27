@@ -1,6 +1,13 @@
 from fastapi import APIRouter, HTTPException, Request, status
 
 from app.api.deps import CurrentUser
+from app.api.v1.responses import (
+    BAD_GATEWAY,
+    CONFLICT,
+    NOT_FOUND,
+    SERVICE_UNAVAILABLE,
+    UNAUTHORIZED,
+)
 from app.schemas.chat import (
     ChatMessageRequest,
     ChatMessagesResponse,
@@ -15,10 +22,14 @@ from app.services.chat import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["chat"])
+router = APIRouter(prefix="/api/v1/cases", tags=["chat"], responses=UNAUTHORIZED)
 
 
-@router.get("/{case_id}/chat/messages", response_model=ChatMessagesResponse)
+@router.get(
+    "/{case_id}/chat/messages",
+    response_model=ChatMessagesResponse,
+    responses={**NOT_FOUND, **CONFLICT},
+)
 def chat_messages(case_id: int, request: Request, user: CurrentUser) -> ChatMessagesResponse:
     try:
         return get_chat_history(request.app.state.database_engine, user.id, case_id)
@@ -31,7 +42,11 @@ def chat_messages(case_id: int, request: Request, user: CurrentUser) -> ChatMess
         ) from None
 
 
-@router.post("/{case_id}/chat/messages", response_model=ChatTurnResponse)
+@router.post(
+    "/{case_id}/chat/messages",
+    response_model=ChatTurnResponse,
+    responses={**NOT_FOUND, **CONFLICT, **BAD_GATEWAY, **SERVICE_UNAVAILABLE},
+)
 async def send_chat_message(
     case_id: int,
     payload: ChatMessageRequest,

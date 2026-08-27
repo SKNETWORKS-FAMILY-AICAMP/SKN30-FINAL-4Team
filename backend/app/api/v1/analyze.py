@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser
+from app.api.v1.responses import CONFLICT, NOT_FOUND, UNAUTHORIZED
 from app.services.document_parsing import (
     CaseNotFoundError,
     CaseStateConflictError,
@@ -12,7 +13,7 @@ from app.services.document_parsing import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["analysis"])
+router = APIRouter(prefix="/api/v1/cases", tags=["analysis"], responses=UNAUTHORIZED)
 
 
 class StartAnalysisResponse(BaseModel):
@@ -32,6 +33,7 @@ class CaseStatusResponse(BaseModel):
     "/{case_id}/analyze",
     response_model=StartAnalysisResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={**NOT_FOUND, **CONFLICT},
 )
 async def analyze_case(
     case_id: int,
@@ -53,7 +55,11 @@ async def analyze_case(
     return StartAnalysisResponse(**started.__dict__)
 
 
-@router.get("/{case_id}/status", response_model=CaseStatusResponse)
+@router.get(
+    "/{case_id}/status",
+    response_model=CaseStatusResponse,
+    responses=NOT_FOUND,
+)
 def case_status(
     case_id: int,
     request: Request,

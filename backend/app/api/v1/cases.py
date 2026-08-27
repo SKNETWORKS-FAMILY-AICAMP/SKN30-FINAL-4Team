@@ -6,6 +6,12 @@ from pydantic import BaseModel
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.api.deps import CurrentUser
+from app.api.v1.responses import (
+    BAD_REQUEST,
+    PAYLOAD_TOO_LARGE,
+    UNAUTHORIZED,
+    UNSUPPORTED_MEDIA_TYPE,
+)
 from app.services.case_upload import (
     InvalidUploadError,
     UnsupportedDocumentError,
@@ -15,7 +21,7 @@ from app.services.case_upload import (
 from app.services.document_parsing import list_cases
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
+router = APIRouter(prefix="/api/v1/cases", tags=["cases"], responses=UNAUTHORIZED)
 
 
 class CreateCaseResponse(BaseModel):
@@ -44,7 +50,12 @@ def list_case_history(request: Request, user: CurrentUser) -> CaseListResponse:
     )
 
 
-@router.post("", response_model=CreateCaseResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=CreateCaseResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={**BAD_REQUEST, **PAYLOAD_TOO_LARGE, **UNSUPPORTED_MEDIA_TYPE},
+)
 async def create_case(
     request: Request,
     user: CurrentUser,
