@@ -1,5 +1,7 @@
 import asyncio
 from collections.abc import Mapping
+import logging
+import time
 from typing import Any
 
 import httpx
@@ -11,6 +13,9 @@ from app.ports.llm_client import (
     LLMUnavailableError,
     Message,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAILLMClient:
@@ -37,6 +42,7 @@ class OpenAILLMClient:
         response_schema: type[BaseModel],
         model_profile: str,
     ) -> BaseModel:
+        started_at = time.perf_counter()
         try:
             model = self._model_profiles[model_profile]
         except KeyError:
@@ -78,9 +84,21 @@ class OpenAILLMClient:
 
         try:
             output_text = _read_output_text(response_data)
-            return response_schema.model_validate_json(output_text)
+            result = response_schema.model_validate_json(output_text)
         except (TypeError, ValueError, ValidationError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
+        usage = response_data.get("usage", {})
+        logger.info(
+            "LLM request completed task=%s model=%s input_tokens=%s "
+            "output_tokens=%s total_tokens=%s duration_ms=%s",
+            task_name,
+            model,
+            usage.get("input_tokens") if isinstance(usage, dict) else None,
+            usage.get("output_tokens") if isinstance(usage, dict) else None,
+            usage.get("total_tokens") if isinstance(usage, dict) else None,
+            round((time.perf_counter() - started_at) * 1000),
+        )
+        return result
 
     async def _post(self, payload: dict[str, Any]) -> httpx.Response:
         headers = {
@@ -108,6 +126,11 @@ class OpenAILLMClient:
             raise LLMUnavailableError("LLM service is unavailable") from None
 
         if response.is_error:
+            logger.warning(
+                "LLM provider HTTP error status=%s retryable=%s",
+                response.status_code,
+                response.status_code == 429 or response.status_code >= 500,
+            )
             raise LLMUnavailableError("LLM service rejected the request")
         return response
 

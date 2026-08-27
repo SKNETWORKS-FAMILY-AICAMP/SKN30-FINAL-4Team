@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +29,8 @@ from app.schemas.sim import (
 )
 from app.services.retrieval.retrieval import RetrievalResult
 
+
+logger = logging.getLogger(__name__)
 
 _REQUEST_PROFILE_KEYS: dict[CplAxisCode, tuple[SimAxis, str]] = {
     CplAxisCode.PURPOSE_PROBLEM_DOMAIN: (SimAxis.PURPOSE, "problem_domain"),
@@ -317,12 +320,26 @@ async def _compare_candidate(
             prompt_version,
             model_profile,
         )
-    except LLMTimeoutError:
+    except LLMTimeoutError as error:
         failure_code = "LLM_TIMEOUT"
-    except LLMUnavailableError:
+        failure_error: Exception = error
+    except LLMUnavailableError as error:
         failure_code = "LLM_UNAVAILABLE"
-    except (LLMInvalidResponseError, ValidationError, ValueError):
+        failure_error = error
+    except (LLMInvalidResponseError, ValidationError, ValueError) as error:
+        # 이 절은 LLM 응답 형식 오류와 _ground_response() 의 근거 접지 실패를
+        # 함께 잡는다. 코드만으로는 둘을 구분할 수 없어 예외 유형과 메시지를
+        # 남긴다. 공고 본문·요청서 원문·LLM 응답 본문은 남기지 않는다.
         failure_code = "LLM_INVALID_RESPONSE"
+        failure_error = error
+    logger.warning(
+        "SIM comparison failed rank=%s announcement_id=%s failure=%s error=%s: %s",
+        candidate.rank,
+        candidate.announcement_id,
+        failure_code,
+        type(failure_error).__name__,
+        failure_error,
+    )
     return _failed_comparison(
         candidate,
         request,
