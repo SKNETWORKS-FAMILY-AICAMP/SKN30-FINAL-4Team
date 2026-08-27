@@ -22,6 +22,7 @@ from app.ports.llm_client import (
     Message,
 )
 from app.ports.object_storage import ObjectStorage
+from app.ports.pdf_renderer import PdfRenderer
 from app.schemas.cpl import CplFieldCode, CplResult, CplSemanticResponse, CplStatus
 from app.schemas.fit import FitResult
 from app.schemas.parsed_document import ParsedDocument
@@ -42,6 +43,8 @@ from app.services.retrieval.retrieval import (
     compose_inspection_embedding_text,
     retrieve_top_five,
 )
+from app.services.reporting import finalize_report
+from app.schemas.sim import SimComparisonResult
 from app.services.sim.sim_engine import (
     analyze_sim_candidates,
     load_sim_prompt,
@@ -62,6 +65,7 @@ async def run_analysis_pipeline(
     llm_client: LLMClient | None,
     settings: Settings,
     case_id: int,
+    pdf_renderer: PdfRenderer,
     embedding_client: EmbeddingClient | None = None,
 ) -> FitResult | None:
     """Run parsing, CPL, FIT, retrieval, then candidate-by-candidate SIM."""
@@ -88,7 +92,7 @@ async def run_analysis_pipeline(
             llm_client,
             settings,
         )
-        run_cpl(
+        cpl_run = run_cpl(
             engine,
             case_id,
             result,
@@ -118,13 +122,26 @@ async def run_analysis_pipeline(
         result,
     )
     if retrieval_result is not None:
-        await _run_sim(
+        sim_results = await _run_sim(
             engine,
             retrieval_result,
             result,
             llm_client,
             settings,
             case_id,
+        )
+        await finalize_report(
+            engine,
+            storage,
+            pdf_renderer,
+            settings,
+            case_id=case_id,
+            missing_check_run_id=cpl_run.missing_check_run_id,
+            retrieval_run_id=retrieval_result.retrieval_run_id,
+            cpl_result=result,
+            fit_result=fit_result,
+            sim_results=sim_results,
+            expected_candidate_count=len(retrieval_result.candidates),
         )
     return fit_result
 
@@ -218,9 +235,9 @@ async def _run_sim(
     llm_client: LLMClient | None,
     settings: Settings,
     case_id: int,
-) -> None:
+) -> list[SimComparisonResult]:
     try:
-        await analyze_sim_candidates(
+        return await analyze_sim_candidates(
             engine,
             retrieval_result,
             cpl_result,
@@ -239,6 +256,7 @@ async def _run_sim(
             case_id,
             type(error).__name__,
         )
+        return []
 
 
 def _cpl_axis_text(result: CplResult, field_code: CplFieldCode) -> str:

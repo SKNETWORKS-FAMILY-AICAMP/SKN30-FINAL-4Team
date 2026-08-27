@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.auth import router as auth_router
 from app.api.v1.analyze import router as analyze_router
 from app.api.v1.cases import router as cases_router
+from app.api.v1.report import router as report_router
 from app.db.session import check_database_ready
 
 
@@ -14,6 +15,7 @@ router = APIRouter()
 router.include_router(auth_router)
 router.include_router(cases_router)
 router.include_router(analyze_router)
+router.include_router(report_router)
 
 
 @router.get("/health/live")

@@ -8,6 +8,7 @@ pydantic-settings>=2.5,<3
 pwdlib[argon2]>=0.3,<1
 pytest>=8,<9
 python-multipart>=0.0.20,<1
+reportlab>=4.2,<5
 rhwp-python==0.8.1
 sqlalchemy>=2.0,<3
 uvicorn>=0.30,<1

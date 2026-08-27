@@ -1,5 +1,6 @@
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -610,7 +611,7 @@ def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
         calls.append("fit")
         return fit_marker
 
-    retrieval_marker = object()
+    retrieval_marker = SimpleNamespace(retrieval_run_id=20, candidates=[])
 
     async def retrieval(*_args):
         calls.append("retrieval")
@@ -619,6 +620,12 @@ def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
     async def sim(*args):
         calls.append("sim")
         assert args[1] is retrieval_marker
+        return []
+
+    async def report(*args, **kwargs):
+        calls.append("report")
+        assert kwargs["missing_check_run_id"] == 10
+        assert kwargs["retrieval_run_id"] == 20
 
     monkeypatch.setattr(analysis_pipeline, "run_case_parsing", parse)
     monkeypatch.setattr(analysis_pipeline, "_case_status", lambda *_args: "CHECKING")
@@ -633,7 +640,11 @@ def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
         lambda *_args, **_kwargs: cpl,
     )
     monkeypatch.setattr(analysis_pipeline, "_complete_semantic_review", complete)
-    monkeypatch.setattr(analysis_pipeline, "run_cpl", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        analysis_pipeline,
+        "run_cpl",
+        lambda *_args, **_kwargs: SimpleNamespace(missing_check_run_id=10),
+    )
     monkeypatch.setattr(
         analysis_pipeline,
         "request_reason_from_result",
@@ -642,6 +653,7 @@ def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
     monkeypatch.setattr(analysis_pipeline, "_run_fit", fit)
     monkeypatch.setattr(analysis_pipeline, "_run_retrieval", retrieval)
     monkeypatch.setattr(analysis_pipeline, "_run_sim", sim)
+    monkeypatch.setattr(analysis_pipeline, "finalize_report", report)
 
     result = asyncio.run(
         analysis_pipeline.run_analysis_pipeline(
@@ -651,10 +663,11 @@ def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
             None,
             settings(),
             case_id=1,
+            pdf_renderer=object(),
         )
     )
     assert result is fit_marker
-    assert calls == ["parse", "cpl", "fit", "retrieval", "sim"]
+    assert calls == ["parse", "cpl", "fit", "retrieval", "sim", "report"]
 
 
 def test_relative_fit_config_paths_resolve_from_project_root() -> None:

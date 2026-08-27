@@ -16,10 +16,12 @@ from app.infrastructure.in_process_job_dispatcher import InProcessJobDispatcher
 from app.infrastructure.local_object_storage import LocalObjectStorage
 from app.infrastructure.openai_embedding_client import OpenAIEmbeddingClient
 from app.infrastructure.openai_llm_client import OpenAILLMClient
+from app.infrastructure.reportlab_pdf_renderer import ReportLabPdfRenderer
 from app.parsers.hwp_parser import RhwpDocumentParser
 from app.ports.document_parser import DocumentParser
 from app.ports.embedding_client import EmbeddingClient
 from app.ports.llm_client import LLMClient
+from app.ports.pdf_renderer import PdfRenderer
 from app.services.analysis_pipeline import run_analysis_pipeline
 
 
@@ -32,6 +34,7 @@ def create_app(
     document_parser: DocumentParser | None = None,
     llm_client: LLMClient | None | object = _LLM_FROM_SETTINGS,
     embedding_client: EmbeddingClient | None | object = _EMBEDDING_FROM_SETTINGS,
+    pdf_renderer: PdfRenderer | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -46,6 +49,7 @@ def create_app(
             runtime_settings.local_storage_root
         )
         active_parser = document_parser or RhwpDocumentParser()
+        active_pdf_renderer = pdf_renderer or ReportLabPdfRenderer()
         if llm_client is _LLM_FROM_SETTINGS:
             active_llm_client: LLMClient | None = None
             if runtime_settings.openai_api_key is not None:
@@ -86,13 +90,15 @@ def create_app(
                 active_llm_client,
                 runtime_settings,
                 case_id,
-                active_embedding_client,
+                pdf_renderer=active_pdf_renderer,
+                embedding_client=active_embedding_client,
             )
         )
         application.state.object_storage = object_storage
         application.state.document_parser = active_parser
         application.state.llm_client = active_llm_client
         application.state.embedding_client = active_embedding_client
+        application.state.pdf_renderer = active_pdf_renderer
         application.state.job_dispatcher = dispatcher
         try:
             yield
