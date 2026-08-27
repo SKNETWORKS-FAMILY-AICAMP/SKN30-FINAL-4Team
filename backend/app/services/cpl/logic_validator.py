@@ -143,7 +143,9 @@ _CHECKBOX_PATTERN = re.compile(
     r"(?P<mark>[□☐■☑▣✓✔])\s*"
     r"(?P<label>내내역사업\s*신설|내역사업\s*신설|세부사업\s*신설|사업내용\s*변경)"
 )
-_REQUEST_TYPE_AREA_PATTERN = re.compile(r"(?:사전\s*협의\s*)?요청\s*유형")
+# 24년도 서식 [서식 1]의 항목명은 "사전협의 요청사유"이고 CPL 판별기준 2절은
+# 같은 영역을 "요청유형"으로 부른다. 두 표기를 모두 영역 표지로 받는다.
+_REQUEST_TYPE_AREA_PATTERN = re.compile(r"(?:사전\s*협의\s*)?요청\s*(?:유형|사유)")
 _LINE_PREFIX = r"^\s*(?:(?:[○◦●•※□■☑▣✓✔\-–—])|(?:\d+[.)]))*\s*"
 _PERIOD_PATTERN = re.compile(
     r"(?P<start_year>20\d{2})\s*(?:[.년/-]\s*(?P<start_month>\d{1,2}))?"
@@ -741,8 +743,11 @@ def _label_match(line: str, aliases: tuple[str, ...]) -> re.Match[str] | None:
         re.escape(alias).replace(r"\ ", r"\s*")
         for alias in sorted(aliases, key=len, reverse=True)
     )
+    # 서식 안내자료의 "작성 우수 사례"는 "○ (사업기간) ..." 처럼 라벨을 괄호로
+    # 감싼다. 괄호를 라벨 쪽에서 소비해야 값에 닫는 괄호가 남지 않는다.
     return re.match(
-        rf"{_LINE_PREFIX}(?P<label>{alternatives})(?:\s*[:：])?\s*(?P<value>.*)$",
+        rf"{_LINE_PREFIX}\(?\s*(?P<label>{alternatives})\s*\)?"
+        rf"(?:\s*[:：])?\s*(?P<value>.*)$",
         line,
     )
 

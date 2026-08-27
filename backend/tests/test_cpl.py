@@ -1084,3 +1084,75 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
     assert unresolved["result_status"] == "NEEDS_CONFIRMATION"
     assert unresolved["reason_code"] == "LLM_UNAVAILABLE"
     assert unresolved["evidence_field_value_id"] is None
+
+
+def paragraph_document(lines: list[str]) -> ParsedDocument:
+    """문단만으로 이루어진 최소 문서를 만든다."""
+    return ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="\n".join(lines),
+        blocks=[
+            DocumentBlock(
+                block_id=f"body:{index}",
+                block_type="paragraph",
+                text=line,
+                section_path=[],
+                source_locator={"body_block_index": index},
+            )
+            for index, line in enumerate(lines)
+        ],
+    )
+
+
+def occurrences_for(result: CplResult, field_code: CplFieldCode) -> list:
+    return next(
+        item.occurrences for item in result.items if item.field_code == field_code
+    )
+
+
+def test_rules_read_labels_wrapped_in_parentheses() -> None:
+    """안내자료의 작성 우수 사례는 "○ (지원근거) ..." 처럼 라벨을 괄호로 감싼다."""
+    result = evaluate_cpl_rules(
+        paragraph_document(["○ (지원근거) 「중소기업기본법」 제2조"])
+    )
+
+    occurrences = occurrences_for(result, CplFieldCode.LEGAL_BASIS)
+    assert len(occurrences) == 1
+    # 닫는 괄호가 값에 남으면 안 된다.
+    assert occurrences[0].raw_text.startswith("「중소기업기본법」")
+
+
+def test_rules_still_read_colon_separated_labels() -> None:
+    """작성 미흡 사례가 쓰는 "라벨 : 값" 표기는 그대로 통과해야 한다."""
+    result = evaluate_cpl_rules(
+        paragraph_document(["○ 지원근거 : 「중소기업기본법」 제2조"])
+    )
+
+    occurrences = occurrences_for(result, CplFieldCode.LEGAL_BASIS)
+    assert len(occurrences) == 1
+    assert occurrences[0].raw_text.startswith("「중소기업기본법」")
+
+
+def test_rules_ignore_parenthesised_text_that_is_not_a_label() -> None:
+    result = evaluate_cpl_rules(
+        paragraph_document(["○ (참고) 상세 내용은 붙임 자료를 확인한다"])
+    )
+
+    for item in result.items:
+        assert item.occurrences == []
+
+
+@pytest.mark.parametrize("area_label", ["사전협의 요청사유", "사전협의 요청유형"])
+def test_request_type_area_accepts_both_form_and_criteria_labels(
+    area_label: str,
+) -> None:
+    """서식 [서식 1]은 "요청사유", CPL 판별기준 2절은 "요청유형"으로 부른다."""
+    result = evaluate_cpl_rules(
+        paragraph_document([area_label, "■ 세부사업 신설  □ 내역사업 신설"])
+    )
+
+    item = next(
+        item for item in result.items if item.field_code == CplFieldCode.REQUEST_TYPE
+    )
+    assert item.status == CplStatus.PRESENT
