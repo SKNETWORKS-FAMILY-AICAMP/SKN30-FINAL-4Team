@@ -13,7 +13,11 @@ from sqlalchemy import Engine, create_engine, text
 from app.infrastructure.bizinfo_public_data_client import BizinfoPublicDataClient
 from app.infrastructure.openai_embedding_client import OpenAIEmbeddingClient
 from app.ports.embedding_client import EmbeddingBatch
-from app.ports.public_data_client import PublicAnnouncement
+from app.ports.public_data_client import (
+    PublicAnnouncement,
+    PublicDataInvalidResponseError,
+    PublicDataUnavailableError,
+)
 from app.schemas.cpl import (
     CPL_FIELDS,
     CplAxisCode,
@@ -75,32 +79,75 @@ def announcement(
     )
 
 
+PORTAL_URL = "https://apis.data.go.kr/1421000/bizinfo/pblancBsnsService"
+
+
+def _page(
+    items: list[dict[str, Any]],
+    *,
+    total_count: int,
+    result_code: str = "00",
+    page_size: int = 500,
+) -> dict[str, Any]:
+    """공공데이터포털 응답 봉투를 만든다."""
+    return {
+        "response": {
+            "header": {"resultCode": result_code, "resultMsg": "MSG"},
+            "body": {
+                "totalCount": total_count,
+                "pageNo": 1,
+                "numOfRows": page_size,
+                "items": {"item": items},
+            },
+        }
+    }
+
+
+def _item(index: int) -> dict[str, Any]:
+    return {
+        "pblancId": f"PBLN_{index}",
+        "pblancNm": f"공고 {index}",
+        "pblancUrl": f"https://example.com/{index}",
+        "creatPnttm": "2026-08-25 09:00:00",
+        "reqstBeginEndDe": "20260801 ~ 20260831",
+        "bsnsSumryCn": "사업 개요",
+    }
+
+
 def test_bizinfo_adapter_uses_official_json_contract() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path.endswith("/bizinfoApi.do")
-        assert request.url.params["crtfcKey"] == "secret"
+        assert request.url.path.endswith("/pblancBsnsService")
+        assert request.url.params["serviceKey"] == "secret"
         assert request.url.params["dataType"] == "json"
-        assert request.url.params["searchCnt"] == "0"
+        assert request.url.params["pageNo"] == "1"
         return httpx.Response(
             200,
             json={
-                "jsonArray": {
-                    "item": {
-                        "pblancId": "PBLN_1",
-                        "pblancNm": "지원 공고",
-                        "pblancUrl": "https://example.com/1",
-                        "jrsdInsttNm": "기관",
-                        "bsnsSumryCn": "사업 개요",
-                        "creatPnttm": "2026-08-25 09:00:00",
-                        "reqstBeginEndDe": "20260801 ~ 20260831",
-                    }
+                "response": {
+                    "header": {"resultCode": "00", "resultMsg": "NORMAL_SERVICE"},
+                    "body": {
+                        "totalCount": 1,
+                        "pageNo": 1,
+                        "numOfRows": 500,
+                        "items": {
+                            "item": {
+                                "pblancId": "PBLN_1",
+                                "pblancNm": "지원 공고",
+                                "pblancUrl": "https://example.com/1",
+                                "jrsdInsttNm": "기관",
+                                "bsnsSumryCn": "사업 개요",
+                                "creatPnttm": "2026-08-25 09:00:00",
+                                "reqstBeginEndDe": "20260801 ~ 20260831",
+                            }
+                        },
+                    },
                 }
             },
         )
 
     client = BizinfoPublicDataClient(
         api_key="secret",
-        base_url="https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do",
+        base_url="https://apis.data.go.kr/1421000/bizinfo/pblancBsnsService",
         timeout_seconds=1,
         transport=httpx.MockTransport(handler),
     )
@@ -157,11 +204,11 @@ def test_bizinfo_adapter_retries_transient_error_once() -> None:
         calls += 1
         if calls == 1:
             return httpx.Response(500)
-        return httpx.Response(200, json={"jsonArray": {"item": []}})
+        return httpx.Response(200, json=_page([], total_count=0))
 
     client = BizinfoPublicDataClient(
         api_key="secret",
-        base_url="https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do",
+        base_url="https://apis.data.go.kr/1421000/bizinfo/pblancBsnsService",
         timeout_seconds=1,
         transport=httpx.MockTransport(handler),
     )
@@ -626,3 +673,98 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
                 """
             )
         )
+
+
+def _portal_client(handler) -> BizinfoPublicDataClient:
+    return BizinfoPublicDataClient(
+        api_key="secret",
+        base_url=PORTAL_URL,
+        timeout_seconds=1,
+        transport=httpx.MockTransport(handler),
+    )
+
+
+def test_bizinfo_adapter_collects_every_page() -> None:
+    page_size = 2
+    pages = {1: [_item(1), _item(2)], 2: [_item(3), _item(4)], 3: [_item(5)]}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        page_no = int(request.url.params["pageNo"])
+        return httpx.Response(
+            200,
+            json=_page(pages[page_no], total_count=5, page_size=page_size),
+        )
+
+    items = asyncio.run(_portal_client(handler).list_current_announcements())
+    assert [item.pblanc_id for item in items] == [f"PBLN_{n}" for n in range(1, 6)]
+
+
+def test_bizinfo_adapter_deduplicates_overlapping_pages() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        page_no = int(request.url.params["pageNo"])
+        # 2페이지가 1페이지의 마지막 항목을 다시 돌려준다.
+        items = [_item(1), _item(2)] if page_no == 1 else [_item(2), _item(3)]
+        return httpx.Response(200, json=_page(items, total_count=3, page_size=2))
+
+    items = asyncio.run(_portal_client(handler).list_current_announcements())
+    assert [item.pblanc_id for item in items] == ["PBLN_1", "PBLN_2", "PBLN_3"]
+
+
+def test_bizinfo_adapter_stops_when_a_page_repeats_itself() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        # pageNo 를 무시하고 늘 같은 페이지를 주는 서버.
+        return httpx.Response(
+            200, json=_page([_item(1), _item(2)], total_count=999, page_size=2)
+        )
+
+    items = asyncio.run(_portal_client(handler).list_current_announcements())
+    assert len(items) == 2
+    assert calls == 2
+
+
+def test_bizinfo_adapter_returns_empty_list_when_no_announcements() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        # 0건이면 items 가 빈 문자열로 오기도 한다.
+        body = _page([], total_count=0)
+        body["response"]["body"]["items"] = ""
+        return httpx.Response(200, json=body)
+
+    assert asyncio.run(_portal_client(handler).list_current_announcements()) == []
+
+
+def test_bizinfo_adapter_does_not_retry_daily_quota_exceeded() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_page([], total_count=0, result_code="22"))
+
+    with pytest.raises(PublicDataUnavailableError):
+        asyncio.run(_portal_client(handler).list_current_announcements())
+    assert calls == 1
+
+
+def test_bizinfo_adapter_retries_rate_limited_result_then_fails() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_page([], total_count=0, result_code="23"))
+
+    with pytest.raises(PublicDataUnavailableError):
+        asyncio.run(_portal_client(handler).list_current_announcements())
+    assert calls == 2
+
+
+def test_bizinfo_adapter_rejects_a_broken_envelope() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"unexpected": True})
+
+    with pytest.raises(PublicDataInvalidResponseError):
+        asyncio.run(_portal_client(handler).list_current_announcements())

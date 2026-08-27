@@ -85,3 +85,6 @@ Cargo.lock
 .docker/
 docker-data/
 /backend/storage/
+
+# E2E · 데모 산출물 (PDF, 프론트 전달본)
+output/
