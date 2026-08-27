@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     sim_prompt_path: Path = (
         PROJECT_ROOT / "backend" / "config" / "prompts" / "sim-v0.1.txt"
     )
+    chat_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
+    chat_prompt_version: str = Field(default="chat-v0.1", min_length=1)
+    chat_prompt_path: Path = (
+        PROJECT_ROOT / "backend" / "config" / "prompts" / "chat-v0.1.txt"
+    )
 
     @field_validator("database_url")
     @classmethod
@@ -77,6 +82,7 @@ class Settings(BaseSettings):
         "fit_prompt_path",
         "sim_scoring_path",
         "sim_prompt_path",
+        "chat_prompt_path",
         mode="before",
     )
     @classmethod

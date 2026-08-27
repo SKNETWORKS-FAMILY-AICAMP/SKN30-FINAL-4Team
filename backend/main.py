@@ -59,10 +59,11 @@ def create_app(
                     model_profiles={
                         profile: profile
                         for profile in {
-                            runtime_settings.cpl_model_profile,
-                            runtime_settings.fit_model_profile,
-                            runtime_settings.sim_model_profile,
-                        }
+                        runtime_settings.cpl_model_profile,
+                        runtime_settings.fit_model_profile,
+                        runtime_settings.sim_model_profile,
+                        runtime_settings.chat_model_profile,
+                    }
                     },
                     timeout_seconds=runtime_settings.cpl_llm_timeout_seconds,
                 )
