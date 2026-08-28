@@ -163,9 +163,15 @@ def cal_split(groups_tr, rng):
 
 
 # ------------------------------------------------------------ 서빙 산출물
-def fit_artifacts(d):
-    """전체 데이터로 적합해 저장한다. 저장물만으로 추론이 되어야 한다."""
+def fit_artifacts(d, art_dir=None):
+    """전체 데이터로 적합해 저장한다. 저장물만으로 추론이 되어야 한다.
+
+    `art_dir` 는 저장 위치만 바꾼다(M65 가 새 세대 산출물을 나란히 두기 위해
+    쓴다). feature 구성·split·모델 구조·추론 경로는 건드리지 않는다.
+    """
     import joblib
+
+    art_dir = art_dir or ART_DIR
 
     Xs, y, _, cats = M45.make_xy(d, with_cohort=F.COHORT_AS_FEATURE)
     titles = F.titles_for_model(d)
@@ -199,9 +205,9 @@ def fit_artifacts(d):
         "title_form": F.TITLE_SPEC["input_form"],
         "feature_version": F.FEATURE_VERSION,
     }
-    os.makedirs(ART_DIR, exist_ok=True)
+    os.makedirs(art_dir, exist_ok=True)
     joblib.dump({"vectorizer": vec, "svd": svd, "point": point, "quantile": quant,
-                 "meta": art}, os.path.join(ART_DIR, "model2_canonical.joblib"))
+                 "meta": art}, os.path.join(art_dir, "model2_canonical.joblib"))
     return art, X, y
 
 

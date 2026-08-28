@@ -1,0 +1,462 @@
+{
+  "purpose": "입력 데이터 정합성 확보를 위한 canonical artifact 갱신 (모델 변경 아님)",
+  "unchanged": [
+    "feature 구성 (m2_features.py)",
+    "split (GroupKFold 5)",
+    "모델 구조 (XGB_POINT/XGB_QUANTILE)",
+    "추론 경로 (m56_m2_canonical.build_serving_frame/serve)",
+    "타깃·필터 (stated_cap only, n=1877)"
+  ],
+  "root_fix": {
+    "file": "ml/scripts/f06_design_features.py::_pack_bizinfo",
+    "what": "근거문 자리에 금액을 뽑지 않은 텍스트(제목 / CSV 요약)를 저장하던 것을, F05 와 같은 문서 선택 규칙으로 고른 공고문 원문으로 교체",
+    "openapi_407": "문서가 있는 Open API 행도 같은 규칙으로 함께 처리",
+    "legacy_flag": "f06_design_features.py --legacy 로 수정 전 동작 재현"
+  },
+  "step_a": {
+    "legacy_reproduction": {
+      "rows": [
+        3963,
+        3963
+      ],
+      "columns_identical": true,
+      "differing_columns": {
+        "support_count": 82,
+        "extraction_confidence": 55
+      },
+      "verdict": "상류 드리프트 2개 컬럼",
+      "note": "차이가 있으면 그 컬럼은 상류(business_taxonomy 등)가 v1 이후 갱신된 것이고, 근거문 수정과는 무관하다"
+    },
+    "determinism": {
+      "sha256_canonical": "9377f47f729907deebe8760a082225ec61ee87cc95d2a84c8b21c0ef1d7c1627",
+      "sha256_rerun": "9377f47f729907deebe8760a082225ec61ee87cc95d2a84c8b21c0ef1d7c1627",
+      "identical": true
+    },
+    "method_quality_vs_label": {
+      "융자 -> loan": {
+        "v1": {
+          "n_positive": 388,
+          "precision": 0.846,
+          "recall": 0.649,
+          "f1": 0.735
+        },
+        "v2": {
+          "n_positive": 388,
+          "precision": 0.722,
+          "recall": 0.918,
+          "f1": 0.808
+        }
+      },
+      "보증 -> guarantee": {
+        "v1": {
+          "n_positive": 7,
+          "precision": 0.044,
+          "recall": 0.429,
+          "f1": 0.08
+        },
+        "v2": {
+          "n_positive": 7,
+          "precision": 0.028,
+          "recall": 0.286,
+          "f1": 0.051
+        }
+      },
+      "컨설팅 -> service": {
+        "v1": {
+          "n_positive": 201,
+          "precision": 0.313,
+          "recall": 0.154,
+          "f1": 0.207
+        },
+        "v2": {
+          "n_positive": 201,
+          "precision": 0.133,
+          "recall": 0.114,
+          "f1": 0.123
+        }
+      },
+      "교육훈련 -> service": {
+        "v1": {
+          "n_positive": 33,
+          "precision": 0.071,
+          "recall": 0.212,
+          "f1": 0.106
+        },
+        "v2": {
+          "n_positive": 33,
+          "precision": 0.069,
+          "recall": 0.364,
+          "f1": 0.117
+        }
+      }
+    },
+    "context_variants": {
+      "A ctx = 문서 전체": {
+        "precision": 0.564,
+        "recall": 0.975,
+        "f1": 0.715
+      },
+      "B ctx = 지원내용 절 (채택)": {
+        "precision": 0.725,
+        "recall": 0.955,
+        "f1": 0.824
+      },
+      "C ctx = scale 과 동일": {
+        "precision": 0.78,
+        "recall": 0.888,
+        "f1": 0.83
+      },
+      "_note": "n=2127 (근거문이 문서인 bizinfo 행), 양성=지원성격 `융자` 356건"
+    },
+    "leakage": {
+      "titles_with_amount_expression": 0,
+      "titles_changed_by_masking": 0,
+      "MAE_raw_title": 0.4123,
+      "MAE_masked_title": 0.4123,
+      "MAE_delta": 0.0,
+      "families_spanning_multiple_program_stem": 135,
+      "families_split_across_folds_normalized": 0
+    }
+  },
+  "step_b": {
+    "fingerprint": {
+      "path": "data\\processed\\design_features_v2.parquet",
+      "builder": "ml/scripts/f06_design_features.py",
+      "upstream": [
+        "f05_amount_observations.py — 지원규모 관측 추출 (PDF 확장자 제외: EXCLUDE_EXT={'pdf'})",
+        "e01_extract_text.py — 공고문 원문 텍스트 추출",
+        "amount_parser.py — 금액/기간/기업수 파싱 (M32 패턴 수정 반영)"
+      ],
+      "sha256": "9377f47f729907deebe8760a082225ec61ee87cc95d2a84c8b21c0ef1d7c1627",
+      "bytes": 10125749,
+      "mtime": "2026-08-28T06:17:18.790910006",
+      "rows_raw": 3963,
+      "rows_after_filters": 1877,
+      "expected_n": 1877,
+      "n_matches_expected": true,
+      "filter_trace": {
+        "전체": 3963,
+        "지원성격_결측_제외": 58,
+        "기업당지원액_결측_제외": 1694,
+        "파싱오류범위_제외": 84,
+        "총예산나눗셈(평균)_제외": 250,
+        "필수축_결측_제외": 0,
+        "최종": 1877
+      },
+      "target": {
+        "column": "per_recipient",
+        "transform": "log10",
+        "basis_kept": "stated_cap",
+        "semantics": {
+          "total_budget": "제외 — 사업 전체 예산. per_recipient 와 단위가 다르다",
+          "support_cap / support_per_recipient": "**사용** — 원문에 명시된 기업당 한도(stated_cap)",
+          "support_per_project": "amount_type=per_project 인 행은 support_unit=project 로 비교군이 갈린다. 타깃 자체는 같은 stated_cap",
+          "budget_div_count(총예산÷건수)": "제외 — '평균'이라 '한도'와 의미가 다르다",
+          "loan_limit": "별도 컬럼 없음. 융자는 support_method=loan 으로 비교군이 갈린다",
+          "support_rate": "타깃 아님 — feature(support_ratio)",
+          "selected_count": "타깃 아님 — feature(support_count)"
+        },
+        "filters": [
+          "support_type 결측 제외",
+          "per_recipient 결측·0 이하 제외",
+          "amount_outlier(상식범위 밖 = 파싱오류) 제외",
+          "per_recipient_basis != 'stated_cap' 제외",
+          "support_unit / cohort 결측 제외"
+        ]
+      }
+    },
+    "pipeline": {
+      "feature_version": "m2-feat-v2",
+      "grouping_version": "m2-group-v2",
+      "seed": 42,
+      "structured_cats": [
+        "support_type",
+        "support_method",
+        "support_unit",
+        "category_large",
+        "industry_grp",
+        "agency_grp",
+        "amount_type",
+        "cohort"
+      ],
+      "structured_nums": [
+        "support_count",
+        "support_ratio",
+        "project_duration",
+        "self_burden_ratio",
+        "year"
+      ],
+      "title_spec": {
+        "source": "title (원문 사업명). evidence_text 는 타깃이 파싱된 문장이라 사용 금지",
+        "input_form": "amount_masked",
+        "vectorizer": "TfidfVectorizer",
+        "analyzer": "char_wb",
+        "ngram_range": [
+          2,
+          3
+        ],
+        "min_df": 3,
+        "max_features": 30000,
+        "sublinear_tf": true,
+        "reduction": "TruncatedSVD",
+        "n_components": 64,
+        "fitted_on": "fold train only",
+        "output_prefix": "title_svd"
+      },
+      "model_point": {
+        "objective": "reg:absoluteerror",
+        "n_estimators": 800,
+        "learning_rate": 0.03,
+        "max_depth": 6,
+        "subsample": 0.9,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "reg_alpha": 0.0,
+        "reg_lambda": 1.0,
+        "tree_method": "hist",
+        "enable_categorical": true,
+        "random_state": 42
+      },
+      "model_quantile": {
+        "objective": "reg:quantileerror",
+        "n_estimators": 800,
+        "learning_rate": 0.03,
+        "max_depth": 6,
+        "subsample": 0.9,
+        "colsample_bytree": 0.8,
+        "min_child_weight": 1,
+        "reg_alpha": 0.0,
+        "reg_lambda": 1.0,
+        "tree_method": "hist",
+        "enable_categorical": true,
+        "random_state": 42
+      },
+      "quantiles": [
+        0.1,
+        0.9
+      ],
+      "nominal_coverage": 0.8,
+      "cqr_cal_frac": 0.3,
+      "n_splits": 5,
+      "min_improvement": 0.1,
+      "excluded_inputs": [
+        "evidence_text (타깃이 파싱된 문장 — 사용 금지)"
+      ]
+    },
+    "comparison": {
+      "program_stem": {
+        "M45(LGBM·구조화)": {
+          "MAE_log10": 0.4674,
+          "MedAE_log10": 0.3597,
+          "geo_mean_error_x": 2.933,
+          "within_2x": 0.4358,
+          "within_3x": 0.6244,
+          "improvement": 0.1051
+        },
+        "M56(XGB·구조화+제목)": {
+          "MAE_log10": 0.4123,
+          "MedAE_log10": 0.3079,
+          "geo_mean_error_x": 2.584,
+          "within_2x": 0.4907,
+          "within_3x": 0.6782,
+          "improvement": 0.2106
+        },
+        "비교군중앙값(baseline)": {
+          "MAE_log10": 0.5223,
+          "MedAE_log10": 0.3979,
+          "geo_mean_error_x": 3.329,
+          "within_2x": 0.3554,
+          "within_3x": 0.5306,
+          "improvement": -0.0001
+        },
+        "분해: LGBM·구조화+제목": {
+          "MAE_log10": 0.438,
+          "MedAE_log10": 0.3379,
+          "geo_mean_error_x": 2.742,
+          "within_2x": 0.4576,
+          "within_3x": 0.6553,
+          "improvement": 0.1613
+        },
+        "분해: XGB·구조화만": {
+          "MAE_log10": 0.4437,
+          "MedAE_log10": 0.3409,
+          "geo_mean_error_x": 2.778,
+          "within_2x": 0.4507,
+          "within_3x": 0.6399,
+          "improvement": 0.1504
+        },
+        "_baseline_MAE": 0.5223
+      },
+      "normalized_title": {
+        "M45(LGBM·구조화)": {
+          "MAE_log10": 0.4763,
+          "MedAE_log10": 0.3617,
+          "geo_mean_error_x": 2.994,
+          "within_2x": 0.423,
+          "within_3x": 0.609,
+          "improvement": 0.1273
+        },
+        "M56(XGB·구조화+제목)": {
+          "MAE_log10": 0.4308,
+          "MedAE_log10": 0.3349,
+          "geo_mean_error_x": 2.696,
+          "within_2x": 0.464,
+          "within_3x": 0.6484,
+          "improvement": 0.2107
+        },
+        "비교군중앙값(baseline)": {
+          "MAE_log10": 0.5458,
+          "MedAE_log10": 0.4472,
+          "geo_mean_error_x": 3.514,
+          "within_2x": 0.3367,
+          "within_3x": 0.5131,
+          "improvement": 0.0
+        },
+        "분해: LGBM·구조화+제목": {
+          "MAE_log10": 0.4614,
+          "MedAE_log10": 0.3528,
+          "geo_mean_error_x": 2.893,
+          "within_2x": 0.4454,
+          "within_3x": 0.6249,
+          "improvement": 0.1546
+        },
+        "분해: XGB·구조화만": {
+          "MAE_log10": 0.4633,
+          "MedAE_log10": 0.3599,
+          "geo_mean_error_x": 2.906,
+          "within_2x": 0.4385,
+          "within_3x": 0.6308,
+          "improvement": 0.1512
+        },
+        "_baseline_MAE": 0.5458
+      }
+    },
+    "stability": {
+      "M45(LGBM·구조화)": {
+        "n_repeat": 10,
+        "mean": 0.1157,
+        "std": 0.0079,
+        "min": 0.0982,
+        "max": 0.1244,
+        "n_pass": 9,
+        "pass": "9/10"
+      },
+      "M56(XGB·구조화+제목)": {
+        "n_repeat": 10,
+        "mean": 0.2138,
+        "std": 0.0079,
+        "min": 0.1982,
+        "max": 0.2243,
+        "n_pass": 10,
+        "pass": "10/10"
+      }
+    },
+    "interval": {
+      "raw": {
+        "coverage": 0.4997,
+        "nominal": 0.8,
+        "median_width_log10": 0.7105,
+        "median_width_x": 5.1,
+        "mean_width_log10": 0.753,
+        "interval_score_median": 1.2025,
+        "crossing_rate": 0.0
+      },
+      "conformal": {
+        "coverage": 0.8013,
+        "nominal": 0.8,
+        "median_width_log10": 1.3828,
+        "median_width_x": 24.1,
+        "mean_width_log10": 1.4272,
+        "interval_score_median": 1.5067,
+        "crossing_rate": 0.0
+      },
+      "conformal_delta_mean": 0.3754,
+      "tier_counts": {
+        "참고 가능": 17,
+        "범위 넓음": 14,
+        "참고 범위 제시 어려움": 0
+      }
+    },
+    "target_cleaning": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    }
+  },
+  "step_c": {
+    "artifact_dir": "data\\processed\\m65_model2_canonical",
+    "roundtrip": {
+      "n_checked": 5,
+      "feature_order_identical": true,
+      "numeric_identical": true,
+      "categorical_identical": true,
+      "prediction_identical": true,
+      "all_pass": true
+    },
+    "refit_deterministic": true,
+    "cqr_delta": 0.38387393951416016,
+    "n_features": 77,
+    "demo": {
+      "title": "2023년 수출유망상품화 사업",
+      "level": "성격x방식x단위x출처",
+      "n": 316,
+      "percentile_rank": 62.5,
+      "tier": "참고 가능",
+      "actual_won": "2.0억원",
+      "pred_won": "1.9억원",
+      "lo_won": "2316.5만원",
+      "hi_won": "5.0억원"
+    }
+  },
+  "step_d_checks": {
+    "실행 재현 가능 (동일 스크립트·seed·데이터셋 해시 기록)": true,
+    "feature pipeline 코드 고정 (m2_features.py · 변경 없음)": true,
+    "title normalization 코드 고정 (normalize_business_title)": true,
+    "direct amount leakage 점검 통과 (제목 금액표현 0건 · 마스킹 무영향)": true,
+    "normalized-title GroupKFold 에서 개선 유지": true,
+    "동일사업·재공고 계열 leakage 방지 (계열 fold 분할 0)": true,
+    "M45 대비 동일 조건 성능 우세": true,
+    "fold stability 우세": true,
+    "interval 품질 악화 없음 (M45 공표치 대비)": true,
+    "서비스 inference 동기화 (왕복 자체점검)": true,
+    "Product Boundary 위반 없음 (적정/과다/삭감 문구 없음)": true
+  },
+  "verdict": "v2 CANONICAL 승격",
+  "published": {
+    "M56_on_v1": {
+      "MAE_log10": 0.4155,
+      "improvement": 0.218,
+      "within_2x": 0.488,
+      "coverage": 0.803,
+      "width_x": 25.1,
+      "tiers": [
+        16,
+        12,
+        1
+      ]
+    },
+    "M45": {
+      "MAE_log10": 0.4681,
+      "baseline": 0.5315,
+      "improvement": 0.119,
+      "within_2x": 0.431,
+      "stability_mean": 0.117,
+      "stability_std": 0.008,
+      "stability_min": 0.1,
+      "stability_pass": "9/10",
+      "coverage": 0.796,
+      "width_x": 33.2,
+      "tiers": [
+        12,
+        14,
+        3
+      ]
+    }
+  },
+  "run_timestamp": "2026-08-28T15:41:57.640234",
+  "python": "3.13.12"
+}

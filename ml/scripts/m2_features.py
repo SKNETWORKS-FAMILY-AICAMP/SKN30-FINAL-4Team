@@ -260,15 +260,18 @@ def file_sha256(path, chunk=1 << 20):
     return h.hexdigest()
 
 
-def dataset_fingerprint():
-    st = os.stat(DATASET_PATH)
-    raw = pd.read_parquet(DATASET_PATH)
+def dataset_fingerprint(path=None):
+    """데이터셋 지문. `path` 를 주면 그 파일로 찍는다(M65 가 v2 에 쓴다).
+    타깃 정의·필터·기대 행수는 그대로다 — 바뀌는 것은 어느 파일을 재느냐뿐이다."""
+    path = path or DATASET_PATH
+    st = os.stat(path)
+    raw = pd.read_parquet(path)
     d, drop = M45.prepare(raw)
     return {
-        "path": os.path.relpath(DATASET_PATH, C.ROOT),
+        "path": os.path.relpath(path, C.ROOT),
         "builder": DATASET_BUILDER,
         "upstream": list(DATASET_UPSTREAM),
-        "sha256": file_sha256(DATASET_PATH),
+        "sha256": file_sha256(path),
         "bytes": int(st.st_size),
         "mtime": pd.Timestamp(st.st_mtime, unit="s").isoformat(),
         "rows_raw": int(len(raw)),
