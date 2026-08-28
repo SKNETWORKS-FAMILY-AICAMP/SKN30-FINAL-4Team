@@ -9,9 +9,12 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 
+import UploadPage from './pages/UploadPage'
+
 export default function App() {
     // TODO: 실제 인증 상태 연동 (현재는 로그인 상태 테스트를 위해 true/false 변경 가능)
-    const isAuthenticated = true 
+    const isAuthenticated = true
+    // const isAuthenticated = false
 
     return (
         <BrowserRouter>
@@ -20,7 +23,7 @@ export default function App() {
                 {isAuthenticated ? (
                     // 로그인 상태: 루트('/')로 접속 시 메인 앱 레이아웃 및 업로드 화면(SCR-004) 노출
                     <Route element={<AppLayout />}>
-                        <Route path="/" element={<div>SCR-004 Pre-review 메인 / 업로드 화면 영역</div>} />
+                        <Route path="/" element={<UploadPage />} />
                         <Route path="/history/:id" element={<div>SCR-007-P1 과거 분석 이력 상세 영역</div>} />
                         <Route path="/password" element={<div>SCR-006 비밀번호 변경 화면 영역</div>} />
                     </Route>

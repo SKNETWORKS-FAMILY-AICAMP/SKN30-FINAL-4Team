@@ -1,5 +1,5 @@
 import Logo from '../../../components/common/Logo'
-import RecentHistoryListContainer from '../../../features/history/HistoryList'
+import HistoryList from '../../../features/history/HistoryList'
 
 interface SidebarProps {
     onNewAnalysis: () => void
@@ -15,7 +15,7 @@ export default function Sidebar({
     onLogout,
 }: SidebarProps) {
     return (
-        <nav className="fixed left-0 top-0 h-full w-[320px] bg-surface border-r border-outline-variant flex flex-col py-xl px-lg gap-lg z-50">
+        <nav className="fixed left-0 top-0 h-full w-[320px] border-r border-outline-variant flex flex-col py-xl px-lg gap-lg z-50">
             {/* 1. 상단 로고 */}
             <div className="mb-md px-md">
                 <Logo size='lg' />
@@ -31,7 +31,7 @@ export default function Sidebar({
             </button>
 
             {/* 3. 최근 분석 이력 컨테이너 */}
-            <RecentHistoryListContainer onHistoryClick={onHistoryClick} />
+            <HistoryList onHistoryClick={onHistoryClick} />
 
             {/* 4. 하단 사용자 프로필 및 로그아웃 영역 */}
             <div className="mt-auto border-t border-outline-variant pt-md">
@@ -44,7 +44,7 @@ export default function Sidebar({
                         />
                     </div>
                     <div className="flex flex-col flex-1 min-w-0">
-                        <button 
+                        <button
                             onClick={onPasswordChangeClick}
                             className="text-left font-title-sm text-title-sm text-on-surface truncate hover:text-primary transition-colors"
                         >
@@ -54,7 +54,12 @@ export default function Sidebar({
                             onClick={onLogout}
                             className="font-body-sm text-body-sm text-on-surface-variant hover:text-error transition-colors flex items-center gap-xs text-left"
                         >
-                            <span className="material-symbols-outlined text-sm">logout</span> 로그아웃
+                            <span
+                                className="material-symbols-outlined text-sm"
+                                style={{ fontSize: '14px' }}
+                            >
+                                logout
+                            </span> 로그아웃
                         </button>
                     </div>
                 </div>

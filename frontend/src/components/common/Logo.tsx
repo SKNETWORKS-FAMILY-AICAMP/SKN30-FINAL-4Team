@@ -9,7 +9,7 @@ export default function Logo({ href = '/', size = 'md', className = '' }: LogoPr
     const sizeClasses = {
         sm: 'h-[32px]',
         md: 'h-[40px]',
-        lg: 'h-[86px]',
+        lg: 'h-[82px]',
     }
 
     return (

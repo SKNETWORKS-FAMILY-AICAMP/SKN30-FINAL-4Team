@@ -23,7 +23,7 @@ export default function AppLayout() {
     }
 
     return (
-        <div className="min-h-screen bg-background text-on-background flex">
+        <div className="min-h-screen flex bg-background text-on-background overflow-hidden">
             {/* 좌측 사이드바 */}
             <Sidebar
                 onNewAnalysis={handleNewAnalysis}
@@ -32,8 +32,8 @@ export default function AppLayout() {
                 onLogout={handleLogout}
             />
 
-            {/* 우측 본문 컨테이너 영역 (사이드바 너비 280px 만큼 여백 부여) */}
-            <main className="flex-grow ml-[320px] min-h-screen flex flex-col bg-surface">
+            {/* 우측 본문 컨테이너 영역 (사이드바 너비 320px 만큼 여백 부여) */}
+            <main className="ml-[320px] min-h-screen flex flex-col flex-1">
                 <Outlet />
             </main>
         </div>
