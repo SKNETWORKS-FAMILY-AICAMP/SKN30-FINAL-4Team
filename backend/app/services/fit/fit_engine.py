@@ -289,10 +289,9 @@ async def analyze_fit(
     pending: dict[FitRelationId, _RelationInput] = {}
     for relation_id, relation_input in inputs.items():
         if relation_id == FitRelationId.FIT_5 and not relation_input.right:
-            # 판별기준 6.3: 별도 지원조건이 없다고 자동 Issue 로 보지 않는다.
             results[relation_id] = _relation_result(
                 relation_id,
-                FitStatus.NOT_STATED,
+                FitStatus.INSUFFICIENT,
                 "별도로 명시된 지원조건이 없습니다.",
                 list(relation_input.left.values()),
                 [],
@@ -508,12 +507,10 @@ def _fit_7_result(
         status = FitStatus.NEEDS_REVIEW
         reason_code = "NUMERIC_MISMATCH"
         summary = "동일 지원 개념의 정량값이 문서 안에서 서로 다릅니다."
-    elif not shared_axes:
-        # 판별기준 8.4: 한쪽에만 정보가 존재하면 자동 Issue 가 아니다. 다만
-        # 대조한 개념이 하나도 없으므로 일치로 채점하지도 않는다.
-        status = FitStatus.NOT_STATED
+    elif set(left_values) != set(right_values):
+        status = FitStatus.FIT
         reason_code = "SINGLE_SIDED_NO_CONFLICT"
-        summary = "지원내용과 지원규모 중 한쪽에만 정량정보가 있어 대조하지 않았습니다."
+        summary = "한쪽에만 있는 정량정보에서 명시적 충돌은 확인되지 않았습니다."
     else:
         status = FitStatus.FIT
         reason_code = None

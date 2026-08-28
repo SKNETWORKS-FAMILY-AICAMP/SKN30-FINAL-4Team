@@ -449,8 +449,8 @@ def ground_llm_response(
         raise ValueError("Parser fragments do not have unique evidence references")
     grounded: list[CplItem] = []
     for item in response.items:
-        # 근거 없는 PRESENT 주장은 아래에서 NEEDS_CONFIRMATION 으로 내린다.
-        # 예외를 올리면 이 항목 하나 때문에 요청한 전 필드가 폐기된다.
+        if item.status == "PRESENT" and not item.occurrences:
+            raise ValueError("PRESENT LLM result requires evidence")
         if item.status == "MISSING" and item.occurrences:
             raise ValueError("MISSING LLM result cannot contain evidence")
         if item.status == "NEEDS_CONFIRMATION" and not item.reason_code:

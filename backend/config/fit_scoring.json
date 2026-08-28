@@ -4,8 +4,7 @@
     "FIT": 100,
     "NEEDS_REVIEW": 50,
     "CONFLICT": 0,
-    "INSUFFICIENT": null,
-    "NOT_STATED": null
+    "INSUFFICIENT": null
   },
   "weights": {
     "FIT-1": 1,
