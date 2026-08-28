@@ -38,11 +38,11 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: int = Field(default=30, ge=1)
     embedding_batch_size: int = Field(default=100, ge=1, le=2048)
     cpl_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
-    cpl_prompt_version: str = Field(default="cpl-semantic-v0.2", min_length=1)
+    cpl_prompt_version: str = Field(default="cpl-semantic-v0.3", min_length=1)
     cpl_ruleset_version: str = Field(default="cpl-alpha-v0.2", min_length=1)
     cpl_llm_timeout_seconds: int = Field(default=30, ge=1)
     cpl_prompt_path: Path = (
-        PROJECT_ROOT / "backend" / "config" / "prompts" / "cpl-v0.2.txt"
+        PROJECT_ROOT / "backend" / "config" / "prompts" / "cpl-v0.3.txt"
     )
     fit_ruleset_version: str = Field(default="fit-v0.2", min_length=1)
     fit_prompt_version: str = Field(default="fit-v0.2", min_length=1)

@@ -302,13 +302,40 @@ async def _complete_semantic_review(
             rule_result,
             candidates,
         )
-    except LLMTimeoutError:
+    except LLMTimeoutError as error:
         result = merge_llm_result(rule_result, llm_error="LLM_TIMEOUT")
-    except LLMUnavailableError:
+        _log_semantic_failure("LLM_TIMEOUT", error)
+    except LLMUnavailableError as error:
         result = merge_llm_result(rule_result, llm_error="LLM_UNAVAILABLE")
-    except (LLMInvalidResponseError, ValidationError, ValueError):
+        _log_semantic_failure("LLM_UNAVAILABLE", error)
+    except (LLMInvalidResponseError, ValidationError, ValueError) as error:
+        # 이 절은 응답 형식 오류와 ground_llm_response() 의 접지 실패를 함께
+        # 잡는다. 코드만으로는 둘을 구분할 수 없어 예외 유형과 메시지를 남긴다.
         result = merge_llm_result(rule_result, llm_error="LLM_INVALID_RESPONSE")
+        _log_semantic_failure("LLM_INVALID_RESPONSE", error)
     return _with_runtime_metadata(result, settings)
+
+
+def _log_semantic_failure(failure_code: str, error: Exception) -> None:
+    """요청서 원문과 LLM 응답 본문은 남기지 않는다(구현기준서 15)."""
+    detail: str | None = None
+    if isinstance(error, ValidationError):
+        detail = ",".join(
+            f"{'.'.join(map(str, item['loc']))}:{item['type']}"
+            for item in error.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            )
+        )
+    elif type(error) is ValueError:
+        detail = str(error)
+    logger.warning(
+        "CPL semantic extraction failed failure=%s error=%s detail=%s",
+        failure_code,
+        type(error).__name__,
+        detail,
+    )
 
 
 def _semantic_messages(
