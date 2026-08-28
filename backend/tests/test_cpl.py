@@ -40,6 +40,7 @@ from app.services.analysis_pipeline import (
     load_cpl_prompt,
 )
 from app.services.cpl.logic_validator import (
+    CPL_SEMANTIC_FIELDS,
     evaluate_cpl_rules,
     ground_llm_response,
     merge_llm_result,
@@ -1268,3 +1269,50 @@ def test_request_type_area_accepts_both_form_and_criteria_labels(
         item for item in result.items if item.field_code == CplFieldCode.REQUEST_TYPE
     )
     assert item.status == CplStatus.PRESENT
+
+
+def test_llm_failure_only_degrades_the_fields_it_was_asked_about() -> None:
+    """선택적 재검이 실패해도 첫 분석이 확정한 다른 필드를 덮지 않는다.
+
+    재검 helper 는 요청한 필드만 다시 묻는데, 실패 처리는 semantic 필드
+    전체를 훑어 MISSING 을 NEEDS_CONFIRMATION 으로 바꿨다. 목적 필드 재검
+    timeout 이 사업필요성의 정상 판정까지 오염시킬 수 있었다.
+    """
+    rule_result = CplResult(
+        ruleset_version="cpl-alpha-v0.2",
+        items=[
+            CplItem(field_code=field_code, status=CplStatus.MISSING)
+            for field_code in CPL_FIELDS
+        ],
+    )
+
+    degraded = merge_llm_result(
+        rule_result,
+        llm_error="LLM_TIMEOUT",
+        requested_fields={CplFieldCode.PURPOSE_GOAL},
+    )
+    by_code = {item.field_code: item for item in degraded.items}
+    assert by_code[CplFieldCode.PURPOSE_GOAL].status == CplStatus.NEEDS_CONFIRMATION
+    assert by_code[CplFieldCode.PURPOSE_GOAL].reason_code == "LLM_TIMEOUT"
+    assert by_code[CplFieldCode.BUSINESS_NEED].status == CplStatus.MISSING
+    assert by_code[CplFieldCode.BUSINESS_NEED].reason_code != "LLM_TIMEOUT"
+
+    # 범위를 주지 않으면 기존대로 semantic 필드 전체가 대상이다.
+    everything = merge_llm_result(rule_result, llm_error="LLM_TIMEOUT")
+    assert all(
+        item.status == CplStatus.NEEDS_CONFIRMATION
+        for item in everything.items
+        if item.field_code in CPL_SEMANTIC_FIELDS
+    )
+
+
+def test_parser_version_survives_missing_rhwp_distribution() -> None:
+    """rhwp 배포판이 없어도 모듈 import 가 깨지지 않는다.
+
+    version() 을 클래스 본문에서 부르면 PackageNotFoundError 가 올라와
+    앞의 ImportError fallback 이 무의미해진다.
+    """
+    from app.parsers import hwp_parser
+
+    assert isinstance(hwp_parser.RhwpDocumentParser.version, str)
+    assert hwp_parser.RhwpDocumentParser.version

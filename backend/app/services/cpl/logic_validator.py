@@ -356,10 +356,16 @@ def merge_llm_result(
     llm_items: list[CplItem] | None = None,
     *,
     llm_error: LlmFailureCode | None = None,
+    requested_fields: set[CplFieldCode] | None = None,
 ) -> CplResult:
-    """Merge grounded LLM facts without replacing deterministic Rule evidence."""
+    """Merge grounded LLM facts without replacing deterministic Rule evidence.
+
+    ``requested_fields`` limits which items a failure may degrade.  The optional
+    CPL/FIT recheck asks about a few fields only, and a failure there must not
+    rewrite fields the first pass already settled.
+    """
     if llm_error is not None:
-        return _result_with_llm_failure(rule_result, llm_error)
+        return _result_with_llm_failure(rule_result, llm_error, requested_fields)
     if llm_items is None:
         return rule_result.model_copy(deep=True)
 
@@ -1372,15 +1378,21 @@ def _subprogram_plan_status(plan: CplItem) -> CplStatus:
 def _result_with_llm_failure(
     rule_result: CplResult,
     error_code: LlmFailureCode,
+    requested_fields: set[CplFieldCode] | None = None,
 ) -> CplResult:
     if error_code not in LLM_FAILURE_CODES:
         raise ValueError(f"Unsupported LLM failure code: {error_code}")
 
+    degradable = (
+        CPL_SEMANTIC_FIELDS
+        if requested_fields is None
+        else CPL_SEMANTIC_FIELDS & requested_fields
+    )
     items: list[CplItem] = []
     for item in rule_result.items:
         copied = item.model_copy(deep=True)
         if (
-            copied.field_code in CPL_SEMANTIC_FIELDS
+            copied.field_code in degradable
             and copied.status not in {CplStatus.PRESENT, CplStatus.NOT_APPLICABLE}
         ):
             copied.status = CplStatus.NEEDS_CONFIRMATION

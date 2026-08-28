@@ -299,7 +299,11 @@ async def _complete_semantic_review(
         return _with_runtime_metadata(rule_result, settings)
     if llm_client is None:
         return _with_runtime_metadata(
-            merge_llm_result(rule_result, llm_error="LLM_UNAVAILABLE"),
+            merge_llm_result(
+                rule_result,
+                llm_error="LLM_UNAVAILABLE",
+                requested_fields=semantic_fields,
+            ),
             settings,
         )
 
@@ -322,15 +326,25 @@ async def _complete_semantic_review(
             candidates,
         )
     except LLMTimeoutError as error:
-        result = merge_llm_result(rule_result, llm_error="LLM_TIMEOUT")
+        result = merge_llm_result(
+            rule_result, llm_error="LLM_TIMEOUT", requested_fields=semantic_fields
+        )
         _log_semantic_failure("LLM_TIMEOUT", error)
     except LLMUnavailableError as error:
-        result = merge_llm_result(rule_result, llm_error="LLM_UNAVAILABLE")
+        result = merge_llm_result(
+                rule_result,
+                llm_error="LLM_UNAVAILABLE",
+                requested_fields=semantic_fields,
+            )
         _log_semantic_failure("LLM_UNAVAILABLE", error)
     except (LLMInvalidResponseError, ValidationError, ValueError) as error:
         # 이 절은 응답 형식 오류와 ground_llm_response() 의 접지 실패를 함께
         # 잡는다. 코드만으로는 둘을 구분할 수 없어 예외 유형과 메시지를 남긴다.
-        result = merge_llm_result(rule_result, llm_error="LLM_INVALID_RESPONSE")
+        result = merge_llm_result(
+            rule_result,
+            llm_error="LLM_INVALID_RESPONSE",
+            requested_fields=semantic_fields,
+        )
         _log_semantic_failure("LLM_INVALID_RESPONSE", error)
     return _with_runtime_metadata(result, settings)
 

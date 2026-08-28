@@ -2,7 +2,7 @@ import asyncio
 import io
 import stat
 import zipfile
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -10,7 +10,9 @@ import olefile
 
 try:
     import rhwp
-except (ImportError, OSError) as error:  # pragma: no cover - host dependency
+
+    _RHWP_VERSION = version("rhwp-python") or "unknown"
+except (ImportError, OSError, PackageNotFoundError) as error:  # pragma: no cover - host dependency
     # rhwp-python ships a native extension.  Keep the application importable
     # when that extension cannot load (for example on a worker without its
     # runtime DLL); parsing then fails with the same safe domain error as any
@@ -29,6 +31,9 @@ except (ImportError, OSError) as error:  # pragma: no cover - host dependency
         Document = _UnavailableDocument
 
     rhwp = _UnavailableRhwp()
+    # 배포판이 없으면 version() 도 PackageNotFoundError 를 올린다. 클래스
+    # 본문에서 부르면 이 fallback 이 무의미해지므로 여기서 함께 처리한다.
+    _RHWP_VERSION = "unavailable"
 
 from app.ports.document_parser import FileSource
 from app.schemas.parsed_document import DocumentBlock, ParsedDocument
@@ -46,7 +51,7 @@ HWP_PROTECTED_FLAGS = (1 << 1) | (1 << 2) | (1 << 4) | (1 << 8) | (1 << 10)
 
 class RhwpDocumentParser:
     name = "rhwp-python"
-    version = version("rhwp-python") or "unknown"
+    version = _RHWP_VERSION
 
     def supports(self, mime_type: str, extension: str) -> bool:
         normalized_extension = extension.lower().removeprefix(".")
