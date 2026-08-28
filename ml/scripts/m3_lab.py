@@ -510,8 +510,10 @@ def eval_labeled(score, ids, y):
             "precision": round(tp / (tp + fp), 4) if tp + fp else None}
 
 
-def load_pool():
-    df = prepare(pd.read_parquet(SRC))
+def load_pool(path=None):
+    """평가 pool. path 를 주면 다른 데이터셋(예: M62 수정본)에서 같은 규칙으로
+    만든다 — 규칙을 바꾸지 않고 입력만 바꿔 재평가하기 위해서다."""
+    df = prepare(pd.read_parquet(path or SRC))
     return df[df["n_axes"] >= MIN_AXES].reset_index(drop=True)
 
 
