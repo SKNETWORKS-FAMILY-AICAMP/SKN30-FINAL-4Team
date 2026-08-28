@@ -22,13 +22,13 @@
       "최종": 1877
     },
     "changed_cells": {
-      "support_method": 150,
-      "support_unit": 28,
+      "support_method": 114,
+      "support_unit": 35,
       "amount_type": 0,
       "support_count": 0,
       "support_ratio": 1,
-      "self_burden_ratio": 69,
-      "project_duration": 435,
+      "self_burden_ratio": 78,
+      "project_duration": 524,
       "per_recipient": 0,
       "title": 0
     }
@@ -53,12 +53,12 @@
         "improvement_vs_v1_baseline": -0.0001
       },
       "baseline(v2)": {
-        "MAE_log10": 0.5277,
-        "MedAE_log10": 0.426,
-        "geo_mean_error_x": 3.37,
-        "within_2x": 0.3516,
-        "within_3x": 0.5232,
-        "improvement_vs_v1_baseline": 0.0071,
+        "MAE_log10": 0.5223,
+        "MedAE_log10": 0.3979,
+        "geo_mean_error_x": 3.329,
+        "within_2x": 0.3554,
+        "within_3x": 0.5306,
+        "improvement_vs_v1_baseline": 0.0173,
         "note": "참고 — 개선율 분모는 v1 baseline 으로 고정"
       },
       "M56 on v1(현행)": {
@@ -70,12 +70,12 @@
         "improvement_vs_v1_baseline": 0.2182
       },
       "M56 on v2(수정)": {
-        "MAE_log10": 0.4133,
-        "MedAE_log10": 0.3054,
-        "geo_mean_error_x": 2.59,
-        "within_2x": 0.4933,
-        "within_3x": 0.6825,
-        "improvement_vs_v1_baseline": 0.2223
+        "MAE_log10": 0.4117,
+        "MedAE_log10": 0.3089,
+        "geo_mean_error_x": 2.581,
+        "within_2x": 0.4917,
+        "within_3x": 0.6814,
+        "improvement_vs_v1_baseline": 0.2254
       }
     },
     "normalized_title": {
@@ -89,12 +89,12 @@
         "improvement_vs_v1_baseline": -0.0
       },
       "baseline(v2)": {
-        "MAE_log10": 0.546,
+        "MAE_log10": 0.5458,
         "MedAE_log10": 0.4472,
-        "geo_mean_error_x": 3.516,
-        "within_2x": 0.3346,
-        "within_3x": 0.5157,
-        "improvement_vs_v1_baseline": 0.007,
+        "geo_mean_error_x": 3.514,
+        "within_2x": 0.3367,
+        "within_3x": 0.5131,
+        "improvement_vs_v1_baseline": 0.0074,
         "note": "참고 — 개선율 분모는 v1 baseline 으로 고정"
       },
       "M56 on v1(현행)": {
@@ -106,14 +106,28 @@
         "improvement_vs_v1_baseline": 0.2078
       },
       "M56 on v2(수정)": {
-        "MAE_log10": 0.4337,
-        "MedAE_log10": 0.3421,
-        "geo_mean_error_x": 2.715,
-        "within_2x": 0.4555,
-        "within_3x": 0.6484,
-        "improvement_vs_v1_baseline": 0.2113
+        "MAE_log10": 0.4304,
+        "MedAE_log10": 0.3406,
+        "geo_mean_error_x": 2.694,
+        "within_2x": 0.464,
+        "within_3x": 0.6537,
+        "improvement_vs_v1_baseline": 0.2173
       }
     }
+  },
+  "paired_delta": {
+    "n": 1877,
+    "mean_abs_error_v1": 0.4155,
+    "mean_abs_error_v2": 0.4117,
+    "mean_delta(v1-v2)": 0.00374,
+    "boot_ci95": [
+      -0.00031,
+      0.00783
+    ],
+    "P(delta>0)": 0.9668,
+    "n_rows_changed": 1877,
+    "n_rows_v2_better": 958,
+    "wilcoxon_p": 0.11269
   },
   "stability": {
     "M56 on v1(현행)": {
@@ -126,10 +140,10 @@
     },
     "M56 on v2(수정)": {
       "n_repeat": 10,
-      "mean": 0.2232,
-      "std": 0.0085,
-      "min": 0.2085,
-      "max": 0.2352,
+      "mean": 0.2246,
+      "std": 0.008,
+      "min": 0.2129,
+      "max": 0.2361,
       "pass": "10/10"
     }
   },
@@ -149,15 +163,15 @@
       }
     },
     "v2(수정)": {
-      "coverage": 0.8066,
+      "coverage": 0.8071,
       "nominal": 0.8,
-      "median_width_log10": 1.3866,
-      "median_width_x": 24.4,
-      "mean_width_log10": 1.4353,
-      "interval_score_median": 1.5156,
+      "median_width_log10": 1.3816,
+      "median_width_x": 24.1,
+      "mean_width_log10": 1.4295,
+      "interval_score_median": 1.4999,
       "crossing_rate": 0.0,
       "tier_counts": {
-        "참고 가능": 17,
+        "참고 가능": 16,
         "범위 넓음": 15,
         "참고 범위 제시 어려움": 0
       }
@@ -165,43 +179,29 @@
   },
   "extra": {
     "C-a XGB (수정 데이터, 기준)": {
-      "MAE_log10": 0.4133,
-      "MedAE_log10": 0.3054,
-      "geo_mean_error_x": 2.59,
-      "within_2x": 0.4933,
-      "within_3x": 0.6825,
-      "improvement_vs_v1_baseline": 0.2224
+      "MAE_log10": 0.4117,
+      "MedAE_log10": 0.3089,
+      "geo_mean_error_x": 2.581,
+      "within_2x": 0.4917,
+      "within_3x": 0.6814,
+      "improvement_vs_v1_baseline": 0.2254
     },
     "C-b XGB+LGBM 단순평균": {
-      "MAE_log10": 0.4172,
-      "MedAE_log10": 0.308,
-      "geo_mean_error_x": 2.613,
-      "within_2x": 0.4923,
-      "within_3x": 0.675,
-      "improvement_vs_v1_baseline": 0.2151
+      "MAE_log10": 0.4169,
+      "MedAE_log10": 0.3088,
+      "geo_mean_error_x": 2.611,
+      "within_2x": 0.4885,
+      "within_3x": 0.6814,
+      "improvement_vs_v1_baseline": 0.2156
     },
     "C-c XGB + 비교군 잔차보정(inner OOF)": {
-      "MAE_log10": 0.4173,
-      "MedAE_log10": 0.3127,
-      "geo_mean_error_x": 2.614,
-      "within_2x": 0.4816,
-      "within_3x": 0.6803,
-      "improvement_vs_v1_baseline": 0.2149
+      "MAE_log10": 0.4136,
+      "MedAE_log10": 0.3015,
+      "geo_mean_error_x": 2.592,
+      "within_2x": 0.4997,
+      "within_3x": 0.6835,
+      "improvement_vs_v1_baseline": 0.2218
     }
   },
-  "elapsed_sec": 1117.8,
-  "paired_delta": {
-    "n": 1877,
-    "mean_abs_error_v1": 0.4155,
-    "mean_abs_error_v2": 0.4133,
-    "mean_delta(v1-v2)": 0.00212,
-    "boot_ci95": [
-      -0.00199,
-      0.00635
-    ],
-    "P(delta>0)": 0.8432,
-    "n_rows_changed": 1877,
-    "n_rows_v2_better": 946,
-    "wilcoxon_p": 0.50708
-  }
+  "elapsed_sec": 1603.1
 }

@@ -50,10 +50,10 @@ import warnings
 warnings.filterwarnings("ignore")
 import common as C
 import m3_lab as L
-import m62_data_quality as M62
+import f06_design_features as F6
 
-V1 = os.path.join(C.PROC, "design_features.parquet")
-V2 = M62.OUT
+V1 = F6.OUT
+V2 = F6.OUT_V2
 BASE_KW = {}                      # 현행 구조 = m3_lab 의 기본값
 
 

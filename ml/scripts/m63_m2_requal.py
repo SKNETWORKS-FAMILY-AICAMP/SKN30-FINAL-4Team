@@ -44,10 +44,10 @@ import common as C
 import m2_features as F
 import m45_m2_amount as M45
 import m56_m2_canonical as M56
-import m62_data_quality as M62
+import f06_design_features as F6
 
-V1 = os.path.join(C.PROC, "design_features.parquet")
-V2 = M62.OUT
+V1 = F6.OUT
+V2 = F6.OUT_V2
 OUT_OOF = os.path.join(C.PROC, "m63_oof_predictions.parquet")
 
 # M56 의 공표 수치. 재현 대조용으로만 쓴다.
@@ -268,6 +268,10 @@ def write_md(r):
     A("타깃(`per_recipient`)·제목·금액은 **한 행도 바뀌지 않았습니다.** 그래서 이")
     A("비교는 *같은 모델·같은 타깃·같은 행에서 입력 품질만 바뀌면 얼마나 움직이는가*")
     A("를 재는 것입니다.\n")
+    A("> 위 표에서 `support_count` 만 성격이 다릅니다. 근거문 수정과 무관하고,")
+    A("> v1 이 `business_taxonomy.parquet` 의 M32 파서 수정 **이전**에 만들어져")
+    A("> 얼어 있었기 때문에 생기는 상류 드리프트입니다(M62 3절). 이번 수정의")
+    A("> 효과로 읽지 않습니다.\n")
 
     A("## 1. 결과 — 같은 split, 데이터만 교체\n")
     A("| 지표 | M56 on v1 (현행) | M56 on v2 (수정) | |")
