@@ -70,78 +70,18 @@
     --spacing-lg: 24px;
     --spacing-xl: 40px;
     --spacing-container-max: 1440px;
-
-    /* FontFamily */
-    --font-display-lg: "Nanum Gothic", sans-serif;
-    --font-headline-md: "Nanum Gothic", sans-serif;
-    --font-title-sm: "Nanum Gothic", sans-serif;
-    --font-body-md: "Nanum Gothic", sans-serif;
-    --font-body-sm: "Nanum Gothic", sans-serif;
-    --font-data-mono: "Nanum Gothic", monospace;
-    --font-label-caps: "Nanum Gothic", sans-serif;
 }
 
-/* 전역 기본 폰트, 안티앨리어싱 및 자간(-0.02em) 설정 */
+/* 전역 기본 폰트 및 안티앨리어싱 설정 */
 body {
     font-family: "Nanum Gothic", sans-serif;
     background-color: var(--color-background);
     color: var(--color-on-background);
-    letter-spacing: -0.02em;
     margin: 0;
     padding: 0;
 }
 
-/* 타이포그래피 스케일 유틸리티 클래스 */
-.font-display-lg {
-    font-size: 30px;
-    line-height: 38px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-}
-
-.font-headline-md {
-    font-size: 24px;
-    line-height: 32px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-}
-
-.font-title-sm {
-    font-size: 18px;
-    line-height: 24px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-}
-
-.font-body-md {
-    font-size: 14px;
-    line-height: 20px;
-    font-weight: 400;
-    letter-spacing: -0.02em;
-}
-
-.font-body-sm {
-    font-size: 13px;
-    line-height: 18px;
-    font-weight: 400;
-    letter-spacing: -0.02em;
-}
-
-.font-data-mono {
-    font-size: 13px;
-    line-height: 18px;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-}
-
-.font-label-caps {
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-}
-
-/* Material Symbols 아이콘 크기 및 렌더링 고정 */
+/* Material Symbols 아이콘 크기 및 렌더링 고정[cite: 1] */
 .material-symbols-outlined {
     font-family: 'Material Symbols Outlined';
     font-weight: normal;
