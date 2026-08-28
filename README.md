@@ -1,158 +1,382 @@
-# SIMS Pre-review
+# SIMS Pre-review 백엔드 실행 안내
 
-중소기업 지원사업 사전협의 요청서를 받아 **작성 완결성(CPL)** · **내부 정합성(FIT)** ·
-**기존 사업과의 유사·중복성(SIM)** 을 검토하고 리포트와 PDF 를 내는 백엔드다.
+중소기업 지원사업 사전협의 요청서(HWP/HWPX)를 분석해 다음 결과를 만드는 FastAPI 백엔드다.
 
-```
-FastAPI · PostgreSQL 15 + pgvector · SQLAlchemy Core · Pydantic v2
-OpenAI (gpt-4o-mini · text-embedding-3-small) · reportlab
-```
+- CPL: 필수 항목 작성 여부
+- FIT: 요청서 내부 내용의 정합성
+- SIM: 기존 지원사업과의 유사·중복 가능성
+- 결과 JSON, PDF, 결과 기반 채팅
 
----
+이 문서는 **Windows + VS Code + Command Prompt(cmd)** 기준이다. 아래 명령은 별도 표시가 없으면 저장소 루트에서 실행한다.
 
-## 준비물
-
-```
-Python 3.12
-Docker Desktop      개발용 PostgreSQL 컨테이너
-OpenAI API 키       각자 발급. 공유하지 않는다
-```
-
-공공데이터포털 키는 없어도 된다. 목업 공고 6건으로 전체 파이프라인이 돈다.
-
----
-
-## 구동
-
-### 1. 가상환경
-
-```bash
-cd backend
-python -m venv .venv
-.venv/Scripts/pip install -r requirements.txt     # Windows
-# .venv/bin/pip install -r requirements.txt       # macOS · Linux
+```text
+SKN30-FINAL-4Team\
+├─ backend\
+├─ scripts\
+├─ .env.example
+└─ README.md
 ```
 
-### 2. `.env`
+## 1. 준비물
 
-저장소 루트에 만든다.
+1. Python 3.12
+2. Git for Windows
+3. Docker Desktop
+4. VS Code
+5. OpenAI API 키
 
-```bash
-cp .env.example .env
+OpenAI API 키는 의미 분석, 공고 임베딩, 채팅에 사용되며 API 사용료가 발생할 수 있다. `JWT_SECRET`과 PostgreSQL 계정은 외부에서 발급받지 않는다.
+
+Docker Desktop은 설치 후 실제로 실행해 둔다.
+
+## 2. VS Code에서 CMD 열기
+
+VS Code에서 프로젝트 폴더를 연다.
+
+각자 clone하거나 내려받은 `SKN30-FINAL-4Team` 폴더를 선택한다.
+
+`Terminal → New Terminal`을 누르고 터미널 오른쪽 화살표에서 `Command Prompt`를 선택한다.
+
+현재 위치가 다르면 저장소 루트로 이동한다.
+
+```cmd
+cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
 ```
 
-두 줄만 채우면 된다. `DATABASE_URL` 은 아래 3번이 띄우는 컨테이너에 이미 맞춰져 있다.
-
-```
-JWT_SECRET=<아래 명령으로 생성>
-OPENAI_API_KEY=<본인 키>
+```cmd
+dir
 ```
 
-```bash
+`backend`, `scripts`, `.env.example`이 보이면 정상이다.
+
+## 3. 설치 확인
+
+```cmd
+python --version
+git --version
+docker --version
+docker ps
+```
+
+Python은 `3.12.x`가 권장된다. `docker ps`에서 연결 오류가 나면 Docker Desktop을 실행한 후 다시 시도한다.
+
+## 4. Python 가상환경과 패키지
+
+최초 한 번만 실행한다.
+
+```cmd
+python -m venv backend\.venv
+backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
+설치 확인:
+
+```cmd
+backend\.venv\Scripts\python.exe -c "import fastapi; print(fastapi.__version__)"
+```
+
+FastAPI 버전이 출력되면 정상이다.
+
+## 5. 환경설정
+
+`.env`가 아직 없다면 예제 파일을 복사한다.
+
+```cmd
+copy .env.example .env
+```
+
+이미 `.env`가 있다면 덮어쓰지 않는다. VS Code에서 연다.
+
+```cmd
+code .env
+```
+
+### JWT_SECRET
+
+`JWT_SECRET`은 가입해서 받는 키가 아니다. 다음 명령으로 직접 만든다.
+
+```cmd
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-`.env` 는 `.gitignore` 대상이다. **커밋하거나 공유하지 않는다.**
+출력된 문자열을 `.env`에 넣는다.
 
-### 3. DB 기동
-
-```bash
-bash scripts/e2e_up.sh
+```dotenv
+JWT_SECRET=출력된_긴_문자열
 ```
 
-컨테이너 기동 · 스키마 적용 · 데모 계정 생성을 한 번에 한다.
-계정은 `demo` / `demo-password-1234` 다. 회원가입 API 가 없어 스크립트가 직접 넣는다.
+### OpenAI API 키
 
-### 4. 목업 공고 넣기
+`.env`의 다음 줄을:
 
-```bash
-backend/.venv/Scripts/python.exe scripts/seed_announcements.py
+```dotenv
+# OPENAI_API_KEY=replace-me
 ```
 
-실제 동기화 경로를 그대로 쓰고 네트워크 호출만 스텁으로 바꾼다.
-임베딩은 실제 OpenAI 로 만든다.
+다음처럼 바꾼다.
 
-### 5. 서버
-
-```bash
-cd backend && .venv/Scripts/python.exe -m uvicorn main:app --port 8000
+```dotenv
+OPENAI_API_KEY=sk-본인의_API_키
 ```
 
-`http://127.0.0.1:8000/docs` 에서 Swagger 로 직접 호출할 수 있다.
+최소 설정:
 
-### 6. 확인
-
-다른 창에서.
-
-```bash
-backend/.venv/Scripts/python.exe scripts/make_mock_hwpx.py
-backend/.venv/Scripts/python.exe scripts/e2e_run.py output/mock/사전협의요청서_우수사례.hwpx
+```dotenv
+DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
+DATABASE_CONNECT_TIMEOUT_SECONDS=3
+JWT_SECRET=직접_생성한_긴_문자열
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+OPENAI_API_KEY=sk-본인의_API_키
 ```
 
-로그인부터 채팅까지 7단계가 통과하면 정상이다.
+`.env`에는 비밀키가 들어가므로 커밋하거나 공유하지 않는다.
 
----
+## 6. PostgreSQL 실행
 
-## 테스트
+Docker Desktop이 실행 중인지 확인한다.
 
-DB 가 떠 있어야 한다(위 3번).
+```cmd
+docker ps
+```
 
-```bash
+DB 준비 스크립트는 Bash 파일이다. CMD에서는 Git for Windows에 포함된 Bash를 호출한다.
+
+```cmd
+"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_up.sh
+```
+
+스크립트가 자동으로 수행하는 작업:
+
+1. PostgreSQL 15 + pgvector 컨테이너 실행
+2. PostgreSQL 준비 대기
+3. `backend/app/db/schema.sql` 적용
+4. 데모 로그인 계정 생성
+
+DB 접속 정보:
+
+```text
+컨테이너: sims-e2e-pg
+주소:      127.0.0.1
+포트:      55433
+DB:        sims
+DB 사용자: postgres
+DB 암호:   simstest
+```
+
+서비스 로그인 계정은 DB 계정과 다르다.
+
+```text
+로그인 ID: demo
+비밀번호:  demo-password-1234
+```
+
+상태 확인:
+
+```cmd
+docker ps
+docker exec sims-e2e-pg pg_isready -U postgres -d sims
+```
+
+`accepting connections`가 나오면 정상이다.
+
+## 7. 목업 지원사업 공고 입력
+
+```cmd
+backend\.venv\Scripts\python.exe scripts\seed_announcements.py
+```
+
+테스트용 지원사업 공고 6건을 실제 DB에 넣고 OpenAI API로 임베딩을 생성한다. 공공데이터포털 키 없이 전체 흐름을 확인하기 위한 데이터다.
+
+업로드한 요청서의 CPL과 FIT은 실제 문서를 분석한다. SIM 로직도 실제로 실행되지만 비교 대상은 목업 공고 6건이므로 공식 결과나 전체 실제 공고 기준 결과는 아니다.
+
+## 8. 백엔드 서버 실행
+
+```cmd
 cd backend
-TEST_DATABASE_URL="postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims" \
-  .venv/Scripts/python.exe -m pytest -q
+.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 ```
 
-`seed_announcements.py` 를 돌린 DB 에서 전체 회귀를 하면 1건이 실패한다.
-목업 공고를 만나 가짜 벡터를 못 찾기 때문이며 회귀가 아니다.
-테스트 전에 비운다.
+정상 로그:
 
-```bash
-bash scripts/e2e_down.sh && bash scripts/e2e_up.sh
+```text
+Uvicorn running on http://127.0.0.1:8000
 ```
 
----
+브라우저에서 Swagger를 연다.
 
-## 스크립트
-
-```
-scripts/e2e_up.sh               컨테이너 + 스키마 + demo 계정
-scripts/e2e_down.sh             컨테이너 제거. 데이터도 사라진다
-scripts/seed_announcements.py   목업 공고 6건 동기화·임베딩
-scripts/make_mock_hwpx.py       목업 사전협의 요청서 2건 생성
-scripts/e2e_run.py              7단계 E2E
+```text
+http://127.0.0.1:8000/docs
 ```
 
-`e2e_up.sh` 는 `pgvector/pgvector:pg15` 컨테이너를 `127.0.0.1:55433` 에 띄운다.
-볼륨을 붙이지 않아 `e2e_down.sh` 를 돌리면 데이터가 함께 사라진다.
-매번 깨끗한 상태로 시작하기 위한 것이다.
+이 터미널은 서버가 사용하므로 닫지 않는다. 다른 명령은 VS Code에서 CMD 터미널을 하나 더 열어 실행한다.
 
-목업 요청서는 중소벤처기업부 「중소기업지원사업 사전협의 지침」 [서식 1] (24년도)
-구조와 안내자료의 우수·미흡 사례를 따랐다. **점수를 맞추려고 목업을 고치지 않는다.**
-규칙이 따라가야 하는 쪽이다.
+## 9. 전체 E2E 확인
 
----
+새 CMD 터미널에서 저장소 루트로 이동한다.
 
-## 문서
-
-```
-AGENTS.md            개발 지침
-CLAUDE_HANDOFF.md    현재 상태와 미결정 사항 (git 미추적)
-docs/백엔드_현황_공유.md   구조 · 에이전트 구조 · 알려진 문제
+```cmd
+cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
 ```
 
-CPL · FIT · SIM 판별 로직의 기준은 팀 판별기준 원문이다.
-구현기준서의 해당 절은 요약이므로 구현·검토의 근거로 쓰지 않는다.
+테스트용 HWPX를 만들고 전체 흐름을 실행한다.
 
----
+```cmd
+backend\.venv\Scripts\python.exe scripts\make_mock_hwpx.py
+backend\.venv\Scripts\python.exe scripts\e2e_run.py output\mock\사전협의요청서_우수사례.hwpx
+```
 
-## 알아둘 것
+E2E 호출 순서:
 
-**임베딩 프로필은 첫 실행에 고정된다.** DDL 트리거로 불변이며 바꾸려면
-프로필 v2 와 전체 재임베딩이 필요하다.
+```text
+로그인
+→ 요청서 업로드
+→ 분석 시작
+→ 파싱
+→ CPL
+→ FIT
+→ 유사 공고 검색
+→ SIM
+→ 결과 JSON
+→ PDF 다운로드
+→ 채팅
+```
 
-**`rhwp-python` 은 네이티브 확장이다.** Windows 휠은 확인했고 다른 OS 는
-확인하지 못했다. macOS · Linux 에서 설치가 안 되면 알려달라.
+7단계가 모두 통과하면 백엔드 핵심 흐름이 정상이다.
 
-**Git Bash 에서 `docker cp` 경로가 깨질 수 있다.** `e2e_up.sh` 는 `pwd -W` 로
-처리해 두었다.
+## 10. 실제 문서 분석
+
+서버가 켜진 상태에서 Swagger를 사용하거나 프론트를 연결한다.
+
+```text
+POST /api/v1/auth/login
+POST /api/v1/cases
+POST /api/v1/cases/{case_id}/analyze
+GET  /api/v1/cases/{case_id}/status
+GET  /api/v1/cases/{case_id}/report
+GET  /api/v1/cases/{case_id}/report.pdf
+POST /api/v1/cases/{case_id}/chat/messages
+```
+
+유효한 HWP/HWPX 사전협의 요청서를 넣으면 실제 파싱·CPL·FIT·SIM·리포트·PDF 코드가 실행된다. 다만 현재 환경은 로컬 개발용이고 SIM 비교 공고는 목업 데이터다. 결과는 팀 내부 알파 기준의 사전 검토 결과이며 공식 행정 판정이 아니다.
+
+## 11. 다음 날 다시 실행
+
+가상환경 생성, 패키지 설치, `.env` 작성, 공고 입력은 보통 다시 하지 않아도 된다.
+
+```cmd
+docker start sims-e2e-pg
+cd backend
+.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+```
+
+이미 컨테이너가 실행 중이라는 메시지가 나오면 그대로 진행한다.
+
+## 12. 종료와 초기화
+
+서버 종료는 서버 터미널에서 `Ctrl+C`를 누른다.
+
+DB 데이터를 유지하고 컨테이너만 중지:
+
+```cmd
+docker stop sims-e2e-pg
+```
+
+DB 컨테이너와 내부 데이터를 모두 삭제:
+
+```cmd
+"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_down.sh
+```
+
+`e2e_down.sh`를 실행하면 데모 계정, 목업 공고, 업로드 기록, 분석 결과가 사라진다. 다시 시작하려면 6번과 7번을 다시 수행한다.
+
+## 13. 전체 테스트
+
+DB가 실행 중이어야 한다. 저장소 루트의 CMD에서 실행한다.
+
+```cmd
+set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
+backend\.venv\Scripts\python.exe -m pytest backend\tests -q
+```
+
+목업 공고가 들어간 DB는 테스트 데이터와 충돌할 수 있다. 데이터 삭제에 동의한 경우에만 DB를 초기화한 뒤 전체 테스트한다.
+
+```cmd
+"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_down.sh
+"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_up.sh
+set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
+backend\.venv\Scripts\python.exe -m pytest backend\tests -q
+```
+
+## 14. 자주 발생하는 문제
+
+### Docker 연결 오류
+
+Docker Desktop을 실행한 뒤 확인한다.
+
+```cmd
+docker ps
+```
+
+### `bash.exe`를 찾지 못함
+
+```cmd
+where git
+```
+
+Git이 기본 위치가 아니라면 실제 설치 폴더의 `bin\bash.exe`를 사용한다.
+
+### `OPENAI_API_KEY is required`
+
+`.env`에서 키 앞의 `#`을 제거했는지 확인한다.
+
+```dotenv
+OPENAI_API_KEY=sk-본인의_API_키
+```
+
+### DB 연결 실패
+
+```cmd
+docker ps
+docker exec sims-e2e-pg pg_isready -U postgres -d sims
+```
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
+```
+
+### `No module named ...`
+
+시스템 Python이 아니라 프로젝트 가상환경 Python으로 실행한다.
+
+```cmd
+backend\.venv\Scripts\python.exe
+```
+
+### 8000 포트가 이미 사용 중임
+
+기존 서버 터미널을 찾아 `Ctrl+C`로 종료한다.
+
+```cmd
+netstat -ano | findstr :8000
+```
+
+## 15. 현재 실행 범위
+
+실제로 동작하는 것:
+
+- PostgreSQL/pgvector 저장과 검색
+- HWP/HWPX 파싱
+- CPL/FIT/SIM 로직
+- OpenAI API 호출
+- 결과 JSON과 PDF 생성
+- 분석 결과 기반 채팅
+
+로컬 개발용인 것:
+
+- `postgres / simstest` DB 계정
+- `demo / demo-password-1234` 서비스 계정
+- 목업 공고 6건
+- 로컬 파일 저장소
+- 서버 프로세스 내부 백그라운드 작업
+
+운영 배포 전에는 운영 DB, 영속 저장소, 실제 공고 동기화, 사용자·보안 정책, HTTPS, 외부 작업 큐와 모니터링이 별도로 필요하다.
