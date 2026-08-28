@@ -1,0 +1,178 @@
+{
+  "source": "data\\processed\\design_features.parquet",
+  "output": "data\\processed\\design_features_v2.parquet",
+  "rows": 3963,
+  "sha256_before": "9f308112fb99e750fcbd4fdcba980a9a3ac698eaa623b99e60e205e11c8043e4",
+  "sha256_after": "76407a5923e21de14c60515d77a02af805a49af4507553a4ee36166a46c89d4b",
+  "ledger": {
+    "D1_근거문_복원": {
+      "제목만_있던_행": 1749,
+      "복원": 1720,
+      "복원_불가": 29,
+      "복원_후_중앙값_길이": 2703
+    },
+    "D5_지원방식_재도출": {
+      "대상": 1720,
+      "변경": 848,
+      "이동": {
+        "other->mixed": 168,
+        "grant->loan": 167,
+        "other->service": 144,
+        "other->loan": 113,
+        "other->grant": 108,
+        "grant->guarantee": 35,
+        "grant->voucher": 28,
+        "other->guarantee": 24,
+        "other->voucher": 16,
+        "guarantee->loan": 14,
+        "service->mixed": 14,
+        "grant->mixed": 6,
+        "grant->other": 4,
+        "voucher->loan": 2,
+        "voucher->guarantee": 2,
+        "grant->service": 1,
+        "service->voucher": 1,
+        "service->loan": 1
+      },
+      "전": {
+        "grant": 2118,
+        "other": 891,
+        "loan": 428,
+        "service": 290,
+        "guarantee": 89,
+        "voucher": 84,
+        "mixed": 63
+      },
+      "후": {
+        "grant": 1985,
+        "loan": 725,
+        "service": 419,
+        "other": 322,
+        "mixed": 251,
+        "guarantee": 136,
+        "voucher": 125
+      }
+    },
+    "D2_지원단위_보완": {
+      "결측_전": 1414,
+      "결측_후": 1198,
+      "결측률_전": 0.3568,
+      "결측률_후": 0.3023,
+      "신규_충원": 252,
+      "값_변경": 107,
+      "근거등급": {
+        "unchanged": 2243,
+        "amount_context": 804,
+        "none": 609,
+        "scope_section": 257,
+        "amount_type_convention": 50
+      },
+      "전": {
+        "company": 2096,
+        "nan": 1414,
+        "person": 274,
+        "project": 167,
+        "team": 12
+      },
+      "후": {
+        "company": 2174,
+        "nan": 1198,
+        "person": 346,
+        "project": 195,
+        "team": 50
+      }
+    },
+    "D4_설계축_결측보완": {
+      "사업기간_신규": 1400,
+      "자부담률_신규": 181,
+      "사업기간_결측률_전": 0.8542,
+      "사업기간_결측률_후": 0.5009
+    },
+    "D3_파싱오류_제거": {
+      "지원비율_범위밖": 1,
+      "자부담률_범위밖": 1,
+      "사업기간_연도오파싱(bare)": 93,
+      "사업기간_범위밖_유지(근거있음)": 38,
+      "지원비율_최소_전": -320.0,
+      "예시": [
+        "2023년 해외실증(PoC) 지원 프로그램",
+        "2022년 뿌리기업 자동화·첨단화 지원사업",
+        "[제주] 제주시 2026년 우리동네 맑은공기 패키지 지원사업 소규모 사업장 방지시설 지원사업 공고",
+        "[대전] 2026년 3차 해외규격인증 획득지원사업 참여기업 모집 공고",
+        "2026년 호주 K-푸드페어 참가업체 모집 공고"
+      ],
+      "지원비율_최소_후": 0.0
+    }
+  },
+  "model2_filter_trace": {
+    "before": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    },
+    "after": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    }
+  },
+  "model3_pool": {
+    "before": {
+      "pool_rows": 1948,
+      "지원단위_결측률": 0.1489,
+      "지원방식_분포": {
+        "grant": 1577,
+        "loan": 197,
+        "other": 65,
+        "voucher": 57,
+        "guarantee": 21,
+        "service": 21,
+        "mixed": 10
+      },
+      "축_결측률": {
+        "log_per_recipient": 0.0837,
+        "log_support_count": 0.1653,
+        "support_ratio": 0.5452,
+        "project_duration": 0.7772
+      },
+      "n_axes_평균": 2.429
+    },
+    "after": {
+      "pool_rows": 2377,
+      "지원단위_결측률": 0.1582,
+      "지원방식_분포": {
+        "grant": 1510,
+        "loan": 448,
+        "mixed": 111,
+        "service": 99,
+        "voucher": 92,
+        "guarantee": 63,
+        "other": 54
+      },
+      "축_결측률": {
+        "log_per_recipient": 0.2146,
+        "log_support_count": 0.1885,
+        "support_ratio": 0.6092,
+        "project_duration": 0.4022
+      },
+      "n_axes_평균": 2.586
+    }
+  },
+  "audit_sample_rows": 58,
+  "audit_csv": "reports\\m62_unit_audit.csv",
+  "unchanged": [
+    "타깃 정의(stated_cap)",
+    "비교군 사다리",
+    "모델·하이퍼파라미터",
+    "평가 프로토콜",
+    "design_features.parquet 원본"
+  ]
+}

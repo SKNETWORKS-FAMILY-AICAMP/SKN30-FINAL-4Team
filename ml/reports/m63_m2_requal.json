@@ -1,0 +1,207 @@
+{
+  "dataset": {
+    "v1": "data\\processed\\design_features.parquet",
+    "v2": "data\\processed\\design_features_v2.parquet",
+    "rows": 1877,
+    "filter_trace_v1": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    },
+    "filter_trace_v2": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    },
+    "changed_cells": {
+      "support_method": 150,
+      "support_unit": 28,
+      "amount_type": 0,
+      "support_count": 0,
+      "support_ratio": 1,
+      "self_burden_ratio": 69,
+      "project_duration": 435,
+      "per_recipient": 0,
+      "title": 0
+    }
+  },
+  "published_M56": {
+    "MAE_log10": 0.4155,
+    "improvement": 0.218,
+    "within_2x": 0.488,
+    "within_3x": 0.676,
+    "coverage": 0.803,
+    "width_x": 25.1
+  },
+  "paired": {
+    "program_stem": {
+      "baseline_MAE": 0.5315,
+      "baseline(v1)": {
+        "MAE_log10": 0.5315,
+        "MedAE_log10": 0.4269,
+        "geo_mean_error_x": 3.4,
+        "within_2x": 0.3548,
+        "within_3x": 0.5253,
+        "improvement_vs_v1_baseline": -0.0001
+      },
+      "baseline(v2)": {
+        "MAE_log10": 0.5277,
+        "MedAE_log10": 0.426,
+        "geo_mean_error_x": 3.37,
+        "within_2x": 0.3516,
+        "within_3x": 0.5232,
+        "improvement_vs_v1_baseline": 0.0071,
+        "note": "참고 — 개선율 분모는 v1 baseline 으로 고정"
+      },
+      "M56 on v1(현행)": {
+        "MAE_log10": 0.4155,
+        "MedAE_log10": 0.3122,
+        "geo_mean_error_x": 2.603,
+        "within_2x": 0.4875,
+        "within_3x": 0.6761,
+        "improvement_vs_v1_baseline": 0.2182
+      },
+      "M56 on v2(수정)": {
+        "MAE_log10": 0.4133,
+        "MedAE_log10": 0.3054,
+        "geo_mean_error_x": 2.59,
+        "within_2x": 0.4933,
+        "within_3x": 0.6825,
+        "improvement_vs_v1_baseline": 0.2223
+      }
+    },
+    "normalized_title": {
+      "baseline_MAE": 0.5499,
+      "baseline(v1)": {
+        "MAE_log10": 0.5499,
+        "MedAE_log10": 0.4454,
+        "geo_mean_error_x": 3.547,
+        "within_2x": 0.3356,
+        "within_3x": 0.5147,
+        "improvement_vs_v1_baseline": -0.0
+      },
+      "baseline(v2)": {
+        "MAE_log10": 0.546,
+        "MedAE_log10": 0.4472,
+        "geo_mean_error_x": 3.516,
+        "within_2x": 0.3346,
+        "within_3x": 0.5157,
+        "improvement_vs_v1_baseline": 0.007,
+        "note": "참고 — 개선율 분모는 v1 baseline 으로 고정"
+      },
+      "M56 on v1(현행)": {
+        "MAE_log10": 0.4356,
+        "MedAE_log10": 0.3399,
+        "geo_mean_error_x": 2.727,
+        "within_2x": 0.4486,
+        "within_3x": 0.6425,
+        "improvement_vs_v1_baseline": 0.2078
+      },
+      "M56 on v2(수정)": {
+        "MAE_log10": 0.4337,
+        "MedAE_log10": 0.3421,
+        "geo_mean_error_x": 2.715,
+        "within_2x": 0.4555,
+        "within_3x": 0.6484,
+        "improvement_vs_v1_baseline": 0.2113
+      }
+    }
+  },
+  "stability": {
+    "M56 on v1(현행)": {
+      "n_repeat": 10,
+      "mean": 0.2175,
+      "std": 0.0073,
+      "min": 0.2056,
+      "max": 0.2294,
+      "pass": "10/10"
+    },
+    "M56 on v2(수정)": {
+      "n_repeat": 10,
+      "mean": 0.2232,
+      "std": 0.0085,
+      "min": 0.2085,
+      "max": 0.2352,
+      "pass": "10/10"
+    }
+  },
+  "intervals": {
+    "v1(현행)": {
+      "coverage": 0.8034,
+      "nominal": 0.8,
+      "median_width_log10": 1.3994,
+      "median_width_x": 25.1,
+      "mean_width_log10": 1.4453,
+      "interval_score_median": 1.5373,
+      "crossing_rate": 0.0,
+      "tier_counts": {
+        "참고 가능": 16,
+        "범위 넓음": 12,
+        "참고 범위 제시 어려움": 1
+      }
+    },
+    "v2(수정)": {
+      "coverage": 0.8066,
+      "nominal": 0.8,
+      "median_width_log10": 1.3866,
+      "median_width_x": 24.4,
+      "mean_width_log10": 1.4353,
+      "interval_score_median": 1.5156,
+      "crossing_rate": 0.0,
+      "tier_counts": {
+        "참고 가능": 17,
+        "범위 넓음": 15,
+        "참고 범위 제시 어려움": 0
+      }
+    }
+  },
+  "extra": {
+    "C-a XGB (수정 데이터, 기준)": {
+      "MAE_log10": 0.4133,
+      "MedAE_log10": 0.3054,
+      "geo_mean_error_x": 2.59,
+      "within_2x": 0.4933,
+      "within_3x": 0.6825,
+      "improvement_vs_v1_baseline": 0.2224
+    },
+    "C-b XGB+LGBM 단순평균": {
+      "MAE_log10": 0.4172,
+      "MedAE_log10": 0.308,
+      "geo_mean_error_x": 2.613,
+      "within_2x": 0.4923,
+      "within_3x": 0.675,
+      "improvement_vs_v1_baseline": 0.2151
+    },
+    "C-c XGB + 비교군 잔차보정(inner OOF)": {
+      "MAE_log10": 0.4173,
+      "MedAE_log10": 0.3127,
+      "geo_mean_error_x": 2.614,
+      "within_2x": 0.4816,
+      "within_3x": 0.6803,
+      "improvement_vs_v1_baseline": 0.2149
+    }
+  },
+  "elapsed_sec": 1117.8,
+  "paired_delta": {
+    "n": 1877,
+    "mean_abs_error_v1": 0.4155,
+    "mean_abs_error_v2": 0.4133,
+    "mean_delta(v1-v2)": 0.00212,
+    "boot_ci95": [
+      -0.00199,
+      0.00635
+    ],
+    "P(delta>0)": 0.8432,
+    "n_rows_changed": 1877,
+    "n_rows_v2_better": 946,
+    "wilcoxon_p": 0.50708
+  }
+}
