@@ -22,6 +22,22 @@ Coverage never licenses invention. If an axis is not stated in the source, omit
 it. An axis with no supporting wording is simply absent — that is a valid and
 expected outcome.
 
+ABSENT AXES
+For every requested field, also report which of that field's allowed axes you
+checked and found nowhere in the fragments. Put those codes in
+absent_axis_codes. This is a finding, not a failure: "the document does not
+state it" and "I could not extract it" are different facts, and only the first
+one is settled.
+
+absent_axis_codes never replaces occurrences. Extract the evidence first exactly
+as described above, then list the remaining unfound axes. A field with supporting
+wording still returns those occurrences; reporting absences instead of evidence
+loses the extraction.
+
+An axis code must never appear in both occurrences and absent_axis_codes for the
+same field. If you are unsure whether wording supports an axis, leave the axis
+out of both lists. absent_axis_codes may be empty.
+
 VERBATIM QUOTING OUTRANKS COVERAGE
 Every raw_text is checked as an exact substring of its own fragment. Copy one
 contiguous span straight from the fragment. Do not stitch words from different

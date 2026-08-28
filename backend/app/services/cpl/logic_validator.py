@@ -408,6 +408,13 @@ def merge_llm_result(
                 field_code=rule_item.field_code,
                 status=status,
                 occurrences=occurrences,
+                # 규칙이 근거를 남긴 축은 부재 선언을 취소한다. 재검 병합에서
+                # 앞 회차의 선언도 같은 방식으로 걸러진다.
+                absent_axes=[
+                    axis
+                    for axis in candidate.absent_axes
+                    if axis not in {item.axis_code for item in occurrences}
+                ],
                 reason_code=(
                     rule_item.reason_code
                     if rule_is_conclusive
@@ -500,6 +507,15 @@ def ground_llm_response(
                     extraction_method="LLM",
                 )
             )
+        # 축 부재 선언은 사실 주장이므로 근거와 모순되면 받지 않는다.
+        absent_axes = list(dict.fromkeys(item.absent_axis_codes))
+        allowed_axes = CPL_FIELD_AXES[item.field_code]
+        present_axes = {occurrence.axis_code for occurrence in occurrences}
+        if not set(absent_axes).issubset(allowed_axes):
+            raise ValueError("LLM declared an axis outside the field's allowed axes")
+        if present_axes & set(absent_axes):
+            raise ValueError("LLM declared an axis both present and absent")
+
         status = CplStatus(item.status)
         reason_code = item.reason_code
         if status == CplStatus.PRESENT and not occurrences:
@@ -519,6 +535,7 @@ def ground_llm_response(
                 field_code=item.field_code,
                 status=status,
                 occurrences=_deduplicate_occurrences(occurrences),
+                absent_axes=absent_axes,
                 reason_code=reason_code,
                 explanation=item.explanation,
             )
