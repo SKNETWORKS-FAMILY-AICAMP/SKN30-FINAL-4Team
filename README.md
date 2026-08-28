@@ -218,11 +218,37 @@ http://127.0.0.1:8000/docs
 cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
 ```
 
-테스트용 HWPX를 만들고 전체 흐름을 실행한다.
+저장소에 포함된 우수사례 목업 HWPX로 전체 흐름을 실행한다.
 
 ```cmd
-backend\.venv\Scripts\python.exe scripts\make_mock_hwpx.py
-backend\.venv\Scripts\python.exe scripts\e2e_run.py output\mock\사전협의요청서_우수사례.hwpx
+backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\사전협의요청서_우수사례.hwpx
+```
+
+미흡사례를 실행하려면 파일 경로만 바꾼다.
+
+```cmd
+backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\사전협의요청서_미흡사례.hwpx
+```
+
+목업 파일은 다음 위치에 버전 관리한다.
+
+```text
+samples\hwpx\사전협의요청서_우수사례.hwpx
+samples\hwpx\사전협의요청서_미흡사례.hwpx
+samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
+samples\hwpx\mockup_02_우수사례_뿌리산업스마트제조.hwpx
+samples\hwpx\mockup_03_보통사례_청년로컬크리에이터.hwpx
+samples\hwpx\mockup_04_보통사례_친환경그린에너지.hwpx
+samples\hwpx\mockup_05_저급사례_AI바우처_모순충돌.hwpx
+samples\hwpx\mockup_06_저급사례_해외수출_목적내용불일치.hwpx
+```
+
+`scripts\make_mock_hwpx.py`는 샘플을 다시 만들거나 생성 근거를 확인할 때만 사용한다. 일반적인 E2E 실행에는 필요하지 않다.
+
+다른 목업을 실행할 때는 `e2e_run.py` 뒤의 파일 경로만 원하는 샘플로 바꾼다.
+
+```cmd
+backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
 ```
 
 E2E 호출 순서:
