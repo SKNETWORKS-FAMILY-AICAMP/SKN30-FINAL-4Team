@@ -228,6 +228,80 @@ def test_rhwp_parser_maps_paragraph_table_and_merged_cells(
     assert result.warnings == ["Unsupported PictureBlock skipped at body:2"]
 
 
+def test_rhwp_parser_preserves_flattened_inline_segments_and_table_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(hwp_parser, "_preflight_source", lambda *_args: None)
+    paragraph_class = type("ParagraphBlock", (), {})
+    paragraph = paragraph_class()
+    paragraph.text = "표 앞 본문"
+    paragraph.prov = SimpleNamespace(
+        section_idx=0,
+        para_idx=0,
+        char_start=None,
+        char_end=None,
+        page_range=None,
+    )
+    child = SimpleNamespace(
+        text="○ 사업목적 : 해외시장 진출○ 사업필요성 : 판로 다변화",
+        inlines=[
+            SimpleNamespace(text="○ 사업목적 : 해외시장 진출"),
+            SimpleNamespace(text="○ 사업필요성 : 판로 다변화"),
+        ],
+    )
+    cell = SimpleNamespace(
+        row=0,
+        col=1,
+        row_span=1,
+        col_span=1,
+        grid_index=1,
+        role="data",
+        blocks=[child],
+    )
+    table_class = type("TableBlock", (), {})
+    table = table_class()
+    table.text = child.text
+    table.rows = 1
+    table.cols = 2
+    table.cells = [cell]
+    table.prov = paragraph.prov
+    fake_document = SimpleNamespace(
+        # rhwp's plain-text projection can omit table content.
+        extract_text=lambda: "표 앞 본문",
+        to_ir=lambda: SimpleNamespace(body=[paragraph, table]),
+    )
+    monkeypatch.setattr(
+        hwp_parser.rhwp.Document,
+        "from_bytes",
+        lambda *_args, **_kwargs: fake_document,
+    )
+
+    result = asyncio.run(
+        RhwpDocumentParser().parse(
+            FileSource(
+                content=io.BytesIO(b"hwpx"),
+                filename="request.hwpx",
+                mime_type="application/hwp+zip",
+                extension="hwpx",
+            )
+        )
+    )
+
+    cell_data = result.blocks[1].source_locator["cells"][0]
+    assert cell_data["text"] == child.text
+    assert cell_data["segments"] == [
+        {"segment_index": 0, "text": "○ 사업목적 : 해외시장 진출"},
+        {"segment_index": 1, "text": "○ 사업필요성 : 판로 다변화"},
+    ]
+    assert cell_data["structure_status"] == "unresolved"
+    assert result.text == "표 앞 본문\n○ 사업목적 : 해외시장 진출\n○ 사업필요성 : 판로 다변화"
+    assert result.partial is True
+    assert result.warnings == [
+        "TABLE_CELL_INLINE_SEGMENTS: body:1:cell:0:1 preserved as segments; "
+        "paragraph boundaries are not inferred"
+    ]
+
+
 def test_rhwp_parser_supports_only_validated_hwp_and_hwpx_contract() -> None:
     parser = RhwpDocumentParser()
 

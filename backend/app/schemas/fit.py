@@ -3,7 +3,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.cpl import CplOccurrence
+from app.schemas.cpl import (
+    CplAxisCode,
+    CplFieldCode,
+    CplOccurrence,
+    CplSourceRole,
+)
 
 
 class FitRelationId(StrEnum):
@@ -24,7 +29,47 @@ class FitStatus(StrEnum):
     FIT = "FIT"
     NEEDS_REVIEW = "NEEDS_REVIEW"
     CONFLICT = "CONFLICT"
+    # 비교정보 부족: 비교를 시도했으나 근거가 모자라 판단하지 못했다.
     INSUFFICIENT = "INSUFFICIENT"
+    # 문서 미기재: 비교 대상이 요청서에 애초에 없다. 판별기준서는 이 경우를
+    # 자동 Issue 로 보지 않는다(FIT-5 6.3, FIT-7 8.4). 부재를 정합으로
+    # 채점하지도 않으므로 INSUFFICIENT 와 함께 분모에서 빠진다.
+    NOT_STATED = "NOT_STATED"
+
+
+# 판정이 성립하지 않은 상태. 점수를 매기지 않고 분모에서 제외한다.
+FIT_NOT_ASSESSABLE: frozenset[FitStatus] = frozenset(
+    {FitStatus.INSUFFICIENT, FitStatus.NOT_STATED}
+)
+
+
+class FitInputFeedbackReason(StrEnum):
+    """Reasons FIT can send back to CPL before final relation analysis."""
+
+    REQUIRED_AXIS_MISSING = "REQUIRED_AXIS_MISSING"
+    SOURCE_ROLE_MISSING = "SOURCE_ROLE_MISSING"
+    EVIDENCE_TOO_BROAD = "EVIDENCE_TOO_BROAD"
+    POSSIBLE_MISCLASSIFICATION = "POSSIBLE_MISCLASSIFICATION"
+    CONFLICTING_OCCURRENCES = "CONFLICTING_OCCURRENCES"
+    NORMALIZATION_INCOMPLETE = "NORMALIZATION_INCOMPLETE"
+
+
+class FitInputFeedback(BaseModel):
+    """Internal, typed request from FIT to the CPL analyzer.
+
+    This is not an API result.  FIT may describe what it cannot consume, but it
+    cannot add evidence or change a CPL status.  The orchestrator uses this
+    contract only to select a bounded CPL recheck.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    relation_id: FitRelationId
+    side: Literal["left", "right"]
+    field_code: CplFieldCode
+    reason_code: FitInputFeedbackReason
+    required_axis_codes: list[CplAxisCode] = Field(default_factory=list)
+    required_source_roles: list[CplSourceRole | None] = Field(default_factory=list)
 
 
 class FitRelationResult(BaseModel):
@@ -65,10 +110,10 @@ class FitResult(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("FIT result contains duplicate relations")
         assessable_count = sum(
-            relation.status != FitStatus.INSUFFICIENT for relation in self.relations
+            relation.status not in FIT_NOT_ASSESSABLE for relation in self.relations
         )
         if any(
-            (relation.status == FitStatus.INSUFFICIENT) != (relation.score is None)
+            (relation.status in FIT_NOT_ASSESSABLE) != (relation.score is None)
             for relation in self.relations
         ):
             raise ValueError("FIT relation status and score are inconsistent")
@@ -89,7 +134,13 @@ class FitSemanticRelation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     relation_id: FitRelationId
-    status: FitStatus
+    # NOT_STATED 는 규칙이 결정한다. 의미 분석은 비교를 시도한 결과만 낸다.
+    status: Literal[
+        FitStatus.FIT,
+        FitStatus.NEEDS_REVIEW,
+        FitStatus.CONFLICT,
+        FitStatus.INSUFFICIENT,
+    ]
     summary: str = Field(min_length=1)
     left_evidence_refs: list[str]
     right_evidence_refs: list[str]
@@ -115,8 +166,10 @@ class FitScoringPolicy(BaseModel):
             raise ValueError("FIT scoring policy must define every status")
         if set(self.weights) != set(FIT_RELATIONS):
             raise ValueError("FIT scoring policy must define every relation")
-        if self.status_scores[FitStatus.INSUFFICIENT] is not None:
-            raise ValueError("INSUFFICIENT must be excluded from FIT scoring")
+        if any(self.status_scores[status] is not None for status in FIT_NOT_ASSESSABLE):
+            raise ValueError(
+                "판정이 성립하지 않은 상태는 FIT 채점에서 제외한다"
+            )
         if any(
             score is not None and not 0 <= score <= 100
             for score in self.status_scores.values()

@@ -51,6 +51,11 @@ class OpenAILLMClient:
         payload = {
             "model": model,
             "store": False,
+            # 사전검토 결과는 같은 문서에 같은 판정이 나와야 한다. 기본값(1.0)
+            # 으로는 동일 문서의 CPL 확인율이 7/13~11/13 로 흔들려 프롬프트
+            # 수정 효과와 표집 잡음을 구분할 수 없었다.
+            # ponytail: 상수 0. 분산을 의도적으로 재려면 그때 설정으로 뺀다.
+            "temperature": 0,
             "input": [
                 {"role": message.role, "content": message.content}
                 for message in messages

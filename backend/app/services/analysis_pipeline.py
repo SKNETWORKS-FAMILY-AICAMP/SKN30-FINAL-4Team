@@ -45,6 +45,7 @@ from app.services.retrieval.retrieval import (
 )
 from app.services.reporting import finalize_report
 from app.schemas.sim import SimComparisonResult
+from app.services.agents.orchestrator import reconcile_cpl_for_fit
 from app.services.sim.sim_engine import (
     analyze_sim_candidates,
     load_sim_prompt,
@@ -92,6 +93,24 @@ async def run_analysis_pipeline(
             llm_client,
             settings,
         )
+        if llm_client is not None:
+            async def recheck_cpl(
+                current: CplResult,
+                fields: set[CplFieldCode],
+            ) -> CplResult:
+                return await _complete_semantic_review(
+                    document,
+                    current,
+                    fields,
+                    llm_client,
+                    settings,
+                )
+
+            reconciliation = await reconcile_cpl_for_fit(
+                result,
+                recheck=recheck_cpl,
+            )
+            result = reconciliation.result
         cpl_run = run_cpl(
             engine,
             case_id,

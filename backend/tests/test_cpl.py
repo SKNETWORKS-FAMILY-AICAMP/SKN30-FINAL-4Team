@@ -282,11 +282,13 @@ def test_llm_evidence_is_grounded_from_parser_metadata() -> None:
         "text": "지역 기업의 설비 노후화가 심각함"
     }
 
+    # 원문에 없는 인용은 그 근거만 버린다. 항목은 남되 PRESENT 를 잃는다.
     response.items[0].occurrences[0].raw_text = "문서에 없는 문장"
-    with pytest.raises(ValueError, match="contained"):
-        ground_llm_response(
-            parsed_document(), response, {CplFieldCode.BUSINESS_NEED}
-        )
+    regrounded = ground_llm_response(
+        parsed_document(), response, {CplFieldCode.BUSINESS_NEED}
+    )
+    assert regrounded[0].occurrences == []
+    assert regrounded[0].status == CplStatus.NEEDS_CONFIRMATION
 
 
 def test_table_cells_have_unique_refs_and_deterministic_roles() -> None:
@@ -337,6 +339,65 @@ def test_table_cells_have_unique_refs_and_deterministic_roles() -> None:
         item.normalized_value == {"amount_won": 30_000_000, "unit": "KRW"}
         for item in grounded[0].occurrences
     )
+
+
+def test_flattened_table_inline_segments_become_separate_rule_fragments() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="inline segment fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="table:segments",
+                block_type="table",
+                text="원문은 붙어 있음",
+                source_locator={
+                    "table_index": 1,
+                    "cells": [
+                        {
+                            "row": 0,
+                            "col": 1,
+                            "text": "○ 사업목적 : 해외시장 진출○ 사업필요성 : 판로 다변화",
+                            "segments": [
+                                {
+                                    "segment_index": 0,
+                                    "text": "○ 사업목적 : 해외시장 진출",
+                                },
+                                {
+                                    "segment_index": 1,
+                                    "text": "○ 사업필요성 : 판로 다변화",
+                                },
+                            ],
+                            "structure_status": "unresolved",
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+
+    fragments = semantic_fragments(document)
+    assert [fragment.evidence_ref for fragment in fragments] == [
+        "table:segments:cell:0:1:segment:0",
+        "table:segments:cell:0:1:segment:1",
+    ]
+    result = evaluate_cpl_rules(document)
+    purpose = next(
+        item
+        for item in result.items
+        if item.field_code == CplFieldCode.PURPOSE_GOAL
+    )
+    assert [occurrence.raw_text for occurrence in purpose.occurrences] == [
+        "해외시장 진출",
+    ]
+    need = next(
+        item
+        for item in result.items
+        if item.field_code == CplFieldCode.BUSINESS_NEED
+    )
+    assert [occurrence.raw_text for occurrence in need.occurrences] == [
+        "판로 다변화",
+    ]
 
 
 def test_quantitative_axis_values_are_normalized_by_rule() -> None:
@@ -446,7 +507,12 @@ def test_quantitative_axis_values_are_normalized_by_rule() -> None:
         },
     ],
 )
-def test_invalid_llm_evidence_invalidates_the_batch(occurrence: dict) -> None:
+def test_ungrounded_llm_evidence_is_dropped(occurrence: dict) -> None:
+    """접지에 실패한 근거만 버리고 나머지 항목은 살린다.
+
+    예전에는 예외를 올려 13개 항목 전체를 버렸다. 축을 많이 태깅할수록
+    하나가 어긋날 확률이 커져 커버리지를 올리려는 시도가 실패율을 올렸다.
+    """
     response = CplSemanticResponse.model_validate(
         {
             "items": [
@@ -460,10 +526,51 @@ def test_invalid_llm_evidence_invalidates_the_batch(occurrence: dict) -> None:
             ]
         }
     )
-    with pytest.raises(ValueError):
-        ground_llm_response(
-            parsed_document(), response, {CplFieldCode.BUSINESS_NEED}
-        )
+    grounded = ground_llm_response(
+        parsed_document(), response, {CplFieldCode.BUSINESS_NEED}
+    )
+
+    assert len(grounded) == 1
+    item = grounded[0]
+    assert item.occurrences == []
+    # 근거가 남지 않으면 PRESENT 를 주장할 수 없다.
+    assert item.status == CplStatus.NEEDS_CONFIRMATION
+    assert item.reason_code == "EVIDENCE_NOT_GROUNDED"
+
+
+def test_grounding_keeps_valid_evidence_when_one_occurrence_fails() -> None:
+    """근거 하나가 어긋나도 같은 항목의 나머지 근거는 유지된다."""
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "BUSINESS_NEED",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "need:1",
+                            "raw_text": "지역 기업",
+                            "axis_code": "NEED_PROBLEM",
+                        },
+                        {
+                            "evidence_ref": "need:1",
+                            "raw_text": "문서에 없는 문장",
+                            "axis_code": "NEED_PROBLEM",
+                        },
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+    grounded = ground_llm_response(
+        parsed_document(), response, {CplFieldCode.BUSINESS_NEED}
+    )
+
+    item = grounded[0]
+    assert item.status == CplStatus.PRESENT
+    assert [o.raw_text for o in item.occurrences] == ["지역 기업"]
 
 
 def test_purpose_axes_keep_verbatim_evidence_without_taxonomy_generation() -> None:
@@ -521,9 +628,14 @@ def test_purpose_axes_keep_verbatim_evidence_without_taxonomy_generation() -> No
         "해외시장 진출",
     ]
 
+    # 원문이 "해외시장 진출" 인데 "수출" 로 바꿔 인용하면 그 근거는 버려진다.
     response.items[0].occurrences[0].raw_text = "수출"
-    with pytest.raises(ValueError, match="contained"):
-        ground_llm_response(document, response, {CplFieldCode.PURPOSE_GOAL})
+    regrounded = ground_llm_response(document, response, {CplFieldCode.PURPOSE_GOAL})
+    assert all(
+        occurrence.raw_text != "수출"
+        for item in regrounded
+        for occurrence in item.occurrences
+    )
 
 
 def test_cpl_prompt_is_versioned_and_messages_use_fragment_contract() -> None:

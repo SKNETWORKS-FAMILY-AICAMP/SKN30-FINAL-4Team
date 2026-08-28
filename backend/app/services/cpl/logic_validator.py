@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
@@ -17,6 +18,8 @@ from app.schemas.cpl import (
 )
 from app.schemas.parsed_document import ParsedDocument
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RULESET_VERSION = "cpl-alpha-v0.2"
 LlmFailureCode = Literal[
@@ -446,24 +449,32 @@ def ground_llm_response(
         raise ValueError("Parser fragments do not have unique evidence references")
     grounded: list[CplItem] = []
     for item in response.items:
-        if item.status == "PRESENT" and not item.occurrences:
-            raise ValueError("PRESENT LLM result requires evidence")
+        # 근거 없는 PRESENT 주장은 아래에서 NEEDS_CONFIRMATION 으로 내린다.
+        # 예외를 올리면 이 항목 하나 때문에 요청한 전 필드가 폐기된다.
         if item.status == "MISSING" and item.occurrences:
             raise ValueError("MISSING LLM result cannot contain evidence")
         if item.status == "NEEDS_CONFIRMATION" and not item.reason_code:
             raise ValueError("NEEDS_CONFIRMATION LLM result requires a reason")
 
         occurrences: list[CplOccurrence] = []
+        dropped: list[str] = []
         for occurrence in item.occurrences:
+            # 근거 하나가 접지에 실패해도 나머지는 살린다. 예전에는 예외를
+            # 올려 13개 항목 전체를 버렸고, 축을 많이 태깅할수록 하나가
+            # 어긋날 확률이 커져 커버리지를 올리려는 시도가 실패율을 올렸다.
             if not occurrence.raw_text.strip() or not occurrence.evidence_ref.strip():
-                raise ValueError("LLM evidence must not be blank")
+                dropped.append("BLANK_EVIDENCE")
+                continue
             fragment = fragment_by_ref.get(occurrence.evidence_ref)
             if fragment is None:
-                raise ValueError("LLM evidence reference does not exist")
+                dropped.append("REF_NOT_FOUND")
+                continue
             if occurrence.raw_text not in fragment.text:
-                raise ValueError("LLM evidence is not contained in the parser fragment")
+                dropped.append("NOT_VERBATIM")
+                continue
             if occurrence.axis_code not in CPL_FIELD_AXES[item.field_code]:
-                raise ValueError("LLM axis is not allowed for the CPL field")
+                dropped.append("AXIS_NOT_ALLOWED")
+                continue
             source_role = fragment.source_role
             if (
                 source_role is None
@@ -489,12 +500,26 @@ def ground_llm_response(
                     extraction_method="LLM",
                 )
             )
+        status = CplStatus(item.status)
+        reason_code = item.reason_code
+        if status == CplStatus.PRESENT and not occurrences:
+            # 근거가 남지 않으면 PRESENT 를 주장할 수 없다.
+            status = CplStatus.NEEDS_CONFIRMATION
+            reason_code = reason_code or "EVIDENCE_NOT_GROUNDED"
+        if dropped:
+            logger.warning(
+                "CPL evidence dropped field=%s kept=%s dropped=%s reasons=%s",
+                item.field_code.value,
+                len(occurrences),
+                len(dropped),
+                sorted(set(dropped)),
+            )
         grounded.append(
             CplItem(
                 field_code=item.field_code,
-                status=CplStatus(item.status),
+                status=status,
                 occurrences=_deduplicate_occurrences(occurrences),
-                reason_code=item.reason_code,
+                reason_code=reason_code,
                 explanation=item.explanation,
             )
         )
@@ -520,8 +545,46 @@ def _document_fragments(document: ParsedDocument) -> list[_Fragment]:
                 cell_locator = {
                     key: value
                     for key, value in cell.items()
-                    if key != "text"
+                    if key not in {"text", "segments", "paragraphs"}
                 }
+                segments = cell.get("segments")
+                if isinstance(segments, list) and len(segments) > 1:
+                    emitted_segment = False
+                    segment_texts: list[str] = []
+                    for segment_index, segment in enumerate(segments):
+                        if not isinstance(segment, dict):
+                            continue
+                        segment_text = segment.get("text")
+                        if not isinstance(segment_text, str) or not segment_text.strip():
+                            continue
+                        emitted_segment = True
+                        segment_texts.append(segment_text)
+                        cell_ref = _cell_evidence_ref(
+                            block.block_id,
+                            cell_locator,
+                            cell_index,
+                        )
+                        segment_locator = {
+                            **cell_locator,
+                            "segment_index": segment.get(
+                                "segment_index", segment_index
+                            ),
+                        }
+                        fragments.append(
+                            _Fragment(
+                                evidence_ref=f"{cell_ref}:segment:{segment_index}",
+                                text=segment_text.strip(),
+                                page_no=block.page_no,
+                                section_path=list(block.section_path),
+                                source_locator={
+                                    **base_locator,
+                                    "table_cell": segment_locator,
+                                },
+                                block_id=block.block_id,
+                            )
+                        )
+                    if emitted_segment and "".join(segment_texts) == text:
+                        continue
                 fragments.append(
                     _Fragment(
                         evidence_ref=_cell_evidence_ref(

@@ -26,6 +26,8 @@ from app.schemas.fit import (
     FitRelationId,
     FitRelationResult,
     FitResult,
+    FitInputFeedback,
+    FitInputFeedbackReason,
     FitScoreSummary,
     FitScoringPolicy,
     FitSemanticResponse,
@@ -178,6 +180,77 @@ def load_fit_prompt(path: Path) -> str:
     return prompt
 
 
+def inspect_fit_inputs(cpl_result: CplResult) -> list[FitInputFeedback]:
+    """Return deterministic FIT input gaps that CPL may be able to repair.
+
+    This preflight deliberately covers only semantic FIT relations. FIT-4 is
+    contractually unavailable, FIT-7 is rule-owned quantitative comparison,
+    and FIT-5's absent-condition state is a valid ``NO_CONDITIONS_SPECIFIED``
+    outcome rather than an extraction error.
+    """
+
+    items = {item.field_code: item for item in cpl_result.items}
+    feedback: list[FitInputFeedback] = []
+    for relation_id, (left_selector, right_selector) in _RELATION_SELECTORS.items():
+        if relation_id == FitRelationId.FIT_5:
+            continue
+        for side, selector in (("left", left_selector), ("right", right_selector)):
+            occurrences = [
+                occurrence
+                for occurrence in items[selector.field_code].occurrences
+                if occurrence.axis_code in selector.axes
+            ]
+            if not occurrences:
+                feedback.append(
+                    FitInputFeedback(
+                        relation_id=relation_id,
+                        side=side,
+                        field_code=selector.field_code,
+                        reason_code=FitInputFeedbackReason.REQUIRED_AXIS_MISSING,
+                        required_axis_codes=_ordered_axes(selector.axes),
+                        required_source_roles=_ordered_roles(selector.roles),
+                    )
+                )
+                continue
+            if selector.roles is not None and not any(
+                occurrence.source_role in selector.roles
+                for occurrence in occurrences
+            ):
+                feedback.append(
+                    FitInputFeedback(
+                        relation_id=relation_id,
+                        side=side,
+                        field_code=selector.field_code,
+                        reason_code=FitInputFeedbackReason.SOURCE_ROLE_MISSING,
+                        required_axis_codes=_ordered_axes(
+                            {occurrence.axis_code for occurrence in occurrences}
+                        ),
+                        required_source_roles=_ordered_roles(selector.roles),
+                    )
+                )
+    return feedback
+
+
+def _ordered_axes(
+    axes: frozenset[CplAxisCode] | set[CplAxisCode | None],
+) -> list[CplAxisCode]:
+    return sorted(
+        (axis for axis in axes if axis is not None),
+        key=lambda axis: axis.value,
+    )
+
+
+def _ordered_roles(
+    roles: frozenset[CplSourceRole | None] | None,
+) -> list[CplSourceRole | None]:
+    if roles is None:
+        return []
+    return sorted(
+        roles,
+        key=lambda role: "" if role is None else role.value,
+    )
+
+
 async def analyze_fit(
     cpl_result: CplResult,
     llm_client: LLMClient | None,
@@ -216,9 +289,10 @@ async def analyze_fit(
     pending: dict[FitRelationId, _RelationInput] = {}
     for relation_id, relation_input in inputs.items():
         if relation_id == FitRelationId.FIT_5 and not relation_input.right:
+            # 판별기준 6.3: 별도 지원조건이 없다고 자동 Issue 로 보지 않는다.
             results[relation_id] = _relation_result(
                 relation_id,
-                FitStatus.INSUFFICIENT,
+                FitStatus.NOT_STATED,
                 "별도로 명시된 지원조건이 없습니다.",
                 list(relation_input.left.values()),
                 [],
@@ -434,10 +508,12 @@ def _fit_7_result(
         status = FitStatus.NEEDS_REVIEW
         reason_code = "NUMERIC_MISMATCH"
         summary = "동일 지원 개념의 정량값이 문서 안에서 서로 다릅니다."
-    elif set(left_values) != set(right_values):
-        status = FitStatus.FIT
+    elif not shared_axes:
+        # 판별기준 8.4: 한쪽에만 정보가 존재하면 자동 Issue 가 아니다. 다만
+        # 대조한 개념이 하나도 없으므로 일치로 채점하지도 않는다.
+        status = FitStatus.NOT_STATED
         reason_code = "SINGLE_SIDED_NO_CONFLICT"
-        summary = "한쪽에만 있는 정량정보에서 명시적 충돌은 확인되지 않았습니다."
+        summary = "지원내용과 지원규모 중 한쪽에만 정량정보가 있어 대조하지 않았습니다."
     else:
         status = FitStatus.FIT
         reason_code = None

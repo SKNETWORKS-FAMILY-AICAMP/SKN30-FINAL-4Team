@@ -21,6 +21,7 @@ from app.schemas.cpl import (
     CplStatus,
 )
 from app.schemas.fit import (
+    FIT_NOT_ASSESSABLE,
     FIT_RELATIONS,
     FitRelationId,
     FitResult,
@@ -320,6 +321,7 @@ def test_fit_config_defines_versioned_equal_weight_scoring() -> None:
         FitStatus.NEEDS_REVIEW: 50,
         FitStatus.CONFLICT: 0,
         FitStatus.INSUFFICIENT: None,
+        FitStatus.NOT_STATED: None,
     }
     assert set(policy.weights) == set(FIT_RELATIONS)
     assert set(policy.weights.values()) == {1}
@@ -347,7 +349,7 @@ def test_missing_evidence_uses_rule_results_without_llm() -> None:
         MustNotRunLlm(),
     )
     assert [item.relation_id for item in result.relations] == list(FIT_RELATIONS)
-    assert all(item.status == FitStatus.INSUFFICIENT for item in result.relations)
+    assert all(item.status in FIT_NOT_ASSESSABLE for item in result.relations)
     assert relation(result, FitRelationId.FIT_4).reason_code == (
         "HIERARCHY_COMPARISON_NOT_AVAILABLE"
     )
@@ -404,7 +406,7 @@ def test_fit_5_without_conditions_is_not_an_issue() -> None:
     target.occurrences = [target.occurrences[0]]
     result = run_fit(cpl, FakeLlm(fit_response()))
     fit_5 = relation(result, FitRelationId.FIT_5)
-    assert fit_5.status == FitStatus.INSUFFICIENT
+    assert fit_5.status == FitStatus.NOT_STATED
     assert fit_5.reason_code == "NO_CONDITIONS_SPECIFIED"
 
 
@@ -419,7 +421,7 @@ def test_fit_requires_the_expected_source_role_as_well_as_axis() -> None:
         update={"source_role": CplSourceRole.TARGET}
     )
     fit_5 = relation(run_fit(cpl, FakeLlm(fit_response())), FitRelationId.FIT_5)
-    assert fit_5.status == FitStatus.INSUFFICIENT
+    assert fit_5.status == FitStatus.NOT_STATED
     assert fit_5.reason_code == "NO_CONDITIONS_SPECIFIED"
 
 
@@ -444,7 +446,7 @@ def test_fit_requires_the_expected_source_role_as_well_as_axis() -> None:
         ),
         (
             [(CplAxisCode.PER_COMPANY_LIMIT, CplSourceRole.SUPPORT_SCALE, 50, "KRW")],
-            FitStatus.FIT,
+            FitStatus.NOT_STATED,
             "SINGLE_SIDED_NO_CONFLICT",
         ),
         (
@@ -452,7 +454,7 @@ def test_fit_requires_the_expected_source_role_as_well_as_axis() -> None:
                 (CplAxisCode.PER_COMPANY_LIMIT, CplSourceRole.SUPPORT_CONTENT, 30, "KRW"),
                 (CplAxisCode.TOTAL_SCALE, CplSourceRole.SUPPORT_SCALE, 50, "KRW"),
             ],
-            FitStatus.FIT,
+            FitStatus.NOT_STATED,
             "SINGLE_SIDED_NO_CONFLICT",
         ),
         ([], FitStatus.INSUFFICIENT, "COMPARISON_EVIDENCE_MISSING"),
@@ -473,6 +475,29 @@ def test_fit_7_rule_statuses(
     )
     assert fit_7.status == expected_status
     assert fit_7.reason_code == expected_reason
+
+
+def test_absent_information_never_becomes_a_perfect_score() -> None:
+    """판별기준 8.4: 한쪽에만 있는 정량정보는 Issue 도 정합도 아니다.
+
+    이전에는 FIT-7 만 살아남은 문서가 100.0 점을 받았다. 부재를 만점으로
+    환산하면 결함을 심어둔 요청서와 정상 요청서가 같은 점수를 받는다.
+    """
+    single_sided = quantitative_occurrence(
+        CplAxisCode.PER_COMPANY_LIMIT,
+        CplSourceRole.SUPPORT_SCALE,
+        50,
+        "KRW",
+        suffix="0",
+    )
+    result = run_fit(quantitative_cpl(single_sided), None)
+
+    fit_7 = relation(result, FitRelationId.FIT_7)
+    assert fit_7.status == FitStatus.NOT_STATED
+    assert fit_7.score is None
+    assert all(item.status in FIT_NOT_ASSESSABLE for item in result.relations)
+    assert result.score.assessable_count == 0
+    assert result.score.value is None
 
 
 def test_fit_7_compares_all_values_and_deduplicates_equal_values() -> None:

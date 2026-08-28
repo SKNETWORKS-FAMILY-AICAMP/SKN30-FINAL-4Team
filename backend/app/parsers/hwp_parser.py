@@ -7,7 +7,28 @@ from pathlib import PurePosixPath
 from typing import Any
 
 import olefile
-import rhwp
+
+try:
+    import rhwp
+except (ImportError, OSError) as error:  # pragma: no cover - host dependency
+    # rhwp-python ships a native extension.  Keep the application importable
+    # when that extension cannot load (for example on a worker without its
+    # runtime DLL); parsing then fails with the same safe domain error as any
+    # other parser failure.  Tests and a correctly provisioned host can still
+    # replace ``rhwp.Document.from_bytes`` normally.
+    _RHWP_IMPORT_ERROR = error
+
+    class _UnavailableDocument:
+        @staticmethod
+        def from_bytes(*_args: Any, **_kwargs: Any) -> Any:
+            raise DocumentParsingError(
+                "HWP parser dependency is unavailable"
+            ) from _RHWP_IMPORT_ERROR
+
+    class _UnavailableRhwp:
+        Document = _UnavailableDocument
+
+    rhwp = _UnavailableRhwp()
 
 from app.ports.document_parser import FileSource
 from app.schemas.parsed_document import DocumentBlock, ParsedDocument
@@ -25,7 +46,7 @@ HWP_PROTECTED_FLAGS = (1 << 1) | (1 << 2) | (1 << 4) | (1 << 8) | (1 << 10)
 
 class RhwpDocumentParser:
     name = "rhwp-python"
-    version = version("rhwp-python")
+    version = version("rhwp-python") or "unknown"
 
     def supports(self, mime_type: str, extension: str) -> bool:
         normalized_extension = extension.lower().removeprefix(".")
@@ -48,10 +69,8 @@ class RhwpDocumentParser:
             content,
             source_uri=source.filename,
         )
-        text = document.extract_text()
+        extracted_text = document.extract_text()
         ir = document.to_ir()
-        if not text.strip():
-            raise DocumentParsingError("Document contains no extractable text")
 
         blocks: list[DocumentBlock] = []
         warnings: list[str] = []
@@ -79,13 +98,22 @@ class RhwpDocumentParser:
                     )
                 )
             elif block_type == "TableBlock":
+                cells = [_table_cell(cell) for cell in block.cells]
                 locator.update(
                     {
                         "rows": block.rows,
                         "cols": block.cols,
-                        "cells": [_table_cell(cell) for cell in block.cells],
+                        "cells": cells,
                     }
                 )
+                for cell in cells:
+                    if cell.get("structure_status") == "unresolved":
+                        warnings.append(
+                            "TABLE_CELL_INLINE_SEGMENTS: "
+                            f"{block_id}:cell:{cell.get('row')}:{cell.get('col')} "
+                            "preserved as segments; paragraph boundaries are not "
+                            "inferred"
+                        )
                 blocks.append(
                     DocumentBlock(
                         block_id=block_id,
@@ -100,6 +128,14 @@ class RhwpDocumentParser:
 
         if not blocks:
             raise DocumentParsingError("Document contains no supported text blocks")
+
+        # rhwp's plain-text view can omit table content (the mockup samples do
+        # this), so the persisted extraction must be rebuilt from the structured
+        # blocks.  Cell ``segments`` are used only for a readable projection;
+        # the cell's raw ``text`` remains unchanged in the IR locator.
+        text = _canonical_text(blocks, fallback=extracted_text)
+        if not text.strip():
+            raise DocumentParsingError("Document contains no extractable text")
 
         return ParsedDocument(
             parser_name=self.name,
@@ -186,16 +222,108 @@ def _provenance(block: Any) -> dict[str, Any]:
 
 
 def _table_cell(cell: Any) -> dict[str, Any]:
-    return {
+    children = [
+        child
+        for child in getattr(cell, "blocks", [])
+        if isinstance(getattr(child, "text", None), str)
+    ]
+    paragraphs = [child.text for child in children]
+    result = {
         "row": cell.row,
         "col": cell.col,
         "row_span": cell.row_span,
         "col_span": cell.col_span,
         "grid_index": cell.grid_index,
         "role": cell.role,
-        "text": "\n".join(
-            child.text
-            for child in cell.blocks
-            if isinstance(getattr(child, "text", None), str)
-        ),
+        "text": "\n".join(paragraphs),
     }
+
+    # A well-formed cell normally exposes one ParagraphBlock per paragraph.
+    # Some HWP/HWPX samples expose several contiguous inline runs in one
+    # ParagraphBlock. Keep those runs verbatim and expose their indices so
+    # downstream evidence extraction can work at the smallest available unit
+    # without pretending they are paragraph boundaries.
+    if len(paragraphs) > 1:
+        result["paragraphs"] = paragraphs
+
+    inline_runs = [_inline_segments(child) for child in children]
+    if any(len(segments) > 1 for segments in inline_runs):
+        segment_values: list[str] = []
+        for child, segments in zip(children, inline_runs, strict=True):
+            # Once one paragraph is flattened into runs, retain every available
+            # run in order.  Single-run paragraphs remain useful neighbours for
+            # the same cell, while the paragraph list above keeps their original
+            # grouping in the raw locator.
+            segment_values.extend(segments or [child.text])
+        result["segments"] = [
+            {"segment_index": index, "text": value}
+            for index, value in enumerate(segment_values)
+            if value.strip()
+        ]
+        result["structure_status"] = "unresolved"
+    return result
+
+
+def _inline_segments(block: Any) -> list[str]:
+    inlines = getattr(block, "inlines", None)
+    if not isinstance(inlines, (list, tuple)):
+        return []
+    return [
+        value
+        for inline in inlines
+        if isinstance(value := getattr(inline, "text", None), str)
+        and value.strip()
+    ]
+
+
+def _canonical_text(
+    blocks: list[DocumentBlock],
+    *,
+    fallback: str,
+) -> str:
+    parts: list[str] = []
+    for block in blocks:
+        if block.block_type != "table":
+            if block.text.strip():
+                parts.append(block.text)
+            continue
+
+        cells = block.source_locator.get("cells")
+        if not isinstance(cells, list):
+            if block.text.strip():
+                parts.append(block.text)
+            continue
+
+        cell_parts: list[str] = []
+        for cell in cells:
+            if not isinstance(cell, dict):
+                continue
+            segments = cell.get("segments")
+            if isinstance(segments, list):
+                segment_texts = [
+                    segment.get("text")
+                    for segment in segments
+                    if isinstance(segment, dict)
+                    and isinstance(segment.get("text"), str)
+                    and segment["text"].strip()
+                ]
+                if (
+                    segment_texts
+                    and isinstance(cell.get("text"), str)
+                    and "".join(segment_texts) == cell["text"]
+                ):
+                    cell_parts.append("\n".join(segment_texts))
+                    continue
+            value = cell.get("text")
+            if isinstance(value, str) and value.strip():
+                cell_parts.append(value)
+        if cell_parts:
+            parts.append("\n".join(cell_parts))
+        elif block.text.strip():
+            parts.append(block.text)
+
+    if not parts:
+        return fallback
+
+    canonical = "\n".join(parts)
+    return canonical
