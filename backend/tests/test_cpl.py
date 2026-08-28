@@ -263,7 +263,6 @@ def test_llm_evidence_is_grounded_from_parser_metadata() -> None:
                             "axis_code": "NEED_PROBLEM",
                         }
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 }
@@ -322,7 +321,6 @@ def test_table_cells_have_unique_refs_and_deterministic_roles() -> None:
                             "axis_code": "PER_COMPANY_LIMIT",
                         },
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 }
@@ -442,7 +440,6 @@ def test_quantitative_axis_values_are_normalized_by_rule() -> None:
                             "axis_code": "SUBSIDY_RATE",
                         },
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 },
@@ -461,7 +458,6 @@ def test_quantitative_axis_values_are_normalized_by_rule() -> None:
                             "axis_code": "KPI_BASE_YEAR",
                         },
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 },
@@ -524,7 +520,6 @@ def test_ungrounded_llm_evidence_is_dropped(occurrence: dict) -> None:
                     "field_code": "BUSINESS_NEED",
                     "status": "PRESENT",
                     "occurrences": [occurrence],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 }
@@ -563,7 +558,6 @@ def test_grounding_keeps_valid_evidence_when_one_occurrence_fails() -> None:
                             "axis_code": "NEED_PROBLEM",
                         },
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 }
@@ -616,7 +610,6 @@ def test_purpose_axes_keep_verbatim_evidence_without_taxonomy_generation() -> No
                             "axis_code": "PURPOSE_DIRECTION",
                         },
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 }
@@ -841,7 +834,6 @@ def test_implementation_plan_combines_annual_and_subprogram_states(
                         }
                         for evidence_ref, raw_text, axis_code in occurrences
                     ],
-                    "absent_axis_codes": [],
                     "reason_code": None,
                     "explanation": None,
                 }
@@ -887,7 +879,6 @@ def test_openai_adapter_uses_responses_structured_output_contract() -> None:
                     "field_code": "PURPOSE_GOAL",
                     "status": "MISSING",
                     "occurrences": [],
-                    "absent_axis_codes": [],
                     "reason_code": "EXPLICIT_VALUE_NOT_FOUND",
                     "explanation": None,
                 }

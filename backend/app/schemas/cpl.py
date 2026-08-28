@@ -118,10 +118,6 @@ class CplSemanticItem(BaseModel):
     field_code: CplFieldCode
     status: Literal["PRESENT", "MISSING", "NEEDS_CONFIRMATION"]
     occurrences: list[CplSemanticOccurrence]
-    # 판별기준 16: 항목별 사실상태를 축 단위로 보여준다. occurrences 가
-    # `식별됨`이면 여기는 `미확인`이다. 근거가 없다는 사실과 확인해보니
-    # 원문에 없다는 사실은 다르고, 후자만 재검 대상에서 제외할 수 있다.
-    absent_axis_codes: list[CplAxisCode]
     reason_code: str | None
     explanation: str | None
 
@@ -136,8 +132,6 @@ class CplItem(BaseModel):
     field_code: CplFieldCode
     status: CplStatus
     occurrences: list[CplOccurrence] = Field(default_factory=list)
-    # 확인 결과 원문에 없다고 판정된 축. 규칙 추출만 돈 항목은 비어 있다.
-    absent_axes: list[CplAxisCode] = Field(default_factory=list)
     reason_code: str | None = None
     explanation: str | None = None
 

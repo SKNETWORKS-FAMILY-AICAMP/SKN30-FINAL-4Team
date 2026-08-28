@@ -195,10 +195,6 @@ def inspect_fit_inputs(cpl_result: CplResult) -> list[FitInputFeedback]:
         if relation_id == FitRelationId.FIT_5:
             continue
         for side, selector in (("left", left_selector), ("right", right_selector)):
-            if _declared_absent(items, selector):
-                # CPL 이 확인 후 원문에 없다고 판정한 축은 다시 찾아봐야
-                # 나오지 않는다. 재검을 요청하지 않는다.
-                continue
             occurrences = [
                 occurrence
                 for occurrence in items[selector.field_code].occurrences
@@ -233,21 +229,6 @@ def inspect_fit_inputs(cpl_result: CplResult) -> list[FitInputFeedback]:
                     )
                 )
     return feedback
-
-
-def _declared_absent(
-    items: dict[CplFieldCode, CplItem],
-    selector: _EvidenceSelector,
-) -> bool:
-    """CPL 이 이 선택자의 축을 전부 `원문에 없음`으로 판정했는가.
-
-    일부만 부재 선언된 경우는 나머지를 아직 못 찾은 것일 수 있으므로 참이
-    아니다. 그때는 평소대로 재검 후보로 둔다.
-    """
-    item = items.get(selector.field_code)
-    if item is None:
-        return False
-    return bool(selector.axes) and selector.axes.issubset(item.absent_axes)
 
 
 def _ordered_axes(
@@ -321,21 +302,13 @@ async def analyze_fit(
                 prompt_version,
             )
         elif not relation_input.left or not relation_input.right:
-            # CPL 이 확인 후 원문에 없다고 판정했으면 추출 실패가 아니라
-            # 문서 미기재다. 판별기준은 미기재를 Issue 로 보지 않는다.
-            absent = any(
-                _declared_absent(items, selector)
-                for selector in _RELATION_SELECTORS[relation_id]
-            )
             results[relation_id] = _relation_result(
                 relation_id,
-                FitStatus.NOT_STATED if absent else FitStatus.INSUFFICIENT,
-                "요청서에 기재되지 않아 비교하지 않았습니다."
-                if absent
-                else "비교에 필요한 요청서 정보가 부족합니다.",
+                FitStatus.INSUFFICIENT,
+                "비교에 필요한 요청서 정보가 부족합니다.",
                 list(relation_input.left.values()),
                 list(relation_input.right.values()),
-                "NOT_STATED_IN_DOCUMENT" if absent else "COMPARISON_EVIDENCE_MISSING",
+                "COMPARISON_EVIDENCE_MISSING",
                 scoring,
                 ruleset_version,
                 prompt_version,

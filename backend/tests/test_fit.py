@@ -29,12 +29,7 @@ from app.schemas.fit import (
     FitStatus,
 )
 from app.services import analysis_pipeline
-from app.services.fit.fit_engine import (
-    analyze_fit,
-    inspect_fit_inputs,
-    load_fit_prompt,
-    load_fit_scoring,
-)
+from app.services.fit.fit_engine import analyze_fit, load_fit_prompt, load_fit_scoring
 
 
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
@@ -480,66 +475,6 @@ def test_fit_7_rule_statuses(
     )
     assert fit_7.status == expected_status
     assert fit_7.reason_code == expected_reason
-
-
-def _with_absent_axes(
-    result: CplResult,
-    field_code: CplFieldCode,
-    axes: list[CplAxisCode],
-) -> CplResult:
-    item = next(item for item in result.items if item.field_code == field_code)
-    item.absent_axes = axes
-    return result
-
-
-def test_axis_declared_absent_is_not_sent_back_to_cpl_for_recheck() -> None:
-    """CPL 이 `원문에 없음`으로 판정한 축은 재검을 요청하지 않는다.
-
-    부재 선언이 없으면 같은 상황이 재검 대상으로 남는다는 것까지 확인해,
-    통과 원인이 선언 때문임을 분명히 한다.
-    """
-    cpl = cpl_result()
-    before = [
-        item
-        for item in inspect_fit_inputs(cpl)
-        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
-    ]
-    assert before, "선언이 없으면 DELIVERY_SYSTEM 은 재검 후보여야 한다"
-
-    declared = _with_absent_axes(
-        cpl_result(),
-        CplFieldCode.DELIVERY_SYSTEM,
-        [
-            CplAxisCode.DELIVERY_ORG_NAME,
-            CplAxisCode.DELIVERY_PROCEDURE_STEP,
-            CplAxisCode.DELIVERY_STEP_ROLE,
-        ],
-    )
-    after = [
-        item
-        for item in inspect_fit_inputs(declared)
-        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
-    ]
-    assert after == []
-
-    fit_6 = relation(run_fit(declared, None), FitRelationId.FIT_6)
-    assert fit_6.status == FitStatus.NOT_STATED
-    assert fit_6.reason_code == "NOT_STATED_IN_DOCUMENT"
-    assert fit_6.score is None
-
-
-def test_partially_declared_axes_stay_recheck_candidates() -> None:
-    """일부만 부재 선언된 축은 아직 못 찾은 것일 수 있으므로 재검 후보다."""
-    declared = _with_absent_axes(
-        cpl_result(),
-        CplFieldCode.DELIVERY_SYSTEM,
-        [CplAxisCode.DELIVERY_PROCEDURE_STEP],
-    )
-    assert [
-        item
-        for item in inspect_fit_inputs(declared)
-        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
-    ]
 
 
 def test_absent_information_never_becomes_a_perfect_score() -> None:
