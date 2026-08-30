@@ -1,0 +1,452 @@
+{
+  "document": "samples/hwpx/mockup_03_보통사례_청년로컬크리에이터.hwpx",
+  "authored": "2026-08-30",
+  "basis": "중소기업지원사업_PreReview_CPL_판별기준_정리본_20260821.md",
+  "what_this_is": "현재 HWPX 원문을 사람이 판독해 만든 CPL 정답. 제거된 설명성 주석이나 파일명의 등급은 근거로 사용하지 않았다.",
+  "extractor_note": "RULE은 닫힌 값 정규화, LLM은 열린 의미 축 분류를 담당한다. 모든 raw_text는 지정한 HWPX 표 셀 원문에 그대로 존재한다.",
+  "occurrence_count": 40,
+  "fields": {
+    "REQUEST_TYPE": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "☑ 세부사업 신설",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "DETAIL_NEW",
+            "selected": true,
+            "mark": "☑"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "☐ 내역사업 신설",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "SUBPROGRAM_NEW",
+            "selected": false,
+            "mark": "☐"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "☐ 내내역사업 신설",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "SUBSUBPROGRAM_NEW",
+            "selected": false,
+            "mark": "☐"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "☐ 사업내용 변경",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "CONTENT_CHANGE",
+            "selected": false,
+            "mark": "☐"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "PURPOSE_GOAL": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "전북 도내 지역 자원 및 문화 특성을 활용하는 청년 로컬크리에이터",
+          "axis_code": "PURPOSE_TARGET_CONDITION",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "지역 자원 및 문화 특성",
+          "axis_code": "PURPOSE_PROBLEM_DOMAIN",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "시제품 제작 및 온·오프라인 판로 개척 지원",
+          "axis_code": "PURPOSE_SPECIFIC_OBJECTIVE",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "지역 정착 활성화",
+          "axis_code": "PURPOSE_DIRECTION",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "IMPLEMENTATION_PLAN": {
+      "status": "NOT_APPLICABLE",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:1:1",
+          "raw_text": "(내역) 해당없음",
+          "axis_code": "PROGRAM_LEVEL_ABSENT",
+          "source_role": "SUBPROGRAM_PLAN",
+          "normalized_value": {
+            "program_level_absent": true
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "BUSINESS_PERIOD": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "2026. 05. 01. ~ 2026. 12. 31.",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "start": "2026-05-01",
+            "end": "2026-12-31",
+            "continuing": false,
+            "multi_year": false,
+            "single_year": true
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "NEW_OR_CHANGED_CONTENT": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "인플루언서 연계 온라인 마케팅 및 브랜드 패키지 디자인 지원",
+          "axis_code": "CHANGE_CONTENT",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "로컬 팝업스토어 참가 지원",
+          "axis_code": "CHANGE_CONTENT",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "BUSINESS_NEED": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "청년 인구 유출 방지 및 골목상권 혁신",
+          "axis_code": "NEED_PROBLEM",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "지역 가치 창출형 청년 기업 육성 필요",
+          "axis_code": "NEED_RESPONSE",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "LEGAL_BASIS": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "「청년기본법」 제14조",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "law_name": "청년기본법",
+            "article": "제14조"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "「전라북도 청년기업 육성 및 지원 조례」",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "law_name": "전라북도 청년기업 육성 및 지원 조례",
+            "article": null
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "LINKED_POLICY": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "전라북도 청년정책 시행계획(2026)",
+          "axis_code": "LINKED_POLICY_IDENTIFIER",
+          "source_role": null,
+          "normalized_value": {
+            "policy_identifier": "전라북도 청년정책 시행계획(2026)"
+          },
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "BUDGET": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "금 400,000,000원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "amount_won": 400000000,
+            "unit": "KRW"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "금 4억원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "amount_won": 400000000,
+            "unit": "KRW"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "TARGET_AND_CONDITIONS": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "청년 창업기업",
+          "axis_code": "TARGET_GROUP",
+          "source_role": "TARGET",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "전라북도 내",
+          "axis_code": "COND_REGION",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "만 39세 이하",
+          "axis_code": "COND_OTHER",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "업력 5년 이내",
+          "axis_code": "COND_BUSINESS_AGE",
+          "source_role": "CONDITION",
+          "normalized_value": {
+            "max_years": 5,
+            "max_operator": "LTE",
+            "unit": "YEAR"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "전북 특산물/문화자원 연계 비즈니스 모델 보유 기업",
+          "axis_code": "COND_OTHER",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "SUPPORT_CONTENT_AND_SCALE": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "인플루언서 연계 온라인 마케팅",
+          "axis_code": "SUPPORT_ACTIVITY",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "브랜드 패키지 디자인 지원",
+          "axis_code": "SUPPORT_ACTIVITY",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "로컬 팝업스토어 참가 지원",
+          "axis_code": "SUPPORT_ACTIVITY",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "기업당 최대 2,000만원",
+          "axis_code": "PER_COMPANY_LIMIT",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "amount_won": 20000000,
+            "unit": "KRW"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "총 20개사",
+          "axis_code": "COMPANY_COUNT",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "count": 20,
+            "unit": "COMPANY"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "DELIVERY_SYSTEM": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "(재)전북창조경제혁신센터",
+          "axis_code": "DELIVERY_ORG_NAME",
+          "source_role": "DELIVERY_ORG",
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "EXPECTED_EFFECTS_AND_PERFORMANCE": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "로컬 브랜드",
+          "axis_code": "EFFECT_SUBJECT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "참여 청년 기업",
+          "axis_code": "EFFECT_SUBJECT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "로컬 브랜드 인지도 향상",
+          "axis_code": "EFFECT_CONTENT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "참여 청년 기업 매출 20% 증가",
+          "axis_code": "EFFECT_CONTENT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "향상",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "증가",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "마케팅 지원 기업 수",
+          "axis_code": "KPI_NAME",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "20개사",
+          "axis_code": "KPI_TARGET_VALUE",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "number": 20,
+            "unit": "COMPANY"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "SNS 브랜드 노출 수",
+          "axis_code": "KPI_NAME",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "10만건",
+          "axis_code": "KPI_TARGET_VALUE",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "number": 100000,
+            "unit": "CASE"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    }
+  },
+  "contract_gaps": [
+    "성과지표 목표값의 '개사'와 '만건' 단위·배수 정규화가 현재 구현에 없다. 골든에는 사람이 해석한 단위와 값을 기록했다."
+  ]
+}

@@ -413,6 +413,95 @@ def test_flattened_table_inline_segments_become_separate_rule_fragments() -> Non
     ]
 
 
+def test_unlabeled_inline_segments_keep_the_preceding_label_ownership() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="inline continuation fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="table:segments",
+                block_type="table",
+                text="원문은 붙어 있음",
+                source_locator={
+                    "table_index": 1,
+                    "cells": [
+                        {
+                            "row": 0,
+                            "col": 1,
+                            "text": (
+                                "○ 지원내용 :"
+                                "- 온라인 마케팅 지원"
+                                "- 팝업스토어 참가 지원"
+                                "○ 사업예산 : 1억원"
+                                "○ 수행기관 : 전담기관"
+                            ),
+                            "segments": [
+                                {"segment_index": 0, "text": "○ 지원내용 :"},
+                                {
+                                    "segment_index": 1,
+                                    "text": "- 온라인 마케팅 지원",
+                                },
+                                {
+                                    "segment_index": 2,
+                                    "text": "- 팝업스토어 참가 지원",
+                                },
+                                {
+                                    "segment_index": 3,
+                                    "text": "○ 사업예산 : 1억원",
+                                },
+                                {
+                                    "segment_index": 4,
+                                    "text": "○ 수행기관 : 전담기관",
+                                },
+                            ],
+                            "structure_status": "unresolved",
+                        },
+                        {
+                            "row": 1,
+                            "col": 0,
+                            "text": "기대효과",
+                        },
+                        {
+                            "row": 1,
+                            "col": 1,
+                            "text": "○ 파급효과 : 매출 증가○ 성과지표 : 지원 기업 수",
+                            "segments": [
+                                {
+                                    "segment_index": 0,
+                                    "text": "○ 파급효과 : 매출 증가",
+                                },
+                                {
+                                    "segment_index": 1,
+                                    "text": "○ 성과지표 : 지원 기업 수",
+                                },
+                            ],
+                            "structure_status": "unresolved",
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+
+    fragments = semantic_fragments(document)
+    by_text = {fragment.text: fragment for fragment in fragments}
+
+    for text in ["- 온라인 마케팅 지원", "- 팝업스토어 참가 지원"]:
+        assert by_text[text].field_codes == {
+            CplFieldCode.SUPPORT_CONTENT_AND_SCALE
+        }
+        assert by_text[text].source_role == CplSourceRole.SUPPORT_CONTENT
+    assert by_text["○ 사업예산 : 1억원"].field_codes == set()
+    assert by_text["○ 수행기관 : 전담기관"].field_codes == {
+        CplFieldCode.DELIVERY_SYSTEM
+    }
+    assert (
+        by_text["○ 성과지표 : 지원 기업 수"].source_role
+        == CplSourceRole.PERFORMANCE_INDICATOR
+    )
+
+
 def test_semantic_grounding_rejects_evidence_owned_by_another_cpl_field() -> None:
     response = CplSemanticResponse.model_validate(
         {
@@ -1342,6 +1431,64 @@ def test_merge_replaces_unaxis_rule_evidence_and_keeps_distinct_axes() -> None:
     ]
 
 
+def test_merge_collapses_only_contained_rule_llm_occurrences_for_the_same_fact() -> None:
+    statuses = [CplStatus.MISSING] * 13
+    field_code = CplFieldCode.SUPPORT_CONTENT_AND_SCALE
+    statuses[CPL_FIELDS.index(field_code)] = CplStatus.PRESENT
+    rule_result = result_with_statuses(statuses)
+    support = next(item for item in rule_result.items if item.field_code == field_code)
+    rule = CplOccurrence(
+        raw_text="최대 5,000만원",
+        normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
+        axis_code=CplAxisCode.PER_COMPANY_LIMIT,
+        source_role=CplSourceRole.SUPPORT_CONTENT,
+        source_locator={"body_block_index": 4, "row": 3, "col": 1},
+        block_id="body:4:cell:3:1",
+        extraction_method="RULE",
+    )
+    support.occurrences = [rule]
+    candidate = CplItem(
+        field_code=field_code,
+        status=CplStatus.PRESENT,
+        occurrences=[
+            CplOccurrence(
+                raw_text="기업당 한도: 최대 5,000만원",
+                normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
+                axis_code=CplAxisCode.PER_COMPANY_LIMIT,
+                source_role=CplSourceRole.SUPPORT_CONTENT,
+                source_locator={"body_block_index": 4, "row": 3, "col": 1},
+                block_id="body:4:cell:3:1",
+                extraction_method="LLM",
+            ),
+            CplOccurrence(
+                raw_text="기업당 한도: 최대 5,000만원",
+                normalized_value={"amount_won": 40_000_000, "unit": "KRW"},
+                axis_code=CplAxisCode.PER_COMPANY_LIMIT,
+                source_role=CplSourceRole.SUPPORT_CONTENT,
+                source_locator={"body_block_index": 4, "row": 3, "col": 1},
+                block_id="body:4:cell:3:1",
+                extraction_method="LLM",
+            ),
+            CplOccurrence(
+                raw_text="기업당 한도: 최대 5,000만원",
+                normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
+                axis_code=CplAxisCode.PER_COMPANY_LIMIT,
+                source_role=CplSourceRole.SUPPORT_CONTENT,
+                source_locator={"body_block_index": 4, "row": 9, "col": 1},
+                block_id="body:4:cell:9:1",
+                extraction_method="LLM",
+            ),
+        ],
+    )
+
+    merged = merge_llm_result(rule_result, [candidate])
+    occurrences = next(
+        item for item in merged.items if item.field_code == field_code
+    ).occurrences
+
+    assert occurrences == [rule, candidate.occurrences[1], candidate.occurrences[2]]
+
+
 @pytest.mark.parametrize(
     ("period", "plan_lines", "occurrences", "expected_status"),
     [
@@ -2118,6 +2265,21 @@ def test_business_period_accepts_general_date_tokens(
     assert occurrence.normalized_value == expected
 
 
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        "2026. 02. 30. ~ 2028. 12. 31.",
+        "2026. 01. 01. ~ 2028. 02. 30.",
+    ],
+)
+def test_business_period_does_not_promote_a_valid_boundary_when_the_other_is_invalid(
+    raw_text: str,
+) -> None:
+    result = evaluate_cpl_rules(paragraph_document([f"사업기간: {raw_text}"]))
+    occurrence = occurrences_for(result, CplFieldCode.BUSINESS_PERIOD)[0]
+    assert occurrence.normalized_value is None
+
+
 def test_legal_basis_emits_one_occurrence_per_citation() -> None:
     result = evaluate_cpl_rules(
         paragraph_document(
@@ -2135,6 +2297,39 @@ def test_legal_basis_emits_one_occurrence_per_citation() -> None:
             "article": "제9조",
         },
     ]
+
+
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        "관련 법령에 따라 추진",
+        "해당 법률에 따름",
+        "상위 법령에 근거함",
+        "기타 법률을 준용함",
+    ],
+)
+def test_legal_basis_does_not_invent_a_law_from_a_generic_reference(
+    raw_text: str,
+) -> None:
+    result = evaluate_cpl_rules(paragraph_document([f"지원근거: {raw_text}"]))
+    item = next(
+        item for item in result.items if item.field_code == CplFieldCode.LEGAL_BASIS
+    )
+    assert item.status == CplStatus.NEEDS_CONFIRMATION
+    assert [occurrence.normalized_value for occurrence in item.occurrences] == [None]
+
+
+def test_legal_basis_still_accepts_an_unquoted_named_ordinance() -> None:
+    result = evaluate_cpl_rules(
+        paragraph_document(
+            ["지원근거: 대구광역시 수출 중소기업 육성 조례 제8조"]
+        )
+    )
+    occurrence = occurrences_for(result, CplFieldCode.LEGAL_BASIS)[0]
+    assert occurrence.normalized_value == {
+        "law_name": "대구광역시 수출 중소기업 육성 조례",
+        "article": "제8조",
+    }
 
 
 def test_numeric_condition_ranges_are_single_normalized_occurrences() -> None:

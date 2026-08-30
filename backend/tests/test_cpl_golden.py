@@ -1,3 +1,11 @@
+import json
+import re
+import zipfile
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import pytest
+
 from app.services.cpl.golden_evaluator import evaluate_golden
 
 
@@ -57,6 +65,42 @@ def test_golden_evaluator_is_one_to_one_and_checks_normalized_values() -> None:
         "total": 2,
         "accuracy": 0.0,
     }
+
+
+@pytest.mark.parametrize("name", ["mockup_03", "mockup_08"])
+def test_authored_golden_occurrences_exist_in_the_exact_hwpx_cells(name: str) -> None:
+    root = Path(__file__).parents[2]
+    golden = json.loads(
+        (root / "samples" / "golden" / f"{name}.json").read_text(encoding="utf-8")
+    )
+    hwpx = root / golden["document"]
+    with zipfile.ZipFile(hwpx) as archive:
+        section = ET.fromstring(archive.read("Contents/section0.xml"))
+
+    cells: dict[tuple[int, int], str] = {}
+    for cell in section.iter():
+        if not cell.tag.endswith("}tc"):
+            continue
+        address = next(child for child in cell if child.tag.endswith("}cellAddr"))
+        text = "".join(
+            node.text or "" for node in cell.iter() if node.tag.endswith("}t")
+        )
+        cells[(int(address.attrib["rowAddr"]), int(address.attrib["colAddr"]))] = text
+
+    occurrences = [
+        occurrence
+        for field in golden["fields"].values()
+        for occurrence in field["occurrences"]
+    ]
+    assert len(occurrences) == golden["occurrence_count"]
+    for occurrence in occurrences:
+        match = re.fullmatch(
+            r"body:\d+:cell:(?P<row>\d+):(?P<col>\d+)",
+            occurrence["evidence_ref"],
+        )
+        assert match is not None
+        cell_text = cells[(int(match.group("row")), int(match.group("col")))]
+        assert occurrence["raw_text"] in cell_text
 
 
 def _gold(raw_text: str, normalized_value: object) -> dict:

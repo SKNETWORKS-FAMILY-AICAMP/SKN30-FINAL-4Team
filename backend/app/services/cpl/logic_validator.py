@@ -206,6 +206,9 @@ _UNQUOTED_LAW_PATTERN = re.compile(
     rf"(?P<law>[가-힣A-Za-z0-9·ㆍ ]{{1,80}}?"
     rf"(?:특별법|법률|조례|규칙|법))\s*(?P<article>{_ARTICLE_PATTERN})?"
 )
+_GENERIC_LAW_REFERENCE_PATTERN = re.compile(
+    r"^(?:(?:관련|해당|관계|상위|기타)\s*)?법(?:률)?$"
+)
 _RATIO_PATTERN = re.compile(r"(?<![\d.])(?P<number>\d+(?:\.\d+)?)\s*%")
 _COMPANY_COUNT_PATTERN = re.compile(
     r"(?<!\d)(?P<number>\d{1,3}(?:,\d{3})*|\d+)\s*(?:개\s*사|기업|개\s*업체)"
@@ -864,6 +867,60 @@ def semantic_fragments(document: ParsedDocument) -> list[_Fragment]:
             role = _source_role_for_alias(match.group("label"))
             if role is not None:
                 outer_roles[target.evidence_ref].add(role)
+
+    # Some HWPX cells flatten visual lines into inline segments.  A label-only
+    # segment owns the following unlabeled segments until the next label in the
+    # same cell.  Cell-level ownership from an adjacent container label applies
+    # to every segment in that value cell.
+    segment_cells: dict[tuple[str, int, int], list[_Fragment]] = {}
+    for fragment in fragments:
+        cell = fragment.source_locator.get("table_cell")
+        if not isinstance(cell, dict):
+            continue
+        row = cell.get("row")
+        col = cell.get("col")
+        segment_index = cell.get("segment_index")
+        if all(isinstance(value, int) for value in (row, col, segment_index)):
+            segment_cells.setdefault((fragment.block_id, row, col), []).append(
+                fragment
+            )
+
+    for siblings in segment_cells.values():
+        cell_fields = {
+            field
+            for fragment in siblings
+            for field in outer_fields[fragment.evidence_ref]
+        }
+        cell_roles = {
+            role
+            for fragment in siblings
+            for role in outer_roles[fragment.evidence_ref]
+        }
+        active_fields: set[CplFieldCode] = set()
+        active_roles: set[CplSourceRole] = set()
+        for fragment in sorted(
+            siblings,
+            key=lambda item: item.source_locator["table_cell"]["segment_index"],
+        ):
+            outer_fields[fragment.evidence_ref].update(cell_fields)
+            matches = _line_label_matches(fragment.text.strip())
+            has_known_label = any(
+                _label_match(fragment.text.strip(), aliases) is not None
+                for aliases in _LABEL_ALIASES.values()
+            )
+            if has_known_label:
+                active_fields = {field for field, _match in matches}
+                active_roles = {
+                    role
+                    for _field, match in matches
+                    if (role := _source_role_for_alias(match.group("label")))
+                    is not None
+                }
+            else:
+                outer_fields[fragment.evidence_ref].update(active_fields)
+                outer_roles[fragment.evidence_ref].update(
+                    active_roles or cell_roles
+                )
 
     resolved: list[_Fragment] = []
     for fragment in fragments:
@@ -1686,8 +1743,7 @@ def _item_from_rule_occurrences(
 
 def _normalize_period(value: str) -> dict | None:
     tokens = [_date_token(match) for match in _DATE_TOKEN_PATTERN.finditer(value)]
-    tokens = [token for token in tokens if token is not None]
-    if not tokens:
+    if not tokens or any(token is None for token in tokens):
         return None
     start, start_year, start_short = tokens[0]
     if re.search(r"계속(?:사업)?", value):
@@ -1920,7 +1976,10 @@ def _legal_citations(value: str) -> list[tuple[str, dict]]:
     for match in _UNQUOTED_LAW_PATTERN.finditer(value):
         if any(start <= match.start() < end for start, end in occupied):
             continue
-        citations.append(_legal_citation(match))
+        citation = _legal_citation(match)
+        if _GENERIC_LAW_REFERENCE_PATTERN.fullmatch(citation[1]["law_name"]):
+            continue
+        citations.append(citation)
     return citations
 
 
@@ -1986,7 +2045,31 @@ def _merge_occurrences(
         if occurrence.axis_code is not None
         or _occurrence_location_key(occurrence) not in concrete_llm_locations
     ]
-    return _deduplicate_occurrences([*rules, *llm_occurrences])
+    llm = [
+        occurrence
+        for occurrence in llm_occurrences
+        if not any(
+            _same_contained_fact(rule, occurrence)
+            for rule in rules
+        )
+    ]
+    return _deduplicate_occurrences([*rules, *llm])
+
+
+def _same_contained_fact(rule: CplOccurrence, llm: CplOccurrence) -> bool:
+    rule_text = rule.raw_text.strip()
+    llm_text = llm.raw_text.strip()
+    return (
+        rule.axis_code == llm.axis_code
+        and rule.source_role == llm.source_role
+        and rule.normalized_value == llm.normalized_value
+        and rule.page_no == llm.page_no
+        and rule.block_id == llm.block_id
+        and rule.section_path == llm.section_path
+        and rule.source_locator == llm.source_locator
+        and bool(rule_text and llm_text)
+        and (rule_text in llm_text or llm_text in rule_text)
+    )
 
 
 def _occurrence_key(occurrence: CplOccurrence) -> str:
