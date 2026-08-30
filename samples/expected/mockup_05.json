@@ -1,0 +1,31 @@
+{
+  "document": "samples/hwpx/mockup_05_저급사례_AI바우처_모순충돌.hwpx",
+  "grade": "POOR",
+  "source_annotation": "보완필요(저급) 사례 1 (Poor - 정합도 48% / 대상-조건충돌 & 예산산술충돌)",
+  "annotated_defects": [
+    "업력 3년 미만 초기 창업기업에게 최근 3개년 연평균 매출 50억원 이상을 요구해 정면 모순",
+    "기업당 5,000만원 × 20개사 = 10억원인데 사업예산은 3억원",
+    "지원근거 공란",
+    "수행기관 공란"
+  ],
+  "fit": {
+    "FIT-5": {
+      "status": "CONFLICT",
+      "covered_by_contract": true,
+      "why": "업력 3년 미만과 3개년 연평균 매출 50억원 이상은 동시에 성립할 수 없다"
+    },
+    "FIT-7": {
+      "status": "CONFLICT",
+      "covered_by_contract": false,
+      "why": "기업당 한도 × 지원기업수와 사업예산의 산술 불일치. 현재 FIT-7 은 지원내용 구역과 지원규모 구역의 같은 축만 비교하며 BUDGET 을 보지 않는다. 계약을 늘리기 전까지 이 결함은 탐지 대상이 아니다"
+    }
+  },
+  "cpl": {
+    "LEGAL_BASIS": "MISSING",
+    "DELIVERY_SYSTEM": "값 없음. PRESENT 로 판정하면 오탐이다"
+  },
+  "blank_markers": {
+    "LEGAL_BASIS": "(공란)",
+    "DELIVERY_SYSTEM": "라벨만 있고 값이 비어 있음"
+  }
+}
