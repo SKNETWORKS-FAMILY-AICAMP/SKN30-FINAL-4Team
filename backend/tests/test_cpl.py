@@ -2766,6 +2766,206 @@ def test_llm_failure_only_degrades_the_fields_it_was_asked_about() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "failure_reason",
+    [
+        "LLM_UNAVAILABLE",
+        "LLM_TIMEOUT",
+        "LLM_INVALID_RESPONSE",
+        "EVIDENCE_OWNERSHIP_UNRESOLVED",
+    ],
+)
+def test_targeted_recheck_without_plan_preserves_prior_plan_failure(
+    failure_reason: str,
+) -> None:
+    document = implementation_plan_document(
+        "2026년 ~ 2028년",
+        [
+            "연차별 추진계획: 2026년 구축, 2027년 확산",
+            "내역사업별 추진계획: 내역사업",
+        ],
+    )
+    rule_result = evaluate_cpl_rules(document)
+    first = merge_llm_result(
+        rule_result,
+        [
+            CplItem(
+                field_code=CplFieldCode.IMPLEMENTATION_PLAN,
+                status=CplStatus.NEEDS_CONFIRMATION,
+                reason_code=failure_reason,
+                explanation="잘못된 계획 근거 응답",
+            )
+        ],
+    )
+    first_plan = next(
+        item
+        for item in first.items
+        if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
+    )
+    assert first_plan.status == CplStatus.NEEDS_CONFIRMATION
+    assert first_plan.reason_code == failure_reason
+
+    rechecked = merge_llm_result(
+        first,
+        [
+            CplItem(
+                field_code=CplFieldCode.EXPECTED_EFFECTS_AND_PERFORMANCE,
+                status=CplStatus.NEEDS_CONFIRMATION,
+                reason_code="SEMANTIC_REVIEW_REQUIRED",
+            )
+        ],
+    )
+    rechecked_plan = next(
+        item
+        for item in rechecked.items
+        if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
+    )
+
+    assert rechecked_plan.status == first_plan.status
+    assert rechecked_plan.reason_code == first_plan.reason_code
+    assert rechecked_plan.explanation == first_plan.explanation
+    assert rechecked_plan.occurrences == first_plan.occurrences
+
+
+def test_valid_plan_recheck_recomputes_implementation_plan_status() -> None:
+    document = implementation_plan_document(
+        "2026년 ~ 2028년",
+        [
+            "추진계획: 2026년 구축, 2027년 확산; 내역사업 추진내용",
+        ],
+    )
+    rule_result = evaluate_cpl_rules(document)
+    invalid_response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "IMPLEMENTATION_PLAN",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "plan:0",
+                            "raw_text": "사업 목적 raw",
+                            "axis_code": "ANNUAL_PLAN_CONTENT",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": "잘못된 계획 근거 응답",
+                }
+            ]
+        }
+    )
+    first = merge_llm_result(
+        rule_result,
+        ground_llm_response(
+            document, invalid_response, {CplFieldCode.IMPLEMENTATION_PLAN}
+        ),
+    )
+    first_plan = next(
+        item
+        for item in first.items
+        if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
+    )
+    assert first_plan.status == CplStatus.NEEDS_CONFIRMATION
+    assert first_plan.reason_code == "LLM_INVALID_RESPONSE"
+    before_recheck = first_plan.model_dump(mode="json")
+
+    valid_response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "IMPLEMENTATION_PLAN",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "plan:0",
+                            "raw_text": "2026년 구축, 2027년 확산",
+                            "axis_code": "ANNUAL_PLAN_CONTENT",
+                        },
+                        {
+                            "evidence_ref": "plan:0",
+                            "raw_text": "내역사업 추진내용",
+                            "axis_code": "SUBPROGRAM_PLAN_CONTENT",
+                        },
+                    ],
+                    "reason_code": None,
+                    "explanation": "계획 근거 확인",
+                }
+            ]
+        }
+    )
+    recovered = merge_llm_result(
+        first,
+        ground_llm_response(
+            document, valid_response, {CplFieldCode.IMPLEMENTATION_PLAN}
+        ),
+    )
+    plan = next(
+        item
+        for item in recovered.items
+        if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
+    )
+
+    assert plan.status == CplStatus.PRESENT
+    assert plan.reason_code is None
+    assert any(
+        occurrence.axis_code == CplAxisCode.SUBPROGRAM_PLAN_CONTENT
+        for occurrence in plan.occurrences
+    )
+    assert first_plan.model_dump(mode="json") == before_recheck
+
+
+@pytest.mark.parametrize("candidate_mode", ["invalid", "duplicate"])
+def test_invalid_plan_candidate_does_not_recompute_prior_plan_failure(
+    candidate_mode: str,
+) -> None:
+    document = implementation_plan_document(
+        "2026년 ~ 2028년",
+        [
+            "연차별 추진계획: 2026년 구축, 2027년 확산",
+            "내역사업별 추진계획: 내역사업",
+        ],
+    )
+    first = merge_llm_result(
+        evaluate_cpl_rules(document),
+        [
+            CplItem(
+                field_code=CplFieldCode.IMPLEMENTATION_PLAN,
+                status=CplStatus.NEEDS_CONFIRMATION,
+                reason_code="LLM_TIMEOUT",
+            )
+        ],
+    )
+    if candidate_mode == "invalid":
+        candidates = [
+            CplItem(
+                field_code=CplFieldCode.IMPLEMENTATION_PLAN,
+                status=CplStatus.PRESENT,
+            )
+        ]
+    else:
+        candidates = [
+            CplItem(
+                field_code=CplFieldCode.IMPLEMENTATION_PLAN,
+                status=CplStatus.NEEDS_CONFIRMATION,
+                reason_code="LLM_INVALID_RESPONSE",
+            ),
+            CplItem(
+                field_code=CplFieldCode.IMPLEMENTATION_PLAN,
+                status=CplStatus.PRESENT,
+            ),
+        ]
+
+    merged = merge_llm_result(first, candidates)
+    plan = next(
+        item
+        for item in merged.items
+        if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
+    )
+
+    assert plan.status == CplStatus.NEEDS_CONFIRMATION
+    assert plan.reason_code == "LLM_INVALID_RESPONSE"
+
+
 def test_parser_version_survives_missing_rhwp_distribution() -> None:
     """rhwp 배포판이 없어도 모듈 import 가 깨지지 않는다.
 

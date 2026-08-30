@@ -612,7 +612,13 @@ def merge_llm_result(
             )
         )
 
-    _resolve_implementation_plan(merged_items)
+    plan_candidate = candidate_by_code.get(CplFieldCode.IMPLEMENTATION_PLAN)
+    if (
+        plan_candidate is not None
+        and CplFieldCode.IMPLEMENTATION_PLAN not in invalid_fields
+        and plan_candidate.reason_code not in CPL_INCOMPLETE_REASON_CODES
+    ):
+        _resolve_implementation_plan(merged_items)
     invalid_unresolved_fields = {
         rule_item.field_code: candidate.reason_code
         for rule_item in rule_result.items
