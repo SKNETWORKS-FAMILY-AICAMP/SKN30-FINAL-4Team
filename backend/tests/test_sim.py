@@ -206,11 +206,13 @@ class FakeLlm:
 
 def test_versioned_sim_policy_and_prompt_load() -> None:
     policy = load_sim_scoring(Path("config/sim_scoring.json"))
-    prompt = load_sim_prompt(Path("config/prompts/sim-v0.1.txt"))
+    prompt = load_sim_prompt(Path("config/prompts/sim-v0.2.txt"))
+    assert policy.version == "sim-alpha-v0.2"
     assert policy.axis_weights[SimAxis.DELIVERY] == 0.10
     assert policy.status_scores[SimStatus.INSUFFICIENT] is None
     assert policy.retrieval.top_k == 5
     assert "Do not calculate scores or grades" in prompt
+    assert "Judge every axis independently" in prompt
 
 
 def test_invalid_scoring_policy_is_rejected() -> None:
@@ -247,13 +249,58 @@ def test_candidate_summary_adapter_preserves_source_and_detail_warning() -> None
         "SOURCE"
     }
     assert {item.profile_key for item in profile[SimAxis.CONTENT].values()} == {
-        "activity",
-        "instrument",
-        "item",
+        "source_text",
     }
     assert warnings == [
         "Candidate summary refers to an unparsed detail attachment for: target"
     ]
+
+
+def test_candidate_profile_does_not_replicate_unstructured_summary_across_keys() -> None:
+    profile, _ = _candidate_profile(candidate())
+
+    for axis, source_field in (
+        (SimAxis.PURPOSE, "purpose"),
+        (SimAxis.TARGET, "target"),
+        (SimAxis.CONTENT, "content"),
+    ):
+        source_evidence = [
+            evidence
+            for evidence in profile[axis].values()
+            if evidence.source_locator.get("source_field") == source_field
+        ]
+        assert len(source_evidence) == 1
+        assert source_evidence[0].profile_key == "source_text"
+
+
+def test_candidate_profile_matches_the_authored_sim_golden() -> None:
+    golden = json.loads(
+        (Path(__file__).parents[2] / "samples" / "golden" / "sim_profile_01.json")
+        .read_text(encoding="utf-8")
+    )
+    profile, _ = _candidate_profile(candidate())
+    actual = {}
+    for axis in SimAxis:
+        actual[axis.value] = sorted(
+            [
+                {
+                    "source_field": evidence.source_locator["source_field"],
+                    "profile_key": evidence.profile_key,
+                    "excerpt": evidence.excerpt,
+                }
+                for evidence in profile[axis].values()
+            ],
+            key=lambda value: (value["source_field"], value["profile_key"]),
+        )
+    expected = {
+        axis: sorted(
+            values,
+            key=lambda value: (value["source_field"], value["profile_key"]),
+        )
+        for axis, values in golden["expected"].items()
+    }
+    assert actual == expected
+    assert golden["invariants"]["unstructured_source_excerpt_max_profile_keys"] == 1
 
 
 def test_semantic_comparison_is_grounded_and_scored_without_delivery() -> None:
@@ -283,7 +330,7 @@ def test_semantic_comparison_is_grounded_and_scored_without_delivery() -> None:
     assert set(llm.user_input["axes"]) == {axis.value for axis in SimAxis}
 
 
-def test_invalid_llm_evidence_invalidates_candidate_without_losing_sources() -> None:
+def test_invalid_llm_evidence_invalidates_only_its_axis() -> None:
     request = _request_profile(cpl_result())
     public, warnings = _candidate_profile(candidate())
     result = asyncio.run(
@@ -302,7 +349,14 @@ def test_invalid_llm_evidence_invalidates_candidate_without_losing_sources() -> 
     )
     assert result.review_grade == SimReviewGrade.ON_HOLD
     assert result.weighted_score is None
+    assert result.assessable_axis_count == 2
     assert result.axes.purpose.reason_code == "LLM_INVALID_RESPONSE"
     assert result.axes.purpose.request_evidence
     assert result.axes.purpose.candidate_evidence
-    assert result.warnings[-1].endswith("LLM_INVALID_RESPONSE")
+    assert result.axes.target.status == SimStatus.PARTIAL
+    assert result.axes.content.status == SimStatus.DIFFERENT
+    assert result.axes.delivery.status == SimStatus.INSUFFICIENT
+    assert result.comparison_summary == "일부 비교축을 완료하지 못했습니다."
+    assert result.warnings[-1] == (
+        "SIM semantic axis incomplete: SIM-1:LLM_INVALID_RESPONSE"
+    )

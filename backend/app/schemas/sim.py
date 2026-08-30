@@ -129,6 +129,14 @@ class SimComparisonResult(BaseModel):
         assessable_count = sum(result.score is not None for result in results)
         if self.assessable_axis_count != assessable_count:
             raise ValueError("SIM assessable axis count is inconsistent")
+        core_assessable = all(result.score is not None for result in results[:3])
+        if not core_assessable:
+            if (
+                self.weighted_score is not None
+                or self.review_grade != SimReviewGrade.ON_HOLD
+            ):
+                raise ValueError("SIM core axes must be assessable before scoring")
+            return self
         if assessable_count == 0:
             if (
                 self.weighted_score is not None

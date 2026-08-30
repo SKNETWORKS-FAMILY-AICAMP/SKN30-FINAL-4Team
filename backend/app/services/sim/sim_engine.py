@@ -59,22 +59,17 @@ _REQUEST_PROFILE_KEYS: dict[CplAxisCode, tuple[SimAxis, str]] = {
 }
 
 _CANDIDATE_CONTAINER_KEYS: dict[SimAxis, tuple[str, ...]] = {
-    SimAxis.PURPOSE: ("problem_domain", "direction", "specific_objective"),
-    SimAxis.TARGET: (
-        "target_group",
-        "company_type",
-        "industry",
-        "region",
-        "business_age",
-        "revenue",
-        "headcount",
-        "certification_or_status",
-        "other_condition",
-        "exclusion",
-    ),
-    SimAxis.CONTENT: ("activity", "instrument", "item"),
+    # The Open API summary is a source excerpt, not a field-level semantic
+    # profile. Keep it once per source container and let the comparison model
+    # interpret only the meaning explicitly present in that excerpt.
+    SimAxis.PURPOSE: ("source_text",),
+    SimAxis.TARGET: ("source_text",),
+    SimAxis.CONTENT: ("source_text",),
     SimAxis.DELIVERY: ("organization",),
 }
+_SIM_CORE_AXES = frozenset(
+    {SimAxis.PURPOSE, SimAxis.TARGET, SimAxis.CONTENT}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,13 +327,26 @@ async def _compare_candidate(
         # 남긴다. 공고 본문·요청서 원문·LLM 응답 본문은 남기지 않는다.
         failure_code = "LLM_INVALID_RESPONSE"
         failure_error = error
+    detail = None
+    if isinstance(failure_error, ValidationError):
+        detail = ",".join(
+            f"{'.'.join(map(str, item['loc']))}:{item['type']}"
+            for item in failure_error.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            )
+        )
+    elif type(failure_error) is ValueError:
+        detail = str(failure_error)
     logger.warning(
-        "SIM comparison failed rank=%s announcement_id=%s failure=%s error=%s: %s",
+        "SIM comparison failed rank=%s announcement_id=%s "
+        "failure=%s error=%s detail=%s",
         candidate.rank,
         candidate.announcement_id,
         failure_code,
         type(failure_error).__name__,
-        failure_error,
+        detail,
     )
     return _failed_comparison(
         candidate,
@@ -365,40 +373,74 @@ def _ground_response(
     model_profile: str,
 ) -> SimComparisonResult:
     results: dict[SimAxis, SimAxisResult] = {}
+    grounded_warnings = list(warnings)
+    invalid_axes: list[SimAxis] = []
     for axis in SimAxis:
         semantic = getattr(response.axes, axis.value)
         request_refs = semantic.request_evidence_refs
         candidate_refs = semantic.candidate_evidence_refs
-        if len(request_refs) != len(set(request_refs)):
-            raise ValueError("SIM response contains duplicate request evidence")
-        if len(candidate_refs) != len(set(candidate_refs)):
-            raise ValueError("SIM response contains duplicate candidate evidence")
-        if not set(request_refs).issubset(request[axis]):
-            raise ValueError("SIM response contains invalid request evidence")
-        if not set(candidate_refs).issubset(candidate_profile[axis]):
-            raise ValueError("SIM response contains invalid candidate evidence")
-        if semantic.status != SimStatus.INSUFFICIENT and (
-            not request_refs or not candidate_refs
-        ):
-            raise ValueError("Assessable SIM response requires evidence on both sides")
-        if semantic.status != SimStatus.SIMILAR and not semantic.reason_code:
-            raise ValueError("Non-SIMILAR SIM response requires a reason code")
-        results[axis] = _axis_result(
-            axis,
-            semantic.status,
-            semantic.summary,
-            semantic.common_points,
-            semantic.differences,
-            [request[axis][reference] for reference in request_refs],
-            [candidate_profile[axis][reference] for reference in candidate_refs],
-            semantic.reason_code,
-            scoring,
-        )
+        try:
+            if len(request_refs) != len(set(request_refs)):
+                raise ValueError("SIM response contains duplicate request evidence")
+            if len(candidate_refs) != len(set(candidate_refs)):
+                raise ValueError("SIM response contains duplicate candidate evidence")
+            if not set(request_refs).issubset(request[axis]):
+                raise ValueError("SIM response contains invalid request evidence")
+            if not set(candidate_refs).issubset(candidate_profile[axis]):
+                raise ValueError("SIM response contains invalid candidate evidence")
+            if semantic.status != SimStatus.INSUFFICIENT and (
+                not request_refs or not candidate_refs
+            ):
+                raise ValueError(
+                    "Assessable SIM response requires evidence on both sides"
+                )
+            if semantic.status != SimStatus.SIMILAR and not semantic.reason_code:
+                raise ValueError("Non-SIMILAR SIM response requires a reason code")
+            results[axis] = _axis_result(
+                axis,
+                semantic.status,
+                semantic.summary,
+                semantic.common_points,
+                semantic.differences,
+                [request[axis][reference] for reference in request_refs],
+                [candidate_profile[axis][reference] for reference in candidate_refs],
+                semantic.reason_code,
+                scoring,
+            )
+        except ValueError as error:
+            logger.warning(
+                "SIM axis grounding failed rank=%s announcement_id=%s "
+                "axis=%s error=%s",
+                candidate.rank,
+                candidate.announcement_id,
+                SIM_AXIS_IDS[axis],
+                error,
+            )
+            invalid_axes.append(axis)
+            results[axis] = _axis_result(
+                axis,
+                SimStatus.INSUFFICIENT,
+                "해당 비교축의 의미 분석 응답을 검증하지 못했습니다.",
+                [],
+                [],
+                list(request[axis].values()),
+                list(candidate_profile[axis].values()),
+                "LLM_INVALID_RESPONSE",
+                scoring,
+            )
+            grounded_warnings.append(
+                f"SIM semantic axis incomplete: {SIM_AXIS_IDS[axis]}:"
+                "LLM_INVALID_RESPONSE"
+            )
     return _comparison_result(
         candidate,
         results,
-        response.comparison_summary,
-        warnings,
+        (
+            "일부 비교축을 완료하지 못했습니다."
+            if invalid_axes
+            else response.comparison_summary
+        ),
+        grounded_warnings,
         scoring,
         ruleset_version,
         prompt_version,
@@ -480,7 +522,8 @@ def _comparison_result(
     assessable = {
         axis: result for axis, result in results.items() if result.score is not None
     }
-    if assessable:
+    core_axes_assessable = _SIM_CORE_AXES.issubset(assessable)
+    if core_axes_assessable:
         denominator = sum(scoring.axis_weights[axis] for axis in assessable)
         weighted_score = sum(
             result.score * scoring.axis_weights[axis]

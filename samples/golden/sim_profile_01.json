@@ -1,0 +1,57 @@
+{
+  "profile_version": "sim-alpha-v0.2",
+  "fixture": "candidate-summary-adapter-01",
+  "candidate": {
+    "announcement_version_id": 20,
+    "purpose": "중소기업 해외시장 진출 확대",
+    "target": "서울 소재 제조 중소기업",
+    "content": "수출 컨설팅 지원",
+    "target_name": "중소기업",
+    "jurisdiction_name": "중소벤처기업부",
+    "executing_name": "전담기관"
+  },
+  "expected": {
+    "purpose": [
+      {
+        "source_field": "purpose",
+        "profile_key": "source_text",
+        "excerpt": "중소기업 해외시장 진출 확대"
+      }
+    ],
+    "target": [
+      {
+        "source_field": "target",
+        "profile_key": "source_text",
+        "excerpt": "서울 소재 제조 중소기업"
+      },
+      {
+        "source_field": "target_name",
+        "profile_key": "target_group",
+        "excerpt": "중소기업"
+      }
+    ],
+    "content": [
+      {
+        "source_field": "content",
+        "profile_key": "source_text",
+        "excerpt": "수출 컨설팅 지원"
+      }
+    ],
+    "delivery": [
+      {
+        "source_field": "executing_name",
+        "profile_key": "organization",
+        "excerpt": "전담기관"
+      },
+      {
+        "source_field": "jurisdiction_name",
+        "profile_key": "organization",
+        "excerpt": "중소벤처기업부"
+      }
+    ]
+  },
+  "invariants": {
+    "unstructured_source_excerpt_max_profile_keys": 1,
+    "source_excerpts_are_not_copied_to_semantic_subkeys": true
+  }
+}
