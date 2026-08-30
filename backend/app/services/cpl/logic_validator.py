@@ -214,10 +214,9 @@ _COMPANY_COUNT_PATTERN = re.compile(
     r"(?<!\d)(?P<number>\d{1,3}(?:,\d{3})*|\d+)\s*(?:개\s*사|기업|개\s*업체)"
 )
 # 하위 라벨이 축을 결정하는 경우. "- 지역:" 뒤에 무엇이 오든 그것은 지역
-# 조건이고, "자부담률:" 뒤의 비율은 자부담률이다. 값을 보고 축을 추측하는
-# 것이 아니라 서식이 정한 라벨로 축만 정하므로 표현이 달라져도 일반화된다.
-# 목록은 판별기준 11.2(지원조건)와 12.1(지원내용·지원규모)에서 가져왔다.
-# 업력·매출액·종사자수는 _CONDITION_PATTERNS 가 값까지 정규화하므로 뺀다.
+# 조건이고, "기업규모:" 뒤의 값은 기업규모 조건이다. 값을 보고 축을 추측하는
+# 것이 아니라 서식이 정한 라벨로 축을 정하므로 표현이 달라져도 일반화된다.
+# 목록은 판별기준 11.2(지원조건)에서 가져왔다.
 # 긴 라벨이 먼저 와야 "제외조건"이 "제외"로 잘리지 않는다.
 _SUBLABEL_AXES: dict[CplFieldCode, tuple[tuple[str, CplAxisCode], ...]] = {
     CplFieldCode.TARGET_AND_CONDITIONS: (
@@ -226,24 +225,17 @@ _SUBLABEL_AXES: dict[CplFieldCode, tuple[tuple[str, CplAxisCode], ...]] = {
         ("소재지", CplAxisCode.COND_REGION),
         ("지역", CplAxisCode.COND_REGION),
         ("업종", CplAxisCode.COND_INDUSTRY),
+        ("업력", CplAxisCode.COND_BUSINESS_AGE),
+        ("매출액", CplAxisCode.COND_REVENUE),
+        ("종사자 수", CplAxisCode.COND_HEADCOUNT),
+        ("종사자수", CplAxisCode.COND_HEADCOUNT),
+        ("인증 여부", CplAxisCode.COND_CERTIFICATION),
         ("인증", CplAxisCode.COND_CERTIFICATION),
+        ("기타 조건", CplAxisCode.COND_OTHER),
         ("기타", CplAxisCode.COND_OTHER),
         ("제외", CplAxisCode.COND_EXCLUSION),
     ),
 }
-
-# 축을 붙이지는 않지만 구간을 끊어야 하는 라벨. 값 정규화는
-# _CONDITION_PATTERNS 가 맡으므로 여기서는 경계로만 쓴다. 넣지 않으면 앞
-# 라벨의 구간이 이 줄들까지 삼킨다.
-_SUBLABEL_BOUNDARIES: dict[CplFieldCode, tuple[str, ...]] = {
-    CplFieldCode.TARGET_AND_CONDITIONS: (
-        "업력",
-        "매출액",
-        "종사자 수",
-        "종사자수",
-    ),
-}
-
 
 _SUBLABEL_PREFIX = re.compile(
     r"^[\s\-–—·]*(?:"
@@ -254,11 +246,6 @@ _SUBLABEL_PREFIX = re.compile(
                 label
                 for table in _SUBLABEL_AXES.values()
                 for label, _axis in table
-            }
-            | {
-                label
-                for labels in _SUBLABEL_BOUNDARIES.values()
-                for label in labels
             },
             key=len,
             reverse=True,
@@ -293,9 +280,10 @@ _CONDITION_PATTERNS: tuple[tuple[CplAxisCode, re.Pattern[str]], ...] = (
     (
         CplAxisCode.COND_HEADCOUNT,
         re.compile(
-            r"(?:상시\s*)?(?:근로자|종사자)\s*\d{1,3}(?:,\d{3})*\s*명\s*"
+            r"(?:상시\s*)?(?:근로자|종사자)(?:\s*수)?\s*"
+            r"\d{1,3}(?:,\d{3})*\s*(?:명|인)\s*"
             r"(?:이내|미만|이상|초과|이하)"
-            r"(?:\s*\d{1,3}(?:,\d{3})*\s*명\s*"
+            r"(?:\s*\d{1,3}(?:,\d{3})*\s*(?:명|인)\s*"
             r"(?:이내|미만|이상|초과|이하))?"
         ),
     ),
@@ -321,7 +309,7 @@ _REVENUE_BOUNDARY_PATTERN = re.compile(
     r"(?P<operator>이내|미만|이상|초과|이하)"
 )
 _HEADCOUNT_BOUNDARY_PATTERN = re.compile(
-    r"(?P<number>\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*명\s*"
+    r"(?P<number>\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*(?:명|인)\s*"
     r"(?P<operator>이내|미만|이상|초과|이하)"
 )
 # 성과지표 목표값은 배수어와 단위를 함께 읽어야 한다. 숫자만 떼어내면
@@ -1658,36 +1646,40 @@ def _sublabel_occurrences(
     table = _SUBLABEL_AXES.get(field_code)
     if not table:
         return []
-    boundaries = _SUBLABEL_BOUNDARIES.get(field_code, ())
-    labels = [label for label, _axis in table] + list(boundaries)
+    labels = [label for label, _axis in table]
     alternatives = "|".join(
         re.escape(label).replace(r"\ ", r"\s*")
         for label in sorted(labels, key=len, reverse=True)
     )
     pattern = re.compile(
-        rf"(?:^|[\n,·]|[-–—]\s)\s*(?P<label>{alternatives})\s*[:：]\s*"
+        rf"(?:^|[,·]|[-–—]\s*)\s*(?P<label>{alternatives})\s*[:：]\s*"
     )
-    axis_by_label = {label.replace(" ", ""): axis for label, axis in table}
+    axis_by_label = {
+        re.sub(r"\s+", "", label): axis for label, axis in table
+    }
 
-    matches = list(pattern.finditer(value))
     occurrences: list[CplOccurrence] = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
-        text = value[match.end():end].strip().strip(",·")
-        if not text:
-            continue
-        axis_code = axis_by_label.get(match.group("label").replace(" ", ""))
-        if axis_code is None:
-            continue
-        occurrences.append(
-            _occurrence(
-                fragment,
-                text,
-                _normalize_axis_value(axis_code, text, source_role),
-                axis_code=axis_code,
-                source_role=source_role,
+    for line in value.splitlines():
+        matches = list(pattern.finditer(line))
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(line)
+            text = line[match.end():end].strip().strip(",·")
+            if not text:
+                continue
+            axis_code = axis_by_label.get(
+                re.sub(r"\s+", "", match.group("label"))
             )
-        )
+            if axis_code is None:
+                continue
+            occurrences.append(
+                _occurrence(
+                    fragment,
+                    text,
+                    _normalize_axis_value(axis_code, text, source_role),
+                    axis_code=axis_code,
+                    source_role=source_role,
+                )
+            )
     return occurrences
 
 

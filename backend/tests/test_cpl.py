@@ -873,7 +873,10 @@ def test_condition_sublabels_decide_the_axis() -> None:
                     "- 지역: 대전광역시 내 본사 보유\n"
                     "- 업종: 한국표준산업분류 C(제조업)\n"
                     "- 업력: 업력 3년 이상 10년 이내\n"
-                    "- 기타: 국세 및 지방세 완납\n"
+                    "- 인증 여부: 벤처기업 인증\n"
+                    "- 인증: 직접생산확인\n"
+                    "- 기타 조건: 국세 및 지방세 완납\n"
+                    "- 기타: 신청기업의 국세 완납\n"
                     "- 제외조건: 휴·폐업 기업"
                 ),
             )
@@ -884,17 +887,154 @@ def test_condition_sublabels_decide_the_axis() -> None:
         for entry in evaluate_cpl_rules(document).items
         if entry.field_code == CplFieldCode.TARGET_AND_CONDITIONS
     )
-    axes = {
-        occurrence.axis_code: occurrence.raw_text
+    axes: dict[CplAxisCode, list[str]] = {}
+    for occurrence in item.occurrences:
+        if occurrence.axis_code is not None:
+            axes.setdefault(occurrence.axis_code, []).append(occurrence.raw_text)
+    assert axes[CplAxisCode.COND_REGION] == ["대전광역시 내 본사 보유"]
+    assert axes[CplAxisCode.COND_INDUSTRY] == ["한국표준산업분류 C(제조업)"]
+    assert axes[CplAxisCode.COND_CERTIFICATION] == [
+        "벤처기업 인증",
+        "직접생산확인",
+    ]
+    assert axes[CplAxisCode.COND_OTHER] == [
+        "국세 및 지방세 완납",
+        "신청기업의 국세 완납",
+    ]
+    assert axes[CplAxisCode.COND_EXCLUSION] == ["휴·폐업 기업"]
+    # 업력은 정식 하위 라벨 축이며 기존 정량 정규화 경로가 값을 처리한다.
+    assert axes[CplAxisCode.COND_BUSINESS_AGE] == ["업력 3년 이상 10년 이내"]
+
+
+def test_condition_sublabel_does_not_consume_unknown_label_on_next_line() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="지원조건 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="cond:unknown-next-line",
+                block_type="paragraph",
+                text=(
+                    "○ 지원조건\n"
+                    "- 지역: 대전광역시\n"
+                    "- 알 수 없는 하위 라벨: 제조업"
+                ),
+            )
+        ],
+    )
+
+    item = next(
+        item
+        for item in evaluate_cpl_rules(document).items
+        if item.field_code == CplFieldCode.TARGET_AND_CONDITIONS
+    )
+
+    region_occurrences = [
+        occurrence
         for occurrence in item.occurrences
-        if occurrence.axis_code is not None
+        if occurrence.axis_code == CplAxisCode.COND_REGION
+    ]
+    assert [occurrence.raw_text for occurrence in region_occurrences] == [
+        "대전광역시"
+    ]
+
+
+def test_condition_sublabels_split_known_labels_on_the_same_line() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="지원조건 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="cond:same-line-labels",
+                block_type="paragraph",
+                text="○ 지원조건\n- 지역: 대전광역시, 업종: 제조업",
+            )
+        ],
+    )
+
+    item = next(
+        item
+        for item in evaluate_cpl_rules(document).items
+        if item.field_code == CplFieldCode.TARGET_AND_CONDITIONS
+    )
+
+    by_axis: dict[CplAxisCode, list[str]] = {}
+    for occurrence in item.occurrences:
+        if occurrence.axis_code is not None:
+            by_axis.setdefault(occurrence.axis_code, []).append(occurrence.raw_text)
+
+    assert by_axis[CplAxisCode.COND_REGION] == ["대전광역시"]
+    assert by_axis[CplAxisCode.COND_INDUSTRY] == ["제조업"]
+
+
+def test_condition_sublabels_include_quantitative_axes() -> None:
+    result = evaluate_cpl_rules(
+        paragraph_document(
+            [
+                "지원조건\n"
+                "- 업력: 3년 이상\n"
+                "- 매출액: 최근 3개년 연평균 매출액 50억원 이상\n"
+                "- 종사자 수: 10명 이하"
+            ]
+        )
+    )
+    occurrences = occurrences_for(result, CplFieldCode.TARGET_AND_CONDITIONS)
+    by_axis = {
+        occurrence.axis_code: occurrence
+        for occurrence in occurrences
+        if occurrence.axis_code in {
+            CplAxisCode.COND_BUSINESS_AGE,
+            CplAxisCode.COND_REVENUE,
+            CplAxisCode.COND_HEADCOUNT,
+        }
     }
-    assert axes[CplAxisCode.COND_REGION] == "대전광역시 내 본사 보유"
-    assert axes[CplAxisCode.COND_INDUSTRY] == "한국표준산업분류 C(제조업)"
-    assert axes[CplAxisCode.COND_OTHER] == "국세 및 지방세 완납"
-    assert axes[CplAxisCode.COND_EXCLUSION] == "휴·폐업 기업"
-    # 업력은 값까지 정규화하는 기존 경로가 맡는다. 구간 경계로만 쓰인다.
-    assert axes[CplAxisCode.COND_BUSINESS_AGE] == "업력 3년 이상 10년 이내"
+
+    assert by_axis[CplAxisCode.COND_BUSINESS_AGE].normalized_value == {
+        "years": 3,
+        "operator": "GTE",
+        "unit": "YEAR",
+    }
+    assert by_axis[CplAxisCode.COND_REVENUE].normalized_value == {
+        "amount_won": 5_000_000_000,
+        "operator": "GTE",
+        "unit": "KRW",
+        "period_years": 3,
+    }
+    assert by_axis[CplAxisCode.COND_HEADCOUNT].normalized_value == {
+        "count": 10,
+        "operator": "LTE",
+        "unit": "PERSON",
+    }
+
+
+@pytest.mark.parametrize(
+    ("condition", "expected_headcount"),
+    [
+        ("종사자 수: 10명 이하", True),
+        ("종사자 수: 10인 이하", True),
+        ("상시 근로자 10인 이하", True),
+        ("기타 조건: 10인 이하", False),
+    ],
+)
+def test_headcount_in_requires_label_or_employee_context(
+    condition: str,
+    expected_headcount: bool,
+) -> None:
+    result = evaluate_cpl_rules(
+        paragraph_document([f"지원조건\n- {condition}"])
+    )
+    occurrences = occurrences_for(result, CplFieldCode.TARGET_AND_CONDITIONS)
+    headcounts = [
+        occurrence
+        for occurrence in occurrences
+        if occurrence.axis_code == CplAxisCode.COND_HEADCOUNT
+    ]
+
+    assert bool(headcounts) is expected_headcount
+    if expected_headcount:
+        assert headcounts[0].normalized_value["unit"] == "PERSON"
 
 
 def test_grounded_evidence_carries_its_position_in_the_fragment() -> None:
