@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -20,7 +21,9 @@ from app.schemas.cpl import (
     CplOccurrence,
     CplResult,
     CplSourceRole,
+    CplStatus,
 )
+from app.services.cpl.logic_validator import CPL_INCOMPLETE_REASON_CODES
 from app.schemas.fit import (
     FIT_RELATIONS,
     FitRelationId,
@@ -30,6 +33,7 @@ from app.schemas.fit import (
     FitInputFeedbackReason,
     FitScoreSummary,
     FitScoringPolicy,
+    FitSemanticRelation,
     FitSemanticResponse,
     FitStatus,
 )
@@ -40,6 +44,9 @@ FitLlmFailureCode = Literal[
     "LLM_TIMEOUT",
     "LLM_INVALID_RESPONSE",
 ]
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -53,11 +60,12 @@ _RELATION_SELECTORS: dict[
     FitRelationId,
     tuple[_EvidenceSelector, _EvidenceSelector],
 ] = {
+    # 사업목적에는 구역 role 이 없다. 좌우가 서로 다른 필드라 role 로 갈라낼
+    # 것도 없으므로 축과 필드만으로 근거를 고른다.
     FitRelationId.FIT_1: (
         _EvidenceSelector(
             CplFieldCode.PURPOSE_GOAL,
             frozenset({CplAxisCode.PURPOSE_TARGET_CONDITION}),
-            frozenset({None}),
         ),
         _EvidenceSelector(
             CplFieldCode.TARGET_AND_CONDITIONS,
@@ -69,7 +77,6 @@ _RELATION_SELECTORS: dict[
         _EvidenceSelector(
             CplFieldCode.PURPOSE_GOAL,
             frozenset({CplAxisCode.PURPOSE_DIRECTION}),
-            frozenset({None}),
         ),
         _EvidenceSelector(
             CplFieldCode.SUPPORT_CONTENT_AND_SCALE,
@@ -86,7 +93,6 @@ _RELATION_SELECTORS: dict[
         _EvidenceSelector(
             CplFieldCode.PURPOSE_GOAL,
             frozenset({CplAxisCode.PURPOSE_DIRECTION}),
-            frozenset({None}),
         ),
         _EvidenceSelector(
             CplFieldCode.EXPECTED_EFFECTS_AND_PERFORMANCE,
@@ -184,51 +190,105 @@ def inspect_fit_inputs(cpl_result: CplResult) -> list[FitInputFeedback]:
     """Return deterministic FIT input gaps that CPL may be able to repair.
 
     This preflight deliberately covers only semantic FIT relations. FIT-4 is
-    contractually unavailable, FIT-7 is rule-owned quantitative comparison,
-    and FIT-5's absent-condition state is a valid ``NO_CONDITIONS_SPECIFIED``
-    outcome rather than an extraction error.
+    contractually unavailable and FIT-7 is rule-owned quantitative comparison.
+    FIT-5 requests a recheck only when CPL itself is incomplete; a reliable
+    absence of conditions remains ``NO_CONDITIONS_SPECIFIED``.
     """
 
     items = {item.field_code: item for item in cpl_result.items}
     feedback: list[FitInputFeedback] = []
     for relation_id, (left_selector, right_selector) in _RELATION_SELECTORS.items():
-        if relation_id == FitRelationId.FIT_5:
-            continue
         for side, selector in (("left", left_selector), ("right", right_selector)):
-            occurrences = [
+            item = items[selector.field_code]
+            axis_occurrences = [
                 occurrence
-                for occurrence in items[selector.field_code].occurrences
+                for occurrence in item.occurrences
                 if occurrence.axis_code in selector.axes
             ]
-            if not occurrences:
-                feedback.append(
-                    FitInputFeedback(
-                        relation_id=relation_id,
-                        side=side,
-                        field_code=selector.field_code,
-                        reason_code=FitInputFeedbackReason.REQUIRED_AXIS_MISSING,
-                        required_axis_codes=_ordered_axes(selector.axes),
-                        required_source_roles=_ordered_roles(selector.roles),
-                    )
-                )
-                continue
-            if selector.roles is not None and not any(
+            present_axes = {
+                occurrence.axis_code
+                for occurrence in axis_occurrences
+                if occurrence.axis_code is not None
+            }
+            missing_axes = selector.axes - present_axes
+
+            # source_role is assigned from the cited document range by Rule.
+            # It is not an LLM-repairable semantic axis, so a role-only gap
+            # remains unassessable without creating another CPL call.
+            if selector.roles is not None and axis_occurrences and not any(
                 occurrence.source_role in selector.roles
-                for occurrence in occurrences
+                for occurrence in axis_occurrences
             ):
-                feedback.append(
-                    FitInputFeedback(
-                        relation_id=relation_id,
-                        side=side,
-                        field_code=selector.field_code,
-                        reason_code=FitInputFeedbackReason.SOURCE_ROLE_MISSING,
-                        required_axis_codes=_ordered_axes(
-                            {occurrence.axis_code for occurrence in occurrences}
-                        ),
-                        required_source_roles=_ordered_roles(selector.roles),
-                    )
+                continue
+            if not missing_axes:
+                continue
+            if (
+                relation_id == FitRelationId.FIT_5
+                and side == "right"
+                and not _conditions_unresolved(item)
+            ):
+                continue
+            # A missing axis after a normal, successful extraction is simply
+            # unassessable. Recheck only an actual extraction failure or an
+            # axis-less piece of source evidence that still needs classifying.
+            if not _cpl_input_incomplete(item):
+                continue
+            feedback.append(
+                FitInputFeedback(
+                    relation_id=relation_id,
+                    side=side,
+                    field_code=selector.field_code,
+                    reason_code=FitInputFeedbackReason.REQUIRED_AXIS_MISSING,
+                    required_axis_codes=_ordered_axes(missing_axes),
+                    required_source_roles=_ordered_roles(selector.roles),
                 )
+            )
     return feedback
+
+
+def _cpl_input_incomplete(item: CplItem) -> bool:
+    # 원인이 무엇이든 CPL 이 비교 가능한 형태로 확정하지 못한 것은 같다.
+    # 원인별 구분은 기록으로 남기고 여기서는 미완료 여부만 본다.
+    if (
+        item.status == CplStatus.PARSE_FAILED
+        or item.reason_code in CPL_INCOMPLETE_REASON_CODES
+    ):
+        return True
+    return any(
+        occurrence.axis_code is None
+        and not _is_explicit_absence_occurrence(occurrence)
+        for occurrence in item.occurrences
+    )
+
+
+def _is_explicit_absence_occurrence(occurrence: CplOccurrence) -> bool:
+    normalized = occurrence.normalized_value
+    return (
+        isinstance(normalized, dict)
+        and normalized.get("explicit_absence") is True
+    )
+
+
+def _conditions_unresolved(item: CplItem) -> bool:
+    """조건 축 부재가 '조건 부재'인지 '구조화 실패'인지 가른다.
+
+    조건 근거 자체가 있는데 축이 없으면 문서에 조건이 없는 것이 아니라 CPL 이
+    비교 가능한 형태로 확정하지 못한 것이다.
+    """
+
+    condition_occurrences = [
+        occurrence
+        for occurrence in item.occurrences
+        if occurrence.source_role == CplSourceRole.CONDITION
+    ]
+    if condition_occurrences:
+        return any(
+            not _is_explicit_absence_occurrence(occurrence)
+            for occurrence in condition_occurrences
+        )
+    if item.status == CplStatus.NEEDS_CONFIRMATION and item.reason_code:
+        return True
+    return _cpl_input_incomplete(item)
 
 
 def _ordered_axes(
@@ -288,7 +348,12 @@ async def analyze_fit(
     results[FitRelationId.FIT_7] = fit_7
     pending: dict[FitRelationId, _RelationInput] = {}
     for relation_id, relation_input in inputs.items():
-        if relation_id == FitRelationId.FIT_5 and not relation_input.right:
+        if (
+            relation_id == FitRelationId.FIT_5
+            and relation_input.left
+            and not relation_input.right
+            and not _conditions_unresolved(items[CplFieldCode.TARGET_AND_CONDITIONS])
+        ):
             results[relation_id] = _relation_result(
                 relation_id,
                 FitStatus.INSUFFICIENT,
@@ -370,22 +435,40 @@ async def _semantic_results(
         )
         if not isinstance(response, FitSemanticResponse):
             raise LLMInvalidResponseError("Unexpected structured response type")
-        return (
-            _ground_semantic_response(
-                response,
-                pending,
-                scoring,
-                ruleset_version,
-                prompt_version,
-            ),
-            [],
+        return _ground_semantic_response(
+            response,
+            pending,
+            scoring,
+            ruleset_version,
+            prompt_version,
         )
-    except LLMTimeoutError:
+    except LLMTimeoutError as error:
         failure_code: FitLlmFailureCode = "LLM_TIMEOUT"
-    except LLMUnavailableError:
+        failure_error: Exception = error
+    except LLMUnavailableError as error:
         failure_code = "LLM_UNAVAILABLE"
-    except (LLMInvalidResponseError, ValidationError, ValueError):
+        failure_error = error
+    except (LLMInvalidResponseError, ValidationError, ValueError) as error:
         failure_code = "LLM_INVALID_RESPONSE"
+        failure_error = error
+    detail = None
+    if isinstance(failure_error, ValidationError):
+        detail = ",".join(
+            f"{'.'.join(map(str, item['loc']))}:{item['type']}"
+            for item in failure_error.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            )
+        )
+    elif type(failure_error) is ValueError:
+        detail = str(failure_error)
+    logger.warning(
+        "FIT semantic batch failed failure=%s error=%s detail=%s",
+        failure_code,
+        type(failure_error).__name__,
+        detail,
+    )
     return _failed_semantic_results(
         pending,
         failure_code,
@@ -502,13 +585,29 @@ def _fit_7_result(
             warnings,
         )
 
+    if invalid_count and (not left_values or not right_values):
+        return (
+            _relation_result(
+                FitRelationId.FIT_7,
+                FitStatus.INSUFFICIENT,
+                "정량정보의 단위 또는 값 정규화에 실패해 비교할 수 없습니다.",
+                left,
+                right,
+                "COMPARISON_VALUE_INVALID",
+                scoring,
+                ruleset_version,
+                prompt_version,
+            ),
+            warnings,
+        )
+
     shared_axes = set(left_values) & set(right_values)
     if any(left_values[axis] != right_values[axis] for axis in shared_axes):
         status = FitStatus.NEEDS_REVIEW
         reason_code = "NUMERIC_MISMATCH"
         summary = "동일 지원 개념의 정량값이 문서 안에서 서로 다릅니다."
     elif set(left_values) != set(right_values):
-        status = FitStatus.FIT
+        status = FitStatus.INSUFFICIENT
         reason_code = "SINGLE_SIDED_NO_CONFLICT"
         summary = "한쪽에만 있는 정량정보에서 명시적 충돌은 확인되지 않았습니다."
     else:
@@ -567,43 +666,104 @@ def _ground_semantic_response(
     scoring: FitScoringPolicy,
     ruleset_version: str,
     prompt_version: str,
-) -> dict[FitRelationId, FitRelationResult]:
-    ids = [relation.relation_id for relation in response.relations]
-    if len(ids) != len(set(ids)) or set(ids) != set(pending):
-        raise ValueError("FIT response relations do not match the request")
+) -> tuple[dict[FitRelationId, FitRelationResult], list[str]]:
+    response_by_id: dict[FitRelationId, list[FitSemanticRelation]] = {}
+    for relation in response.relations:
+        response_by_id.setdefault(relation.relation_id, []).append(relation)
 
     grounded: dict[FitRelationId, FitRelationResult] = {}
-    for relation in response.relations:
-        source = pending[relation.relation_id]
-        if not relation.summary.strip():
-            raise ValueError("FIT summary must not be blank")
-        if len(relation.left_evidence_refs) != len(set(relation.left_evidence_refs)):
-            raise ValueError("FIT response contains duplicate left evidence")
-        if len(relation.right_evidence_refs) != len(set(relation.right_evidence_refs)):
-            raise ValueError("FIT response contains duplicate right evidence")
-        if not set(relation.left_evidence_refs).issubset(source.left):
-            raise ValueError("FIT response contains invalid left evidence")
-        if not set(relation.right_evidence_refs).issubset(source.right):
-            raise ValueError("FIT response contains invalid right evidence")
-        if relation.status != FitStatus.INSUFFICIENT and (
-            not relation.left_evidence_refs or not relation.right_evidence_refs
-        ):
-            raise ValueError("Assessable FIT response requires evidence on both sides")
-        if relation.status != FitStatus.FIT and not relation.reason_code:
-            raise ValueError("Non-FIT response requires a reason")
+    warnings: list[str] = []
 
-        grounded[relation.relation_id] = _relation_result(
-            relation.relation_id,
-            relation.status,
-            relation.summary,
-            [source.left[reference] for reference in relation.left_evidence_refs],
-            [source.right[reference] for reference in relation.right_evidence_refs],
-            relation.reason_code,
+    unexpected = sorted(
+        set(response_by_id) - set(pending),
+        key=lambda relation_id: relation_id.value,
+    )
+    if unexpected:
+        unexpected_ids = ",".join(relation_id.value for relation_id in unexpected)
+        warnings.append(f"FIT semantic relation ignored: {unexpected_ids}")
+        logger.warning(
+            "FIT semantic response contained unexpected relations=%s",
+            unexpected_ids,
+        )
+
+    def mark_invalid(
+        relation_id: FitRelationId,
+        source: _RelationInput,
+        reason: str,
+    ) -> None:
+        logger.warning(
+            "FIT semantic relation incomplete relation=%s reason=%s",
+            relation_id.value,
+            reason,
+        )
+        grounded[relation_id] = _relation_result(
+            relation_id,
+            FitStatus.INSUFFICIENT,
+            "해당 관계의 의미 분석 응답을 검증하지 못했습니다.",
+            list(source.left.values()),
+            list(source.right.values()),
+            "LLM_INVALID_RESPONSE",
             scoring,
             ruleset_version,
             prompt_version,
         )
-    return grounded
+        warnings.append(
+            "FIT semantic relation incomplete: "
+            f"{relation_id.value}:LLM_INVALID_RESPONSE"
+        )
+
+    for relation_id, source in pending.items():
+        candidates = response_by_id.get(relation_id, [])
+        if not candidates:
+            mark_invalid(relation_id, source, "MISSING")
+            continue
+        if len(candidates) != 1:
+            mark_invalid(relation_id, source, "DUPLICATED")
+            continue
+        relation = candidates[0]
+        try:
+            if not relation.summary.strip():
+                raise ValueError("FIT summary must not be blank")
+            if len(relation.left_evidence_refs) != len(
+                set(relation.left_evidence_refs)
+            ):
+                raise ValueError("FIT response contains duplicate left evidence")
+            if len(relation.right_evidence_refs) != len(
+                set(relation.right_evidence_refs)
+            ):
+                raise ValueError("FIT response contains duplicate right evidence")
+            if not set(relation.left_evidence_refs).issubset(source.left):
+                raise ValueError("FIT response contains invalid left evidence")
+            if not set(relation.right_evidence_refs).issubset(source.right):
+                raise ValueError("FIT response contains invalid right evidence")
+            if relation.status != FitStatus.INSUFFICIENT and (
+                not relation.left_evidence_refs or not relation.right_evidence_refs
+            ):
+                raise ValueError(
+                    "Assessable FIT response requires evidence on both sides"
+                )
+            if relation.status != FitStatus.FIT and not relation.reason_code:
+                raise ValueError("Non-FIT response requires a reason")
+
+            grounded[relation.relation_id] = _relation_result(
+                relation.relation_id,
+                relation.status,
+                relation.summary,
+                [source.left[reference] for reference in relation.left_evidence_refs],
+                [source.right[reference] for reference in relation.right_evidence_refs],
+                relation.reason_code,
+                scoring,
+                ruleset_version,
+                prompt_version,
+            )
+        except ValueError as error:
+            logger.warning(
+                "FIT relation grounding failed relation=%s error=%s",
+                relation.relation_id.value,
+                error,
+            )
+            mark_invalid(relation.relation_id, source, "GROUNDING_FAILED")
+    return grounded, warnings
 
 
 def _failed_semantic_results(

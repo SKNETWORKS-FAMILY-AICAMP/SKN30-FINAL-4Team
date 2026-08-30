@@ -34,7 +34,7 @@ class CplFitReconciliation:
 
 
 RecheckCpl = Callable[
-    [CplResult, set[CplFieldCode]],
+    [CplResult, tuple[FitInputFeedback, ...]],
     Awaitable[CplResult],
 ]
 
@@ -47,11 +47,12 @@ async def reconcile_cpl_for_fit(
 ) -> CplFitReconciliation:
     """Let FIT request one targeted CPL evidence pass, if needed.
 
-    ``recheck`` receives the current CPL snapshot and only the field codes
-    named by FIT.  It must return another complete ``CplResult``; CPL remains
-    the source of truth and FIT never mutates that result directly.  Failures
-    in this optional pass retain the first CPL result so normal LLM failure
-    semantics still apply.
+    ``recheck`` receives the current CPL snapshot and FIT's typed feedback.
+    Keeping the required axes and source roles prevents a deterministic second
+    pass from merely repeating the same broad CPL request.  It must return
+    another complete ``CplResult``; CPL remains the source of truth and FIT
+    never mutates that result directly.  Failures in this optional pass retain
+    the first CPL result so normal LLM failure semantics still apply.
     """
 
     initial_feedback = tuple(inspect_fit_inputs(cpl_result))
@@ -72,7 +73,7 @@ async def reconcile_cpl_for_fit(
     current = cpl_result
     recheck_count = 0
     try:
-        current = await recheck(current, set(requested_fields))
+        current = await recheck(current, initial_feedback)
         if not isinstance(current, CplResult):
             raise TypeError("CPL recheck must return CplResult")
         recheck_count = 1

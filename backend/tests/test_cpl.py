@@ -4,6 +4,7 @@ import json
 import os
 import time
 import zipfile
+import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -32,6 +33,11 @@ from app.schemas.cpl import (
     CplSemanticResponse,
     CplSourceRole,
     CplStatus,
+)
+from app.schemas.fit import (
+    FitInputFeedback,
+    FitInputFeedbackReason,
+    FitRelationId,
 )
 from app.schemas.parsed_document import DocumentBlock, ParsedDocument
 from app.services.analysis_pipeline import (
@@ -303,6 +309,10 @@ def test_table_cells_have_unique_refs_and_deterministic_roles() -> None:
         CplSourceRole.SUPPORT_CONTENT,
         CplSourceRole.SUPPORT_SCALE,
     ]
+    assert all(
+        fragment.field_codes == {CplFieldCode.SUPPORT_CONTENT_AND_SCALE}
+        for fragment in values
+    )
 
     response = CplSemanticResponse.model_validate(
         {
@@ -382,6 +392,8 @@ def test_flattened_table_inline_segments_become_separate_rule_fragments() -> Non
         "table:segments:cell:0:1:segment:0",
         "table:segments:cell:0:1:segment:1",
     ]
+    assert fragments[0].field_codes == {CplFieldCode.PURPOSE_GOAL}
+    assert fragments[1].field_codes == {CplFieldCode.BUSINESS_NEED}
     result = evaluate_cpl_rules(document)
     purpose = next(
         item
@@ -401,6 +413,212 @@ def test_flattened_table_inline_segments_become_separate_rule_fragments() -> Non
     ]
 
 
+def test_semantic_grounding_rejects_evidence_owned_by_another_cpl_field() -> None:
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "PURPOSE_GOAL",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "need:1",
+                            "raw_text": "지역 기업의 설비 노후화가 심각함",
+                            "axis_code": "PURPOSE_PROBLEM_DOMAIN",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    grounded = ground_llm_response(
+        parsed_document(), response, {CplFieldCode.PURPOSE_GOAL}
+    )
+
+    assert grounded[0].occurrences == []
+    assert grounded[0].status == CplStatus.NEEDS_CONFIRMATION
+    assert grounded[0].reason_code == "LLM_INVALID_RESPONSE"
+
+
+def test_invalid_or_missing_cpl_items_do_not_discard_valid_siblings() -> None:
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "PURPOSE_GOAL",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "purpose:1",
+                            "raw_text": "지역 기업의 디지털 전환 지원",
+                            "axis_code": "PURPOSE_SPECIFIC_OBJECTIVE",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                },
+                {
+                    "field_code": "BUSINESS_NEED",
+                    "status": "NEEDS_CONFIRMATION",
+                    "occurrences": [],
+                    "reason_code": None,
+                    "explanation": None,
+                },
+            ]
+        }
+    )
+
+    grounded = ground_llm_response(
+        parsed_document(),
+        response,
+        {
+            CplFieldCode.PURPOSE_GOAL,
+            CplFieldCode.BUSINESS_NEED,
+            CplFieldCode.NEW_OR_CHANGED_CONTENT,
+        },
+    )
+    by_code = {item.field_code: item for item in grounded}
+
+    assert by_code[CplFieldCode.PURPOSE_GOAL].status == CplStatus.PRESENT
+    assert [
+        occurrence.axis_code
+        for occurrence in by_code[CplFieldCode.PURPOSE_GOAL].occurrences
+    ] == [CplAxisCode.PURPOSE_SPECIFIC_OBJECTIVE]
+    # 이유코드만 빠진 것은 모델이 원문에 없는 말을 지어낸 것과 다른 사건이다.
+    assert by_code[CplFieldCode.BUSINESS_NEED].reason_code == (
+        "LLM_REASON_CODE_MISSING"
+    )
+    assert by_code[CplFieldCode.NEW_OR_CHANGED_CONTENT].reason_code == (
+        "LLM_INVALID_RESPONSE"
+    )
+
+
+def test_explicit_missing_marker_is_not_cpl_or_fit_evidence() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="수행기관 미기재",
+        blocks=[
+            DocumentBlock(
+                block_id="delivery:blank",
+                block_type="paragraph",
+                text="수행기관: (공란 / 미기재)",
+            )
+        ],
+    )
+    rule_result = evaluate_cpl_rules(document)
+    delivery = next(
+        item
+        for item in rule_result.items
+        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
+    )
+    assert delivery.occurrences == []
+
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "DELIVERY_SYSTEM",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "delivery:blank",
+                            "raw_text": "(공란 / 미기재)",
+                            "axis_code": "DELIVERY_ORG_NAME",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+    grounded = ground_llm_response(
+        document, response, {CplFieldCode.DELIVERY_SYSTEM}
+    )
+    assert grounded[0].occurrences == []
+    assert grounded[0].reason_code == "LLM_INVALID_RESPONSE"
+
+
+def test_filtering_a_blank_marker_does_not_fail_the_whole_cpl_field() -> None:
+    """공란 근거를 걸러낸 것은 LLM 실패가 아니다 — FIT 재검 신호로 쓰지 않는다."""
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="사업목적",
+        blocks=[
+            DocumentBlock(
+                block_id="purpose:0",
+                block_type="paragraph",
+                text="사업목적: 중소기업의 해외시장 진출 확대 (세부목표: 공란)",
+            )
+        ],
+    )
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "PURPOSE_GOAL",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "purpose:0",
+                            "raw_text": "해외시장 진출 확대",
+                            "axis_code": "PURPOSE_DIRECTION",
+                        },
+                        {
+                            "evidence_ref": "purpose:0",
+                            "raw_text": "공란",
+                            "axis_code": "PURPOSE_DIRECTION",
+                        },
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    item = ground_llm_response(
+        document, response, {CplFieldCode.PURPOSE_GOAL}
+    )[0]
+
+    assert item.status == CplStatus.PRESENT
+    assert item.reason_code is None
+    assert [occurrence.raw_text for occurrence in item.occurrences] == [
+        "해외시장 진출 확대"
+    ]
+
+
+def test_missing_word_inside_real_explanation_is_not_treated_as_blank() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="수행기관 설명",
+        blocks=[
+            DocumentBlock(
+                block_id="delivery:instruction",
+                block_type="paragraph",
+                text="수행기관: 기관명 미기재 시 신청할 수 없음",
+            )
+        ],
+    )
+
+    result = evaluate_cpl_rules(document)
+    delivery = next(
+        item
+        for item in result.items
+        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
+    )
+
+    assert [occurrence.raw_text for occurrence in delivery.occurrences] == [
+        "기관명 미기재 시 신청할 수 없음"
+    ]
+
+
 def test_quantitative_axis_values_are_normalized_by_rule() -> None:
     document = ParsedDocument(
         parser_name="fixture-parser",
@@ -411,8 +629,8 @@ def test_quantitative_axis_values_are_normalized_by_rule() -> None:
                 block_id="numeric:1",
                 block_type="paragraph",
                 text=(
-                    "기업당 최대 3천만원, 100개사, 보조율 50%, "
-                    "성과목표 30%, 기준연도 2026년"
+                    "지원내용: 기업당 최대 3천만원, 100개사, 보조율 50%\n"
+                    "성과목표: 목표값 30%, 기준연도 2026년"
                 ),
                 source_locator={"paragraph_index": 1},
             )
@@ -484,8 +702,271 @@ def test_quantitative_axis_values_are_normalized_by_rule() -> None:
     }
     assert values[CplAxisCode.COMPANY_COUNT] == {"count": 100, "unit": "COMPANY"}
     assert values[CplAxisCode.SUBSIDY_RATE] == {"ratio": 0.5, "unit": "PERCENT"}
-    assert values[CplAxisCode.KPI_TARGET_VALUE] == {"number": 30, "unit": "NUMBER"}
+    assert values[CplAxisCode.KPI_TARGET_VALUE] == {"number": 30, "unit": "PERCENT"}
     assert values[CplAxisCode.KPI_BASE_YEAR] == {"year": 2026, "unit": "YEAR"}
+
+
+def test_unattributable_evidence_is_not_recorded_as_an_llm_failure() -> None:
+    """조각 귀속 실패와 모델의 지어내기를 같은 코드로 적지 않는다.
+
+    파서가 라벨 여러 개를 한 조각에 담아 넘기면 인용 구간의 소속 필드를
+    정할 수 없다. 이것은 우리 구조의 한계이지 모델이 틀린 것이 아니다.
+    같은 코드로 적으면 Rule·LLM 비교 지표가 우리 결함을 LLM 실패로 센다.
+    """
+
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="다중 라벨 셀 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="mixed:1",
+                block_type="paragraph",
+                text="○ 사업목적 : 지역 산업 고도화\n○ 사업필요성 : 전환 지연",
+            )
+        ],
+    )
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "PURPOSE_GOAL",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "mixed:1",
+                            # 한 줄에 담기지 않는 구간이라 소속 필드를 정할 수 없다.
+                            "raw_text": "고도화\n○ 사업필요성",
+                            "axis_code": "PURPOSE_DIRECTION",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    item = next(
+        entry
+        for entry in ground_llm_response(
+            document, response, {CplFieldCode.PURPOSE_GOAL}
+        )
+        if entry.field_code == CplFieldCode.PURPOSE_GOAL
+    )
+
+    assert item.occurrences == []
+    assert item.reason_code == "EVIDENCE_OWNERSHIP_UNRESOLVED"
+
+
+def test_llm_cannot_ground_evidence_on_a_line_the_document_marks_blank() -> None:
+    """문서가 스스로 공란이라고 밝힌 자리는 라벨을 붙여 인용해도 근거가 아니다.
+
+    Rule 은 라벨 뒤 값만 보므로 원래 걸러냈지만, LLM 은 `○ 수행기관 : 미기재`
+    처럼 라벨을 포함한 줄을 인용할 수 있어 같은 자리가 근거로 남았다.
+    """
+
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="수행기관 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="delivery:1",
+                block_type="paragraph",
+                text="○ 수행기관 : 미기재",
+            )
+        ],
+    )
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "DELIVERY_SYSTEM",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "delivery:1",
+                            "raw_text": "○ 수행기관 : 미기재",
+                            "axis_code": "DELIVERY_ORG_NAME",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    grounded = ground_llm_response(
+        document,
+        response,
+        {CplFieldCode.DELIVERY_SYSTEM},
+    )
+    item = next(
+        entry
+        for entry in grounded
+        if entry.field_code == CplFieldCode.DELIVERY_SYSTEM
+    )
+
+    assert item.occurrences == []
+    assert item.status != CplStatus.PRESENT
+
+
+def test_labeled_support_values_leave_axis_assignment_to_llm() -> None:
+    """지원 금액·비율의 축은 문맥 판단이라 Rule 이 정하지 않는다.
+
+    같은 `3천만원` 이 기업당 한도일 수도 총 규모일 수도 있어 단위만으로는
+    축이 정해지지 않는다. Rule 은 근거와 구역만 남기고, 축은 LLM 이 접지한
+    뒤 `_normalize_axis_value` 가 값을 정규화한다.
+    """
+
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="지원내용 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="support:1",
+                block_type="paragraph",
+                text="지원내용: 1개사 최대 5,000만원, 자기부담 30%",
+            )
+        ],
+    )
+
+    result = evaluate_cpl_rules(document)
+    support = next(
+        item
+        for item in result.items
+        if item.field_code == CplFieldCode.SUPPORT_CONTENT_AND_SCALE
+    )
+
+    assert [occurrence.raw_text for occurrence in support.occurrences] == [
+        "1개사 최대 5,000만원, 자기부담 30%"
+    ]
+    # `1개사` 를 기업 수로 읽어 금액을 잃어버리던 오분류가 사라진다.
+    assert all(occurrence.axis_code is None for occurrence in support.occurrences)
+    assert all(
+        occurrence.source_role == CplSourceRole.SUPPORT_CONTENT
+        for occurrence in support.occurrences
+    )
+
+def test_numeric_target_conditions_are_structured_by_rule() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="지원조건 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="condition:1",
+                block_type="paragraph",
+                text=(
+                    "지원조건: 업력 3년 미만, 최근 3개년 연평균 매출액 "
+                    "50억원 이상, 상시근로자 10명 이하"
+                ),
+            )
+        ],
+    )
+
+    result = evaluate_cpl_rules(document)
+    target = next(
+        item
+        for item in result.items
+        if item.field_code == CplFieldCode.TARGET_AND_CONDITIONS
+    )
+    by_axis = {
+        occurrence.axis_code: occurrence
+        for occurrence in target.occurrences
+        if occurrence.axis_code is not None
+    }
+
+    assert set(by_axis) == {
+        CplAxisCode.COND_BUSINESS_AGE,
+        CplAxisCode.COND_REVENUE,
+        CplAxisCode.COND_HEADCOUNT,
+    }
+    assert all(
+        occurrence.source_role == CplSourceRole.CONDITION
+        for occurrence in by_axis.values()
+    )
+    assert by_axis[CplAxisCode.COND_BUSINESS_AGE].normalized_value == {
+        "years": 3,
+        "operator": "LT",
+        "unit": "YEAR",
+    }
+    assert by_axis[CplAxisCode.COND_REVENUE].normalized_value == {
+        "amount_won": 5_000_000_000,
+        "operator": "GTE",
+        "unit": "KRW",
+        "period_years": 3,
+    }
+    assert by_axis[CplAxisCode.COND_HEADCOUNT].normalized_value == {
+        "count": 10,
+        "operator": "LTE",
+        "unit": "PERSON",
+    }
+
+
+def test_linked_policy_requires_semantic_identifier_and_preserves_absence() -> None:
+    document = paragraph_document(
+        [
+            "연계정책: 관련 정책에 따라 추진",
+            "지원조건: 없음",
+        ]
+    )
+
+    result = evaluate_cpl_rules(document)
+    linked = next(
+        item for item in result.items if item.field_code == CplFieldCode.LINKED_POLICY
+    )
+    target = next(
+        item
+        for item in result.items
+        if item.field_code == CplFieldCode.TARGET_AND_CONDITIONS
+    )
+
+    assert linked.status == CplStatus.NEEDS_CONFIRMATION
+    assert linked.occurrences[0].normalized_value == {
+        "text": "관련 정책에 따라 추진"
+    }
+    assert len(target.occurrences) == 1
+    assert target.occurrences[0].raw_text == "없음"
+    assert target.occurrences[0].axis_code is None
+    assert target.occurrences[0].normalized_value == {"explicit_absence": True}
+
+
+def test_linked_policy_identifier_is_grounded_without_rule_invention() -> None:
+    document = paragraph_document(["연계정책: 중소기업 육성 종합계획에 따라 추진"])
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "LINKED_POLICY",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "body:0",
+                            "raw_text": "중소기업 육성 종합계획",
+                            "axis_code": "LINKED_POLICY_IDENTIFIER",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    item = ground_llm_response(
+        document,
+        response,
+        {CplFieldCode.LINKED_POLICY},
+    )[0]
+
+    assert item.status == CplStatus.PRESENT
+    assert item.occurrences[0].normalized_value == {
+        "policy_identifier": "중소기업 육성 종합계획"
+    }
 
 
 @pytest.mark.parametrize(
@@ -536,7 +1017,7 @@ def test_ungrounded_llm_evidence_is_dropped(occurrence: dict) -> None:
     assert item.occurrences == []
     # 근거가 남지 않으면 PRESENT 를 주장할 수 없다.
     assert item.status == CplStatus.NEEDS_CONFIRMATION
-    assert item.reason_code == "EVIDENCE_NOT_GROUNDED"
+    assert item.reason_code == "LLM_INVALID_RESPONSE"
 
 
 def test_grounding_keeps_valid_evidence_when_one_occurrence_fails() -> None:
@@ -570,8 +1051,14 @@ def test_grounding_keeps_valid_evidence_when_one_occurrence_fails() -> None:
     )
 
     item = grounded[0]
-    assert item.status == CplStatus.PRESENT
+    assert item.status == CplStatus.NEEDS_CONFIRMATION
+    assert item.reason_code == "LLM_INVALID_RESPONSE"
     assert [o.raw_text for o in item.occurrences] == ["지역 기업"]
+
+    merged = merge_llm_result(evaluate_cpl_rules(parsed_document()), grounded)
+    assert "CPL semantic extraction incomplete: LLM_INVALID_RESPONSE" in (
+        merged.warnings
+    )
 
 
 def test_purpose_axes_keep_verbatim_evidence_without_taxonomy_generation() -> None:
@@ -643,10 +1130,15 @@ def test_cpl_prompt_is_versioned_and_messages_use_fragment_contract() -> None:
     settings = Settings(
         database_url="postgresql+psycopg://test:test@localhost/test",
         jwt_secret=JWT_SECRET,
-        cpl_prompt_path="backend/config/prompts/cpl-v0.2.txt",
+        cpl_prompt_version="cpl-semantic-v0.7",
+        cpl_prompt_path="backend/config/prompts/cpl-v0.7.txt",
     )
     prompt = load_cpl_prompt(settings.cpl_prompt_path)
     assert "raw_text must be a verbatim" in prompt
+    assert "PRESENT when at least one requested axis has explicit evidence" in prompt
+    assert "A BUSINESS_NEED fragment is not PURPOSE_GOAL evidence" in prompt
+    assert "A BUSINESS_NEED fragment is not PURPOSE_GOAL evidence" in prompt
+    assert settings.cpl_prompt_path.name == "cpl-v0.7.txt"
     messages = _semantic_messages(
         table_document(),
         {CplFieldCode.SUPPORT_CONTENT_AND_SCALE},
@@ -656,6 +1148,90 @@ def test_cpl_prompt_is_versioned_and_messages_use_fragment_contract() -> None:
     assert payload["allowed_axes"]["SUPPORT_CONTENT_AND_SCALE"]
     assert payload["fragments"][0]["evidence_ref"] == "table:1:cell:0:0"
     assert "blocks" not in payload
+
+
+def test_default_cpl_prompt_requires_axis_audit_and_minimum_spans() -> None:
+    settings = Settings(
+        database_url="postgresql+psycopg://test:test@localhost/test",
+        jwt_secret=JWT_SECRET,
+        cpl_prompt_version="cpl-semantic-v0.9",
+        cpl_prompt_path="backend/config/prompts/cpl-v0.9.txt",
+    )
+    prompt = load_cpl_prompt(settings.cpl_prompt_path)
+    assert settings.cpl_prompt_path.name == "cpl-v0.9.txt"
+    assert "audit the allowed-axis list again" in prompt
+    assert "smallest complete phrase" in prompt
+    assert "every named step separately" in prompt
+    assert "have a non-empty reason_code" in prompt
+
+
+def test_fit_recheck_messages_keep_required_axis_and_role_constraints() -> None:
+    feedback = FitInputFeedback(
+        relation_id=FitRelationId.FIT_2,
+        side="left",
+        field_code=CplFieldCode.PURPOSE_GOAL,
+        reason_code=FitInputFeedbackReason.REQUIRED_AXIS_MISSING,
+        required_axis_codes=[CplAxisCode.PURPOSE_DIRECTION],
+        required_source_roles=[None],
+    )
+
+    messages = _semantic_messages(
+        parsed_document(),
+        {CplFieldCode.PURPOSE_GOAL},
+        "prompt",
+        fit_feedback=(feedback,),
+    )
+    payload = json.loads(messages[1].content)
+
+    assert payload["allowed_axes"] == {
+        "PURPOSE_GOAL": ["PURPOSE_DIRECTION"]
+    }
+    assert payload["fit_input_feedback"] == [feedback.model_dump(mode="json")]
+    by_ref = {item["evidence_ref"]: item for item in payload["fragments"]}
+    assert by_ref["purpose:1"]["field_codes"] == ["PURPOSE_GOAL"]
+    assert "need:1" not in by_ref
+
+
+def test_fit_recheck_grounding_keeps_field_valid_axes_outside_prompt_focus() -> None:
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "PURPOSE_GOAL",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "purpose:1",
+                            "raw_text": "디지털 전환",
+                            "axis_code": "PURPOSE_SPECIFIC_OBJECTIVE",
+                        },
+                        {
+                            "evidence_ref": "purpose:1",
+                            "raw_text": "지원",
+                            "axis_code": "PURPOSE_DIRECTION",
+                        },
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    grounded = ground_llm_response(
+        parsed_document(),
+        response,
+        {CplFieldCode.PURPOSE_GOAL},
+    )
+
+    assert {
+        occurrence.axis_code for occurrence in grounded[0].occurrences
+    } == {
+        CplAxisCode.PURPOSE_SPECIFIC_OBJECTIVE,
+        CplAxisCode.PURPOSE_DIRECTION,
+    }
+    assert grounded[0].status == CplStatus.PRESENT
+    assert grounded[0].reason_code is None
 
 
 def test_request_type_checkboxes_are_scoped_to_the_named_area() -> None:
@@ -851,6 +1427,81 @@ def test_implementation_plan_combines_annual_and_subprogram_states(
         if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
     )
     assert plan.status == expected_status
+
+
+def test_partial_grounding_failure_is_not_hidden_by_plan_aggregation() -> None:
+    # 기간은 Rule로 확인되지만 계획 문장에는 라벨이 없어 LLM 전에는
+    # IMPLEMENTATION_PLAN이 확정되지 않는 문서다.
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="plan fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="period:0",
+                block_type="paragraph",
+                text="사업기간: 2026년 ~ 2028년",
+            ),
+                DocumentBlock(
+                    block_id="plan:0",
+                    block_type="paragraph",
+                    text="2026년 구축, 2027년 확산",
+                    section_path=["연차별 추진계획"],
+                ),
+                DocumentBlock(
+                    block_id="plan:1",
+                    block_type="paragraph",
+                    text="내역사업 없음",
+                    section_path=["내역사업별 추진계획"],
+                ),
+        ],
+    )
+    rule_result = evaluate_cpl_rules(document)
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "IMPLEMENTATION_PLAN",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "plan:0",
+                            "raw_text": "2026년 구축, 2027년 확산",
+                            "axis_code": "ANNUAL_PLAN_CONTENT",
+                        },
+                        {
+                            "evidence_ref": "plan:1",
+                            "raw_text": "내역사업 없음",
+                            "axis_code": "PROGRAM_LEVEL_ABSENT",
+                        },
+                        {
+                            "evidence_ref": "missing:ref",
+                            "raw_text": "없는 근거",
+                            "axis_code": "SUBPROGRAM_PLAN_CONTENT",
+                        },
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    grounded = ground_llm_response(
+        document,
+        response,
+        {CplFieldCode.IMPLEMENTATION_PLAN},
+    )
+    merged = merge_llm_result(rule_result, grounded)
+    plan = next(
+        item
+        for item in merged.items
+        if item.field_code == CplFieldCode.IMPLEMENTATION_PLAN
+    )
+
+    assert plan.status == CplStatus.NEEDS_CONFIRMATION
+    assert plan.reason_code == "LLM_INVALID_RESPONSE"
+    assert len(plan.occurrences) == 2
 
 
 def test_combined_plan_label_does_not_treat_standalone_not_applicable_as_hierarchy_absence() -> None:
@@ -1222,6 +1873,308 @@ def occurrences_for(result: CplResult, field_code: CplFieldCode) -> list:
     return next(
         item.occurrences for item in result.items if item.field_code == field_code
     )
+
+
+def mockup_08_document() -> ParsedDocument:
+    path = (
+        Path(__file__).parents[2]
+        / "samples"
+        / "hwpx"
+        / "mockup_08_CPL전항목_스마트기술사업화.hwpx"
+    )
+    with zipfile.ZipFile(path) as archive:
+        root = ET.fromstring(archive.read("Contents/section0.xml"))
+    cells = []
+    for cell in root.iter():
+        if not cell.tag.endswith("}tc"):
+            continue
+        address = next(child for child in cell if child.tag.endswith("}cellAddr"))
+        paragraphs = []
+        for paragraph in cell.iter():
+            if paragraph.tag.endswith("}p"):
+                text_parts = [
+                    node.text or ""
+                    for node in paragraph.iter()
+                    if node.tag.endswith("}t")
+                ]
+                paragraphs.append("".join(text_parts))
+        cells.append(
+            {
+                "row": int(address.attrib["rowAddr"]),
+                "col": int(address.attrib["colAddr"]),
+                "text": "\n".join(paragraphs),
+            }
+        )
+    return ParsedDocument(
+        parser_name="exact-hwpx-fixture",
+        parser_version="1.0",
+        text="mockup 08 exact table",
+        blocks=[
+            DocumentBlock(
+                block_id="body:4",
+                block_type="table",
+                text="\n".join(cell["text"] for cell in cells),
+                source_locator={"cells": cells},
+            )
+        ],
+    )
+
+
+def test_mockup_08_scopes_keep_container_and_inner_field_ownership() -> None:
+    document = mockup_08_document()
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "TARGET_AND_CONDITIONS",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "body:4:cell:3:1",
+                            "raw_text": "부산광역시 내 본사 또는 주된 사업장 보유",
+                            "axis_code": "COND_REGION",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                },
+                {
+                    "field_code": "NEW_OR_CHANGED_CONTENT",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "body:4:cell:3:1",
+                            "raw_text": "부산광역시 내 본사 또는 주된 사업장 보유",
+                            "axis_code": "CHANGE_CONTENT",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                },
+            ]
+        }
+    )
+
+    grounded = ground_llm_response(
+        document,
+        response,
+        {CplFieldCode.TARGET_AND_CONDITIONS, CplFieldCode.NEW_OR_CHANGED_CONTENT},
+    )
+    by_field = {item.field_code: item for item in grounded}
+    condition = by_field[CplFieldCode.TARGET_AND_CONDITIONS].occurrences[0]
+    assert condition.source_role == CplSourceRole.CONDITION
+    assert by_field[CplFieldCode.NEW_OR_CHANGED_CONTENT].occurrences
+
+
+def test_mockup_08_repeated_raw_text_with_different_scopes_is_rejected() -> None:
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "SUPPORT_CONTENT_AND_SCALE",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "body:4:cell:3:1",
+                            "raw_text": "40개사",
+                            "axis_code": "COMPANY_COUNT",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    item = ground_llm_response(
+        mockup_08_document(),
+        response,
+        {CplFieldCode.SUPPORT_CONTENT_AND_SCALE},
+    )[0]
+
+    assert item.occurrences == []
+    assert item.reason_code == "EVIDENCE_OWNERSHIP_UNRESOLVED"
+
+
+def test_mockup_08_rule_values_keep_budget_positions_and_condition_ranges() -> None:
+    result = evaluate_cpl_rules(mockup_08_document())
+    items = {item.field_code: item for item in result.items}
+
+    budget = items[CplFieldCode.BUDGET]
+    assert len(budget.occurrences) == 6
+    assert [occurrence.normalized_value for occurrence in budget.occurrences] == [
+        {"amount_won": 6_600_000_000, "currency": "KRW", "kind": "TOTAL"},
+        {"amount_won": 6_000_000_000, "currency": "KRW", "kind": "GRANT"},
+        {"amount_won": 600_000_000, "currency": "KRW", "kind": "OPERATION"},
+        {"amount_won": 2_200_000_000, "currency": "KRW", "year": 2026},
+        {"amount_won": 2_200_000_000, "currency": "KRW", "year": 2027},
+        {"amount_won": 2_200_000_000, "currency": "KRW", "year": 2028},
+    ]
+    assert [occurrence.raw_text for occurrence in budget.occurrences[-3:]] == [
+        "2026년 2,200백만원",
+        "2027년 2,200백만원",
+        "2028년 2,200백만원",
+    ]
+
+    conditions = items[CplFieldCode.TARGET_AND_CONDITIONS].occurrences
+    by_axis = {
+        occurrence.axis_code: occurrence.normalized_value
+        for occurrence in conditions
+        if occurrence.axis_code is not None
+    }
+    assert by_axis[CplAxisCode.COND_BUSINESS_AGE] == {
+        "min_years": 3,
+        "max_years": 10,
+        "min_operator": "GTE",
+        "max_operator": "LTE",
+        "unit": "YEAR",
+    }
+    assert by_axis[CplAxisCode.COND_REVENUE]["max_amount_won"] == 30_000_000_000
+    assert by_axis[CplAxisCode.COND_HEADCOUNT]["max_operator"] == "LT"
+
+
+def test_quantitative_normalization_accepts_repeated_identical_limit() -> None:
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="지원내용",
+        blocks=[
+            DocumentBlock(
+                block_id="support:duplicate-limit",
+                block_type="paragraph",
+                text="지원내용: 기업당 한도 최대 5,000만원 (단가 5,000만원)",
+            )
+        ],
+    )
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "SUPPORT_CONTENT_AND_SCALE",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "support:duplicate-limit",
+                            "raw_text": "기업당 한도 최대 5,000만원 (단가 5,000만원)",
+                            "axis_code": "PER_COMPANY_LIMIT",
+                        }
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+    item = ground_llm_response(
+        document,
+        response,
+        {CplFieldCode.SUPPORT_CONTENT_AND_SCALE},
+    )[0]
+    assert item.occurrences[0].normalized_value == {
+        "amount_won": 50_000_000,
+        "unit": "KRW",
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected"),
+    [
+        (
+            "2026. 01. 01. ~ 2028. 12. 31.",
+            {
+                "start": "2026-01-01",
+                "end": "2028-12-31",
+                "continuing": False,
+                "multi_year": True,
+            },
+        ),
+        (
+            "2026년 1월 1일부터 2028년 12월 31일까지",
+            {
+                "start": "2026-01-01",
+                "end": "2028-12-31",
+                "continuing": False,
+                "multi_year": True,
+            },
+        ),
+        (
+            "'21년 ~ '25년(5년)",
+            {
+                "start": "2021",
+                "end": "2025",
+                "continuing": False,
+                "multi_year": True,
+                "two_digit_year_policy": "ASSUME_2000S",
+            },
+        ),
+    ],
+)
+def test_business_period_accepts_general_date_tokens(
+    raw_text: str, expected: dict
+) -> None:
+    result = evaluate_cpl_rules(paragraph_document([f"사업기간: {raw_text}"]))
+    occurrence = occurrences_for(result, CplFieldCode.BUSINESS_PERIOD)[0]
+    assert occurrence.normalized_value == expected
+
+
+def test_legal_basis_emits_one_occurrence_per_citation() -> None:
+    result = evaluate_cpl_rules(
+        paragraph_document(
+            [
+                "지원근거: 「중소기업진흥에 관한 법률」 제62조의2, "
+                "「부산광역시 중소기업 육성 및 지원 조례」 제9조"
+            ]
+        )
+    )
+    occurrences = occurrences_for(result, CplFieldCode.LEGAL_BASIS)
+    assert [occurrence.normalized_value for occurrence in occurrences] == [
+        {"law_name": "중소기업진흥에 관한 법률", "article": "제62조의2"},
+        {
+            "law_name": "부산광역시 중소기업 육성 및 지원 조례",
+            "article": "제9조",
+        },
+    ]
+
+
+def test_numeric_condition_ranges_are_single_normalized_occurrences() -> None:
+    result = evaluate_cpl_rules(
+        paragraph_document(
+            [
+                "지원조건: 업력 3년 이상 10년 이내, 최근 3개년 연평균 "
+                "매출액 10억원 이상 300억원 이하, 상시 근로자 10명 이상 "
+                "300명 미만"
+            ]
+        )
+    )
+    occurrences = occurrences_for(result, CplFieldCode.TARGET_AND_CONDITIONS)
+    by_axis = {
+        occurrence.axis_code: occurrence
+        for occurrence in occurrences
+        if occurrence.axis_code is not None
+    }
+    assert by_axis[CplAxisCode.COND_BUSINESS_AGE].normalized_value == {
+        "min_years": 3,
+        "max_years": 10,
+        "min_operator": "GTE",
+        "max_operator": "LTE",
+        "unit": "YEAR",
+    }
+    assert by_axis[CplAxisCode.COND_REVENUE].normalized_value == {
+        "min_amount_won": 1_000_000_000,
+        "max_amount_won": 30_000_000_000,
+        "min_operator": "GTE",
+        "max_operator": "LTE",
+        "unit": "KRW",
+        "period_years": 3,
+    }
+    assert by_axis[CplAxisCode.COND_HEADCOUNT].normalized_value == {
+        "min_count": 10,
+        "max_count": 300,
+        "min_operator": "GTE",
+        "max_operator": "LT",
+        "unit": "PERSON",
+    }
 
 
 def test_rules_read_labels_wrapped_in_parentheses() -> None:

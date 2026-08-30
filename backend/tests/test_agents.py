@@ -12,7 +12,7 @@ from app.schemas.cpl import (
     CplSourceRole,
     CplStatus,
 )
-from app.schemas.fit import FitInputFeedbackReason
+from app.schemas.fit import FitInputFeedback, FitInputFeedbackReason
 from app.services.agents.orchestrator import reconcile_cpl_for_fit
 from app.services.fit.fit_engine import inspect_fit_inputs
 from app.services import analysis_pipeline
@@ -65,7 +65,7 @@ def _cpl(*occurrences: CplOccurrence) -> CplResult:
 
 
 def _mostly_complete_cpl() -> CplResult:
-    return _cpl(
+    result = _cpl(
         _occurrence(
             CplFieldCode.PURPOSE_GOAL,
             CplAxisCode.PURPOSE_TARGET_CONDITION,
@@ -98,6 +98,13 @@ def _mostly_complete_cpl() -> CplResult:
             suffix="procedure",
         ),
     )
+    purpose = next(
+        item for item in result.items if item.field_code == CplFieldCode.PURPOSE_GOAL
+    )
+    # Simulate a real semantic extraction failure. A merely absent axis in an
+    # otherwise completed field must not trigger another LLM call.
+    purpose.reason_code = "LLM_INVALID_RESPONSE"
+    return result
 
 
 def test_fit_input_feedback_is_typed_and_excludes_fixed_or_valid_gaps() -> None:
@@ -125,7 +132,7 @@ def test_fit_input_feedback_is_typed_and_excludes_fixed_or_valid_gaps() -> None:
     assert not any(item.relation_id.value in {"FIT-4", "FIT-5", "FIT-7"} for item in feedback)
 
 
-def test_fit_input_feedback_distinguishes_axis_from_source_role() -> None:
+def test_fit_input_feedback_does_not_recheck_rule_owned_source_role() -> None:
     cpl = _cpl(
         _occurrence(
             CplFieldCode.TARGET_AND_CONDITIONS,
@@ -134,25 +141,21 @@ def test_fit_input_feedback_distinguishes_axis_from_source_role() -> None:
         )
     )
     feedback = inspect_fit_inputs(cpl)
-    target_feedback = next(
-        item
+    assert not any(
+        item.relation_id.value == "FIT-1" and item.side == "right"
         for item in feedback
-        if item.relation_id.value == "FIT-1" and item.side == "right"
     )
-    assert target_feedback.reason_code == FitInputFeedbackReason.SOURCE_ROLE_MISSING
-    assert target_feedback.required_axis_codes == [CplAxisCode.TARGET_GROUP]
-    assert target_feedback.required_source_roles == [CplSourceRole.TARGET]
 
 
 def test_reconciliation_calls_one_targeted_recheck_and_records_resolution() -> None:
     original = _mostly_complete_cpl()
-    calls: list[tuple[CplResult, set[CplFieldCode]]] = []
+    calls: list[tuple[CplResult, tuple[FitInputFeedback, ...]]] = []
 
     async def recheck(
         current: CplResult,
-        fields: set[CplFieldCode],
+        feedback: tuple[FitInputFeedback, ...],
     ) -> CplResult:
-        calls.append((current, fields))
+        calls.append((current, feedback))
         updated = current.model_copy(deep=True)
         purpose = next(
             item
@@ -174,7 +177,14 @@ def test_reconciliation_calls_one_targeted_recheck_and_records_resolution() -> N
 
     assert len(calls) == 1
     assert calls[0][0] is original
-    assert calls[0][1] == {CplFieldCode.PURPOSE_GOAL}
+    assert {item.field_code for item in calls[0][1]} == {
+        CplFieldCode.PURPOSE_GOAL
+    }
+    assert {
+        axis
+        for item in calls[0][1]
+        for axis in item.required_axis_codes
+    } == {CplAxisCode.PURPOSE_DIRECTION}
     assert reconciled.recheck_count == 1
     assert not reconciled.remaining_feedback
     assert "CPL/FIT reconciliation recheck 1 requested" in reconciled.result.warnings[-1]
@@ -198,9 +208,35 @@ def test_reconciliation_keeps_original_result_when_recheck_fails() -> None:
     )
 
 
+def test_reconciliation_keeps_gap_when_targeted_evidence_is_not_present() -> None:
+    """재검은 FIT를 평가 가능하게 만들기 위해 없는 축을 생성하지 않는다."""
+    original = _mostly_complete_cpl()
+    received: list[tuple[FitInputFeedback, ...]] = []
+
+    async def recheck(
+        current: CplResult,
+        feedback: tuple[FitInputFeedback, ...],
+    ) -> CplResult:
+        received.append(feedback)
+        return current
+
+    reconciled = asyncio.run(reconcile_cpl_for_fit(original, recheck=recheck))
+
+    assert len(received) == 1
+    assert reconciled.recheck_count == 1
+    assert reconciled.remaining_feedback == reconciled.initial_feedback
+    assert any(
+        item.field_code == CplFieldCode.PURPOSE_GOAL
+        and CplAxisCode.PURPOSE_DIRECTION in item.required_axis_codes
+        for item in reconciled.remaining_feedback
+    )
+
+
 def test_analysis_pipeline_runs_targeted_cpl_recheck_before_fit(monkeypatch) -> None:
     original = _mostly_complete_cpl()
-    complete_calls: list[set[CplFieldCode]] = []
+    complete_calls: list[
+        tuple[set[CplFieldCode], tuple[FitInputFeedback, ...]]
+    ] = []
     fit_inputs: list[CplResult] = []
     purpose_direction = _occurrence(
         CplFieldCode.PURPOSE_GOAL,
@@ -211,8 +247,14 @@ def test_analysis_pipeline_runs_targeted_cpl_recheck_before_fit(monkeypatch) -> 
     async def parse(*_args) -> None:
         return None
 
-    async def complete(_document, current, fields, *_args) -> CplResult:
-        complete_calls.append(set(fields))
+    async def complete(
+        _document,
+        current,
+        fields,
+        *_args,
+        fit_feedback=(),
+    ) -> CplResult:
+        complete_calls.append((set(fields), fit_feedback))
         if len(complete_calls) == 1:
             return current
         updated = current.model_copy(deep=True)
@@ -265,7 +307,12 @@ def test_analysis_pipeline_runs_targeted_cpl_recheck_before_fit(monkeypatch) -> 
 
     assert result == "fit-result"
     assert len(complete_calls) == 2
-    assert complete_calls[1] == {CplFieldCode.PURPOSE_GOAL}
+    assert complete_calls[1][0] == {CplFieldCode.PURPOSE_GOAL}
+    assert {
+        axis
+        for item in complete_calls[1][1]
+        for axis in item.required_axis_codes
+    } == {CplAxisCode.PURPOSE_DIRECTION}
     assert len(fit_inputs) == 1
     assert any(
         occurrence.axis_code == CplAxisCode.PURPOSE_DIRECTION

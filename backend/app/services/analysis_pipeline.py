@@ -23,8 +23,14 @@ from app.ports.llm_client import (
 )
 from app.ports.object_storage import ObjectStorage
 from app.ports.pdf_renderer import PdfRenderer
-from app.schemas.cpl import CplFieldCode, CplResult, CplSemanticResponse, CplStatus
-from app.schemas.fit import FitResult
+from app.schemas.cpl import (
+    CplAxisCode,
+    CplFieldCode,
+    CplResult,
+    CplSemanticResponse,
+    CplStatus,
+)
+from app.schemas.fit import FitInputFeedback, FitResult
 from app.schemas.parsed_document import ParsedDocument
 from app.services.cpl.checker import request_reason_from_result, run_cpl
 from app.services.cpl.logic_validator import (
@@ -96,14 +102,16 @@ async def run_analysis_pipeline(
         if llm_client is not None:
             async def recheck_cpl(
                 current: CplResult,
-                fields: set[CplFieldCode],
+                feedback: tuple[FitInputFeedback, ...],
             ) -> CplResult:
+                fields = {item.field_code for item in feedback}
                 return await _complete_semantic_review(
                     document,
                     current,
                     fields,
                     llm_client,
                     settings,
+                    fit_feedback=feedback,
                 )
 
             reconciliation = await reconcile_cpl_for_fit(
@@ -294,6 +302,8 @@ async def _complete_semantic_review(
     semantic_fields: set[CplFieldCode],
     llm_client: LLMClient | None,
     settings: Settings,
+    *,
+    fit_feedback: tuple[FitInputFeedback, ...] = (),
 ) -> CplResult:
     if not semantic_fields:
         return _with_runtime_metadata(rule_result, settings)
@@ -314,16 +324,24 @@ async def _complete_semantic_review(
                 document,
                 semantic_fields,
                 load_cpl_prompt(settings.cpl_prompt_path),
+                fit_feedback=fit_feedback,
             ),
             response_schema=CplSemanticResponse,
             model_profile=settings.cpl_model_profile,
         )
         if not isinstance(response, CplSemanticResponse):
             raise LLMInvalidResponseError("Unexpected structured response type")
-        candidates = ground_llm_response(document, response, semantic_fields)
+        grounding_warnings: list[str] = []
+        candidates = ground_llm_response(
+            document,
+            response,
+            semantic_fields,
+            warning_sink=grounding_warnings,
+        )
         result = merge_llm_result(
             rule_result,
             candidates,
+            additional_warnings=grounding_warnings,
         )
     except LLMTimeoutError as error:
         result = merge_llm_result(
@@ -375,18 +393,52 @@ def _semantic_messages(
     document: ParsedDocument,
     semantic_fields: set[CplFieldCode],
     prompt: str,
+    *,
+    fit_feedback: tuple[FitInputFeedback, ...] = (),
 ) -> list[Message]:
     fragments = [
         {
             "evidence_ref": fragment.evidence_ref,
+            "field_codes": sorted(field.value for field in fragment.field_codes),
             "source_role": fragment.source_role,
             "text": fragment.text,
+            "scopes": [
+                {
+                    "start": scope.start,
+                    "end": scope.end,
+                    "field_codes": sorted(
+                        field.value for field in scope.field_codes
+                    ),
+                    "source_role": scope.source_role,
+                }
+                for scope in fragment.scopes
+            ],
         }
         for fragment in semantic_fragments(document)
+        if not fragment.field_codes
+        or bool(fragment.field_codes & semantic_fields)
     ]
     requested = [
         field.value for field in CplFieldCode if field in semantic_fields
     ]
+    axis_constraints = _feedback_axis_constraints(fit_feedback)
+    allowed_axes = {
+        field.value: sorted(
+            axis.value
+            for axis in axis_constraints.get(field, CPL_FIELD_AXES[field])
+        )
+        for field in CplFieldCode
+        if field in semantic_fields
+    }
+    payload: dict[str, object] = {
+        "requested_fields": requested,
+        "allowed_axes": allowed_axes,
+        "fragments": fragments,
+    }
+    if fit_feedback:
+        payload["fit_input_feedback"] = [
+            item.model_dump(mode="json") for item in fit_feedback
+        ]
     return [
         Message(
             role="developer",
@@ -395,21 +447,26 @@ def _semantic_messages(
         Message(
             role="user",
             content=json.dumps(
-                {
-                    "requested_fields": requested,
-                    "allowed_axes": {
-                        field.value: sorted(
-                            axis.value for axis in CPL_FIELD_AXES[field]
-                        )
-                        for field in CplFieldCode
-                        if field in semantic_fields
-                    },
-                    "fragments": fragments,
-                },
+                payload,
                 ensure_ascii=False,
             ),
         ),
     ]
+
+
+def _feedback_axis_constraints(
+    feedback: tuple[FitInputFeedback, ...],
+) -> dict[CplFieldCode, frozenset[CplAxisCode]]:
+    constraints: dict[CplFieldCode, set[CplAxisCode]] = {}
+    for item in feedback:
+        constraints.setdefault(item.field_code, set()).update(
+            item.required_axis_codes
+        )
+    return {
+        field_code: frozenset(axes)
+        for field_code, axes in constraints.items()
+        if axes
+    }
 
 
 def load_cpl_prompt(path: Path) -> str:

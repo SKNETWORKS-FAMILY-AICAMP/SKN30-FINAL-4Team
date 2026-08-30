@@ -1,7 +1,9 @@
 import json
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
@@ -21,7 +23,7 @@ from app.schemas.parsed_document import ParsedDocument
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RULESET_VERSION = "cpl-alpha-v0.2"
+DEFAULT_RULESET_VERSION = "cpl-alpha-v0.3"
 LlmFailureCode = Literal[
     "LLM_UNAVAILABLE",
     "LLM_TIMEOUT",
@@ -29,6 +31,32 @@ LlmFailureCode = Literal[
 ]
 LLM_FAILURE_CODES = frozenset(
     {"LLM_UNAVAILABLE", "LLM_TIMEOUT", "LLM_INVALID_RESPONSE"}
+)
+
+# 근거를 잃은 원인을 구분한다. 파서가 라벨 여러 개를 한 조각에 담아 귀속하지
+# 못한 것과, 모델이 원문에 없는 말을 인용한 것은 다른 사건이다. 둘을 같은
+# 코드로 적으면 Rule·LLM 비교 지표가 우리 결함을 LLM 실패로 센다.
+CPL_INCOMPLETE_REASON_CODES = frozenset(
+    {
+        *LLM_FAILURE_CODES,
+        "EVIDENCE_OWNERSHIP_UNRESOLVED",
+        "LLM_REASON_CODE_MISSING",
+    }
+)
+_LLM_FAULT_DROPS = frozenset(
+    {
+        "BLANK_EVIDENCE",
+        "REF_NOT_FOUND",
+        "NOT_VERBATIM",
+        "FIELD_NOT_ALLOWED",
+        "AXIS_NOT_ALLOWED",
+    }
+)
+_STRUCTURAL_DROPS = frozenset({"FIELD_OWNERSHIP_UNRESOLVED"})
+# 문서가 스스로 공란·부재라고 밝힌 값을 걸러낸 것은 어느 쪽 실패도 아니다.
+_BENIGN_DROPS = frozenset({"EXPLICIT_MISSING_VALUE", "EXPLICIT_ABSENCE_VALUE"})
+_LLM_FAULT_CONTRACT_ERRORS = frozenset(
+    {"PRESENT_WITHOUT_EVIDENCE", "MISSING_WITH_EVIDENCE"}
 )
 
 CPL_FIELD_LABELS: dict[CplFieldCode, str] = {
@@ -135,6 +163,12 @@ _LABEL_ALIASES: dict[CplFieldCode, tuple[str, ...]] = {
     ),
 }
 
+# 명시적 부재 판정은 라벨이 아니라 값에 내려야 한다. LLM 이 라벨을 포함한
+# 줄을 인용할 수 있어 값만 떼어내는 데 쓴다.
+_ALL_LABEL_ALIASES: tuple[str, ...] = tuple(
+    alias for aliases in _LABEL_ALIASES.values() for alias in aliases
+)
+
 _REQUEST_TYPES: tuple[tuple[str, str], ...] = (
     ("내내역사업 신설", "SUBSUBPROGRAM_NEW"),
     ("내역사업 신설", "SUBPROGRAM_NEW"),
@@ -150,31 +184,87 @@ _CHECKBOX_PATTERN = re.compile(
 # 같은 영역을 "요청유형"으로 부른다. 두 표기를 모두 영역 표지로 받는다.
 _REQUEST_TYPE_AREA_PATTERN = re.compile(r"(?:사전\s*협의\s*)?요청\s*(?:유형|사유)")
 _LINE_PREFIX = r"^\s*(?:(?:[○◦●•※□■☑▣✓✔\-–—])|(?:\d+[.)]))*\s*"
-_PERIOD_PATTERN = re.compile(
-    r"(?P<start_year>20\d{2})\s*(?:[.년/-]\s*(?P<start_month>\d{1,2}))?"
-    r"\s*(?:년|월|[.])?\s*(?:~|∼|～|부터|-)\s*"
-    r"(?:(?P<end_year>20\d{2})\s*(?:[.년/-]\s*(?P<end_month>\d{1,2}))?"
-    r"\s*(?:년|월|[.])?|(?P<continuing>계속))"
+_DATE_TOKEN_PATTERN = re.compile(
+    r"(?P<ymd_year>20\d{2})\s*[./-]\s*(?P<ymd_month>\d{1,2})"
+    r"\s*[./-]\s*(?P<ymd_day>\d{1,2})\s*\.?"
+    r"|(?P<ym_year>20\d{2})\s*[./-]\s*(?P<ym_month>\d{1,2})\s*\.?"
+    r"|(?P<kr_year>20\d{2})\s*년(?:\s*(?P<kr_month>\d{1,2})\s*월"
+    r"(?:\s*(?P<kr_day>\d{1,2})\s*일)?)?"
+    r"|(?P<short_quote>['’])(?P<short_year>\d{2})\s*년"
+    r"|(?<!\d)(?P<bare_year>20\d{2})(?!\d)"
 )
 _SINGLE_YEAR_PATTERN = re.compile(r"(?<!\d)(?P<year>20\d{2})\s*년")
 _AMOUNT_PATTERN = re.compile(
     r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*"
     r"(?P<unit>조|억|천만|백만|십만|만|천|백|십)?\s*원?"
 )
-_LAW_PATTERN = re.compile(
-    r"(?P<law>[가-힣A-Za-z0-9·ㆍ ]{1,80}?법)"
-    r"(?:\s*(?P<article>제\s*\d+\s*조(?:의\s*\d+)?))?"
+_ARTICLE_PATTERN = r"제\s*\d+\s*조(?:의\s*\d+)?"
+_QUOTED_LAW_PATTERN = re.compile(
+    rf"「(?P<law>[^」]+)」\s*(?P<article>{_ARTICLE_PATTERN})?"
+)
+_UNQUOTED_LAW_PATTERN = re.compile(
+    rf"(?P<law>[가-힣A-Za-z0-9·ㆍ ]{{1,80}}?"
+    rf"(?:특별법|법률|조례|규칙|법))\s*(?P<article>{_ARTICLE_PATTERN})?"
 )
 _RATIO_PATTERN = re.compile(r"(?<![\d.])(?P<number>\d+(?:\.\d+)?)\s*%")
 _COMPANY_COUNT_PATTERN = re.compile(
     r"(?<!\d)(?P<number>\d{1,3}(?:,\d{3})*|\d+)\s*(?:개\s*사|기업|개\s*업체)"
 )
+_CONDITION_PATTERNS: tuple[tuple[CplAxisCode, re.Pattern[str]], ...] = (
+    (
+        CplAxisCode.COND_BUSINESS_AGE,
+        re.compile(
+            r"(?:업력|창업)\s*\d+(?:\.\d+)?\s*년\s*"
+            r"(?:이내|미만|이상|초과|이하)"
+            r"(?:\s*\d+(?:\.\d+)?\s*년\s*"
+            r"(?:이내|미만|이상|초과|이하))?"
+        ),
+    ),
+    (
+        CplAxisCode.COND_REVENUE,
+        re.compile(
+            r"(?:최근\s*\d+\s*개년\s*)?(?:연평균\s*)?매출(?:액)?\s*"
+            r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*"
+            r"(?:조|억|천만|백만|십만|만|천)?\s*원?\s*"
+            r"(?:이내|미만|이상|초과|이하)"
+            r"(?:\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*"
+            r"(?:조|억|천만|백만|십만|만|천)?\s*원?\s*"
+            r"(?:이내|미만|이상|초과|이하))?"
+        ),
+    ),
+    (
+        CplAxisCode.COND_HEADCOUNT,
+        re.compile(
+            r"(?:상시\s*)?(?:근로자|종사자)\s*\d{1,3}(?:,\d{3})*\s*명\s*"
+            r"(?:이내|미만|이상|초과|이하)"
+            r"(?:\s*\d{1,3}(?:,\d{3})*\s*명\s*"
+            r"(?:이내|미만|이상|초과|이하))?"
+        ),
+    ),
+)
 _NUMBER_PATTERN = re.compile(
     r"(?<!\d)(?P<number>\d{1,3}(?:,\d{3})*|\d+)(?:\.(?P<decimal>\d+))?"
 )
 _PROGRAM_LEVEL_PATTERN = re.compile(r"(?P<level>내내역사업|내역사업|세부사업)")
-_GENERIC_POLICY_VALUES = frozenset(
-    {"관련 정책", "정부 정책", "상위 정책", "관련 계획", "정책 연계"}
+_EXPLICIT_MISSING_PATTERN = re.compile(
+    r"(?:공란|미기재|미작성)"
+    r"(?:\s*[/,·]\s*(?:공란|미기재|미작성))*"
+)
+_EXPLICIT_ABSENCE_PATTERN = re.compile(
+    r"(?:없음|해당\s*없음|별도\s*조건\s*없음)"
+)
+_AGE_BOUNDARY_PATTERN = re.compile(
+    r"(?P<number>\d+(?:\.\d+)?)\s*년\s*"
+    r"(?P<operator>이내|미만|이상|초과|이하)"
+)
+_REVENUE_BOUNDARY_PATTERN = re.compile(
+    r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*"
+    r"(?P<unit>조|억|천만|백만|십만|만|천)?\s*원?\s*"
+    r"(?P<operator>이내|미만|이상|초과|이하)"
+)
+_HEADCOUNT_BOUNDARY_PATTERN = re.compile(
+    r"(?P<number>\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*명\s*"
+    r"(?P<operator>이내|미만|이상|초과|이하)"
 )
 _AMOUNT_MULTIPLIERS = {
     None: Decimal(1),
@@ -195,6 +285,7 @@ CPL_SEMANTIC_FIELDS = frozenset(
         CplFieldCode.IMPLEMENTATION_PLAN,
         CplFieldCode.NEW_OR_CHANGED_CONTENT,
         CplFieldCode.BUSINESS_NEED,
+        CplFieldCode.LINKED_POLICY,
         CplFieldCode.TARGET_AND_CONDITIONS,
         CplFieldCode.SUPPORT_CONTENT_AND_SCALE,
         CplFieldCode.DELIVERY_SYSTEM,
@@ -227,6 +318,9 @@ CPL_FIELD_AXES: dict[CplFieldCode, frozenset[CplAxisCode]] = {
             CplAxisCode.NEED_RESPONSE,
             CplAxisCode.NEED_SOURCE,
         }
+    ),
+    CplFieldCode.LINKED_POLICY: frozenset(
+        {CplAxisCode.LINKED_POLICY_IDENTIFIER}
     ),
     CplFieldCode.TARGET_AND_CONDITIONS: frozenset(
         {
@@ -285,7 +379,6 @@ _QUANTITATIVE_AXES = frozenset(
         CplAxisCode.TOTAL_SCALE,
     }
 )
-
 _AXIS_SOURCE_ROLES: dict[CplAxisCode, CplSourceRole] = {
     CplAxisCode.TARGET_GROUP: CplSourceRole.TARGET,
     CplAxisCode.COND_COMPANY_TYPE: CplSourceRole.CONDITION,
@@ -320,6 +413,14 @@ _AXIS_SOURCE_ROLES: dict[CplAxisCode, CplSourceRole] = {
 
 
 @dataclass(frozen=True)
+class _TextScope:
+    start: int
+    end: int
+    field_codes: frozenset[CplFieldCode]
+    source_role: CplSourceRole | None = None
+
+
+@dataclass(frozen=True)
 class _Fragment:
     evidence_ref: str
     text: str
@@ -328,6 +429,8 @@ class _Fragment:
     source_locator: dict
     block_id: str
     source_role: CplSourceRole | None = None
+    field_codes: frozenset[CplFieldCode] = frozenset()
+    scopes: tuple[_TextScope, ...] = ()
 
 
 def evaluate_cpl_rules(
@@ -335,7 +438,8 @@ def evaluate_cpl_rules(
     ruleset_version: str = DEFAULT_RULESET_VERSION,
 ) -> CplResult:
     """Extract only explicit, reproducible CPL evidence from a parsed document."""
-    fragments = _document_fragments(document)
+    # Rule extraction and LLM grounding must agree on label ownership.
+    fragments = semantic_fragments(document)
     items: list[CplItem] = [_request_type_item(fragments)]
 
     for field_code in CPL_FIELDS[1:]:
@@ -357,6 +461,7 @@ def merge_llm_result(
     *,
     llm_error: LlmFailureCode | None = None,
     requested_fields: set[CplFieldCode] | None = None,
+    additional_warnings: list[str] | None = None,
 ) -> CplResult:
     """Merge grounded LLM facts without replacing deterministic Rule evidence.
 
@@ -369,26 +474,39 @@ def merge_llm_result(
     if llm_items is None:
         return rule_result.model_copy(deep=True)
 
-    if len({item.field_code for item in llm_items}) != len(llm_items):
-        return _result_with_llm_failure(rule_result, "LLM_INVALID_RESPONSE")
-
-    candidate_by_code = {item.field_code: item for item in llm_items}
+    candidate_by_code: dict[CplFieldCode, CplItem] = {}
+    invalid_fields: set[CplFieldCode] = set()
     for candidate in llm_items:
+        if candidate.field_code in candidate_by_code:
+            invalid_fields.add(candidate.field_code)
+            continue
+        candidate_by_code[candidate.field_code] = candidate
+    for candidate in llm_items:
+        if candidate.field_code in invalid_fields:
+            continue
         if candidate.status == CplStatus.PARSE_FAILED:
-            return _result_with_llm_failure(rule_result, "LLM_INVALID_RESPONSE")
-        if candidate.status == CplStatus.PRESENT and not candidate.occurrences:
-            return _result_with_llm_failure(rule_result, "LLM_INVALID_RESPONSE")
-        if any(
+            invalid_fields.add(candidate.field_code)
+        elif candidate.status == CplStatus.PRESENT and not candidate.occurrences:
+            invalid_fields.add(candidate.field_code)
+        elif any(
             occurrence.extraction_method != "LLM"
             for occurrence in candidate.occurrences
         ):
-            return _result_with_llm_failure(rule_result, "LLM_INVALID_RESPONSE")
+            invalid_fields.add(candidate.field_code)
 
     merged_items: list[CplItem] = []
     for rule_item in rule_result.items:
         candidate = candidate_by_code.get(rule_item.field_code)
-        if candidate is None:
-            merged_items.append(rule_item.model_copy(deep=True))
+        if candidate is None or rule_item.field_code in invalid_fields:
+            copied = rule_item.model_copy(deep=True)
+            if (
+                rule_item.field_code in invalid_fields
+                and rule_item.status
+                not in {CplStatus.PRESENT, CplStatus.NOT_APPLICABLE}
+            ):
+                copied.status = CplStatus.NEEDS_CONFIRMATION
+                copied.reason_code = "LLM_INVALID_RESPONSE"
+            merged_items.append(copied)
             continue
 
         occurrences = _merge_occurrences(
@@ -399,6 +517,9 @@ def merge_llm_result(
             CplStatus.PRESENT,
             CplStatus.NOT_APPLICABLE,
         }
+        candidate_is_invalid = (
+            candidate.reason_code in CPL_INCOMPLETE_REASON_CODES
+        )
         evidence_conflict = bool(rule_item.occurrences) and (
             candidate.status == CplStatus.MISSING
         )
@@ -417,6 +538,8 @@ def merge_llm_result(
                 reason_code=(
                     rule_item.reason_code
                     if rule_is_conclusive
+                    else candidate.reason_code
+                    if candidate_is_invalid
                     else "EVIDENCE_CONFLICT"
                     if evidence_conflict
                     else candidate.reason_code
@@ -428,10 +551,42 @@ def merge_llm_result(
         )
 
     _resolve_implementation_plan(merged_items)
+    invalid_unresolved_fields = {
+        rule_item.field_code: candidate.reason_code
+        for rule_item in rule_result.items
+        if rule_item.status not in {CplStatus.PRESENT, CplStatus.NOT_APPLICABLE}
+        and (candidate := candidate_by_code.get(rule_item.field_code)) is not None
+        and candidate.reason_code in CPL_INCOMPLETE_REASON_CODES
+    }
+    for item in merged_items:
+        if item.field_code in invalid_unresolved_fields:
+            item.status = CplStatus.NEEDS_CONFIRMATION
+            item.reason_code = invalid_unresolved_fields[item.field_code]
+    warnings = list(rule_result.warnings)
+    for warning in additional_warnings or []:
+        if warning not in warnings:
+            warnings.append(warning)
+    for field_code in sorted(invalid_fields, key=lambda code: code.value):
+        warning = (
+            "CPL semantic field incomplete: "
+            f"{field_code.value}:LLM_INVALID_RESPONSE"
+        )
+        if warning not in warnings:
+            warnings.append(warning)
+    for code in sorted(
+        {
+            candidate.reason_code
+            for candidate in llm_items
+            if candidate.reason_code in CPL_INCOMPLETE_REASON_CODES
+        }
+    ):
+        warning = f"CPL semantic extraction incomplete: {code}"
+        if warning not in warnings:
+            warnings.append(warning)
     return CplResult(
         ruleset_version=rule_result.ruleset_version,
         items=merged_items,
-        warnings=list(rule_result.warnings),
+        warnings=warnings,
         model_profile=rule_result.model_profile,
         prompt_version=rule_result.prompt_version,
     )
@@ -441,26 +596,58 @@ def ground_llm_response(
     document: ParsedDocument,
     response: CplSemanticResponse,
     expected_fields: set[CplFieldCode],
+    *,
+    warning_sink: list[str] | None = None,
 ) -> list[CplItem]:
     """Replace model-provided lineage with lineage verified against parser output."""
-    codes = [item.field_code for item in response.items]
-    if len(codes) != len(set(codes)) or set(codes) != expected_fields:
-        raise ValueError("LLM response fields do not match the requested CPL fields")
     if not expected_fields.issubset(CPL_SEMANTIC_FIELDS):
         raise ValueError("LLM response contains a Rule-only CPL field")
-
     fragments = semantic_fragments(document)
     fragment_by_ref = {fragment.evidence_ref: fragment for fragment in fragments}
     if len(fragment_by_ref) != len(fragments):
         raise ValueError("Parser fragments do not have unique evidence references")
-    grounded: list[CplItem] = []
+    response_by_field: dict[CplFieldCode, list] = {}
     for item in response.items:
+        response_by_field.setdefault(item.field_code, []).append(item)
+    unexpected = set(response_by_field) - expected_fields
+    if unexpected:
+        warning = (
+            "CPL semantic response ignored unexpected field(s): "
+            + ",".join(sorted(field.value for field in unexpected))
+        )
+        if warning_sink is not None:
+            warning_sink.append(warning)
+        logger.warning(
+            "CPL response contained %s unexpected field(s)",
+            len(unexpected),
+        )
+    grounded: list[CplItem] = []
+    for field_code in CPL_FIELDS:
+        if field_code not in expected_fields:
+            continue
+        candidates = response_by_field.get(field_code, [])
+        if len(candidates) != 1:
+            logger.warning(
+                "CPL response item invalid field=%s reason=%s",
+                field_code.value,
+                "FIELD_MISSING" if not candidates else "FIELD_DUPLICATED",
+            )
+            grounded.append(
+                CplItem(
+                    field_code=field_code,
+                    status=CplStatus.NEEDS_CONFIRMATION,
+                    reason_code="LLM_INVALID_RESPONSE",
+                )
+            )
+            continue
+        item = candidates[0]
+        contract_error = None
         if item.status == "PRESENT" and not item.occurrences:
-            raise ValueError("PRESENT LLM result requires evidence")
-        if item.status == "MISSING" and item.occurrences:
-            raise ValueError("MISSING LLM result cannot contain evidence")
-        if item.status == "NEEDS_CONFIRMATION" and not item.reason_code:
-            raise ValueError("NEEDS_CONFIRMATION LLM result requires a reason")
+            contract_error = "PRESENT_WITHOUT_EVIDENCE"
+        elif item.status == "MISSING" and item.occurrences:
+            contract_error = "MISSING_WITH_EVIDENCE"
+        elif item.status == "NEEDS_CONFIRMATION" and not item.reason_code:
+            contract_error = "CONFIRMATION_REASON_MISSING"
 
         occurrences: list[CplOccurrence] = []
         dropped: list[str] = []
@@ -478,10 +665,28 @@ def ground_llm_response(
             if occurrence.raw_text not in fragment.text:
                 dropped.append("NOT_VERBATIM")
                 continue
+            owned_fields, cited_role = _evidence_context(fragment, occurrence.raw_text)
+            if owned_fields and item.field_code not in owned_fields:
+                dropped.append("FIELD_NOT_ALLOWED")
+                continue
+            if not owned_fields:
+                dropped.append("FIELD_OWNERSHIP_UNRESOLVED")
+                continue
+            if _is_explicit_missing_text(occurrence.raw_text):
+                dropped.append("EXPLICIT_MISSING_VALUE")
+                continue
+            if (
+                item.field_code == CplFieldCode.TARGET_AND_CONDITIONS
+                and _is_explicit_absence_text(occurrence.raw_text)
+            ):
+                dropped.append("EXPLICIT_ABSENCE_VALUE")
+                continue
             if occurrence.axis_code not in CPL_FIELD_AXES[item.field_code]:
                 dropped.append("AXIS_NOT_ALLOWED")
                 continue
-            source_role = fragment.source_role
+            source_role = cited_role
+            if source_role is None and len(fragment.field_codes) == 1:
+                source_role = fragment.source_role
             if (
                 source_role is None
                 and occurrence.axis_code not in _QUANTITATIVE_AXES
@@ -508,10 +713,14 @@ def ground_llm_response(
             )
         status = CplStatus(item.status)
         reason_code = item.reason_code
-        if status == CplStatus.PRESENT and not occurrences:
-            # 근거가 남지 않으면 PRESENT 를 주장할 수 없다.
+        incomplete = _incomplete_reason(contract_error, dropped)
+        if incomplete is None and status == CplStatus.PRESENT and not occurrences:
+            incomplete = "LLM_INVALID_RESPONSE"
+        if incomplete is not None:
+            # 유효 근거는 보존하되 이 항목의 LLM 검토가 완전했다고 주장하지
+            # 않는다. Rule 이 이미 확정한 상태는 merge 단계에서 유지된다.
             status = CplStatus.NEEDS_CONFIRMATION
-            reason_code = reason_code or "EVIDENCE_NOT_GROUNDED"
+            reason_code = incomplete
         if dropped:
             logger.warning(
                 "CPL evidence dropped field=%s kept=%s dropped=%s reasons=%s",
@@ -519,6 +728,12 @@ def ground_llm_response(
                 len(occurrences),
                 len(dropped),
                 sorted(set(dropped)),
+            )
+        if contract_error:
+            logger.warning(
+                "CPL response item invalid field=%s reason=%s",
+                item.field_code.value,
+                contract_error,
             )
         grounded.append(
             CplItem(
@@ -623,33 +838,158 @@ def _document_fragments(document: ParsedDocument) -> list[_Fragment]:
 
 
 def semantic_fragments(document: ParsedDocument) -> list[_Fragment]:
-    """Return parser fragments with only deterministic section roles attached."""
+    """Attach offset scopes proven by labels, section paths, or table adjacency."""
     fragments = _document_fragments(document)
-    roles: dict[str, set[CplSourceRole]] = {
+    outer_fields: dict[str, set[CplFieldCode]] = {
         fragment.evidence_ref: set() for fragment in fragments
     }
+    outer_roles: dict[str, set[CplSourceRole]] = {
+        fragment.evidence_ref: set() for fragment in fragments
+    }
+
+    # A table label cell owns the adjacent value cell.  This is an ancestor
+    # scope: inner labels in the value cell add field ownership instead of
+    # deleting container ownership such as NEW_OR_CHANGED_CONTENT.
     for fragment in fragments:
-        for field_code in CPL_SEMANTIC_FIELDS:
-            for line in filter(None, (line.strip() for line in fragment.text.splitlines())):
-                match = _label_match(line, _LABEL_ALIASES[field_code])
-                if match is None:
-                    continue
+        stripped = fragment.text.strip()
+        for field_code, match in _line_label_matches(stripped):
+            if match.group("value").strip(" \t:：-–—"):
+                continue
+            if stripped.count("\n"):
+                continue
+            target = _adjacent_table_value(fragment, fragments)
+            if target is None:
+                continue
+            outer_fields[target.evidence_ref].add(field_code)
+            role = _source_role_for_alias(match.group("label"))
+            if role is not None:
+                outer_roles[target.evidence_ref].add(role)
+
+    resolved: list[_Fragment] = []
+    for fragment in fragments:
+        scopes = list(_local_text_scopes(fragment.text))
+        fields = set(outer_fields[fragment.evidence_ref])
+        roles = set(outer_roles[fragment.evidence_ref])
+
+        for part in fragment.section_path:
+            for field_code, match in _line_label_matches(part.strip()):
+                fields.add(field_code)
                 role = _source_role_for_alias(match.group("label"))
-                if role is None:
-                    continue
-                value = match.group("value").strip(" \t:：-–—")
-                target = fragment if value else _adjacent_table_value(fragment, fragments)
-                if target is not None:
-                    roles[target.evidence_ref].add(role)
-    return [
-        replace(
-            fragment,
-            source_role=next(iter(roles[fragment.evidence_ref]))
-            if len(roles[fragment.evidence_ref]) == 1
-            else None,
+                if role is not None:
+                    roles.add(role)
+
+        if fields:
+            scopes.insert(
+                0,
+                _TextScope(
+                    start=0,
+                    end=len(fragment.text),
+                    field_codes=frozenset(fields),
+                    source_role=(next(iter(roles)) if len(roles) == 1 else None),
+                ),
+            )
+
+        all_fields = set(fields)
+        all_roles = set(roles)
+        for scope in scopes:
+            all_fields.update(scope.field_codes)
+            if scope.source_role is not None:
+                all_roles.add(scope.source_role)
+        resolved.append(
+            replace(
+                fragment,
+                source_role=(
+                    next(iter(all_roles)) if len(all_roles) == 1 else None
+                ),
+                field_codes=frozenset(all_fields),
+                scopes=tuple(scopes),
+            )
         )
-        for fragment in fragments
-    ]
+    return resolved
+
+
+def _evidence_context(
+    fragment: _Fragment,
+    raw_text: str,
+) -> tuple[frozenset[CplFieldCode], CplSourceRole | None]:
+    """Resolve every cited occurrence; repeated text must have one context."""
+    contexts: list[tuple[frozenset[CplFieldCode], CplSourceRole | None]] = []
+    start = 0
+    while (position := fragment.text.find(raw_text, start)) >= 0:
+        end = position + len(raw_text)
+        containing = [
+            scope
+            for scope in fragment.scopes
+            if scope.start <= position and end <= scope.end
+        ]
+        fields = frozenset(
+            field
+            for scope in containing
+            for field in scope.field_codes
+        )
+        roles = [
+            scope
+            for scope in containing
+            if scope.source_role is not None
+        ]
+        role = (
+            min(roles, key=lambda scope: scope.end - scope.start).source_role
+            if roles
+            else None
+        )
+        contexts.append((fields, role))
+        start = position + max(1, len(raw_text))
+
+    if not contexts or any(context != contexts[0] for context in contexts[1:]):
+        return frozenset(), None
+    return contexts[0]
+
+
+def _local_text_scopes(text: str) -> tuple[_TextScope, ...]:
+    markers: list[tuple[int, frozenset[CplFieldCode], CplSourceRole | None]] = []
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        stripped = raw_line.strip()
+        if stripped:
+            leading = len(raw_line) - len(raw_line.lstrip())
+            matches = _line_label_matches(stripped)
+            if matches:
+                fields = frozenset(field for field, _match in matches)
+                roles = {
+                    role
+                    for _field, match in matches
+                    if (role := _source_role_for_alias(match.group("label")))
+                    is not None
+                }
+                markers.append(
+                    (
+                        offset + leading,
+                        fields,
+                        next(iter(roles)) if len(roles) == 1 else None,
+                    )
+                )
+        offset += len(raw_line)
+
+    return tuple(
+        _TextScope(
+            start=start,
+            end=markers[index + 1][0] if index + 1 < len(markers) else len(text),
+            field_codes=fields,
+            source_role=role,
+        )
+        for index, (start, fields, role) in enumerate(markers)
+    )
+
+
+def _line_label_matches(
+    line: str,
+) -> list[tuple[CplFieldCode, re.Match[str]]]:
+    matches: list[tuple[CplFieldCode, re.Match[str]]] = []
+    for field_code in CPL_SEMANTIC_FIELDS:
+        match = _label_match(line, _LABEL_ALIASES[field_code])
+        if match is not None:
+            matches.append((field_code, match))
+    return matches
 
 
 def _cell_evidence_ref(
@@ -761,17 +1101,50 @@ def _labeled_occurrences(
     label_only_fragments: list[tuple[_Fragment, CplAxisCode | None]] = []
 
     for fragment in fragments:
-        for line in filter(None, (line.strip() for line in fragment.text.splitlines())):
+        offset = 0
+        for raw_line in fragment.text.splitlines(keepends=True):
+            line = raw_line.strip()
+            if not line:
+                offset += len(raw_line)
+                continue
             match = _label_match(line, aliases)
             if match is None:
+                offset += len(raw_line)
                 continue
             value = match.group("value").strip(" \t:：-–—")
             source_role = _source_role_for_alias(match.group("label"))
             axis_code = _axis_for_alias(match.group("label"))
             if not value:
-                label_only_fragments.append(
-                    (replace(fragment, source_role=source_role), axis_code)
+                leading = len(raw_line) - len(raw_line.lstrip())
+                value = _scope_continuation(
+                    fragment,
+                    field_code,
+                    offset + leading,
+                    offset + len(raw_line),
                 )
+                if not value:
+                    label_only_fragments.append(
+                        (replace(fragment, source_role=source_role), axis_code)
+                    )
+                    offset += len(raw_line)
+                    continue
+            if _is_explicit_missing_text(value):
+                offset += len(raw_line)
+                continue
+            if (
+                field_code == CplFieldCode.TARGET_AND_CONDITIONS
+                and source_role == CplSourceRole.CONDITION
+                and _is_explicit_absence_text(value)
+            ):
+                occurrences.append(
+                    _occurrence(
+                        fragment,
+                        value,
+                        {"explicit_absence": True},
+                        source_role=source_role,
+                    )
+                )
+                offset += len(raw_line)
                 continue
             occurrences.extend(
                 _normalized_occurrences(
@@ -782,15 +1155,24 @@ def _labeled_occurrences(
                     source_role=source_role,
                 )
             )
+            offset += len(raw_line)
 
     for label_fragment, axis_code in label_only_fragments:
         adjacent = _adjacent_table_value(label_fragment, fragments)
         if adjacent is None:
+            continue
+        elif _is_explicit_missing_text(adjacent.text):
+            continue
+        elif (
+            field_code == CplFieldCode.TARGET_AND_CONDITIONS
+            and label_fragment.source_role == CplSourceRole.CONDITION
+            and _is_explicit_absence_text(adjacent.text)
+        ):
             occurrences.append(
                 _occurrence(
-                    label_fragment,
-                    label_fragment.text,
-                    None,
+                    adjacent,
+                    adjacent.text,
+                    {"explicit_absence": True},
                     source_role=label_fragment.source_role,
                 )
             )
@@ -807,6 +1189,75 @@ def _labeled_occurrences(
     return _deduplicate_occurrences(occurrences)
 
 
+def _scope_continuation(
+    fragment: _Fragment,
+    field_code: CplFieldCode,
+    label_start: int,
+    value_start: int,
+) -> str:
+    """Return a label-only line's value up to the next local label."""
+    candidates = [
+        scope
+        for scope in fragment.scopes
+        if scope.start == label_start and field_code in scope.field_codes
+    ]
+    if not candidates:
+        return ""
+    scope = min(candidates, key=lambda candidate: candidate.end - candidate.start)
+    if value_start >= scope.end:
+        return ""
+    return fragment.text[value_start : scope.end].strip(" \t\r\n:：-–—")
+
+
+def _incomplete_reason(
+    contract_error: str | None,
+    dropped: list[str],
+) -> str | None:
+    """근거를 잃은 원인을 하나로 좁힌다. 심각한 쪽이 이긴다.
+
+    무엇이 잘못됐는지를 구분해 두지 않으면 파서 조각의 귀속 실패까지
+    LLM 실패로 집계되어, 어느 수단이 실제로 흔들리는지 볼 수 없다.
+    """
+
+    reasons = set(dropped)
+    if contract_error in _LLM_FAULT_CONTRACT_ERRORS or reasons & _LLM_FAULT_DROPS:
+        return "LLM_INVALID_RESPONSE"
+    if reasons & _STRUCTURAL_DROPS:
+        return "EVIDENCE_OWNERSHIP_UNRESOLVED"
+    if contract_error == "CONFIRMATION_REASON_MISSING":
+        return "LLM_REASON_CODE_MISSING"
+    if reasons - _BENIGN_DROPS:
+        return "LLM_INVALID_RESPONSE"
+    return None
+
+
+def _absence_marker(value: str) -> str:
+    """인용 구간에서 부재 표기만 남긴다.
+
+    Rule 은 라벨 뒤 값만 보지만 LLM 은 `○ 수행기관 : 미기재` 처럼 라벨을 포함한
+    줄을 인용할 수 있다. 라벨을 떼지 않으면 문서가 스스로 공란이라고 밝힌
+    자리가 근거로 남는다. 표기 목록을 늘리는 대신 검사 대상을 값으로 맞춘다.
+    """
+
+    candidate = value.strip()
+    label = _label_match(candidate, _ALL_LABEL_ALIASES)
+    if label is not None:
+        candidate = label.group("value").strip()
+    if len(candidate) >= 2 and (candidate[0], candidate[-1]) in {
+        ("(", ")"),
+        ("[", "]"),
+        ("{", "}"),
+    }:
+        candidate = candidate[1:-1].strip()
+    return re.split(r"\s*(?:->|→|⇒)\s*", candidate, maxsplit=1)[0]
+
+
+def _is_explicit_missing_text(value: str) -> bool:
+    return _EXPLICIT_MISSING_PATTERN.fullmatch(_absence_marker(value)) is not None
+
+
+def _is_explicit_absence_text(value: str) -> bool:
+    return _EXPLICIT_ABSENCE_PATTERN.fullmatch(_absence_marker(value)) is not None
 def _label_match(line: str, aliases: tuple[str, ...]) -> re.Match[str] | None:
     alternatives = "|".join(
         re.escape(alias).replace(r"\ ", r"\s*")
@@ -921,20 +1372,52 @@ def _normalized_occurrences(
         normalized = _normalize_period(value)
         return [_occurrence(fragment, value, normalized)]
     if field_code == CplFieldCode.BUDGET:
-        amounts = _amount_values(value)
+        amounts = _budget_amount_values(value)
         if amounts:
-            return [
-                _occurrence(fragment, raw_text, normalized)
-                for raw_text, normalized in amounts
-            ]
+            raw_counts = Counter(raw_text for raw_text, _normalized in amounts)
+            raw_indexes: Counter[str] = Counter()
+            result: list[CplOccurrence] = []
+            for raw_text, normalized in amounts:
+                raw_index = raw_indexes[raw_text]
+                raw_indexes[raw_text] += 1
+                result.append(
+                    _occurrence(
+                        fragment,
+                        raw_text,
+                        normalized,
+                        locator_extra=(
+                            {"text_occurrence": raw_index}
+                            if raw_counts[raw_text] > 1
+                            else None
+                        ),
+                    )
+                )
+            return result
         return [_occurrence(fragment, value, None)]
     if field_code == CplFieldCode.LEGAL_BASIS:
-        return [_occurrence(fragment, value, _normalize_legal_basis(value))]
-    if field_code == CplFieldCode.LINKED_POLICY:
-        normalized = (
-            None if value.strip() in _GENERIC_POLICY_VALUES else {"text": value}
+        citations = _legal_citations(value)
+        return (
+            [
+                _occurrence(fragment, raw_text, normalized)
+                for raw_text, normalized in citations
+            ]
+            if citations
+            else [_occurrence(fragment, value, None)]
         )
-        return [_occurrence(fragment, value, normalized)]
+    if (
+        field_code == CplFieldCode.TARGET_AND_CONDITIONS
+        and source_role == CplSourceRole.CONDITION
+    ):
+        base = _occurrence(
+            fragment,
+            value,
+            {"text": value},
+            axis_code=axis_code,
+            source_role=source_role,
+        )
+        return _deduplicate_occurrences(
+            [base, *_condition_occurrences(fragment, value, source_role)]
+        )
     normalized = (
         _normalize_axis_value(axis_code, value, source_role)
         if axis_code is not None
@@ -949,6 +1432,128 @@ def _normalized_occurrences(
             source_role=source_role,
         )
     ]
+
+
+def _condition_occurrences(
+    fragment: _Fragment,
+    value: str,
+    source_role: CplSourceRole,
+) -> list[CplOccurrence]:
+    return [
+        _occurrence(
+            fragment,
+            match.group(0).strip(),
+            _normalize_condition_value(axis_code, match.group(0).strip()),
+            axis_code=axis_code,
+            source_role=source_role,
+        )
+        for axis_code, pattern in _CONDITION_PATTERNS
+        for match in pattern.finditer(value)
+        if match.group(0).strip()
+    ]
+
+
+def _normalize_condition_value(
+    axis_code: CplAxisCode,
+    raw_text: str,
+) -> dict | None:
+    if axis_code == CplAxisCode.COND_BUSINESS_AGE:
+        boundaries = [
+            (
+                Decimal(match.group("number")),
+                _condition_operator(match.group("operator")),
+            )
+            for match in _AGE_BOUNDARY_PATTERN.finditer(raw_text)
+        ]
+        return _condition_range(
+            boundaries,
+            single_key="years",
+            min_key="min_years",
+            max_key="max_years",
+            unit="YEAR",
+        )
+
+    if axis_code == CplAxisCode.COND_REVENUE:
+        boundaries = [
+            (
+                Decimal(match.group("number").replace(",", ""))
+                * _AMOUNT_MULTIPLIERS[match.group("unit")],
+                _condition_operator(match.group("operator")),
+            )
+            for match in _REVENUE_BOUNDARY_PATTERN.finditer(raw_text)
+        ]
+        period_match = re.search(r"최근\s*(?P<years>\d+)\s*개년", raw_text)
+        normalized = _condition_range(
+            boundaries,
+            single_key="amount_won",
+            min_key="min_amount_won",
+            max_key="max_amount_won",
+            unit="KRW",
+        )
+        if normalized is not None and period_match is not None:
+            normalized["period_years"] = int(period_match.group("years"))
+        return normalized
+
+    if axis_code == CplAxisCode.COND_HEADCOUNT:
+        boundaries = [
+            (
+                Decimal(match.group("number").replace(",", "")),
+                _condition_operator(match.group("operator")),
+            )
+            for match in _HEADCOUNT_BOUNDARY_PATTERN.finditer(raw_text)
+        ]
+        return _condition_range(
+            boundaries,
+            single_key="count",
+            min_key="min_count",
+            max_key="max_count",
+            unit="PERSON",
+        )
+
+    return {"text": raw_text}
+
+
+def _condition_operator(value: str) -> str:
+    return {
+        "이내": "LTE",
+        "이하": "LTE",
+        "미만": "LT",
+        "이상": "GTE",
+        "초과": "GT",
+    }[value]
+
+
+def _condition_range(
+    boundaries: list[tuple[Decimal, str]],
+    *,
+    single_key: str,
+    min_key: str,
+    max_key: str,
+    unit: str,
+) -> dict | None:
+    if not boundaries or any(value != value.to_integral_value() for value, _ in boundaries):
+        return None
+    if len(boundaries) == 1:
+        value, operator = boundaries[0]
+        return {single_key: int(value), "operator": operator, "unit": unit}
+    if len(boundaries) != 2:
+        return None
+
+    lower = [(value, operator) for value, operator in boundaries if operator in {"GTE", "GT"}]
+    upper = [(value, operator) for value, operator in boundaries if operator in {"LTE", "LT"}]
+    if len(lower) != 1 or len(upper) != 1:
+        return None
+    min_value, min_operator = lower[0]
+    max_value, max_operator = upper[0]
+    if min_value > max_value:
+        return None
+    return {
+        min_key: int(min_value),
+        max_key: int(max_value),
+        "min_operator": min_operator,
+        "max_operator": max_operator,
+        "unit": unit,
+    }
 
 
 def _implementation_plan_occurrences(
@@ -1080,30 +1685,77 @@ def _item_from_rule_occurrences(
 
 
 def _normalize_period(value: str) -> dict | None:
-    match = _PERIOD_PATTERN.search(value)
-    if match is not None:
-        return {
-            "start": _year_month(match.group("start_year"), match.group("start_month")),
-            "end": (
-                _year_month(match.group("end_year"), match.group("end_month"))
-                if match.group("end_year")
-                else None
-            ),
-            "continuing": match.group("continuing") is not None,
-        }
-    single_year = _SINGLE_YEAR_PATTERN.search(value)
-    if single_year is not None:
-        return {
-            "start": single_year.group("year"),
+    tokens = [_date_token(match) for match in _DATE_TOKEN_PATTERN.finditer(value)]
+    tokens = [token for token in tokens if token is not None]
+    if not tokens:
+        return None
+    start, start_year, start_short = tokens[0]
+    if re.search(r"계속(?:사업)?", value):
+        result = {"start": start, "end": None, "continuing": True}
+        if start_short:
+            result["two_digit_year_policy"] = "ASSUME_2000S"
+        return result
+    if len(tokens) == 1:
+        result = {
+            "start": start,
             "end": None,
             "continuing": False,
             "single_year": True,
         }
-    return None
+        if start_short:
+            result["two_digit_year_policy"] = "ASSUME_2000S"
+        return result
+
+    end, end_year, end_short = tokens[1]
+    if (start_year, start) > (end_year, end):
+        return None
+    result = {
+        "start": start,
+        "end": end,
+        "continuing": False,
+        "multi_year": start_year != end_year,
+    }
+    if start_year == end_year:
+        result["single_year"] = True
+    if start_short or end_short:
+        result["two_digit_year_policy"] = "ASSUME_2000S"
+    return result
 
 
-def _year_month(year: str, month: str | None) -> str:
-    return f"{year}-{int(month):02d}" if month is not None else year
+def _date_token(match: re.Match[str]) -> tuple[str, int, bool] | None:
+    short = match.group("short_year")
+    if short is not None:
+        year = 2000 + int(short)
+        return str(year), year, True
+
+    year_text = (
+        match.group("ymd_year")
+        or match.group("ym_year")
+        or match.group("kr_year")
+        or match.group("bare_year")
+    )
+    if year_text is None:
+        return None
+    year = int(year_text)
+    month_text = (
+        match.group("ymd_month")
+        or match.group("ym_month")
+        or match.group("kr_month")
+    )
+    day_text = match.group("ymd_day") or match.group("kr_day")
+    month = int(month_text) if month_text is not None else None
+    day = int(day_text) if day_text is not None else None
+    try:
+        if month is not None:
+            date(year, month, day or 1)
+    except ValueError:
+        return None
+    normalized = str(year)
+    if month is not None:
+        normalized += f"-{month:02d}"
+    if day is not None:
+        normalized += f"-{day:02d}"
+    return normalized, year, False
 
 
 def _amount_values(value: str) -> list[tuple[str, dict]]:
@@ -1128,17 +1780,67 @@ def _amount_values(value: str) -> list[tuple[str, dict]]:
     return amounts
 
 
+def _budget_amount_values(value: str) -> list[tuple[str, dict]]:
+    """Normalize explicit budget amounts plus nearby closed-form labels."""
+    amounts: list[tuple[str, dict]] = []
+    for match in _AMOUNT_PATTERN.finditer(value):
+        raw_text = match.group(0).strip()
+        if match.group("unit") is None and not raw_text.endswith("원"):
+            continue
+        try:
+            number = Decimal(match.group("number").replace(",", ""))
+        except InvalidOperation:
+            continue
+        won = number * _AMOUNT_MULTIPLIERS[match.group("unit")]
+        if won != won.to_integral_value():
+            continue
+
+        normalized: dict[str, object] = {
+            "amount_won": int(won),
+            "currency": "KRW",
+        }
+        prefix_start = max(0, match.start() - 40)
+        prefix = value[prefix_start : match.start()]
+        year_match = re.search(r"(?P<year>20\d{2})\s*년\s*$", prefix)
+        if year_match is not None:
+            normalized["year"] = int(year_match.group("year"))
+            raw_text = value[prefix_start + year_match.start() : match.end()].strip()
+        else:
+            kind_patterns = (
+                ("TOTAL", r"(?:총\s*사업비|총\s*예산)\s*$"),
+                ("GRANT", r"(?:지원금|보조금)\s*$"),
+                ("OPERATION", r"(?:운영(?:\s*[·ㆍ/]\s*평가)?비|평가비)\s*$"),
+            )
+            for kind, pattern in kind_patterns:
+                if re.search(pattern, prefix):
+                    normalized["kind"] = kind
+                    break
+        amounts.append((raw_text, normalized))
+    return amounts
+
+
 def _normalize_axis_value(
     axis_code: CplAxisCode,
     raw_text: str,
     source_role: CplSourceRole | None,
 ) -> dict | None:
+    if axis_code in {
+        CplAxisCode.COND_BUSINESS_AGE,
+        CplAxisCode.COND_REVENUE,
+        CplAxisCode.COND_HEADCOUNT,
+    }:
+        return _normalize_condition_value(axis_code, raw_text)
     if axis_code in {CplAxisCode.PER_COMPANY_LIMIT, CplAxisCode.TOTAL_SCALE}:
         amounts = _amount_values(raw_text)
-        if len(amounts) != 1:
+        distinct_amounts = {
+            amount["amount_won"]
+            for _raw, amount in amounts
+            if isinstance(amount.get("amount_won"), int)
+        }
+        if len(distinct_amounts) != 1:
             return None
         return {
-            "amount_won": amounts[0][1]["amount_won"],
+            "amount_won": next(iter(distinct_amounts)),
             "unit": "KRW",
         }
     if axis_code in {CplAxisCode.SUBSIDY_RATE, CplAxisCode.SELF_BURDEN_RATE}:
@@ -1172,7 +1874,18 @@ def _normalize_axis_value(
             if match.group("decimal")
             else int(number)
         )
-        return {"number": value, "unit": "NUMBER"}
+        unit = (
+            "PERCENT"
+            if "%" in raw_text
+            else "PERSON"
+            if re.search(r"\d\s*명", raw_text)
+            else "CASE"
+            if re.search(r"\d\s*건", raw_text)
+            else "NUMBER"
+        )
+        return {"number": value, "unit": unit}
+    if axis_code == CplAxisCode.LINKED_POLICY_IDENTIFIER:
+        return {"policy_identifier": raw_text}
     if axis_code == CplAxisCode.PROGRAM_LEVEL:
         match = _PROGRAM_LEVEL_PATTERN.search(raw_text)
         if match is None:
@@ -1197,16 +1910,30 @@ def _normalize_axis_value(
     return {"text": raw_text}
 
 
-def _normalize_legal_basis(value: str) -> dict | None:
-    match = _LAW_PATTERN.search(value)
-    if match is None:
-        return None
+def _legal_citations(value: str) -> list[tuple[str, dict]]:
+    citations: list[tuple[str, dict]] = []
+    occupied: list[tuple[int, int]] = []
+    for match in _QUOTED_LAW_PATTERN.finditer(value):
+        citations.append(_legal_citation(match))
+        occupied.append(match.span())
+
+    for match in _UNQUOTED_LAW_PATTERN.finditer(value):
+        if any(start <= match.start() < end for start, end in occupied):
+            continue
+        citations.append(_legal_citation(match))
+    return citations
+
+
+def _legal_citation(match: re.Match[str]) -> tuple[str, dict]:
     law_name = re.sub(r"\s+", " ", match.group("law")).strip()
     article = match.group("article")
-    return {
-        "law_name": law_name,
-        "article": re.sub(r"\s+", "", article) if article else None,
-    }
+    return (
+        match.group(0).strip(),
+        {
+            "law_name": law_name,
+            "article": re.sub(r"\s+", "", article) if article else None,
+        },
+    )
 
 
 def _occurrence(
@@ -1216,6 +1943,7 @@ def _occurrence(
     *,
     axis_code: CplAxisCode | None = None,
     source_role: CplSourceRole | None = None,
+    locator_extra: dict | None = None,
 ) -> CplOccurrence:
     return CplOccurrence(
         raw_text=raw_text,
@@ -1224,7 +1952,7 @@ def _occurrence(
         source_role=source_role,
         page_no=fragment.page_no,
         section_path=list(fragment.section_path),
-        source_locator=dict(fragment.source_locator),
+        source_locator={**fragment.source_locator, **(locator_extra or {})},
         block_id=fragment.block_id,
         extraction_method="RULE",
     )
