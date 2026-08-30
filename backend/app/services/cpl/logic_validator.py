@@ -752,6 +752,10 @@ def ground_llm_response(
                 occurrence.raw_text,
                 source_role,
             )
+            source_locator = dict(fragment.source_locator)
+            span = _cited_span(fragment, occurrence.raw_text)
+            if span is not None:
+                source_locator.update(span)
             occurrences.append(
                 CplOccurrence(
                     raw_text=occurrence.raw_text,
@@ -760,7 +764,7 @@ def ground_llm_response(
                     source_role=source_role,
                     page_no=fragment.page_no,
                     section_path=list(fragment.section_path),
-                    source_locator=dict(fragment.source_locator),
+                    source_locator=source_locator,
                     block_id=fragment.block_id,
                     extraction_method="LLM",
                 )
@@ -1051,6 +1055,30 @@ def _evidence_context(
     if not contexts or any(context != contexts[0] for context in contexts[1:]):
         return frozenset(), None
     return contexts[0]
+
+
+def _cited_span(fragment: _Fragment, raw_text: str) -> dict | None:
+    """인용 구간이 조각 안에서 어디인지 돌려준다.
+
+    같은 사실끼리 묶으려면 어느 줄의 어느 자리에서 나왔는지가 있어야 한다.
+    지표 하나가 이름·목표값·기준연도를 갖는 구조를 지금 계약은 표현하지
+    못하는데, 그 묶음 규칙을 정하려면 먼저 좌표가 보존돼 있어야 한다.
+
+    좌표는 줄 번호와 오프셋이라 판단이 필요 없고 같은 문서면 항상 같은 값이
+    나온다. 그래서 LLM 에게 묻지 않고 서버가 계산한다.
+
+    같은 구간이 조각 안에 두 번 이상 나오면 어느 쪽인지 정할 수 없으므로
+    좌표를 남기지 않는다. 어느 쪽을 고를지는 아직 정해진 규칙이 없다.
+    """
+
+    first = fragment.text.find(raw_text)
+    if first < 0 or fragment.text.find(raw_text, first + max(1, len(raw_text))) >= 0:
+        return None
+    return {
+        "line_index": fragment.text.count("\n", 0, first),
+        "span_start": first,
+        "span_end": first + len(raw_text),
+    }
 
 
 def _local_text_scopes(text: str) -> tuple[_TextScope, ...]:

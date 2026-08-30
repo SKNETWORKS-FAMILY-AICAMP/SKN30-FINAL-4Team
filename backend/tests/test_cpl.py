@@ -284,7 +284,10 @@ def test_llm_evidence_is_grounded_from_parser_metadata() -> None:
     occurrence = grounded[0].occurrences[0]
     assert occurrence.page_no == 4
     assert occurrence.section_path == ["필요성"]
-    assert occurrence.source_locator == {"paragraph_index": 4}
+    # 파서가 준 위치는 그대로 오고, 서버가 계산한 인용 좌표가 더해진다.
+    assert occurrence.source_locator["paragraph_index"] == 4
+    assert occurrence.source_locator["span_start"] >= 0
+    assert occurrence.source_locator["line_index"] >= 0
     assert occurrence.extraction_method == "LLM"
     assert occurrence.axis_code == CplAxisCode.NEED_PROBLEM
     assert occurrence.normalized_value == {
@@ -848,6 +851,80 @@ def test_unattributable_evidence_is_not_recorded_as_an_llm_failure() -> None:
 
     assert item.occurrences == []
     assert item.reason_code == "EVIDENCE_OWNERSHIP_UNRESOLVED"
+
+
+def test_grounded_evidence_carries_its_position_in_the_fragment() -> None:
+    """같은 사실끼리 묶으려면 어디서 나왔는지가 남아 있어야 한다.
+
+    지표 하나가 이름·목표값·기준연도를 갖는 구조를 지금 계약은 표현하지
+    못한다. 묶음 규칙을 정하기 전에 좌표부터 보존한다. 좌표는 줄 번호와
+    오프셋이라 판단이 필요 없어 LLM 이 아니라 서버가 계산한다.
+    """
+
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="성과지표 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="effect:1",
+                block_type="paragraph",
+                text=(
+                    "○ 성과지표 : 지표 목록\n"
+                    "- 사업화 성공률: 목표값 30%\n"
+                    "- 신규 고용창출: 목표값 240명"
+                ),
+            )
+        ],
+    )
+    response = CplSemanticResponse.model_validate(
+        {
+            "items": [
+                {
+                    "field_code": "EXPECTED_EFFECTS_AND_PERFORMANCE",
+                    "status": "PRESENT",
+                    "occurrences": [
+                        {
+                            "evidence_ref": "effect:1",
+                            "raw_text": "사업화 성공률",
+                            "axis_code": "KPI_NAME",
+                        },
+                        {
+                            "evidence_ref": "effect:1",
+                            "raw_text": "목표값 30%",
+                            "axis_code": "KPI_TARGET_VALUE",
+                        },
+                        {
+                            "evidence_ref": "effect:1",
+                            "raw_text": "신규 고용창출",
+                            "axis_code": "KPI_NAME",
+                        },
+                    ],
+                    "reason_code": None,
+                    "explanation": None,
+                }
+            ]
+        }
+    )
+
+    item = next(
+        entry
+        for entry in ground_llm_response(
+            document, response, {CplFieldCode.EXPECTED_EFFECTS_AND_PERFORMANCE}
+        )
+        if entry.field_code == CplFieldCode.EXPECTED_EFFECTS_AND_PERFORMANCE
+    )
+    lines = {
+        occurrence.raw_text: occurrence.source_locator.get("line_index")
+        for occurrence in item.occurrences
+    }
+    # 같은 지표의 이름과 목표값은 같은 줄에서 나온다.
+    assert lines["사업화 성공률"] == lines["목표값 30%"]
+    assert lines["신규 고용창출"] != lines["사업화 성공률"]
+    assert all(
+        occurrence.source_locator.get("span_start") is not None
+        for occurrence in item.occurrences
+    )
 
 
 def test_label_prefixed_duplicate_is_treated_as_one_fact() -> None:
