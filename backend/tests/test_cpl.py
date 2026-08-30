@@ -52,6 +52,7 @@ from app.services.cpl.logic_validator import (
     merge_llm_result,
     semantic_fragments,
     _normalize_axis_value,
+    _same_contained_fact,
 )
 
 
@@ -847,6 +848,34 @@ def test_unattributable_evidence_is_not_recorded_as_an_llm_failure() -> None:
 
     assert item.occurrences == []
     assert item.reason_code == "EVIDENCE_OWNERSHIP_UNRESOLVED"
+
+
+def test_label_prefixed_duplicate_is_treated_as_one_fact() -> None:
+    """라벨을 포함해 인용해도 같은 사실이면 하나만 남는다.
+
+    Rule 은 라벨 뒤 값만 보고 LLM 은 라벨을 포함해 인용할 수 있다. 정규값이
+    원문을 그대로 담는 축에서는 두 건이 서로 달라 보여 중복이 남았다.
+    """
+
+    def occurrence(raw_text: str, method: str) -> CplOccurrence:
+        return CplOccurrence(
+            raw_text=raw_text,
+            normalized_value={"text": raw_text},
+            axis_code=CplAxisCode.DELIVERY_METHOD_TYPE,
+            source_role=CplSourceRole.DELIVERY_METHOD,
+            page_no=1,
+            section_path=[],
+            source_locator={"paragraph_index": 1},
+            block_id="delivery:1",
+            extraction_method=method,
+        )
+
+    rule = occurrence("시 출연기관 위탁(보조)", "RULE")
+    llm = occurrence("수행방식: 시 출연기관 위탁(보조)", "LLM")
+    assert _same_contained_fact(rule, llm)
+
+    # 값이 다르면 두 건 모두 남는다.
+    assert not _same_contained_fact(rule, occurrence("시 직접 수행", "LLM"))
 
 
 def test_kpi_target_value_reads_scale_words_and_company_units() -> None:

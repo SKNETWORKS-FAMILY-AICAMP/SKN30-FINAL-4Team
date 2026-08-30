@@ -1339,18 +1339,27 @@ def _incomplete_reason(
     return None
 
 
-def _absence_marker(value: str) -> str:
-    """인용 구간에서 부재 표기만 남긴다.
+def _strip_leading_label(value: str) -> str:
+    """앞머리의 라벨을 떼고 값만 남긴다.
 
     Rule 은 라벨 뒤 값만 보지만 LLM 은 `○ 수행기관 : 미기재` 처럼 라벨을 포함한
-    줄을 인용할 수 있다. 라벨을 떼지 않으면 문서가 스스로 공란이라고 밝힌
-    자리가 근거로 남는다. 표기 목록을 늘리는 대신 검사 대상을 값으로 맞춘다.
+    줄을 인용할 수 있다. 같은 사실인지 비교하려면 양쪽을 값으로 맞춰야 한다.
     """
 
     candidate = value.strip()
     label = _label_match(candidate, _ALL_LABEL_ALIASES)
     if label is not None:
         candidate = label.group("value").strip()
+    return candidate
+
+
+def _absence_marker(value: str) -> str:
+    """인용 구간에서 부재 표기만 남긴다.
+
+    표기 목록을 늘리는 대신 검사 대상을 값으로 맞춘다.
+    """
+
+    candidate = _strip_leading_label(value)
     if len(candidate) >= 2 and (candidate[0], candidate[-1]) in {
         ("(", ")"),
         ("[", "]"),
@@ -2106,13 +2115,27 @@ def _merge_occurrences(
     return _deduplicate_occurrences([*rules, *llm])
 
 
+def _canonical_fact_value(value: object, raw_text: str) -> object:
+    """비교용 정규값. 원문을 그대로 담은 값은 라벨을 떼고 맞춘다.
+
+    `시 출연기관 위탁(보조)` 과 `수행방식: 시 출연기관 위탁(보조)` 은 같은
+    사실인데 정규값이 원문 전체라 서로 다르게 보인다. 정규화가 실제 값을
+    뽑은 경우에는 손대지 않는다.
+    """
+
+    if isinstance(value, dict) and set(value) == {"text"}:
+        return {"text": _strip_leading_label(str(value["text"]))}
+    return value
+
+
 def _same_contained_fact(rule: CplOccurrence, llm: CplOccurrence) -> bool:
-    rule_text = rule.raw_text.strip()
-    llm_text = llm.raw_text.strip()
+    rule_text = _strip_leading_label(rule.raw_text)
+    llm_text = _strip_leading_label(llm.raw_text)
     return (
         rule.axis_code == llm.axis_code
         and rule.source_role == llm.source_role
-        and rule.normalized_value == llm.normalized_value
+        and _canonical_fact_value(rule.normalized_value, rule.raw_text)
+        == _canonical_fact_value(llm.normalized_value, llm.raw_text)
         and rule.page_no == llm.page_no
         and rule.block_id == llm.block_id
         and rule.section_path == llm.section_path
