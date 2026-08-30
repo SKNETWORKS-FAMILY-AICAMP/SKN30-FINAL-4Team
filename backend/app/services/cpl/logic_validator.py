@@ -213,6 +213,61 @@ _RATIO_PATTERN = re.compile(r"(?<![\d.])(?P<number>\d+(?:\.\d+)?)\s*%")
 _COMPANY_COUNT_PATTERN = re.compile(
     r"(?<!\d)(?P<number>\d{1,3}(?:,\d{3})*|\d+)\s*(?:개\s*사|기업|개\s*업체)"
 )
+# 하위 라벨이 축을 결정하는 경우. "- 지역:" 뒤에 무엇이 오든 그것은 지역
+# 조건이고, "자부담률:" 뒤의 비율은 자부담률이다. 값을 보고 축을 추측하는
+# 것이 아니라 서식이 정한 라벨로 축만 정하므로 표현이 달라져도 일반화된다.
+# 목록은 판별기준 11.2(지원조건)와 12.1(지원내용·지원규모)에서 가져왔다.
+# 업력·매출액·종사자수는 _CONDITION_PATTERNS 가 값까지 정규화하므로 뺀다.
+# 긴 라벨이 먼저 와야 "제외조건"이 "제외"로 잘리지 않는다.
+_SUBLABEL_AXES: dict[CplFieldCode, tuple[tuple[str, CplAxisCode], ...]] = {
+    CplFieldCode.TARGET_AND_CONDITIONS: (
+        ("제외조건", CplAxisCode.COND_EXCLUSION),
+        ("기업규모", CplAxisCode.COND_COMPANY_TYPE),
+        ("소재지", CplAxisCode.COND_REGION),
+        ("지역", CplAxisCode.COND_REGION),
+        ("업종", CplAxisCode.COND_INDUSTRY),
+        ("인증", CplAxisCode.COND_CERTIFICATION),
+        ("기타", CplAxisCode.COND_OTHER),
+        ("제외", CplAxisCode.COND_EXCLUSION),
+    ),
+}
+
+# 축을 붙이지는 않지만 구간을 끊어야 하는 라벨. 값 정규화는
+# _CONDITION_PATTERNS 가 맡으므로 여기서는 경계로만 쓴다. 넣지 않으면 앞
+# 라벨의 구간이 이 줄들까지 삼킨다.
+_SUBLABEL_BOUNDARIES: dict[CplFieldCode, tuple[str, ...]] = {
+    CplFieldCode.TARGET_AND_CONDITIONS: (
+        "업력",
+        "매출액",
+        "종사자 수",
+        "종사자수",
+    ),
+}
+
+
+_SUBLABEL_PREFIX = re.compile(
+    r"^[\s\-–—·]*(?:"
+    + "|".join(
+        re.escape(label).replace(r"\ ", r"\s*")
+        for label in sorted(
+            {
+                label
+                for table in _SUBLABEL_AXES.values()
+                for label, _axis in table
+            }
+            | {
+                label
+                for labels in _SUBLABEL_BOUNDARIES.values()
+                for label in labels
+            },
+            key=len,
+            reverse=True,
+        )
+    )
+    + r")\s*[:：]\s*"
+)
+
+
 _CONDITION_PATTERNS: tuple[tuple[CplAxisCode, re.Pattern[str]], ...] = (
     (
         CplAxisCode.COND_BUSINESS_AGE,
@@ -1370,14 +1425,19 @@ def _incomplete_reason(
 def _strip_leading_label(value: str) -> str:
     """앞머리의 라벨을 떼고 값만 남긴다.
 
-    Rule 은 라벨 뒤 값만 보지만 LLM 은 `○ 수행기관 : 미기재` 처럼 라벨을 포함한
-    줄을 인용할 수 있다. 같은 사실인지 비교하려면 양쪽을 값으로 맞춰야 한다.
+    Rule 은 라벨 뒤 값만 보지만 LLM 은 `○ 수행기관 : 미기재` 나
+    `- 업력: 업력 3년 이상 10년 이내` 처럼 라벨을 포함해 인용할 수 있다.
+    같은 사실인지 비교하려면 양쪽을 값으로 맞춰야 한다. 필드 라벨과 하위
+    라벨을 모두 떼며, 표는 이미 정의된 것을 그대로 쓴다.
     """
 
     candidate = value.strip()
     label = _label_match(candidate, _ALL_LABEL_ALIASES)
     if label is not None:
         candidate = label.group("value").strip()
+    sublabel = _SUBLABEL_PREFIX.match(candidate)
+    if sublabel is not None:
+        candidate = candidate[sublabel.end():].strip()
     return candidate
 
 
@@ -1561,7 +1621,11 @@ def _normalized_occurrences(
             source_role=source_role,
         )
         return _deduplicate_occurrences(
-            [base, *_condition_occurrences(fragment, value, source_role)]
+            [
+                base,
+                *_condition_occurrences(fragment, value, source_role),
+                *_sublabel_occurrences(field_code, fragment, value, source_role),
+            ]
         )
     normalized = (
         _normalize_axis_value(axis_code, value, source_role)
@@ -1577,6 +1641,54 @@ def _normalized_occurrences(
             source_role=source_role,
         )
     ]
+
+
+def _sublabel_occurrences(
+    field_code: CplFieldCode,
+    fragment: _Fragment,
+    value: str,
+    source_role: CplSourceRole | None,
+) -> list[CplOccurrence]:
+    """하위 라벨이 지배하는 구간을 잘라 축을 붙인다.
+
+    한 줄에 라벨이 둘 이상 있을 수 있어(`보조율: 80%, 자부담률: 20%`)
+    다음 라벨 직전까지를 그 라벨의 값으로 본다.
+    """
+
+    table = _SUBLABEL_AXES.get(field_code)
+    if not table:
+        return []
+    boundaries = _SUBLABEL_BOUNDARIES.get(field_code, ())
+    labels = [label for label, _axis in table] + list(boundaries)
+    alternatives = "|".join(
+        re.escape(label).replace(r"\ ", r"\s*")
+        for label in sorted(labels, key=len, reverse=True)
+    )
+    pattern = re.compile(
+        rf"(?:^|[\n,·]|[-–—]\s)\s*(?P<label>{alternatives})\s*[:：]\s*"
+    )
+    axis_by_label = {label.replace(" ", ""): axis for label, axis in table}
+
+    matches = list(pattern.finditer(value))
+    occurrences: list[CplOccurrence] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
+        text = value[match.end():end].strip().strip(",·")
+        if not text:
+            continue
+        axis_code = axis_by_label.get(match.group("label").replace(" ", ""))
+        if axis_code is None:
+            continue
+        occurrences.append(
+            _occurrence(
+                fragment,
+                text,
+                _normalize_axis_value(axis_code, text, source_role),
+                axis_code=axis_code,
+                source_role=source_role,
+            )
+        )
+    return occurrences
 
 
 def _condition_occurrences(
@@ -2156,6 +2268,19 @@ def _canonical_fact_value(value: object, raw_text: str) -> object:
     return value
 
 
+# 인용 좌표는 파서가 준 위치가 아니라 서버가 계산한 것이라 같은 사실인지
+# 가릴 때는 빼야 한다. LLM 근거에만 붙어 있어 넣고 비교하면 Rule 과 절대
+# 같아지지 않는다.
+_CITATION_LOCATOR_KEYS = frozenset({"line_index", "span_start", "span_end"})
+
+
+def _parser_locator(locator: dict) -> dict:
+    return {
+        key: value
+        for key, value in locator.items()
+        if key not in _CITATION_LOCATOR_KEYS
+    }
+
 def _same_contained_fact(rule: CplOccurrence, llm: CplOccurrence) -> bool:
     rule_text = _strip_leading_label(rule.raw_text)
     llm_text = _strip_leading_label(llm.raw_text)
@@ -2167,7 +2292,8 @@ def _same_contained_fact(rule: CplOccurrence, llm: CplOccurrence) -> bool:
         and rule.page_no == llm.page_no
         and rule.block_id == llm.block_id
         and rule.section_path == llm.section_path
-        and rule.source_locator == llm.source_locator
+        and _parser_locator(rule.source_locator)
+        == _parser_locator(llm.source_locator)
         and bool(rule_text and llm_text)
         and (rule_text in llm_text or llm_text in rule_text)
     )

@@ -853,6 +853,50 @@ def test_unattributable_evidence_is_not_recorded_as_an_llm_failure() -> None:
     assert item.reason_code == "EVIDENCE_OWNERSHIP_UNRESOLVED"
 
 
+def test_condition_sublabels_decide_the_axis() -> None:
+    """하위 라벨이 축을 정한다. 값을 보고 추측하지 않는다.
+
+    "- 지역:" 뒤에 무엇이 오든 그것은 지역 조건이다. 판별기준 11.2 가 나열한
+    조건 항목이 라벨로 구분돼 있으면 Rule 이 축을 붙일 수 있다.
+    """
+
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text="지원조건 fixture",
+        blocks=[
+            DocumentBlock(
+                block_id="cond:1",
+                block_type="paragraph",
+                text=(
+                    "○ 지원조건\n"
+                    "- 지역: 대전광역시 내 본사 보유\n"
+                    "- 업종: 한국표준산업분류 C(제조업)\n"
+                    "- 업력: 업력 3년 이상 10년 이내\n"
+                    "- 기타: 국세 및 지방세 완납\n"
+                    "- 제외조건: 휴·폐업 기업"
+                ),
+            )
+        ],
+    )
+    item = next(
+        entry
+        for entry in evaluate_cpl_rules(document).items
+        if entry.field_code == CplFieldCode.TARGET_AND_CONDITIONS
+    )
+    axes = {
+        occurrence.axis_code: occurrence.raw_text
+        for occurrence in item.occurrences
+        if occurrence.axis_code is not None
+    }
+    assert axes[CplAxisCode.COND_REGION] == "대전광역시 내 본사 보유"
+    assert axes[CplAxisCode.COND_INDUSTRY] == "한국표준산업분류 C(제조업)"
+    assert axes[CplAxisCode.COND_OTHER] == "국세 및 지방세 완납"
+    assert axes[CplAxisCode.COND_EXCLUSION] == "휴·폐업 기업"
+    # 업력은 값까지 정규화하는 기존 경로가 맡는다. 구간 경계로만 쓰인다.
+    assert axes[CplAxisCode.COND_BUSINESS_AGE] == "업력 3년 이상 10년 이내"
+
+
 def test_grounded_evidence_carries_its_position_in_the_fragment() -> None:
     """같은 사실끼리 묶으려면 어디서 나왔는지가 남아 있어야 한다.
 
