@@ -453,7 +453,7 @@
       "occurrences": [
         {
           "evidence_ref": "body:4:cell:3:1",
-          "raw_text": "시제품 제작",
+          "raw_text": "120개사에 시제품 제작비",
           "axis_code": "SUPPORT_ACTIVITY",
           "source_role": "SUPPORT_CONTENT",
           "normalized_value": null,
@@ -477,7 +477,7 @@
         },
         {
           "evidence_ref": "body:4:cell:3:1",
-          "raw_text": "시제품 제작비",
+          "raw_text": "시제품 제작비, 공인 시험인증비",
           "axis_code": "SUPPORT_ITEM",
           "source_role": "SUPPORT_CONTENT",
           "normalized_value": null,
@@ -670,14 +670,6 @@
       "occurrences": [
         {
           "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "참여기업",
-          "axis_code": "EFFECT_SUBJECT",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
           "raw_text": "기술경쟁력 강화 및 신규 시장 진출 확대",
           "axis_code": "EFFECT_CONTENT",
           "source_role": "EXPECTED_EFFECT",
@@ -688,30 +680,6 @@
           "evidence_ref": "body:4:cell:4:1",
           "raw_text": "지역 제조·정보통신 생태계의 디지털 전환 가속",
           "axis_code": "EFFECT_CONTENT",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "강화",
-          "axis_code": "EFFECT_DIRECTION",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "확대",
-          "axis_code": "EFFECT_DIRECTION",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "가속",
-          "axis_code": "EFFECT_DIRECTION",
           "source_role": "EXPECTED_EFFECT",
           "normalized_value": null,
           "extractor": "LLM"
@@ -802,6 +770,38 @@
             "unit": "PERCENT"
           },
           "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "참여기업",
+          "axis_code": "EFFECT_SUBJECT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "기술경쟁력 강화",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "신규 시장 진출 확대",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "디지털 전환 가속",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
         }
       ]
     }
@@ -809,7 +809,9 @@
   "contract_gaps": [
     "판별기준 3.1 은 사업목적의 정량 표현을 확인 항목으로 두는데(예: 지원기업 100개사), PURPOSE_GOAL 축에 정량값을 담을 자리가 없다. 이 문서의 '지원기업 120개사'는 어디에도 못 담는다.",
     "판별기준 15.1 은 성과지표의 측정시점을 구조화 후보로 두는데 대응 축이 없다. '측정시점 사업 종료 후 1년'을 담을 자리가 없다.",
-    "판별기준 10.3 은 사업예산과 지원규모를 구분하라고 하지만, 실제 양식은 지원규모를 지원내용 안에 쓰게 한다. 이 골든셋의 지원 정량값 source_role 이 모두 SUPPORT_CONTENT 인 이유이며, 지원내용 구역과 지원규모 구역을 대조하는 FIT-7 설계와 맞지 않는다."
+    "판별기준 10.3 은 사업예산과 지원규모를 구분하라고 하지만, 실제 양식은 지원규모를 지원내용 안에 쓰게 한다. 이 골든셋의 지원 정량값 source_role 이 모두 SUPPORT_CONTENT 인 이유이며, 지원내용 구역과 지원규모 구역을 대조하는 FIT-7 설계와 맞지 않는다.",
+    "EFFECT_SUBJECT 와 EFFECT_DIRECTION 은 한때 한 단어로 적었다가 접지 가치가 없어 정답에서 뺐으나, 축 계약이 여전히 두 축을 독립으로 요구하므로 완전한 구문으로 복원했다. 축을 빼면 그 축이 영영 시험되지 않는다.",
+    "'시제품 제작', '시제품 제작비' 는 지원내용 블록과 내역사업 계획 블록 양쪽에 나타나 서버가 모호 인용으로 거부한다. 지원내용 블록에서만 성립하는 구간으로 바꿨다."
   ],
   "rule_defects_found_while_authoring": [
     "BUSINESS_PERIOD: '2026. 01. 01. ~ 2028. 12. 31.' 을 정규화하지 못한다(None). 연-월 표기만 처리한다.",

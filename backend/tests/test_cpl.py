@@ -51,6 +51,7 @@ from app.services.cpl.logic_validator import (
     ground_llm_response,
     merge_llm_result,
     semantic_fragments,
+    _normalize_axis_value,
 )
 
 
@@ -846,6 +847,27 @@ def test_unattributable_evidence_is_not_recorded_as_an_llm_failure() -> None:
 
     assert item.occurrences == []
     assert item.reason_code == "EVIDENCE_OWNERSHIP_UNRESOLVED"
+
+
+def test_kpi_target_value_reads_scale_words_and_company_units() -> None:
+    """성과지표 목표값은 배수어와 단위를 원문대로 읽어야 한다.
+
+    `10만건` 을 `10` 으로 기록하면 실패가 아니라 틀린 값을 저장한다.
+    `20개사` 를 단위 없는 수로 기록하면 지원기업수와 구분되지 않는다.
+    """
+
+    cases = [
+        ("목표값 30%", {"number": 30, "unit": "PERCENT"}),
+        ("목표값 240명", {"number": 240, "unit": "PERSON"}),
+        ("목표값 90건", {"number": 90, "unit": "CASE"}),
+        ("마케팅 지원 기업 수(20개사)", {"number": 20, "unit": "COMPANY"}),
+        ("SNS 브랜드 노출 수(10만건)", {"number": 100000, "unit": "CASE"}),
+        ("수출액 3억원", {"number": 300000000, "unit": "KRW"}),
+    ]
+    for raw_text, expected in cases:
+        assert _normalize_axis_value(
+            CplAxisCode.KPI_TARGET_VALUE, raw_text, None
+        ) == expected, raw_text
 
 
 def test_llm_cannot_ground_evidence_on_a_line_the_document_marks_blank() -> None:

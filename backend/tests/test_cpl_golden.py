@@ -94,8 +94,12 @@ def test_authored_golden_occurrences_exist_in_the_exact_hwpx_cells(name: str) ->
     ]
     assert len(occurrences) == golden["occurrence_count"]
     for occurrence in occurrences:
+        # 셀 안이 인라인 세그먼트로 쪼개지는 문서는 파서가 :segment:N 을
+        # 붙인 ref 를 만든다. 골든은 실제 조각 ref 를 그대로 써야 하므로
+        # 접미사를 허용한다. 셀 주소 검증은 그대로다.
         match = re.fullmatch(
-            r"body:\d+:cell:(?P<row>\d+):(?P<col>\d+)",
+            r"body:\d+:cell:(?P<row>\d+):(?P<col>\d+)"
+            r"(?::segment:\d+)?",
             occurrence["evidence_ref"],
         )
         assert match is not None

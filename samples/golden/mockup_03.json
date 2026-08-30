@@ -4,13 +4,13 @@
   "basis": "중소기업지원사업_PreReview_CPL_판별기준_정리본_20260821.md",
   "what_this_is": "현재 HWPX 원문을 사람이 판독해 만든 CPL 정답. 제거된 설명성 주석이나 파일명의 등급은 근거로 사용하지 않았다.",
   "extractor_note": "RULE은 닫힌 값 정규화, LLM은 열린 의미 축 분류를 담당한다. 모든 raw_text는 지정한 HWPX 표 셀 원문에 그대로 존재한다.",
-  "occurrence_count": 40,
+  "occurrence_count": 38,
   "fields": {
     "REQUEST_TYPE": {
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:0:1",
+          "evidence_ref": "body:4:cell:0:1:segment:0",
           "raw_text": "☑ 세부사업 신설",
           "axis_code": null,
           "source_role": null,
@@ -22,7 +22,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:0:1",
+          "evidence_ref": "body:4:cell:0:1:segment:0",
           "raw_text": "☐ 내역사업 신설",
           "axis_code": null,
           "source_role": null,
@@ -34,7 +34,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:0:1",
+          "evidence_ref": "body:4:cell:0:1:segment:0",
           "raw_text": "☐ 내내역사업 신설",
           "axis_code": null,
           "source_role": null,
@@ -46,7 +46,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:0:1",
+          "evidence_ref": "body:4:cell:0:1:segment:1",
           "raw_text": "☐ 사업내용 변경",
           "axis_code": null,
           "source_role": null,
@@ -63,7 +63,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:0",
           "raw_text": "전북 도내 지역 자원 및 문화 특성을 활용하는 청년 로컬크리에이터",
           "axis_code": "PURPOSE_TARGET_CONDITION",
           "source_role": null,
@@ -71,7 +71,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:0",
           "raw_text": "지역 자원 및 문화 특성",
           "axis_code": "PURPOSE_PROBLEM_DOMAIN",
           "source_role": null,
@@ -79,7 +79,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:0",
           "raw_text": "시제품 제작 및 온·오프라인 판로 개척 지원",
           "axis_code": "PURPOSE_SPECIFIC_OBJECTIVE",
           "source_role": null,
@@ -87,7 +87,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:0",
           "raw_text": "지역 정착 활성화",
           "axis_code": "PURPOSE_DIRECTION",
           "source_role": null,
@@ -100,7 +100,7 @@
       "status": "NOT_APPLICABLE",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:1:1",
+          "evidence_ref": "body:4:cell:1:1:segment:1",
           "raw_text": "(내역) 해당없음",
           "axis_code": "PROGRAM_LEVEL_ABSENT",
           "source_role": "SUBPROGRAM_PLAN",
@@ -115,7 +115,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:0",
           "raw_text": "2026. 05. 01. ~ 2026. 12. 31.",
           "axis_code": null,
           "source_role": null,
@@ -131,31 +131,16 @@
       ]
     },
     "NEW_OR_CHANGED_CONTENT": {
-      "status": "PRESENT",
-      "occurrences": [
-        {
-          "evidence_ref": "body:4:cell:3:1",
-          "raw_text": "인플루언서 연계 온라인 마케팅 및 브랜드 패키지 디자인 지원",
-          "axis_code": "CHANGE_CONTENT",
-          "source_role": null,
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:3:1",
-          "raw_text": "로컬 팝업스토어 참가 지원",
-          "axis_code": "CHANGE_CONTENT",
-          "source_role": null,
-          "normalized_value": null,
-          "extractor": "LLM"
-        }
-      ]
+      "status": "NEEDS_CONFIRMATION",
+      "occurrences": [],
+      "reason_code": "CHANGE_CONTENT_NOT_SEPARATELY_STATED",
+      "note": "지원내용 블록의 문장을 변경내용 근거로 쓸 수 없다. 이 문서에는 변경내용만 가리키는 구간이 따로 없다."
     },
     "BUSINESS_NEED": {
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:1",
           "raw_text": "청년 인구 유출 방지 및 골목상권 혁신",
           "axis_code": "NEED_PROBLEM",
           "source_role": null,
@@ -163,7 +148,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:1",
           "raw_text": "지역 가치 창출형 청년 기업 육성 필요",
           "axis_code": "NEED_RESPONSE",
           "source_role": null,
@@ -176,7 +161,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:2",
           "raw_text": "「청년기본법」 제14조",
           "axis_code": null,
           "source_role": null,
@@ -187,7 +172,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:2",
           "raw_text": "「전라북도 청년기업 육성 및 지원 조례」",
           "axis_code": null,
           "source_role": null,
@@ -203,7 +188,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:2:1",
+          "evidence_ref": "body:4:cell:2:1:segment:3",
           "raw_text": "전라북도 청년정책 시행계획(2026)",
           "axis_code": "LINKED_POLICY_IDENTIFIER",
           "source_role": null,
@@ -218,7 +203,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:1",
           "raw_text": "금 400,000,000원",
           "axis_code": null,
           "source_role": null,
@@ -229,7 +214,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:1",
           "raw_text": "금 4억원",
           "axis_code": null,
           "source_role": null,
@@ -245,7 +230,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:2",
           "raw_text": "청년 창업기업",
           "axis_code": "TARGET_GROUP",
           "source_role": "TARGET",
@@ -253,7 +238,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:2",
           "raw_text": "전라북도 내",
           "axis_code": "COND_REGION",
           "source_role": "CONDITION",
@@ -261,7 +246,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:2",
           "raw_text": "만 39세 이하",
           "axis_code": "COND_OTHER",
           "source_role": "CONDITION",
@@ -269,19 +254,19 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:2",
           "raw_text": "업력 5년 이내",
           "axis_code": "COND_BUSINESS_AGE",
           "source_role": "CONDITION",
           "normalized_value": {
-            "max_years": 5,
-            "max_operator": "LTE",
+            "years": 5,
+            "operator": "LTE",
             "unit": "YEAR"
           },
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:3",
           "raw_text": "전북 특산물/문화자원 연계 비즈니스 모델 보유 기업",
           "axis_code": "COND_OTHER",
           "source_role": "CONDITION",
@@ -294,7 +279,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:5",
           "raw_text": "인플루언서 연계 온라인 마케팅",
           "axis_code": "SUPPORT_ACTIVITY",
           "source_role": "SUPPORT_CONTENT",
@@ -302,7 +287,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:5",
           "raw_text": "브랜드 패키지 디자인 지원",
           "axis_code": "SUPPORT_ACTIVITY",
           "source_role": "SUPPORT_CONTENT",
@@ -310,7 +295,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:6",
           "raw_text": "로컬 팝업스토어 참가 지원",
           "axis_code": "SUPPORT_ACTIVITY",
           "source_role": "SUPPORT_CONTENT",
@@ -318,7 +303,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:5",
           "raw_text": "기업당 최대 2,000만원",
           "axis_code": "PER_COMPANY_LIMIT",
           "source_role": "SUPPORT_CONTENT",
@@ -329,7 +314,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:6",
           "raw_text": "총 20개사",
           "axis_code": "COMPANY_COUNT",
           "source_role": "SUPPORT_CONTENT",
@@ -345,7 +330,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:3:1",
+          "evidence_ref": "body:4:cell:3:1:segment:7",
           "raw_text": "(재)전북창조경제혁신센터",
           "axis_code": "DELIVERY_ORG_NAME",
           "source_role": "DELIVERY_ORG",
@@ -358,15 +343,7 @@
       "status": "PRESENT",
       "occurrences": [
         {
-          "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "로컬 브랜드",
-          "axis_code": "EFFECT_SUBJECT",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:0",
           "raw_text": "참여 청년 기업",
           "axis_code": "EFFECT_SUBJECT",
           "source_role": "EXPECTED_EFFECT",
@@ -374,7 +351,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:0",
           "raw_text": "로컬 브랜드 인지도 향상",
           "axis_code": "EFFECT_CONTENT",
           "source_role": "EXPECTED_EFFECT",
@@ -382,7 +359,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:0",
           "raw_text": "참여 청년 기업 매출 20% 증가",
           "axis_code": "EFFECT_CONTENT",
           "source_role": "EXPECTED_EFFECT",
@@ -390,23 +367,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "향상",
-          "axis_code": "EFFECT_DIRECTION",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
-          "raw_text": "증가",
-          "axis_code": "EFFECT_DIRECTION",
-          "source_role": "EXPECTED_EFFECT",
-          "normalized_value": null,
-          "extractor": "LLM"
-        },
-        {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:1",
           "raw_text": "마케팅 지원 기업 수",
           "axis_code": "KPI_NAME",
           "source_role": "PERFORMANCE_INDICATOR",
@@ -414,7 +375,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:1",
           "raw_text": "20개사",
           "axis_code": "KPI_TARGET_VALUE",
           "source_role": "PERFORMANCE_INDICATOR",
@@ -425,7 +386,7 @@
           "extractor": "RULE"
         },
         {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:1",
           "raw_text": "SNS 브랜드 노출 수",
           "axis_code": "KPI_NAME",
           "source_role": "PERFORMANCE_INDICATOR",
@@ -433,7 +394,7 @@
           "extractor": "LLM"
         },
         {
-          "evidence_ref": "body:4:cell:4:1",
+          "evidence_ref": "body:4:cell:4:1:segment:1",
           "raw_text": "10만건",
           "axis_code": "KPI_TARGET_VALUE",
           "source_role": "PERFORMANCE_INDICATOR",
@@ -442,11 +403,37 @@
             "unit": "CASE"
           },
           "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1:segment:0",
+          "raw_text": "로컬 브랜드",
+          "axis_code": "EFFECT_SUBJECT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1:segment:0",
+          "raw_text": "로컬 브랜드 인지도 향상",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1:segment:0",
+          "raw_text": "매출 20% 증가",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
         }
       ]
     }
   },
   "contract_gaps": [
-    "성과지표 목표값의 '개사'와 '만건' 단위·배수 정규화가 현재 구현에 없다. 골든에는 사람이 해석한 단위와 값을 기록했다."
+    "성과지표 목표값의 '개사'와 '만건' 단위·배수 정규화가 현재 구현에 없다. 골든에는 사람이 해석한 단위와 값을 기록했다.",
+    "EFFECT_SUBJECT 와 EFFECT_DIRECTION 은 한때 한 단어로 적었다가 접지 가치가 없어 정답에서 뺐으나, 축 계약이 여전히 두 축을 독립으로 요구하므로 완전한 구문으로 복원했다. 축을 빼면 그 축이 영영 시험되지 않는다.",
+    "변경내용은 지원내용 블록의 문장을 빌려 쓰지 않는다. 다른 필드의 라벨 블록에 속한 구간을 근거로 삼으면 서버가 필드 경계 위반으로 거부한다."
   ]
 }

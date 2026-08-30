@@ -269,6 +269,22 @@ _HEADCOUNT_BOUNDARY_PATTERN = re.compile(
     r"(?P<number>\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*명\s*"
     r"(?P<operator>이내|미만|이상|초과|이하)"
 )
+# 성과지표 목표값은 배수어와 단위를 함께 읽어야 한다. 숫자만 떼어내면
+# 10만건이 10 으로 기록되어 실패가 아니라 틀린 값이 남는다.
+_KPI_VALUE_PATTERN = re.compile(
+    r"(?P<number>\d{1,3}(?:,\d{3})*|\d+)(?:\.(?P<decimal>\d+))?"
+    r"\s*(?P<scale>조|억|천만|백만|십만|만|천|백|십)?"
+    r"\s*(?P<unit>%|개사|명|건|원)?"
+)
+_KPI_UNITS = {
+    "%": "PERCENT",
+    "개사": "COMPANY",
+    "명": "PERSON",
+    "건": "CASE",
+    "원": "KRW",
+}
+
+
 _AMOUNT_MULTIPLIERS = {
     None: Decimal(1),
     "십": Decimal(10),
@@ -654,38 +670,73 @@ def ground_llm_response(
 
         occurrences: list[CplOccurrence] = []
         dropped: list[str] = []
+        # 사유만 남기면 어떤 축이 왜 거부됐는지 알 수 없다. 오분류를 좁히려면
+        # 거부된 축과 근거 위치가 함께 있어야 한다.
+        dropped_detail: list[str] = []
         for occurrence in item.occurrences:
             # 근거 하나가 접지에 실패해도 나머지는 살린다. 예전에는 예외를
             # 올려 13개 항목 전체를 버렸고, 축을 많이 태깅할수록 하나가
             # 어긋날 확률이 커져 커버리지를 올리려는 시도가 실패율을 올렸다.
             if not occurrence.raw_text.strip() or not occurrence.evidence_ref.strip():
                 dropped.append("BLANK_EVIDENCE")
+                dropped_detail.append(
+                    "BLANK_EVIDENCE:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             fragment = fragment_by_ref.get(occurrence.evidence_ref)
             if fragment is None:
                 dropped.append("REF_NOT_FOUND")
+                dropped_detail.append(
+                    "REF_NOT_FOUND:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             if occurrence.raw_text not in fragment.text:
                 dropped.append("NOT_VERBATIM")
+                dropped_detail.append(
+                    "NOT_VERBATIM:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             owned_fields, cited_role = _evidence_context(fragment, occurrence.raw_text)
             if owned_fields and item.field_code not in owned_fields:
                 dropped.append("FIELD_NOT_ALLOWED")
+                dropped_detail.append(
+                    "FIELD_NOT_ALLOWED:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             if not owned_fields:
                 dropped.append("FIELD_OWNERSHIP_UNRESOLVED")
+                dropped_detail.append(
+                    "FIELD_OWNERSHIP_UNRESOLVED:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             if _is_explicit_missing_text(occurrence.raw_text):
                 dropped.append("EXPLICIT_MISSING_VALUE")
+                dropped_detail.append(
+                    "EXPLICIT_MISSING_VALUE:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             if (
                 item.field_code == CplFieldCode.TARGET_AND_CONDITIONS
                 and _is_explicit_absence_text(occurrence.raw_text)
             ):
                 dropped.append("EXPLICIT_ABSENCE_VALUE")
+                dropped_detail.append(
+                    "EXPLICIT_ABSENCE_VALUE:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             if occurrence.axis_code not in CPL_FIELD_AXES[item.field_code]:
                 dropped.append("AXIS_NOT_ALLOWED")
+                dropped_detail.append(
+                    "AXIS_NOT_ALLOWED:"
+                    f"{occurrence.axis_code}@{occurrence.evidence_ref}"
+                )
                 continue
             source_role = cited_role
             if source_role is None and len(fragment.field_codes) == 1:
@@ -726,11 +777,11 @@ def ground_llm_response(
             reason_code = incomplete
         if dropped:
             logger.warning(
-                "CPL evidence dropped field=%s kept=%s dropped=%s reasons=%s",
+                "CPL evidence dropped field=%s kept=%s dropped=%s detail=%s",
                 item.field_code.value,
                 len(occurrences),
                 len(dropped),
-                sorted(set(dropped)),
+                sorted(set(dropped_detail)),
             )
         if contract_error:
             logger.warning(
@@ -1921,24 +1972,23 @@ def _normalize_axis_value(
             return None
         return {"year": int(match.group("year")), "unit": "YEAR"}
     if axis_code == CplAxisCode.KPI_TARGET_VALUE:
-        match = _NUMBER_PATTERN.search(raw_text)
+        match = _KPI_VALUE_PATTERN.search(raw_text)
         if match is None:
             return None
-        number = match.group("number").replace(",", "")
+        digits = match.group("number").replace(",", "")
+        decimal_part = match.group('decimal')
+        base = (
+            Decimal(f"{digits}.{decimal_part}")
+            if decimal_part
+            else Decimal(digits)
+        )
+        scaled = base * _AMOUNT_MULTIPLIERS[match.group("scale")]
         value: int | float = (
-            float(f"{number}.{match.group('decimal')}")
-            if match.group("decimal")
-            else int(number)
+            int(scaled)
+            if scaled == scaled.to_integral_value()
+            else float(scaled)
         )
-        unit = (
-            "PERCENT"
-            if "%" in raw_text
-            else "PERSON"
-            if re.search(r"\d\s*명", raw_text)
-            else "CASE"
-            if re.search(r"\d\s*건", raw_text)
-            else "NUMBER"
-        )
+        unit = _KPI_UNITS.get(match.group("unit"), "NUMBER")
         return {"number": value, "unit": unit}
     if axis_code == CplAxisCode.LINKED_POLICY_IDENTIFIER:
         return {"policy_identifier": raw_text}
