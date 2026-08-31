@@ -300,7 +300,7 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
         for _ in range(2)
     ]
 
-    assert [response.status_code for response in responses] == [201, 201]
+    assert [response.status_code for response in responses] == [200, 200]
     assert all(response.json()["status"] == "UPLOADED" for response in responses)
     case_ids = [response.json()["case_id"] for response in responses]
     assert len(set(case_ids)) == 2

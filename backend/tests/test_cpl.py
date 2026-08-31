@@ -2319,7 +2319,7 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        assert uploaded.status_code == 201
+        assert uploaded.status_code == 200
         case_id = uploaded.json()["case_id"]
         assert client.post(
             f"/api/v1/cases/{case_id}/analyze", headers=headers

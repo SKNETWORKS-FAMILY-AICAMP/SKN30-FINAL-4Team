@@ -65,7 +65,11 @@ async def report_pdf(
             detail=str(error) or "Report PDF is not ready",
         ) from None
     except ReportFileUnavailableError:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE) from None
+        # 저장소 경로나 원인 예외를 노출하지 않는 고정 문구를 쓴다.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report PDF is temporarily unavailable",
+        ) from None
 
     disposition = f"attachment; filename*=UTF-8''{quote(result.filename)}"
     return StreamingResponse(

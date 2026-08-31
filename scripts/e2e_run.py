@@ -32,7 +32,7 @@ def main(document: Path) -> int:
                 headers=auth,
                 files={"file": (document.name, handle)},
             )
-        if created.status_code != 201:
+        if created.status_code != 200:
             print(f"  실패 {created.status_code}: {created.text[:300]}")
             return 1
         case_id = created.json()["case_id"]

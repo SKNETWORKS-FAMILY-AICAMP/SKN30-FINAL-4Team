@@ -53,7 +53,6 @@ def list_case_history(request: Request, user: CurrentUser) -> CaseListResponse:
 @router.post(
     "",
     response_model=CreateCaseResponse,
-    status_code=status.HTTP_201_CREATED,
     responses={**BAD_REQUEST, **PAYLOAD_TOO_LARGE, **UNSUPPORTED_MEDIA_TYPE},
 )
 async def create_case(
