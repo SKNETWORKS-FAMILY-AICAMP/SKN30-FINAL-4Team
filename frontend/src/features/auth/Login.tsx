@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authService } from '../../services/authService'
 import LoginView from './LoginView'
 
 export default function Login() {
@@ -7,17 +8,32 @@ export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
 
-    const handleLogin = () => {
+    const handleLogin = async () => {
         if (!email || !password) {
             alert('이메일과 비밀번호를 모두 입력해주세요.')
             return
         }
 
-        // TODO: 실제 로그인 인증 로직 및 에러 처리
-        console.log('로그인 시도:', email)
-        
-        // 성공 시 Pre-review 메인(SCR-004 또는 대시보드)으로 이동
-        navigate('/')
+        try {
+            const response = await authService.login({
+                login_id: email,
+                password,
+            })
+
+            // 성공 시 sessionStorage에 access_token 저장
+            if (response && response.data && response.data.access_token) {
+                sessionStorage.setItem('access_token', response.data.access_token)
+                window.dispatchEvent(new Event('auth-change'))
+                navigate('/')
+            }
+        } catch (error: any) {
+            const errorData = error.response?.data
+            if (errorData && errorData.message) {
+                alert(errorData.message)
+            } else {
+                alert('로그인 중 오류가 발생했습니다.')
+            }
+        }
     }
 
     return (
