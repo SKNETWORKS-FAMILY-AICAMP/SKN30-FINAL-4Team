@@ -132,7 +132,7 @@ def create_app(
             engine.dispose()
 
     application = FastAPI(
-        title="SIMS Pre-review API",
+        title="Pre-review API",
         version="0.1.0",
         lifespan=lifespan,
     )

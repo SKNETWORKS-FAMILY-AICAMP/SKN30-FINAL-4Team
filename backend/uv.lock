@@ -560,6 +560,45 @@ wheels = [
 ]
 
 [[package]]
+name = "pre-review"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "olefile" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pwdlib", extra = ["argon2"] },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyjwt" },
+    { name = "pytest" },
+    { name = "python-multipart" },
+    { name = "reportlab" },
+    { name = "rhwp-python" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "olefile", specifier = ">=0.47,<1" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3,<1" },
+    { name = "pydantic", specifier = ">=2.9,<3" },
+    { name = "pydantic-settings", specifier = ">=2.5,<3" },
+    { name = "pyjwt", specifier = ">=2.10,<3" },
+    { name = "pytest", specifier = ">=8,<9" },
+    { name = "python-multipart", specifier = ">=0.0.20,<1" },
+    { name = "reportlab", specifier = ">=4.2,<5" },
+    { name = "rhwp-python", specifier = "==0.8.1" },
+    { name = "sqlalchemy", specifier = ">=2.0,<3" },
+    { name = "uvicorn", specifier = ">=0.30,<1" },
+]
+
+[[package]]
 name = "psycopg"
 version = "3.3.4"
 source = { registry = "https://pypi.org/simple" }
@@ -823,45 +862,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bb/ac/b4f0b8e38307c8d7cf6c0c2c802494bd7ab9c25b2496559d5173ce67eb7c/rhwp_python-0.8.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7eb773ef6cbb62df9294266aadb7bb2e36fb2ec517a9b0e42da4221691471b02", size = 6990104, upload-time = "2026-07-07T16:49:04.335Z" },
     { url = "https://files.pythonhosted.org/packages/f5/cd/28994e428fff8c737a842a8557e1618ed7a3ce1b44decbe2082eefb315f7/rhwp_python-0.8.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:76d88a6e929c4a19bb3fe11ec80739841d15f9c4f55977f32493a2f6a42dba52", size = 7310166, upload-time = "2026-07-07T16:49:06.533Z" },
     { url = "https://files.pythonhosted.org/packages/d6/77/4812632722c2c5b8dbf51e0071e8550529b3189170a358e7986d4bbe9140/rhwp_python-0.8.1-cp310-abi3-win_amd64.whl", hash = "sha256:cb5ac0a03f8b6084c587df98d3ff92d68cf50f8923474d78c7ba287a2dfebac2", size = 7005738, upload-time = "2026-07-07T16:49:08.602Z" },
-]
-
-[[package]]
-name = "sims-pre-review"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "olefile" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pwdlib", extra = ["argon2"] },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyjwt" },
-    { name = "pytest" },
-    { name = "python-multipart" },
-    { name = "reportlab" },
-    { name = "rhwp-python" },
-    { name = "sqlalchemy" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "olefile", specifier = ">=0.47,<1" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
-    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3,<1" },
-    { name = "pydantic", specifier = ">=2.9,<3" },
-    { name = "pydantic-settings", specifier = ">=2.5,<3" },
-    { name = "pyjwt", specifier = ">=2.10,<3" },
-    { name = "pytest", specifier = ">=8,<9" },
-    { name = "python-multipart", specifier = ">=0.0.20,<1" },
-    { name = "reportlab", specifier = ">=4.2,<5" },
-    { name = "rhwp-python", specifier = "==0.8.1" },
-    { name = "sqlalchemy", specifier = ">=2.0,<3" },
-    { name = "uvicorn", specifier = ">=0.30,<1" },
 ]
 
 [[package]]

@@ -16,4 +16,4 @@ def check_database_ready(engine: Engine) -> None:
         )
 
     if app_user_table is None:
-        raise RuntimeError("SIMS v2.1 schema is not installed")
+        raise RuntimeError("sims v2.1 schema is not installed")

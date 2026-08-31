@@ -1,4 +1,4 @@
--- SIMS 사전협의 Pre-review MVP
+-- 사전협의 Pre-review MVP
 -- PostgreSQL + pgvector consolidated physical schema v2.1
 -- 기준일: 2026-08-21
 -- Target: PostgreSQL 15+ / pgvector 0.7+

@@ -23,7 +23,7 @@ from reportlab.platypus import (
 from app.schemas.report import ReportJsonV01
 
 
-FONT_NAME = "SIMSKorean"
+FONT_NAME = "PreReviewKorean"
 _FONT_CANDIDATES = (
     Path("C:/Windows/Fonts/malgun.ttf"),
     Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
@@ -46,7 +46,7 @@ def _render(report: ReportJsonV01) -> bytes:
         rightMargin=18 * mm,
         topMargin=18 * mm,
         bottomMargin=18 * mm,
-        title=f"SIMS Pre-review - {report.case.title}",
+        title=f"Pre-review - {report.case.title}",
     )
     styles = getSampleStyleSheet()
     body = ParagraphStyle(
@@ -84,7 +84,7 @@ def _render(report: ReportJsonV01) -> bytes:
     )
 
     story = [
-        Paragraph("SIMS Pre-review 분석 보고서", title),
+        Paragraph("Pre-review 분석 보고서", title),
         Spacer(1, 6 * mm),
         _paragraph(f"분석 문서: {report.case.title}", body),
         _paragraph(f"완료 시각: {report.case.completed_at.isoformat()}", body),

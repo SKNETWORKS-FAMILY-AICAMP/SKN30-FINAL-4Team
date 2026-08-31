@@ -1,7 +1,7 @@
 [project]
-name = "sims-pre-review"
+name = "pre-review"
 version = "0.1.0"
-description = "SIMS pre-review FastAPI backend"
+description = "Pre-review FastAPI backend"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",

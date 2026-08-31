@@ -31,7 +31,7 @@ class SmtpMailSender:
                 raise ValueError("Email address contains unsafe characters")
 
         message = EmailMessage()
-        message["Subject"] = "SIMS 비밀번호 재설정"
+        message["Subject"] = "Pre-review 비밀번호 재설정"
         message["From"] = self.from_email
         message["To"] = to_email
         message.set_content(

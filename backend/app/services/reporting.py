@@ -360,7 +360,7 @@ def _persist_final_report(
                 "owner_user_id": owner_user_id,
                 "case_id": case_id,
                 "storage_key": storage_key,
-                "original_filename": f"SIMS_PreReview_{case_id}.pdf",
+                "original_filename": f"Pre-review_{case_id}.pdf",
                 "size_bytes": len(pdf_bytes),
                 "sha256_hex": hashlib.sha256(pdf_bytes).hexdigest(),
             },

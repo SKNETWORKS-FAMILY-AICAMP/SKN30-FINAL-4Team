@@ -17,7 +17,7 @@ RequestReason = Literal[
 
 FORM_SCHEMA_NAME = "sims-cpl"
 FORM_SCHEMA_VERSION = 1
-FORM_SCHEMA_DESCRIPTION = "SIMS Pre-review alpha CPL 13-field contract"
+FORM_SCHEMA_DESCRIPTION = "Pre-review alpha CPL 13-field contract"
 
 CPL_FIELD_LABELS: dict[str, str] = {
     "REQUEST_TYPE": "요청유형 체크값",
