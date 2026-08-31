@@ -94,11 +94,14 @@ ml/data/raw/
 # 커밋 대상이다. 새로운 데이터 디렉터리를 만들 때는 이 절에 경로를
 # 구체적으로 추가할 것.
 
-# 중간 산출물: 추출 원문 JSONL. 같은 텍스트가 announcement_detail_enriched.parquet에
-# 압축되어 들어가므로 중복 커밋하지 않는다. e02_extract_text_v2.py로 재생성 가능.
-ml/reports/e01_documents.jsonl
-ml/reports/e01_documents_list.jsonl
-ml/reports/e02_documents.jsonl
+# 추출 원문 JSONL(합계 106MB). 텍스트 자체는 announcement_detail_enriched.parquet
+# 에 압축되어 들어가므로 커밋하지 않는다. e02_extract_text_v2.py 로 재생성 가능.
+#
+# 주의 — 커밋하지 않을 뿐 임시파일이 아니다. F04 아래 전 단계(F05·F06·M29)가
+# 이 파일을 직접 읽는다. 지우면 하류가 재현되지 않는다. `_api` 를 빠뜨려
+# 15MB 가 커밋될 뻔해서 와일드카드로 바꿨다.
+ml/reports/e01_documents*.jsonl
+ml/reports/e02_documents*.jsonl
 
 # ==========================================
 # 7. Docker 및 기타

@@ -3,6 +3,21 @@
 해시태그 첫 토큰이 분야 라벨과 동일해 그대로 쓰면 라벨 누수다.
 분야명과 겹치는 토큰을 제거한 hashtags_safe를 별도로 만든다.
 """
+# --- ml/ 하위 역할 디렉터리를 sys.path 에 올린다 --------------------------
+# 스크립트끼리 평면 이름으로 import 한다(`import common as C`,
+# `from m13_m4_anomaly import prepare`). 역할별 디렉터리로 나눈 뒤에도 그
+# import 가 그대로 동작하게 세 디렉터리를 얹는다. 파일 위치는 ml/ 바로 아래
+# 한 단계여야 한다 — common.ROOT 가 그렇게 계산된다.
+import os as _os
+import sys as _sys
+
+_ML = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+for _d in ("pipelines", "evaluation", "experiments"):
+    _p = _os.path.join(_ML, _d)
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+# -------------------------------------------------------------------------
+
 import pandas as pd
 
 from common import (CANON_CATEGORIES, PROC, norm_category, read_api,
