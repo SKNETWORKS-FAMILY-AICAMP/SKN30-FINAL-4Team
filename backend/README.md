@@ -1,4 +1,4 @@
-# SIMS Pre-review 백엔드 실행 안내
+# Pre-review 백엔드 실행 안내
 
 중소기업 지원사업 사전협의 요청서(HWP/HWPX)를 분석해 다음 결과를 만드는 FastAPI 백엔드다.
 
@@ -12,6 +12,8 @@
 ```text
 SKN30-FINAL-4Team\
 ├─ backend\
+│  ├─ pyproject.toml
+│  └─ uv.lock
 ├─ scripts\
 ├─ .env.example
 └─ README.md
@@ -84,15 +86,15 @@ Python은 `3.12.x`가 권장된다. `docker ps`에서 연결 오류가 나면 Do
 최초 한 번만 실행한다.
 
 ```cmd
-uv sync
+uv sync --directory backend
 ```
 
-`uv.lock`에 고정된 버전으로 루트의 `.venv`가 만들어진다.
+`backend\uv.lock`에 고정된 버전으로 `backend\.venv`가 만들어진다.
 
 설치 확인:
 
 ```cmd
-uv run python -c "import fastapi; print(fastapi.__version__)"
+backend\.venv\Scripts\python.exe -c "import fastapi; print(fastapi.__version__)"
 ```
 
 FastAPI 버전이 출력되면 정상이다.
@@ -156,6 +158,8 @@ OPENAI_API_KEY=sk-본인의_API_키
 > **팀 Supabase 를 쓰면 이 절을 건너뛴다.** 스키마와 목업 공고가 이미 들어가 있고, `.env`의 `DATABASE_URL`만 Supabase 주소로 두면 된다.
 > 이 절이 필요한 경우는 둘이다 — 로컬에서 독립된 DB 로 개발하거나, 13절의 전체 테스트를 돌릴 때다.
 
+팀 Supabase를 사용할 때도 `demo / demo-password-1234`로 로그인할 수 있다. 다만 이 계정은 현재 팀 Supabase에 적재되어 있는 계정이며, `.env`의 `DATABASE_URL`이 같은 팀 Supabase를 가리킬 때만 사용할 수 있다. 다른 Supabase나 자체 로컬 DB에는 계정이 없을 수 있으므로, 해당 DB의 계정을 사용하거나 로컬 DB는 아래 스크립트로 `demo` 계정을 생성한다.
+
 Docker Desktop이 실행 중인지 확인한다.
 
 ```cmd
@@ -207,7 +211,7 @@ docker exec sims-e2e-pg pg_isready -U postgres -d sims
 > **팀 Supabase 를 쓰면 건너뛴다.** 공고 6건이 이미 들어가 있다. 다시 실행하면 OpenAI 임베딩 비용만 더 든다.
 
 ```cmd
-uv run python scripts\seed_announcements.py
+backend\.venv\Scripts\python.exe scripts\seed_announcements.py
 ```
 
 테스트용 지원사업 공고 6건을 실제 DB에 넣고 OpenAI API로 임베딩을 생성한다. 공공데이터포털 키 없이 전체 흐름을 확인하기 위한 데이터다.
@@ -218,7 +222,7 @@ uv run python scripts\seed_announcements.py
 
 ```cmd
 cd backend
-..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 ```
 
 정상 로그:
@@ -245,9 +249,39 @@ CORS_ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
 
 운영에서는 운영 프론트 주소 또는 `[]`(교차 출처 허용 안 함)를 명시한다. 주소에 경로나 후행 `/`을 붙이지 않으며 `*`는 허용하지 않는다. 프론트는 기존 Bearer 토큰을 `Authorization` 헤더로 보내고 `credentials: "include"`는 사용하지 않는다. PDF 파일명용 `Content-Disposition` 헤더도 읽을 수 있다.
 
-CORS 설정은 로그인 화면이나 API 호출 코드를 만드는 기능이 아니다. 상세 범위와 오류 응답 처리는 [CORS 연동 계약](docs/CORS_연동계약_v0.1_260831.md)을 참고한다.
+CORS 설정은 로그인 화면이나 API 호출 코드를 만드는 기능이 아니다. 상세 범위와 오류 응답 처리는 [CORS 연동 계약](../docs/CORS_연동계약_v0.1_260831.md)을 참고한다.
 
-## 9. 전체 E2E 확인
+## 9. Swagger로 실제 문서 분석
+
+서버가 켜진 상태에서 `http://127.0.0.1:8000/docs`를 열고 다음 순서로 실행한다. 모든 API는 Swagger의 **Try it out** 뒤 **Execute**로 호출한다.
+
+1. `POST /api/v1/auth/login`에서 아래 데모 계정으로 로그인한다.
+
+   ```json
+   {
+     "login_id": "demo",
+     "password": "demo-password-1234"
+   }
+   ```
+
+2. 응답 `data.access_token`을 복사한다. Swagger 상단 **Authorize**에 `Bearer 실제_토큰값`을 입력한다. `< >`는 넣지 않는다.
+3. `POST /api/v1/cases`에서 **Choose File**로 HWP/HWPX 요청서 한 개를 올린다. 성공 응답의 `data.case_id`를 기록한다.
+4. `POST /api/v1/cases/{case_id}/analyze`의 `{case_id}`를 실제 값으로 바꿔 실행한다. `202`와 `PARSING`은 분석 시작을 뜻한다.
+5. `GET /api/v1/cases/{case_id}/status`를 실행해 `분석 완료`인지 확인한다.
+6. `GET /api/v1/cases/{case_id}/report`로 분석 결과를 확인한다. PDF는 `GET /api/v1/cases/{case_id}/report.pdf`로 받는다.
+7. `POST /api/v1/cases/{case_id}/chat/messages`에 질문을 넣어 결과 기반 채팅을 한다.
+
+   ```json
+   {
+     "content": "이 문서에서 보완이 필요한 항목을 요약해줘."
+   }
+   ```
+
+   이전 채팅은 `GET /api/v1/cases/{case_id}/chat/messages`에서 확인한다.
+
+유효한 HWP/HWPX 사전협의 요청서를 넣으면 실제 파싱·CPL·FIT·SIM·리포트·PDF 코드가 실행된다. 다만 현재 환경은 로컬 개발용이고 SIM 비교 공고는 목업 데이터다. 결과는 팀 내부 알파 기준의 사전 검토 결과이며 공식 행정 판정이 아니다.
+
+## 10. 전체 E2E 확인
 
 새 CMD 터미널에서 저장소 루트로 이동한다.
 
@@ -258,13 +292,13 @@ cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
 저장소에 포함된 목업 HWPX로 전체 흐름을 실행한다. `mockup_08` 은 CPL 13개 항목이 모두 들어 있어 확인 범위가 가장 넓다.
 
 ```cmd
-uv run python scripts\e2e_run.py samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
+backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
 ```
 
 다른 사례를 실행하려면 파일 경로만 바꾼다.
 
 ```cmd
-uv run python scripts\e2e_run.py samples\hwpx\사전협의요청서_미흡사례.hwpx
+backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\사전협의요청서_미흡사례.hwpx
 ```
 
 목업 파일은 다음 위치에 버전 관리한다.
@@ -287,7 +321,7 @@ samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
 다른 목업을 실행할 때는 `e2e_run.py` 뒤의 파일 경로만 원하는 샘플로 바꾼다.
 
 ```cmd
-uv run python scripts\e2e_run.py samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
+backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
 ```
 
 E2E 호출 순서:
@@ -306,23 +340,7 @@ E2E 호출 순서:
 → 채팅
 ```
 
-7단계가 모두 통과하면 백엔드 핵심 흐름이 정상이다.
-
-## 10. 실제 문서 분석
-
-서버가 켜진 상태에서 Swagger를 사용하거나 프론트를 연결한다.
-
-```text
-POST /api/v1/auth/login
-POST /api/v1/cases
-POST /api/v1/cases/{case_id}/analyze
-GET  /api/v1/cases/{case_id}/status
-GET  /api/v1/cases/{case_id}/report
-GET  /api/v1/cases/{case_id}/report.pdf
-POST /api/v1/cases/{case_id}/chat/messages
-```
-
-유효한 HWP/HWPX 사전협의 요청서를 넣으면 실제 파싱·CPL·FIT·SIM·리포트·PDF 코드가 실행된다. 다만 현재 환경은 로컬 개발용이고 SIM 비교 공고는 목업 데이터다. 결과는 팀 내부 알파 기준의 사전 검토 결과이며 공식 행정 판정이 아니다.
+위 11단계가 모두 통과하면 백엔드 핵심 흐름이 정상이다.
 
 ## 11. 다음 날 다시 실행
 
@@ -331,7 +349,7 @@ POST /api/v1/cases/{case_id}/chat/messages
 ```cmd
 docker start sims-e2e-pg
 cd backend
-..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 ```
 
 이미 컨테이너가 실행 중이라는 메시지가 나오면 그대로 진행한다.
@@ -362,7 +380,7 @@ DB 컨테이너와 내부 데이터를 모두 삭제:
 
 ```cmd
 set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-uv run python -m pytest backend\tests -q
+backend\.venv\Scripts\python.exe -m pytest backend\tests -q
 ```
 
 목업 공고가 들어간 DB는 테스트 데이터와 충돌할 수 있다. 데이터 삭제에 동의한 경우에만 DB를 초기화한 뒤 전체 테스트한다.
@@ -371,7 +389,7 @@ uv run python -m pytest backend\tests -q
 "%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_down.sh
 "%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_up.sh
 set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-uv run python -m pytest backend\tests -q
+backend\.venv\Scripts\python.exe -m pytest backend\tests -q
 ```
 
 ## 14. 자주 발생하는 문제
@@ -416,16 +434,9 @@ DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
 시스템 Python이 아니라 프로젝트 가상환경 Python으로 실행한다.
 
 ```cmd
-.venv\Scripts\python.exe
+backend\.venv\Scripts\python.exe
 ```
 
-### 8000 포트가 이미 사용 중임
-
-기존 서버 터미널을 찾아 `Ctrl+C`로 종료한다.
-
-```cmd
-netstat -ano | findstr :8000
-```
 
 ## 15. 현재 실행 범위
 
@@ -445,11 +456,3 @@ netstat -ano | findstr :8000
 - 목업 공고 6건
 - 로컬 파일 저장소
 - 서버 프로세스 내부 백그라운드 작업
-
-운영 배포 전에는 운영 DB, 영속 저장소, 실제 공고 동기화, 사용자·보안 정책, HTTPS, 외부 작업 큐와 모니터링이 별도로 필요하다.
-
-## 이메일 비밀번호 재설정
-
-프론트 연동 계약과 Gmail 설정은 [이메일 비밀번호 재설정 연동계약](docs/SIMS_이메일_비밀번호재설정_연동계약_260831.md)을 참고한다.
-`.env.example`의 `SMTP_*`, `PASSWORD_RESET_URL`을 로컬 `.env`에 설정한 뒤 재시작한다. 미설정 시 발송 API는 503을 반환하며 기존 로그인·분석에는 영향을 주지 않는다.
-새 비밀번호는 8~128자이며 영문·숫자·특수문자를 각각 포함한다. 기존 비밀번호의 로그인은 이 규칙으로 제한하지 않는다.

@@ -61,7 +61,11 @@ async def create_case(
     user: CurrentUser,
     files: Annotated[
         list[UploadFile],
-        File(alias="file", description="Exactly one HWP or HWPX request document"),
+        File(
+            alias="file",
+            description="Exactly one HWP or HWPX request document",
+            json_schema_extra={"items": {"type": "string", "format": "binary"}},
+        ),
     ],
 ) -> CreateCaseResponse:
     form = await request.form()

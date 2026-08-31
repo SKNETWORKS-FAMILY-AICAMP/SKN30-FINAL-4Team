@@ -28,7 +28,7 @@ from app.services.case_upload import (
     create_case_from_upload,
     validate_upload,
 )
-from main import create_app
+from main import app, create_app
 
 
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
@@ -41,6 +41,19 @@ def hwpx_bytes(mimetype: bytes = b"application/hwp+zip") -> bytes:
         archive.writestr("mimetype", mimetype, compress_type=zipfile.ZIP_STORED)
         archive.writestr("Contents/section0.xml", "<section />")
     return output.getvalue()
+
+
+def test_upload_openapi_describes_file_items_as_binary() -> None:
+    schema = app.openapi()
+    request_schema = schema["paths"]["/api/v1/cases"]["post"]["requestBody"][
+        "content"
+    ]["multipart/form-data"]["schema"]
+    file_schema = schema["components"]["schemas"][
+        request_schema["$ref"].rsplit("/", 1)[-1]
+    ]["properties"]["file"]
+
+    assert file_schema["type"] == "array"
+    assert file_schema["items"] == {"type": "string", "format": "binary"}
 
 
 @pytest.fixture(scope="module")
