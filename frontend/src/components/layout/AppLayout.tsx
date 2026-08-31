@@ -1,41 +1,46 @@
-import Sidebar from './shared/Sidebar'
+import { useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
+import Sidebar from './shared/Sidebar'
+import HistoryDetailLayer from '../../features/history/HistoryDetailLayer'
 
 export default function AppLayout() {
     const navigate = useNavigate()
+    const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
-    // 설계서 라우팅 흐름에 따른 핸들러 예시
     const handleNewAnalysis = () => {
-        navigate('/main') // SCR-004 업로드 화면
+        setSelectedHistoryId(null)
+        navigate('/')
     }
 
     const handleHistoryClick = (id: string) => {
-        navigate(`/main/history/${id}`) // SCR-007-P1 과거 분석 이력 상세
+        setSelectedHistoryId(id)
     }
 
-    const handlePasswordChangeClick = () => {
-        navigate('/main/password') // SCR-006 비밀번호 변경
+    const handleCloseHistory = () => {
+        setSelectedHistoryId(null)
     }
 
     const handleLogout = () => {
-        // 로그아웃 후 랜딩(SCR-001)으로 이동
         navigate('/')
     }
 
     return (
-        <div className="min-h-screen flex bg-background text-on-background overflow-hidden">
-            {/* 좌측 사이드바 */}
+        <div className="min-h-screen flex bg-background text-on-background overflow-hidden relative">
             <Sidebar
                 onNewAnalysis={handleNewAnalysis}
                 onHistoryClick={handleHistoryClick}
-                onPasswordChangeClick={handlePasswordChangeClick}
                 onLogout={handleLogout}
             />
 
-            {/* 우측 본문 컨테이너 영역 (사이드바 너비 320px 만큼 여백 부여) */}
             <main className="ml-[320px] min-h-screen flex flex-col flex-1">
                 <Outlet />
             </main>
+
+            {/* 💡 껍데기(컨테이너) 역할만 하는 분리된 레이어 팝업 컴포넌트 호출 */}
+            <HistoryDetailLayer 
+                historyId={selectedHistoryId} 
+                onClose={handleCloseHistory} 
+            />
         </div>
     )
 }

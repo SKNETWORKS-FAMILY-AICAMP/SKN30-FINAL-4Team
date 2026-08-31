@@ -134,6 +134,7 @@
 }
 
 .group\/scroll::-webkit-scrollbar-thumb {
+    width: 6px;
     background-color: rgba(67, 71, 78, 0.3);
     border-radius: 20px;
     border: 2px solid transparent;
@@ -142,4 +143,22 @@
 
 .group\/scroll {
     overflow-y: overlay !important;
+}
+
+button:not(:disabled):not([disabled]),
+[role="button"]:not(:disabled):not([disabled]) {
+    cursor: pointer;
+}
+
+@keyframes slideFromRight {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+.animate-slide-right-in {
+    animation: slideFromRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

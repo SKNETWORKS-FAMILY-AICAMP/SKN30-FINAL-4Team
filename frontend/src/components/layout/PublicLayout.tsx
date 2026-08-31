@@ -4,7 +4,7 @@ import Footer from './shared/Footer'
 
 export default function PublicLayout() {
     return (
-        <div className="pt-16 bg-background text-on-background min-h-screen flex flex-col w-full">
+        <div className="w-full min-h-screen pt-18 flex flex-col bg-background text-on-background">
             <Header />
             
             <main className="flex-1 flex flex-col w-full">

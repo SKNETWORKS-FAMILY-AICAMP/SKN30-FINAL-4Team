@@ -25,6 +25,7 @@ export default function HistoryList({ onHistoryClick }: HistoryListProps) {
 
     const displayedHistories = allHistories.slice(0, visibleCount)
     const hasMore = visibleCount < allHistories.length
+    const totalCount = 10
 
     const handleLoadMore = () => {
         setVisibleCount((prev) => Math.min(prev + 5, allHistories.length))
@@ -34,6 +35,7 @@ export default function HistoryList({ onHistoryClick }: HistoryListProps) {
         <HistoryListView 
             histories={displayedHistories} 
             hasMore={hasMore}
+            totalCount={totalCount}
             onHistoryClick={onHistoryClick} 
             onLoadMore={handleLoadMore}
         />
