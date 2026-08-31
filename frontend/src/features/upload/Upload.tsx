@@ -3,7 +3,7 @@ import UploadView from './UploadView'
 import { caseService } from '../../services/caseService'
 
 interface UploadProps {
-    onAnalysisComplete: () => void
+    onAnalysisComplete: (caseId: string | number, reportData: any) => void
 }
 
 export default function Upload({ onAnalysisComplete }: UploadProps) {
@@ -29,28 +29,33 @@ export default function Upload({ onAnalysisComplete }: UploadProps) {
             // 2. 분석 시작 API 호출 (/api/v1/cases/{case_id}/analyze)[cite: 3]
             await caseService.analyzeCase(caseId)
 
-            // 3. 🔄 폴링 루프 추가 (상태가 COMPLETED가 될 때까지 주기적으로 체크)
-            const maxAttempts = 1000;    // 최대 30번 시도 (약 1분 30초)
-            const intervalTime = 3000; // 3초 간격
+            // 3. 🔄 폴링 루프 (한글 상태값 대응 버전)
+            const maxAttempts = 30;    
+            const intervalTime = 3000; 
             let attempts = 0;
             let isCompleted = false;
 
             while (attempts < maxAttempts) {
                 attempts++;
-                // 대기 시간 주기 적용
-                await new Promise(resolve => setTimeout(resolve, intervalTime));
 
-                // 상태 조회 API 호출 (예: caseService에 getStatus가 있다고 가정)
                 const statusData = await caseService.getStatus(caseId);
-                const currentStatus = statusData?.status || statusData?.data?.status;
 
-                console.log(`[폴링 ${attempts}차] 현재 분석 상태:`, currentStatus);
+                // data 객체 안의 status 추출 (한글이므로 toUpperCase는 빼고 공백만 trim 처리)
+                const rawStatus = statusData?.status || statusData?.data?.status || '';
+                const currentStatus = String(rawStatus).trim();
 
-                if (currentStatus === 'COMPLETED') {
+                console.log(`[폴링 ${attempts}차] 서버 응답 원본:`, currentStatus);
+
+                // 백엔드가 내려주는 한글 상태값에 대응 ("분석 완료", "COMPLETED", "SUCCESS" 등 모두 방어)
+                if (currentStatus === '분석 완료' || currentStatus === 'COMPLETED' || currentStatus === 'SUCCESS' || currentStatus === 'DONE') {
                     isCompleted = true;
                     break;
-                } else if (currentStatus === 'FAILED') {
+                } else if (currentStatus === '분석 실패' || currentStatus === 'FAILED' || currentStatus === 'ERROR') {
                     throw new Error('서버에서 분석 작업이 실패했습니다.');
+                }
+
+                if (attempts < maxAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, intervalTime));
                 }
             }
 
@@ -58,11 +63,12 @@ export default function Upload({ onAnalysisComplete }: UploadProps) {
                 throw new Error('분석 작업 시간이 초과되었습니다.');
             }
 
-            // 4. 완료 떨어지면 리포트 조회 API 호출 (/api/v1/cases/{case_id}/report)[cite: 3]
+            // 4. 완료 떨어지면 리포트 조회 API 호출
+            // Upload.tsx 내부의 완료 지점
             const reportData = await caseService.getReport(caseId)
-            console.log('최종 리포트 데이터:', reportData)
 
-            onAnalysisComplete()
+            // 부모의 handleAnalysisComplete 함수에 데이터를 실어 보냄
+            onAnalysisComplete(caseId, reportData)
         } catch (error: any) {
             console.error('파일 업로드 및 분석 프로세스 실패:', error)
             const errorMsg = error.response?.data?.message || error.message || '처리 중 오류가 발생했습니다.'
