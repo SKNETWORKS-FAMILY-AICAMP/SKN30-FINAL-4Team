@@ -319,8 +319,8 @@ def test_fit_config_defines_versioned_equal_weight_scoring() -> None:
     policy = load_fit_scoring(runtime.fit_scoring_path)
     prompt = load_fit_prompt(runtime.fit_prompt_path)
     assert runtime.fit_ruleset_version == "fit-v0.3"
-    assert runtime.fit_prompt_version == "fit-v0.4"
-    assert runtime.fit_prompt_path.name == "fit-v0.4.txt"
+    assert runtime.fit_prompt_version == "fit-v0.5"
+    assert runtime.fit_prompt_path.name == "fit-v0.5.txt"
     assert "Do not return FIT-4 or FIT-7" in prompt
     assert "NEEDS_REVIEW, CONFLICT, and INSUFFICIENT require" in prompt
     assert "missing or duplicated relation" in prompt
@@ -852,7 +852,7 @@ def test_pipeline_fit_boundary_uses_runtime_contract() -> None:
     )
     assert result is not None
     assert result.ruleset_version == "fit-v0.3"
-    assert result.prompt_version == "fit-v0.4"
+    assert result.prompt_version == "fit-v0.5"
 
 
 def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
@@ -935,7 +935,7 @@ def test_relative_fit_config_paths_resolve_from_project_root() -> None:
         database_url="postgresql+psycopg://test:test@localhost/test",
         jwt_secret=JWT_SECRET,
         fit_scoring_path="backend/config/fit_scoring_v0.2.json",
-        fit_prompt_path="backend/config/prompts/fit-v0.4.txt",
+        fit_prompt_path="backend/config/prompts/fit-v0.5.txt",
     )
     assert runtime.fit_scoring_path.is_absolute()
     assert runtime.fit_prompt_path.is_absolute()

@@ -206,7 +206,7 @@ class FakeLlm:
 
 def test_versioned_sim_policy_and_prompt_load() -> None:
     policy = load_sim_scoring(Path("config/sim_scoring.json"))
-    prompt = load_sim_prompt(Path("config/prompts/sim-v0.2.txt"))
+    prompt = load_sim_prompt(Path("config/prompts/sim-v0.3.txt"))
     assert policy.version == "sim-alpha-v0.2"
     assert policy.axis_weights[SimAxis.DELIVERY] == 0.10
     assert policy.status_scores[SimStatus.INSUFFICIENT] is None
