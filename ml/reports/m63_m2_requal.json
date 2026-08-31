@@ -25,7 +25,7 @@
       "support_method": 114,
       "support_unit": 35,
       "amount_type": 0,
-      "support_count": 39,
+      "support_count": 0,
       "support_ratio": 1,
       "self_burden_ratio": 78,
       "project_duration": 524,
@@ -70,12 +70,12 @@
         "improvement_vs_v1_baseline": 0.2182
       },
       "M56 on v2(수정)": {
-        "MAE_log10": 0.4123,
-        "MedAE_log10": 0.3079,
-        "geo_mean_error_x": 2.584,
-        "within_2x": 0.4907,
-        "within_3x": 0.6782,
-        "improvement_vs_v1_baseline": 0.2242
+        "MAE_log10": 0.4117,
+        "MedAE_log10": 0.3089,
+        "geo_mean_error_x": 2.581,
+        "within_2x": 0.4917,
+        "within_3x": 0.6814,
+        "improvement_vs_v1_baseline": 0.2254
       }
     },
     "normalized_title": {
@@ -106,28 +106,28 @@
         "improvement_vs_v1_baseline": 0.2078
       },
       "M56 on v2(수정)": {
-        "MAE_log10": 0.4308,
-        "MedAE_log10": 0.3349,
-        "geo_mean_error_x": 2.696,
+        "MAE_log10": 0.4304,
+        "MedAE_log10": 0.3406,
+        "geo_mean_error_x": 2.694,
         "within_2x": 0.464,
-        "within_3x": 0.6484,
-        "improvement_vs_v1_baseline": 0.2166
+        "within_3x": 0.6537,
+        "improvement_vs_v1_baseline": 0.2173
       }
     }
   },
   "paired_delta": {
     "n": 1877,
     "mean_abs_error_v1": 0.4155,
-    "mean_abs_error_v2": 0.4123,
-    "mean_delta(v1-v2)": 0.00318,
+    "mean_abs_error_v2": 0.4117,
+    "mean_delta(v1-v2)": 0.00374,
     "boot_ci95": [
-      -0.00128,
-      0.00761
+      -0.00031,
+      0.00783
     ],
-    "P(delta>0)": 0.9264,
+    "P(delta>0)": 0.9668,
     "n_rows_changed": 1877,
-    "n_rows_v2_better": 953,
-    "wilcoxon_p": 0.37249
+    "n_rows_v2_better": 958,
+    "wilcoxon_p": 0.11269
   },
   "stability": {
     "M56 on v1(현행)": {
@@ -140,10 +140,10 @@
     },
     "M56 on v2(수정)": {
       "n_repeat": 10,
-      "mean": 0.2242,
-      "std": 0.0081,
-      "min": 0.2108,
-      "max": 0.236,
+      "mean": 0.2246,
+      "std": 0.008,
+      "min": 0.2129,
+      "max": 0.2361,
       "pass": "10/10"
     }
   },
@@ -163,45 +163,45 @@
       }
     },
     "v2(수정)": {
-      "coverage": 0.8013,
+      "coverage": 0.8071,
       "nominal": 0.8,
-      "median_width_log10": 1.3828,
+      "median_width_log10": 1.3816,
       "median_width_x": 24.1,
-      "mean_width_log10": 1.4272,
-      "interval_score_median": 1.5067,
+      "mean_width_log10": 1.4295,
+      "interval_score_median": 1.4999,
       "crossing_rate": 0.0,
       "tier_counts": {
-        "참고 가능": 17,
-        "범위 넓음": 14,
+        "참고 가능": 16,
+        "범위 넓음": 15,
         "참고 범위 제시 어려움": 0
       }
     }
   },
   "extra": {
     "C-a XGB (수정 데이터, 기준)": {
-      "MAE_log10": 0.4123,
-      "MedAE_log10": 0.3079,
-      "geo_mean_error_x": 2.584,
-      "within_2x": 0.4907,
-      "within_3x": 0.6782,
-      "improvement_vs_v1_baseline": 0.2243
+      "MAE_log10": 0.4117,
+      "MedAE_log10": 0.3089,
+      "geo_mean_error_x": 2.581,
+      "within_2x": 0.4917,
+      "within_3x": 0.6814,
+      "improvement_vs_v1_baseline": 0.2254
     },
     "C-b XGB+LGBM 단순평균": {
-      "MAE_log10": 0.4164,
-      "MedAE_log10": 0.3163,
-      "geo_mean_error_x": 2.609,
-      "within_2x": 0.4816,
-      "within_3x": 0.6798,
-      "improvement_vs_v1_baseline": 0.2166
+      "MAE_log10": 0.4169,
+      "MedAE_log10": 0.3088,
+      "geo_mean_error_x": 2.611,
+      "within_2x": 0.4885,
+      "within_3x": 0.6814,
+      "improvement_vs_v1_baseline": 0.2156
     },
     "C-c XGB + 비교군 잔차보정(inner OOF)": {
-      "MAE_log10": 0.4134,
-      "MedAE_log10": 0.3045,
-      "geo_mean_error_x": 2.59,
-      "within_2x": 0.4965,
-      "within_3x": 0.6809,
-      "improvement_vs_v1_baseline": 0.2222
+      "MAE_log10": 0.4136,
+      "MedAE_log10": 0.3015,
+      "geo_mean_error_x": 2.592,
+      "within_2x": 0.4997,
+      "within_3x": 0.6835,
+      "improvement_vs_v1_baseline": 0.2218
     }
   },
-  "elapsed_sec": 1467.3
+  "elapsed_sec": 1603.1
 }

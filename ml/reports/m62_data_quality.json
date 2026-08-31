@@ -4,7 +4,7 @@
   "producer": "ml/scripts/f06_design_features.py (M65 에서 근본 수정)",
   "rows": 3963,
   "sha256_before": "9f308112fb99e750fcbd4fdcba980a9a3ac698eaa623b99e60e205e11c8043e4",
-  "sha256_after": "9377f47f729907deebe8760a082225ec61ee87cc95d2a84c8b21c0ef1d7c1627",
+  "sha256_after": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
   "ledger": {
     "D1_근거문_복원": {
       "제목만_있던_행": 1749,
@@ -117,8 +117,8 @@
       "사업기간_최대_후": 26.0
     },
     "상류_드리프트(이번_수정과_무관)": {
-      "support_count": 82,
-      "extraction_confidence": 55
+      "support_count": 0,
+      "extraction_confidence": 0
     }
   },
   "model2_filter_trace": {
@@ -163,24 +163,24 @@
       "n_axes_평균": 2.429
     },
     "after": {
-      "pool_rows": 2465,
-      "지원단위_결측률": 0.1611,
+      "pool_rows": 2451,
+      "지원단위_결측률": 0.1616,
       "지원방식_분포": {
-        "grant": 1666,
+        "grant": 1658,
         "loan": 399,
         "mixed": 102,
-        "other": 98,
+        "other": 92,
         "voucher": 82,
         "service": 79,
         "guarantee": 39
       },
       "축_결측률": {
-        "log_per_recipient": 0.2312,
-        "log_support_count": 0.1878,
-        "support_ratio": 0.6211,
-        "project_duration": 0.3542
+        "log_per_recipient": 0.2277,
+        "log_support_count": 0.1954,
+        "support_ratio": 0.6189,
+        "project_duration": 0.3554
       },
-      "n_axes_평균": 2.606
+      "n_axes_평균": 2.603
     }
   },
   "audit_sample_rows": 60,
