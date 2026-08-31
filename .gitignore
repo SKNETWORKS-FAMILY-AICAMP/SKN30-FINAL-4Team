@@ -78,7 +78,12 @@ Cargo.lock
 **/*.onnx
 **/*.safetensors
 **/*.bin
-ml/models/
+
+# ml/models/ 는 커밋 대상이다(2026-08-31 구조 개편).
+# 여기 들어가는 것은 가중치가 아니라 **채택 모델의 serving artifact** 다 —
+# 모델 2 joblib(11MB) + manifest, 모델 1 학습번들 parquet. 위 가중치 규칙이
+# 그대로 살아 있으므로 .pt/.safetensors/.bin 은 여전히 들어오지 않는다.
+# 모델 1 백본 가중치는 저장소 밖에 둔다(models/README.md 참조).
 
 # 캐시
 ml/.cache/

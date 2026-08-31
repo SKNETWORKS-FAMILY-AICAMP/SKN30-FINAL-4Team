@@ -1,0 +1,65 @@
+{
+  "output": "data\\processed\\design_features_v3.parquet",
+  "evidence_fix": true,
+  "supply_fill": {
+    "S1_지원단위_count_expression": 109,
+    "S2_금액의미_문서근거해소": 274,
+    "S2_기업당지원액_신규": 274,
+    "S3_지원비율_신규": 323
+  },
+  "rows": 3963,
+  "by_cohort": {
+    "bizinfo": 2458,
+    "taxonomy": 1505
+  },
+  "derived": [
+    "support_method",
+    "support_unit",
+    "per_recipient",
+    "agency_type"
+  ],
+  "method_dist": {
+    "bizinfo": {
+      "grant": 1217,
+      "loan": 493,
+      "other": 277,
+      "service": 173,
+      "mixed": 170,
+      "guarantee": 72,
+      "voucher": 56
+    },
+    "taxonomy": {
+      "grant": 946,
+      "service": 191,
+      "loan": 130,
+      "other": 120,
+      "voucher": 56,
+      "mixed": 41,
+      "guarantee": 21
+    }
+  },
+  "per_recipient_coverage": {
+    "bizinfo": 1459,
+    "taxonomy": 1058
+  },
+  "amount_outlier": 146,
+  "evidence_source": {
+    "document": 2127,
+    "scale_text": 1505,
+    "api_summary": 331
+  },
+  "support_unit_basis": {
+    "unchanged": 1208,
+    "amount_context": 1176,
+    "none": 1097,
+    "scope_section": 303,
+    "count_expression": 109,
+    "amount_type_convention": 70
+  },
+  "sanity": {
+    "지원비율_범위밖": 1,
+    "자부담률_범위밖": 1,
+    "사업기간_연도오파싱(bare)": 101,
+    "사업기간_범위밖_유지(근거있음)": 41
+  }
+}
