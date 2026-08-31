@@ -33,6 +33,21 @@
 기존 표본과 안 겹치게 한다
     list_sample.parquet(D02, 5,000건)에 이미 뽑힌 건은 제외한다.
 """
+# --- ml/ 하위 역할 디렉터리를 sys.path 에 올린다 --------------------------
+# 스크립트끼리 평면 이름으로 import 한다(`import common as C`,
+# `from m13_m4_anomaly import prepare`). 역할별 디렉터리로 나눈 뒤에도 그
+# import 가 그대로 동작하게 세 디렉터리를 얹는다. 파일 위치는 ml/ 바로 아래
+# 한 단계여야 한다 — common.ROOT 가 그렇게 계산된다.
+import os as _os
+import sys as _sys
+
+_ML = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+for _d in ("pipelines", "evaluation", "experiments"):
+    _p = _os.path.join(_ML, _d)
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+# -------------------------------------------------------------------------
+
 import argparse
 import os
 import sys
