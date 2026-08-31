@@ -16,7 +16,7 @@ const FEATURES_DATA = [
 
 export default function LandingView() {
     return (
-        <main className="flex-grow flex flex-col">
+        <>
             {/* Hero Section */}
             <section
                 className="flex-grow flex flex-col justify-center items-center px-gutter py-[80px] bg-surface-container-low text-center bg-cover bg-center"
@@ -68,6 +68,6 @@ export default function LandingView() {
                     ))}
                 </div>
             </section>
-        </main>
+        </>
     )
 }

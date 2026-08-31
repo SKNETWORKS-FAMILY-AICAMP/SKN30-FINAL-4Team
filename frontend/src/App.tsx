@@ -6,16 +6,16 @@ import AppLayout from './components/layout/AppLayout'
 
 // Pages
 import LandingPage from './pages/LandingPage'
-// import LoginPage from './pages/LoginPage'
-// import ResetPasswordPage from './pages/ResetPasswordPage'
+import LoginPage from './pages/LoginPage'
+import PasswordResetPage from './pages/PasswordResetPage'
 
 import MainPage from './pages/MainPage'
 import PasswordChangePage from './pages/PasswordChangePage'
 
 export default function App() {
     // TODO: 실제 인증 상태 연동 (현재는 로그인 상태 테스트를 위해 true/false 변경 가능)
-    const isAuthenticated = true
-    // const isAuthenticated = false
+    // const isAuthenticated = true
+    const isAuthenticated = false
 
     return (
         <BrowserRouter>
@@ -31,6 +31,8 @@ export default function App() {
                     // 미로그인 상태: 퍼블릭 레이아웃 (랜딩, 로그인, 비밀번호 재설정)
                     <Route element={<PublicLayout />}>
                         <Route path="/" element={<LandingPage />} /> {/* SCR-001 */}
+                        <Route path="/login" element={<LoginPage />} /> {/* SCR-002 */}
+                        <Route path="/password-reset" element={<PasswordResetPage />} /> {/* SCR-003 */}
                     </Route>
                 )}
 
