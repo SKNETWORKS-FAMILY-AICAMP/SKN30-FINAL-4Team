@@ -23,7 +23,7 @@ def main(document: Path) -> int:
     with httpx.Client(base_url=BASE, timeout=60) as client:
         print("[1/7] 로그인")
         token = client.post("/api/v1/auth/login", json=LOGIN).raise_for_status()
-        auth = {"Authorization": f"Bearer {token.json()['access_token']}"}
+        auth = {"Authorization": f"Bearer {token.json()['data']['access_token']}"}
 
         print(f"[2/7] 업로드  {document.name}")
         with document.open("rb") as handle:
@@ -35,7 +35,7 @@ def main(document: Path) -> int:
         if created.status_code != 200:
             print(f"  실패 {created.status_code}: {created.text[:300]}")
             return 1
-        case_id = created.json()["case_id"]
+        case_id = created.json()["data"]["case_id"]
         print(f"  case_id={case_id}")
 
         print("[3/7] 분석 시작")
@@ -50,7 +50,7 @@ def main(document: Path) -> int:
         while time.monotonic() < deadline:
             status = client.get(
                 f"/api/v1/cases/{case_id}/status", headers=auth
-            ).json()["status"]
+            ).json()["data"]["status"]
             if status != last:
                 print(f"  {status}")
                 last = status
@@ -71,7 +71,7 @@ def main(document: Path) -> int:
         if report.status_code != 200:
             print(f"  실패 {report.status_code}: {report.text[:300]}")
             return 1
-        body = report.json()
+        body = report.json()["data"]
         check = body["self_check"]
         print(
             f"  확인율 {check['confirmed_count']}/{check['total_count']}"

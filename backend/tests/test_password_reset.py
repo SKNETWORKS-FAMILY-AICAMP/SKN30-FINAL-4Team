@@ -234,7 +234,7 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
         json={"login_id": "reset-confirm-user", "password": OLD_PASSWORD},
     )
     assert access_response.status_code == 200
-    access_token = access_response.json()["access_token"]
+    access_token = access_response.json()["data"]["access_token"]
     request_response = client.post(
         "/api/v1/auth/password-reset/request",
         json={"email": "confirm@example.com"},

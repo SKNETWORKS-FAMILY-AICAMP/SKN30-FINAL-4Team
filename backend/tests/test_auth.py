@@ -112,8 +112,8 @@ def login(client: TestClient, login_id: str, password: str) -> str:
         json={"login_id": login_id, "password": password},
     )
     assert response.status_code == 200
-    assert response.json()["token_type"] == "bearer"
-    return response.json()["access_token"]
+    assert response.json()["data"]["token_type"] == "bearer"
+    return response.json()["data"]["access_token"]
 
 
 def test_password_hash_is_argon2id_salted_and_verifiable() -> None:

@@ -132,7 +132,7 @@ def bearer(client: TestClient, login_id: str) -> dict[str, str]:
         json={"login_id": login_id, "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
 
 
 def test_chat_history_and_answer_are_stored_in_sequence(

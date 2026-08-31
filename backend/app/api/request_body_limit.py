@@ -3,6 +3,8 @@ from typing import Any
 
 from fastapi.responses import JSONResponse
 
+from app.api.envelope import error_body
+
 
 class RequestBodyTooLarge(Exception):
     pass
@@ -59,8 +61,9 @@ class RequestBodyLimitMiddleware:
         receive: Callable[[], Awaitable[dict[str, Any]]],
         send: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> None:
+        # 미들웨어는 예외 핸들러를 타지 않으므로 공통 형식을 직접 만든다.
         response = JSONResponse(
             status_code=413,
-            content={"detail": "Request body exceeds the upload limit"},
+            content=error_body(413, "Request body exceeds the upload limit"),
         )
         await response(scope, receive, send)

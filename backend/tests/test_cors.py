@@ -14,6 +14,9 @@ DATABASE_URL = "postgresql+psycopg://test:test@127.0.0.1:1/sims"
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 DEFAULT_ORIGIN = "http://localhost:3000"
 LOOPBACK_ORIGIN = "http://127.0.0.1:3000"
+# Vite 기본 포트도 기본 허용 목록에 있다.
+VITE_ORIGIN = "http://localhost:5173"
+VITE_LOOPBACK_ORIGIN = "http://127.0.0.1:5173"
 CUSTOM_ORIGIN = "https://frontend.example.test"
 
 
@@ -50,7 +53,12 @@ def test_settings_default_and_environment_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = settings_for(monkeypatch)
-    assert settings.cors_allowed_origins == [DEFAULT_ORIGIN, LOOPBACK_ORIGIN]
+    assert settings.cors_allowed_origins == [
+        DEFAULT_ORIGIN,
+        LOOPBACK_ORIGIN,
+        VITE_ORIGIN,
+        VITE_LOOPBACK_ORIGIN,
+    ]
 
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://env.example.test"]')
     overridden = Settings(

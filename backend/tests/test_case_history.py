@@ -81,7 +81,7 @@ def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
         json={"login_id": login_id, "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
 
 
 def make_case(
@@ -159,7 +159,7 @@ def make_case(
 def history(client: TestClient, headers: dict[str, str]) -> list[dict]:
     response = client.get("/api/v1/cases", headers=headers)
     assert response.status_code == 200
-    return response.json()["cases"]
+    return response.json()["data"]["cases"]
 
 
 def test_history_requires_authentication(client: TestClient) -> None:

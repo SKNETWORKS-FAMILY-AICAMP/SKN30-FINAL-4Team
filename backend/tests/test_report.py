@@ -259,7 +259,7 @@ def bearer(client: TestClient, login_id: str) -> dict[str, str]:
         json={"login_id": login_id, "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
 
 
 def test_composer_keeps_v01_reserved_fields_and_dynamic_url_outside_snapshot(
@@ -366,7 +366,7 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
         other_headers = bearer(client, other_login)
         result = client.get(f"/api/v1/cases/{case_id}/report", headers=owner_headers)
         assert result.status_code == 200
-        assert result.json()["report_download_url"].endswith(
+        assert result.json()["data"]["report_download_url"].endswith(
             f"/{case_id}/report.pdf"
         )
         download = client.get(

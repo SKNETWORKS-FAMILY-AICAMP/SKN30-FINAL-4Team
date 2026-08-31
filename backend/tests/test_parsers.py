@@ -95,7 +95,7 @@ def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
         json={"login_id": login_id, "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
 
 
 def wait_for_internal_status(
@@ -372,19 +372,19 @@ def test_analysis_keeps_parse_snapshot_when_retrieval_is_unavailable(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_id = upload.json()["data"]["case_id"]
 
         started = client.post(f"/api/v1/cases/{case_id}/analyze", headers=headers)
         assert started.status_code == 202
-        assert started.json()["case_id"] == case_id
-        assert started.json()["status"] == "PARSING"
-        assert started.json()["job_id"]
+        assert started.json()["data"]["case_id"] == case_id
+        assert started.json()["data"]["status"] == "PARSING"
+        assert started.json()["data"]["job_id"]
         wait_for_internal_status(engine, case_id, "FAILED")
         public_status = client.get(
             f"/api/v1/cases/{case_id}/status", headers=headers
         )
-        assert public_status.json()["status"] == "분석 실패"
-        assert public_status.json()["failure_code"] == "RETRIEVAL_UNAVAILABLE"
+        assert public_status.json()["data"]["status"] == "분석 실패"
+        assert public_status.json()["data"]["failure_code"] == "RETRIEVAL_UNAVAILABLE"
 
     with engine.connect() as connection:
         row = connection.execute(
@@ -439,7 +439,7 @@ def test_parser_failure_is_safe_and_terminal(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_id = upload.json()["data"]["case_id"]
         assert client.post(
             f"/api/v1/cases/{case_id}/analyze", headers=headers
         ).status_code == 202
@@ -501,7 +501,7 @@ def test_changed_stored_source_is_rejected_before_parser(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_id = upload.json()["data"]["case_id"]
         with engine.connect() as connection:
             storage_key = connection.scalar(
                 text(
@@ -553,7 +553,7 @@ def test_cancelled_enqueue_does_not_leave_case_parsing(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_id = upload.json()["data"]["case_id"]
 
         with pytest.raises(asyncio.CancelledError):
             asyncio.run(
@@ -604,7 +604,7 @@ def test_analysis_is_owner_scoped_and_cannot_start_twice(
             headers=owner_headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_id = upload.json()["data"]["case_id"]
 
         assert client.post(
             f"/api/v1/cases/{case_id}/analyze", headers=stranger_headers

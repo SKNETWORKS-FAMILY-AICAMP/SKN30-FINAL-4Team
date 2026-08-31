@@ -8,6 +8,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.api.envelope import apply_envelope_to_openapi, error_body
 from app.api.request_body_limit import RequestBodyLimitMiddleware
 from app.api.router import router
 from app.core.config import Settings
@@ -146,33 +149,55 @@ def create_app(
         expose_headers=["Content-Disposition", "Retry-After"],
     )
 
+    # 비밀번호 흐름의 응답은 캐시에 남기지 않는다.
+    _NO_STORE_PATHS = {
+        "/api/v1/auth/password-reset/request",
+        "/api/v1/auth/password-reset/confirm",
+    }
+
+    def _no_store(request: Request) -> dict[str, str]:
+        return (
+            {"Cache-Control": "no-store"}
+            if request.url.path in _NO_STORE_PATHS
+            else {}
+        )
+
     @application.exception_handler(RequestValidationError)
     async def validation_error_handler(
-        _request: Request,
+        request: Request,
         error: RequestValidationError,
     ) -> JSONResponse:
+        # 입력 원문(input)과 내부 문맥(ctx)은 오류에 다시 담지 않는다.
         safe_errors = [
-            {key: value for key, value in item.items() if key != "input"}
+            {
+                key: value
+                for key, value in item.items()
+                if key not in ("input", "ctx")
+            }
             for item in error.errors()
         ]
-        if _request.url.path in {
-            "/api/v1/auth/password-reset/request",
-            "/api/v1/auth/password-reset/confirm",
-        }:
-            return JSONResponse(status_code=422, content={
-                "status_code": 422, "code": "VALIDATION_ERROR",
-                "message": "입력값을 확인해 주세요.", "data": None,
-                "errors": jsonable_encoder([
-                    {key: value for key, value in item.items() if key != "ctx"}
-                    for item in safe_errors
-                ]),
-            }, headers={"Cache-Control": "no-store"})
         return JSONResponse(
             status_code=422,
-            content={"detail": jsonable_encoder(safe_errors)},
+            content=jsonable_encoder(error_body(422, safe_errors)),
+            headers=_no_store(request),
+        )
+
+    @application.exception_handler(StarletteHTTPException)
+    async def http_error_handler(
+        request: Request,
+        error: StarletteHTTPException,
+    ) -> JSONResponse:
+        headers = dict(error.headers or {})
+        headers.update(_no_store(request))
+        return JSONResponse(
+            status_code=error.status_code,
+            content=jsonable_encoder(error_body(error.status_code, error.detail)),
+            headers=headers,
         )
 
     application.include_router(router)
+    # 응답을 라우터 바깥에서 감싸므로 OpenAPI 도 같은 모양을 말하게 맞춘다.
+    apply_envelope_to_openapi(application)
     return application
 
 

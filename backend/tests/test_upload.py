@@ -116,7 +116,7 @@ def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
         json={"login_id": login_id, "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
 
 
 def test_hwpx_validation_uses_container_mimetype_not_client_mime() -> None:
@@ -301,8 +301,8 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
     ]
 
     assert [response.status_code for response in responses] == [200, 200]
-    assert all(response.json()["status"] == "UPLOADED" for response in responses)
-    case_ids = [response.json()["case_id"] for response in responses]
+    assert all(response.json()["data"]["status"] == "UPLOADED" for response in responses)
+    case_ids = [response.json()["data"]["case_id"] for response in responses]
     assert len(set(case_ids)) == 2
 
     with engine.connect() as connection:

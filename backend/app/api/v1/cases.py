@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from app.api.envelope import EnvelopeRoute
 from app.api.deps import CurrentUser
 from app.api.v1.responses import (
     BAD_REQUEST,
@@ -21,7 +22,7 @@ from app.services.case_upload import (
 from app.services.document_parsing import list_cases
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["cases"], responses=UNAUTHORIZED)
+router = APIRouter(prefix="/api/v1/cases", tags=["cases"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
 
 
 class CreateCaseResponse(BaseModel):

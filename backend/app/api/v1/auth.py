@@ -1,8 +1,9 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
+from app.api.envelope import EnvelopeRoute
 from app.api.deps import CurrentUser, unauthorized
 from app.api.v1.responses import BAD_REQUEST, UNAUTHORIZED
 from app.core.password_policy import (
@@ -19,7 +20,7 @@ from app.services.auth import (
 )
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"], responses=UNAUTHORIZED)
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
 
 
 class LoginRequest(BaseModel):
@@ -77,16 +78,12 @@ def me(user: CurrentUser) -> MeResponse:
     return MeResponse(id=user.id, login_id=user.login_id)
 
 
-@router.post(
-    "/change-password",
-    status_code=status.HTTP_204_NO_CONTENT,
-    responses=BAD_REQUEST,
-)
+@router.post("/change-password", responses=BAD_REQUEST)
 def update_password(
     request: Request,
     body: ChangePasswordRequest,
     user: CurrentUser,
-) -> Response:
+) -> None:
     try:
         change_password(
             request.app.state.database_engine,
@@ -100,9 +97,10 @@ def update_password(
             detail="Password change failed",
         ) from None
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return None
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(_: CurrentUser) -> Response:
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/logout")
+def logout(_: CurrentUser) -> None:
+    """토큰 폐기 목록은 두지 않는다. 프론트가 저장한 토큰을 지운다."""
+    return None

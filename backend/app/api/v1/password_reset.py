@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
+from app.api.envelope import EnvelopeRoute
 from app.core.password_policy import validate_new_password
 from app.services.password_reset import (
     InvalidEmailError,
@@ -15,7 +16,7 @@ from app.services.password_reset import (
 )
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"], route_class=EnvelopeRoute)
 
 
 class PasswordResetRequest(BaseModel):
@@ -62,7 +63,6 @@ PasswordResetCode = Literal[
 
 
 class PasswordResetResponse(BaseModel):
-    status_code: int
     message: str
     code: PasswordResetCode
     data: None = None
@@ -83,11 +83,7 @@ def _response(
     headers = {"Cache-Control": "no-store"}
     if retry_after is not None:
         headers["Retry-After"] = str(retry_after)
-    body = PasswordResetResponse(
-        status_code=http_status,
-        message=message,
-        code=code,
-    )
+    body = PasswordResetResponse(message=message, code=code)
     return JSONResponse(
         status_code=http_status,
         content=body.model_dump(mode="json"),

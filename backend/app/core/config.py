@@ -26,10 +26,14 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_from_email: str | None = None
     password_reset_url: str | None = None
+    # 3000 은 Next.js, 5173 은 Vite 의 기본 개발 포트다. 프론트가 어느 쪽을
+    # 쓰든 첫 호출이 CORS 로 막히지 않게 둘 다 기본으로 연다.
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
         ]
     )
     local_storage_root: Path = PROJECT_ROOT / "backend" / "storage"

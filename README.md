@@ -17,17 +17,28 @@ SKN30-FINAL-4Team\
 └─ README.md
 ```
 
+## 0. 먼저 읽는다
+
+필요한 절이 경우마다 다르다.
+
+| 하려는 일 | 읽을 곳 |
+|---|---|
+| API 를 호출하는 화면을 만든다 | 백엔드에게 API 명세를 받아 보고, 서버는 아래 절차로 띄운다. Swagger 는 `http://127.0.0.1:8000/docs` |
+| 팀 Supabase 에 붙여 백엔드를 돌린다 | 1~5, 8절. **6·7절은 건너뛴다** |
+| 로컬 PostgreSQL 로 처음부터 세팅한다 | 1~8절 전부 |
+| 전체 테스트를 돌린다 | 6절로 DB 를 띄운 뒤 13절 |
+
+응답은 성공·실패 모두 `code`·`message`·`data`·`errors` 네 필드로 온다. 자세한 계약은 API 명세에 있다.
+
 ## 1. 준비물
 
 1. Python 3.12
 2. Git for Windows
-3. Docker Desktop
-4. VS Code
-5. OpenAI API 키
+3. VS Code
+4. Docker Desktop — **선택.** 로컬 PostgreSQL(6절)이나 전체 테스트(13절)를 돌릴 때만 필요하다
+5. OpenAI API 키 — **선택.** 없어도 서버는 뜨고 로그인·업로드·이력·결과 조회·PDF 는 모두 동작한다. 새 분석 시작과 채팅에만 필요하며 사용료가 발생한다
 
-OpenAI API 키는 의미 분석, 공고 임베딩, 채팅에 사용되며 API 사용료가 발생할 수 있다. `JWT_SECRET`과 PostgreSQL 계정은 외부에서 발급받지 않는다.
-
-Docker Desktop은 설치 후 실제로 실행해 둔다.
+`JWT_SECRET`과 PostgreSQL 계정은 외부에서 발급받지 않는다.
 
 ## 2. VS Code에서 CMD 열기
 
@@ -131,7 +142,10 @@ OPENAI_API_KEY=sk-본인의_API_키
 
 `.env`에는 비밀키가 들어가므로 커밋하거나 공유하지 않는다.
 
-## 6. PostgreSQL 실행
+## 6. 로컬 PostgreSQL 실행 (선택)
+
+> **팀 Supabase 를 쓰면 이 절을 건너뛴다.** 스키마와 목업 공고가 이미 들어가 있고, `.env`의 `DATABASE_URL`만 Supabase 주소로 두면 된다.
+> 이 절이 필요한 경우는 둘이다 — 로컬에서 독립된 DB 로 개발하거나, 13절의 전체 테스트를 돌릴 때다.
 
 Docker Desktop이 실행 중인지 확인한다.
 
@@ -179,7 +193,9 @@ docker exec sims-e2e-pg pg_isready -U postgres -d sims
 
 `accepting connections`가 나오면 정상이다.
 
-## 7. 목업 지원사업 공고 입력
+## 7. 목업 지원사업 공고 입력 (선택)
+
+> **팀 Supabase 를 쓰면 건너뛴다.** 공고 6건이 이미 들어가 있다. 다시 실행하면 OpenAI 임베딩 비용만 더 든다.
 
 ```cmd
 backend\.venv\Scripts\python.exe scripts\seed_announcements.py
@@ -212,7 +228,7 @@ http://127.0.0.1:8000/docs
 
 ### 프론트 CORS 설정
 
-기본 허용 프론트 주소는 `http://localhost:3000`과 `http://127.0.0.1:3000`이다. 다른 주소를 쓰면 `.env`에 JSON 배열로 지정하고 백엔드를 재시작한다. 설정값은 기본 목록을 대체한다.
+기본 허용 프론트 주소는 `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, `http://127.0.0.1:5173`이다. 앞의 둘은 Next.js, 뒤의 둘은 Vite 의 기본 개발 포트다. 다른 주소를 쓰면 `.env`에 JSON 배열로 지정하고 백엔드를 재시작한다. 설정값은 기본 목록을 대체한다.
 
 ```dotenv
 CORS_ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
@@ -329,7 +345,9 @@ DB 컨테이너와 내부 데이터를 모두 삭제:
 
 ## 13. 전체 테스트
 
-DB가 실행 중이어야 한다. 저장소 루트의 CMD에서 실행한다.
+**테스트 전용 DB 가 필요하다.** 6절로 로컬 PostgreSQL 을 띄운 뒤 실행한다. 테스트는 데이터를 만들고 지우므로 **팀 Supabase 를 `TEST_DATABASE_URL` 로 쓰지 않는다.**
+
+저장소 루트의 CMD에서 실행한다.
 
 ```cmd
 set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims

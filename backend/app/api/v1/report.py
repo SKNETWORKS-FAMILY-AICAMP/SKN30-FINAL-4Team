@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
+from app.api.envelope import EnvelopeRoute
 from app.api.deps import CurrentUser
 from app.api.v1.responses import (
     CONFLICT,
@@ -21,7 +22,7 @@ from app.services.reporting import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORIZED)
+router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
 
 
 @router.get(
@@ -43,7 +44,17 @@ def report_result(case_id: int, request: Request, user: CurrentUser) -> ReportRe
 
 @router.get(
     "/{case_id}/report.pdf",
-    responses={**NOT_FOUND, **CONFLICT, **SERVICE_UNAVAILABLE},
+    # 성공만 PDF 바이너리다. 기본값대로 두면 OpenAPI 가 JSON 이라고 말한다.
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "보고서 PDF 파일",
+        },
+        **NOT_FOUND,
+        **CONFLICT,
+        **SERVICE_UNAVAILABLE,
+    },
 )
 async def report_pdf(
     case_id: int,
