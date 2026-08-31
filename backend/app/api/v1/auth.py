@@ -1,10 +1,15 @@
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from app.api.deps import CurrentUser, unauthorized
 from app.api.v1.responses import BAD_REQUEST, UNAUTHORIZED
+from app.core.password_policy import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    validate_new_password,
+)
 from app.core.security import create_access_token
 from app.services.auth import (
     InvalidCredentialsError,
@@ -29,7 +34,16 @@ class TokenResponse(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: SecretStr = Field(min_length=1, max_length=128)
-    new_password: SecretStr = Field(min_length=12, max_length=128)
+    new_password: SecretStr = Field(
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+    )
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_policy(cls, value: SecretStr) -> SecretStr:
+        validate_new_password(value.get_secret_value())
+        return value
 
 
 class MeResponse(BaseModel):

@@ -1118,7 +1118,22 @@ def test_label_prefixed_duplicate_is_treated_as_one_fact() -> None:
     원문을 그대로 담는 축에서는 두 건이 서로 달라 보여 중복이 남았다.
     """
 
-    def occurrence(raw_text: str, method: str) -> CplOccurrence:
+    def occurrence(
+        raw_text: str,
+        method: str,
+        *,
+        with_coordinates: bool = True,
+    ) -> CplOccurrence:
+        source_locator = {"paragraph_index": 1}
+        if with_coordinates:
+            span_start = 0 if method == "LLM" else 6
+            source_locator.update(
+                {
+                    "line_index": 0,
+                    "span_start": span_start,
+                    "span_end": span_start + len(raw_text),
+                }
+            )
         return CplOccurrence(
             raw_text=raw_text,
             normalized_value={"text": raw_text},
@@ -1126,7 +1141,7 @@ def test_label_prefixed_duplicate_is_treated_as_one_fact() -> None:
             source_role=CplSourceRole.DELIVERY_METHOD,
             page_no=1,
             section_path=[],
-            source_locator={"paragraph_index": 1},
+            source_locator=source_locator,
             block_id="delivery:1",
             extraction_method=method,
         )
@@ -1135,8 +1150,75 @@ def test_label_prefixed_duplicate_is_treated_as_one_fact() -> None:
     llm = occurrence("수행방식: 시 출연기관 위탁(보조)", "LLM")
     assert _same_contained_fact(rule, llm)
 
+    # 좌표가 없으면 위치를 확정할 수 없어 중복으로 합치지 않는다.
+    assert not _same_contained_fact(
+        rule,
+        occurrence("수행방식: 시 출연기관 위탁(보조)", "LLM", with_coordinates=False),
+    )
+
     # 값이 다르면 두 건 모두 남는다.
     assert not _same_contained_fact(rule, occurrence("시 직접 수행", "LLM"))
+
+
+def test_rule_and_label_prefixed_llm_occurrences_merge_by_overlapping_spans() -> None:
+    full_text = "수행방식: 시 출연기관 위탁(보조)"
+    document = ParsedDocument(
+        parser_name="fixture-parser",
+        parser_version="1.0",
+        text=full_text,
+        blocks=[
+            DocumentBlock(
+                block_id="delivery:1",
+                block_type="paragraph",
+                text=full_text,
+                page_no=1,
+                source_locator={"paragraph_index": 1},
+            )
+        ],
+    )
+    rule_result = evaluate_cpl_rules(document)
+    delivery = next(
+        item
+        for item in rule_result.items
+        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
+    )
+    rule_occurrence = next(
+        occurrence
+        for occurrence in delivery.occurrences
+        if occurrence.axis_code == CplAxisCode.DELIVERY_METHOD_TYPE
+    )
+    assert rule_occurrence.source_locator["line_index"] == 0
+    assert rule_occurrence.source_locator["span_start"] > 0
+
+    candidate = CplItem(
+        field_code=CplFieldCode.DELIVERY_SYSTEM,
+        status=CplStatus.PRESENT,
+        occurrences=[
+            CplOccurrence(
+                raw_text=full_text,
+                normalized_value={"text": full_text},
+                axis_code=CplAxisCode.DELIVERY_METHOD_TYPE,
+                source_role=CplSourceRole.DELIVERY_METHOD,
+                page_no=1,
+                source_locator={
+                    "paragraph_index": 1,
+                    "line_index": 0,
+                    "span_start": 0,
+                    "span_end": len(full_text),
+                },
+                block_id="delivery:1",
+                extraction_method="LLM",
+            )
+        ],
+    )
+
+    merged = merge_llm_result(rule_result, [candidate])
+    occurrences = next(
+        item
+        for item in merged.items
+        if item.field_code == CplFieldCode.DELIVERY_SYSTEM
+    ).occurrences
+    assert occurrences == [rule_occurrence]
 
 
 def test_kpi_target_value_reads_scale_words_and_company_units() -> None:
@@ -1754,7 +1836,14 @@ def test_merge_collapses_only_contained_rule_llm_occurrences_for_the_same_fact()
         normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
         axis_code=CplAxisCode.PER_COMPANY_LIMIT,
         source_role=CplSourceRole.SUPPORT_CONTENT,
-        source_locator={"body_block_index": 4, "row": 3, "col": 1},
+        source_locator={
+            "body_block_index": 4,
+            "row": 3,
+            "col": 1,
+            "line_index": 0,
+            "span_start": 10,
+            "span_end": 20,
+        },
         block_id="body:4:cell:3:1",
         extraction_method="RULE",
     )
@@ -1768,7 +1857,14 @@ def test_merge_collapses_only_contained_rule_llm_occurrences_for_the_same_fact()
                 normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
                 axis_code=CplAxisCode.PER_COMPANY_LIMIT,
                 source_role=CplSourceRole.SUPPORT_CONTENT,
-                source_locator={"body_block_index": 4, "row": 3, "col": 1},
+                source_locator={
+                    "body_block_index": 4,
+                    "row": 3,
+                    "col": 1,
+                    "line_index": 0,
+                    "span_start": 0,
+                    "span_end": 30,
+                },
                 block_id="body:4:cell:3:1",
                 extraction_method="LLM",
             ),
@@ -1777,7 +1873,14 @@ def test_merge_collapses_only_contained_rule_llm_occurrences_for_the_same_fact()
                 normalized_value={"amount_won": 40_000_000, "unit": "KRW"},
                 axis_code=CplAxisCode.PER_COMPANY_LIMIT,
                 source_role=CplSourceRole.SUPPORT_CONTENT,
-                source_locator={"body_block_index": 4, "row": 3, "col": 1},
+                source_locator={
+                    "body_block_index": 4,
+                    "row": 3,
+                    "col": 1,
+                    "line_index": 0,
+                    "span_start": 0,
+                    "span_end": 30,
+                },
                 block_id="body:4:cell:3:1",
                 extraction_method="LLM",
             ),
@@ -1786,8 +1889,31 @@ def test_merge_collapses_only_contained_rule_llm_occurrences_for_the_same_fact()
                 normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
                 axis_code=CplAxisCode.PER_COMPANY_LIMIT,
                 source_role=CplSourceRole.SUPPORT_CONTENT,
-                source_locator={"body_block_index": 4, "row": 9, "col": 1},
+                source_locator={
+                    "body_block_index": 4,
+                    "row": 9,
+                    "col": 1,
+                    "line_index": 1,
+                    "span_start": 10,
+                    "span_end": 20,
+                },
                 block_id="body:4:cell:9:1",
+                extraction_method="LLM",
+            ),
+            CplOccurrence(
+                raw_text="기업당 한도: 최대 5,000만원",
+                normalized_value={"amount_won": 50_000_000, "unit": "KRW"},
+                axis_code=CplAxisCode.PER_COMPANY_LIMIT,
+                source_role=CplSourceRole.SUPPORT_CONTENT,
+                source_locator={
+                    "body_block_index": 4,
+                    "row": 3,
+                    "col": 1,
+                    "line_index": 1,
+                    "span_start": 10,
+                    "span_end": 20,
+                },
+                block_id="body:4:cell:3:1",
                 extraction_method="LLM",
             ),
         ],
@@ -1798,7 +1924,12 @@ def test_merge_collapses_only_contained_rule_llm_occurrences_for_the_same_fact()
         item for item in merged.items if item.field_code == field_code
     ).occurrences
 
-    assert occurrences == [rule, candidate.occurrences[1], candidate.occurrences[2]]
+    assert occurrences == [
+        rule,
+        candidate.occurrences[1],
+        candidate.occurrences[2],
+        candidate.occurrences[3],
+    ]
 
 
 @pytest.mark.parametrize(

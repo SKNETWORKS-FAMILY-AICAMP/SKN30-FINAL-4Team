@@ -5,6 +5,7 @@ from typing import cast
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.request_body_limit import RequestBodyLimitMiddleware
@@ -22,6 +23,9 @@ from app.ports.document_parser import DocumentParser
 from app.ports.embedding_client import EmbeddingClient
 from app.ports.llm_client import LLMClient
 from app.ports.pdf_renderer import PdfRenderer
+from app.ports.mail_sender import MailSender
+from app.infrastructure.smtp_mail_sender import SmtpMailSender
+from app.services.password_reset import ResetRateLimiter
 from app.services.analysis_pipeline import run_analysis_pipeline
 
 
@@ -35,16 +39,33 @@ def create_app(
     llm_client: LLMClient | None | object = _LLM_FROM_SETTINGS,
     embedding_client: EmbeddingClient | None | object = _EMBEDDING_FROM_SETTINGS,
     pdf_renderer: PdfRenderer | None = None,
+    mail_sender: MailSender | None = None,
 ) -> FastAPI:
+    runtime_settings = settings or Settings()
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        runtime_settings = settings or Settings()
         engine = create_database_engine(
             str(runtime_settings.database_url),
             runtime_settings.database_connect_timeout_seconds,
         )
         application.state.database_engine = engine
         application.state.settings = runtime_settings
+        active_mail_sender = mail_sender
+        if active_mail_sender is None and all((
+            runtime_settings.smtp_host, runtime_settings.smtp_username,
+            runtime_settings.smtp_password, runtime_settings.smtp_from_email,
+            runtime_settings.password_reset_url,
+        )):
+            active_mail_sender = SmtpMailSender(
+                host=runtime_settings.smtp_host,
+                port=runtime_settings.smtp_port,
+                username=runtime_settings.smtp_username,
+                password=runtime_settings.smtp_password.get_secret_value(),
+                from_email=runtime_settings.smtp_from_email,
+            )
+        application.state.mail_sender = active_mail_sender
+        application.state.password_reset_limiter = ResetRateLimiter()
         object_storage = LocalObjectStorage(
             runtime_settings.local_storage_root
         )
@@ -116,6 +137,14 @@ def create_app(
         RequestBodyLimitMiddleware,
         max_bytes=MAX_MULTIPART_BODY_BYTES,
     )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=runtime_settings.cors_allowed_origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+        allow_credentials=False,
+        expose_headers=["Content-Disposition", "Retry-After"],
+    )
 
     @application.exception_handler(RequestValidationError)
     async def validation_error_handler(
@@ -126,6 +155,18 @@ def create_app(
             {key: value for key, value in item.items() if key != "input"}
             for item in error.errors()
         ]
+        if _request.url.path in {
+            "/api/v1/auth/password-reset/request",
+            "/api/v1/auth/password-reset/confirm",
+        }:
+            return JSONResponse(status_code=422, content={
+                "status_code": 422, "code": "VALIDATION_ERROR",
+                "message": "입력값을 확인해 주세요.", "data": None,
+                "errors": jsonable_encoder([
+                    {key: value for key, value in item.items() if key != "ctx"}
+                    for item in safe_errors
+                ]),
+            }, headers={"Cache-Control": "no-store"})
         return JSONResponse(
             status_code=422,
             content={"detail": jsonable_encoder(safe_errors)},

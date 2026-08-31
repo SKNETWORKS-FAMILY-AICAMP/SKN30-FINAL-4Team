@@ -8,12 +8,14 @@ from app.api.v1.analyze import router as analyze_router
 from app.api.v1.cases import router as cases_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.report import router as report_router
+from app.api.v1.password_reset import router as password_reset_router
 from app.db.session import check_database_ready
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(auth_router)
+router.include_router(password_reset_router)
 router.include_router(cases_router)
 router.include_router(analyze_router)
 router.include_router(report_router)

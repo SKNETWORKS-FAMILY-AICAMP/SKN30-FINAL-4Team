@@ -2201,6 +2201,11 @@ def _occurrence(
     source_role: CplSourceRole | None = None,
     locator_extra: dict | None = None,
 ) -> CplOccurrence:
+    source_locator = dict(fragment.source_locator)
+    span = _cited_span(fragment, raw_text)
+    if span is not None:
+        source_locator.update(span)
+    source_locator.update(locator_extra or {})
     return CplOccurrence(
         raw_text=raw_text,
         normalized_value=normalized_value,
@@ -2208,7 +2213,7 @@ def _occurrence(
         source_role=source_role,
         page_no=fragment.page_no,
         section_path=list(fragment.section_path),
-        source_locator={**fragment.source_locator, **(locator_extra or {})},
+        source_locator=source_locator,
         block_id=fragment.block_id,
         extraction_method="RULE",
     )
@@ -2266,9 +2271,8 @@ def _canonical_fact_value(value: object, raw_text: str) -> object:
     return value
 
 
-# 인용 좌표는 파서가 준 위치가 아니라 서버가 계산한 것이라 같은 사실인지
-# 가릴 때는 빼야 한다. LLM 근거에만 붙어 있어 넣고 비교하면 Rule 과 절대
-# 같아지지 않는다.
+# 인용 좌표는 서버가 계산하므로 Rule/LLM 인용 범위가 달라도 같은 위치인지
+# 확인할 수 있다. 파서 locator와 달리 occurrence마다 달라질 수 있다.
 _CITATION_LOCATOR_KEYS = frozenset({"line_index", "span_start", "span_end"})
 
 
@@ -2278,6 +2282,34 @@ def _parser_locator(locator: dict) -> dict:
         for key, value in locator.items()
         if key not in _CITATION_LOCATOR_KEYS
     }
+
+
+def _citation_coordinates(locator: dict) -> tuple[int, int, int] | None:
+    values = tuple(
+        locator.get(key) for key in ("line_index", "span_start", "span_end")
+    )
+    if not all(
+        isinstance(value, int) and not isinstance(value, bool) for value in values
+    ):
+        return None
+    line_index, span_start, span_end = values
+    if line_index < 0 or span_start < 0 or span_end <= span_start:
+        return None
+    return line_index, span_start, span_end
+
+
+def _same_citation_location(rule_locator: dict, llm_locator: dict) -> bool:
+    rule_coordinates = _citation_coordinates(rule_locator)
+    llm_coordinates = _citation_coordinates(llm_locator)
+    if rule_coordinates is None or llm_coordinates is None:
+        return False
+    rule_line, rule_start, rule_end = rule_coordinates
+    llm_line, llm_start, llm_end = llm_coordinates
+    return (
+        rule_line == llm_line
+        and max(rule_start, llm_start) < min(rule_end, llm_end)
+    )
+
 
 def _same_contained_fact(rule: CplOccurrence, llm: CplOccurrence) -> bool:
     rule_text = _strip_leading_label(rule.raw_text)
@@ -2292,6 +2324,7 @@ def _same_contained_fact(rule: CplOccurrence, llm: CplOccurrence) -> bool:
         and rule.section_path == llm.section_path
         and _parser_locator(rule.source_locator)
         == _parser_locator(llm.source_locator)
+        and _same_citation_location(rule.source_locator, llm.source_locator)
         and bool(rule_text and llm_text)
         and (rule_text in llm_text or llm_text in rule_text)
     )

@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import Engine, text
 from sqlalchemy.engine import RowMapping
 
+from app.core.password_policy import validate_new_password
 from app.core.security import hash_password, verify_password
 
 
@@ -101,6 +102,8 @@ def change_password(
     current_password: str,
     new_password: str,
 ) -> None:
+    validate_new_password(new_password)
+
     with engine.begin() as connection:
         row = (
             connection.execute(

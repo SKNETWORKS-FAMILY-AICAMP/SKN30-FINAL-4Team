@@ -16,6 +16,7 @@ from sqlalchemy import Engine, create_engine, text
 
 from app.api.v1.auth import ChangePasswordRequest
 from app.core.config import Settings
+from app.core.password_policy import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -27,7 +28,9 @@ from main import create_app
 
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 OLD_PASSWORD = "correct-horse"
-NEW_PASSWORD = "new-correct-horse"
+NEW_PASSWORD = "new-correct-horse2!"
+SAME_PASSWORD = "same-password1!"
+LEGACY_WEAK_PASSWORD = "legacyweak"
 
 
 @pytest.fixture(scope="module")
@@ -190,17 +193,31 @@ def test_invalid_jwt_secret_is_hidden_from_settings_error() -> None:
 
 @pytest.mark.parametrize(
     ("length", "valid"),
-    [(11, False), (12, True), (128, True), (129, False)],
+    [
+        (PASSWORD_MIN_LENGTH - 1, False),
+        (PASSWORD_MIN_LENGTH, True),
+        (PASSWORD_MAX_LENGTH, True),
+        (PASSWORD_MAX_LENGTH + 1, False),
+    ],
 )
 def test_new_password_length_contract(length: int, valid: bool) -> None:
+    password = "A1!" + ("x" * (length - 3))
     if valid:
-        ChangePasswordRequest(current_password="current", new_password="x" * length)
+        ChangePasswordRequest(current_password="current", new_password=password)
     else:
         with pytest.raises(ValidationError):
             ChangePasswordRequest(
                 current_password="current",
-                new_password="x" * length,
+                new_password=password,
             )
+
+
+@pytest.mark.parametrize("password", ["1234567!", "abcdefg1", "abcdefg!"])
+def test_new_password_requires_ascii_letter_digit_and_punctuation(
+    password: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        ChangePasswordRequest(current_password="current", new_password=password)
 
 
 def test_login_is_case_insensitive_and_updates_last_login(
@@ -217,6 +234,15 @@ def test_login_is_case_insensitive_and_updates_last_login(
             text("SELECT last_login_at FROM sims.app_user WHERE id = :user_id"),
             {"user_id": user_id},
         ) is not None
+
+
+def test_login_accepts_legacy_weak_password(
+    client: TestClient,
+    create_user: Callable[..., int],
+) -> None:
+    create_user("legacy-weak-password-user", LEGACY_WEAK_PASSWORD)
+
+    assert login(client, "legacy-weak-password-user", LEGACY_WEAK_PASSWORD)
 
 
 def test_login_failures_are_indistinguishable_and_do_not_update_last_login(
@@ -381,18 +407,23 @@ def test_password_change_is_atomic_and_invalidates_old_token(
 
 
 @pytest.mark.parametrize(
-    ("current_password", "new_password"),
-    [("wrong-password", NEW_PASSWORD), (OLD_PASSWORD, OLD_PASSWORD)],
+    ("stored_password", "current_password", "new_password"),
+    [
+        (OLD_PASSWORD, "wrong-password", NEW_PASSWORD),
+        (SAME_PASSWORD, SAME_PASSWORD, SAME_PASSWORD),
+    ],
 )
 def test_failed_password_change_leaves_no_history(
     client: TestClient,
     engine: Engine,
     create_user: Callable[..., int],
+    stored_password: str,
     current_password: str,
     new_password: str,
 ) -> None:
-    user_id = create_user(f"failed-change-{current_password}")
-    token = login(client, f"failed-change-{current_password}", OLD_PASSWORD)
+    login_id = f"failed-change-{current_password}"
+    user_id = create_user(login_id, stored_password)
+    token = login(client, login_id, stored_password)
 
     response = client.post(
         "/api/v1/auth/change-password",
@@ -436,8 +467,8 @@ def test_unicode_password_can_be_compared_and_changed(
     engine: Engine,
     create_user: Callable[..., int],
 ) -> None:
-    current_password = "가" * 12
-    new_password = "나" * 12
+    current_password = "가Password1!"
+    new_password = "나Password2!"
     user_id = create_user("unicode-password-user", current_password)
     token = login(client, "unicode-password-user", current_password)
 
