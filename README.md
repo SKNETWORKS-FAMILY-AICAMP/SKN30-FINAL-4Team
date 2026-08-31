@@ -33,12 +33,19 @@ SKN30-FINAL-4Team\
 ## 1. 준비물
 
 1. Python 3.12
-2. Git for Windows
-3. VS Code
-4. Docker Desktop — **선택.** 로컬 PostgreSQL(6절)이나 전체 테스트(13절)를 돌릴 때만 필요하다
-5. OpenAI API 키 — **선택.** 없어도 서버는 뜨고 로그인·업로드·이력·결과 조회·PDF 는 모두 동작한다. 새 분석 시작과 채팅에만 필요하며 사용료가 발생한다
+2. [uv](https://docs.astral.sh/uv/) — Python 패키지와 가상환경을 관리한다
+3. Git for Windows
+4. VS Code
+5. Docker Desktop — **선택.** 로컬 PostgreSQL(6절)이나 전체 테스트(13절)를 돌릴 때만 필요하다
+6. OpenAI API 키 — **선택.** 없어도 서버는 뜨고 로그인·업로드·이력·결과 조회·PDF 는 모두 동작한다. 새 분석 시작과 채팅에만 필요하며 사용료가 발생한다
 
 `JWT_SECRET`과 PostgreSQL 계정은 외부에서 발급받지 않는다.
+
+`uv`가 없다면 CMD에서 다음 명령을 실행하고 터미널을 다시 연다.
+
+```cmd
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
 
 ## 2. VS Code에서 CMD 열기
 
@@ -64,6 +71,7 @@ dir
 
 ```cmd
 python --version
+uv --version
 git --version
 docker --version
 docker ps
@@ -76,14 +84,15 @@ Python은 `3.12.x`가 권장된다. `docker ps`에서 연결 오류가 나면 Do
 최초 한 번만 실행한다.
 
 ```cmd
-python -m venv backend\.venv
-backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+uv sync
 ```
+
+`uv.lock`에 고정된 버전으로 루트의 `.venv`가 만들어진다.
 
 설치 확인:
 
 ```cmd
-backend\.venv\Scripts\python.exe -c "import fastapi; print(fastapi.__version__)"
+uv run python -c "import fastapi; print(fastapi.__version__)"
 ```
 
 FastAPI 버전이 출력되면 정상이다.
@@ -198,7 +207,7 @@ docker exec sims-e2e-pg pg_isready -U postgres -d sims
 > **팀 Supabase 를 쓰면 건너뛴다.** 공고 6건이 이미 들어가 있다. 다시 실행하면 OpenAI 임베딩 비용만 더 든다.
 
 ```cmd
-backend\.venv\Scripts\python.exe scripts\seed_announcements.py
+uv run python scripts\seed_announcements.py
 ```
 
 테스트용 지원사업 공고 6건을 실제 DB에 넣고 OpenAI API로 임베딩을 생성한다. 공공데이터포털 키 없이 전체 흐름을 확인하기 위한 데이터다.
@@ -209,7 +218,7 @@ backend\.venv\Scripts\python.exe scripts\seed_announcements.py
 
 ```cmd
 cd backend
-.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 ```
 
 정상 로그:
@@ -249,13 +258,13 @@ cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
 저장소에 포함된 목업 HWPX로 전체 흐름을 실행한다. `mockup_08` 은 CPL 13개 항목이 모두 들어 있어 확인 범위가 가장 넓다.
 
 ```cmd
-backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
+uv run python scripts\e2e_run.py samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
 ```
 
 다른 사례를 실행하려면 파일 경로만 바꾼다.
 
 ```cmd
-backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\사전협의요청서_미흡사례.hwpx
+uv run python scripts\e2e_run.py samples\hwpx\사전협의요청서_미흡사례.hwpx
 ```
 
 목업 파일은 다음 위치에 버전 관리한다.
@@ -278,7 +287,7 @@ samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
 다른 목업을 실행할 때는 `e2e_run.py` 뒤의 파일 경로만 원하는 샘플로 바꾼다.
 
 ```cmd
-backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
+uv run python scripts\e2e_run.py samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
 ```
 
 E2E 호출 순서:
@@ -322,7 +331,7 @@ POST /api/v1/cases/{case_id}/chat/messages
 ```cmd
 docker start sims-e2e-pg
 cd backend
-.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 ```
 
 이미 컨테이너가 실행 중이라는 메시지가 나오면 그대로 진행한다.
@@ -353,7 +362,7 @@ DB 컨테이너와 내부 데이터를 모두 삭제:
 
 ```cmd
 set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-backend\.venv\Scripts\python.exe -m pytest backend\tests -q
+uv run python -m pytest backend\tests -q
 ```
 
 목업 공고가 들어간 DB는 테스트 데이터와 충돌할 수 있다. 데이터 삭제에 동의한 경우에만 DB를 초기화한 뒤 전체 테스트한다.
@@ -362,7 +371,7 @@ backend\.venv\Scripts\python.exe -m pytest backend\tests -q
 "%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_down.sh
 "%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_up.sh
 set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-backend\.venv\Scripts\python.exe -m pytest backend\tests -q
+uv run python -m pytest backend\tests -q
 ```
 
 ## 14. 자주 발생하는 문제
@@ -407,7 +416,7 @@ DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
 시스템 Python이 아니라 프로젝트 가상환경 Python으로 실행한다.
 
 ```cmd
-backend\.venv\Scripts\python.exe
+.venv\Scripts\python.exe
 ```
 
 ### 8000 포트가 이미 사용 중임
