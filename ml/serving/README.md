@@ -11,11 +11,14 @@ ml/serving/
 │  ├─ model/            KLUE-BERT weight (dl20_m1_final_export.py 로 학습)
 │  ├─ tokenizer/
 │  ├─ label_mapping.json
+│  ├─ train.parquet             학습에 쓴 원본 데이터 1,404건 (ml/models/m1_dl_bundle/ 사본)
+│  ├─ external.parquet          외부 검증 131건 〃
 │  └─ inference.py       dl07_m1_apply.clean_text()/tier() 를 감싸는 wrapper
 ├─ model2/
 │  ├─ model2_canonical.joblib   ml/models/m65_model2_canonical/ 사본
 │  ├─ manifest.json             〃
-│  └─ inference.py              m56_m2_canonical.serve() 를 감싸는 wrapper
+│  ├─ cohort_reference.parquet  비교군 percentile 참조표 (m45_m2_amount.build_reference 산출물)
+│  └─ inference.py              m56_m2_canonical.serve()·m45_m2_amount.compare() 를 감싸는 wrapper
 ├─ model3/
 │  ├─ design_features_v3.parquet   ml/data/processed/ 사본
 │  └─ inference.py                 m3_lab.score_pool() 을 감싸는 wrapper
@@ -23,11 +26,18 @@ ml/serving/
 └─ README.md   (이 파일)
 ```
 
+**model1 의 `train.parquet`/`external.parquet` 는 추론에 필요하지 않다** —
+weight 안에 이미 학습이 끝나 있다. 재현·감사 목적으로만 같이 둔다(어떤
+데이터로 이 weight 가 나왔는지 원본을 남겨야 한다는 요청에 따라 포함).
+model2 의 `cohort_reference.parquet` 는 반대로 **추론에 실제로 쓰인다** —
+1차 산출물인 percentile 조회가 이 표를 찾아본다(2절 참조).
+
 ## 중요: 이 패키지는 완전히 독립적이지 않다
 
 `inference.py` 는 실행 시 `ml/pipelines/`·`ml/evaluation/`·`ml/experiments/`
-를 `sys.path` 에 얹고 원본 모듈(`m56_m2_canonical`, `m3_lab`,
-`m13_m4_anomaly` 등)을 그대로 `import` 한다. **배포 시 이 저장소의
+를 `sys.path` 에 얹고 원본 모듈(`m56_m2_canonical`, `m45_m2_amount`,
+`m3_lab`, `m13_m4_anomaly`, `dl07_m1_apply` 등)을 그대로 `import` 한다.
+**배포 시 이 저장소의
 `ml/pipelines/` 코드가 같이 있어야 한다** — 백엔드가 그 코드를 이해할
 필요는 없지만, 파일은 옆에 있어야 한다. 완전히 코드까지 분리하려면 원본
 모듈을 재구현해야 하는데, 그것은 지시서가 금지한다("feature engineering
@@ -126,22 +136,43 @@ KLUE-BERT 파인튜닝을 CPU로 돌리면 비현실적으로 오래 걸리고, 
 
 ## 2. 모델 2 — 지원규모 상대비교 (비교군 percentile + XGBoost)
 
-**artifact 위치**: 원본 `ml/models/m65_model2_canonical/` (M65 canonical),
-사본 `ml/serving/model2/`
+**artifact 위치**: 원본 `ml/models/m65_model2_canonical/` (M65 canonical)
++ `ml/data/processed/design_features_v2.parquet`(참조표 산출 원본), 사본
+`ml/serving/model2/`. `cohort_reference.parquet` 는 원본 parquet 를
+그대로 옮긴 게 아니라 `m45_m2_amount.prepare()` + `build_reference()` 를
+그 데이터에 적용해 만든 **집계표**(85행, 15KB)다 — 원본 산출 방식은
+`ml/evaluation/m65_m2_canonical_v2.py` STEP C 와 동일하다.
 
-### 입력 필드 (`m56_m2_canonical.SERVING_FIELDS`)
+이 모델은 함수가 둘이다. `predict()`(회귀, joblib 만 필요)와
+`percentile()`(비교군 위치, cohort_reference.parquet 만 필요)는 서로
+독립적으로 호출할 수 있다 — 문서상 **`percentile()` 가 1차 산출물**이고
+`predict()` 는 비교군이 얇을 때의 보조 추정이다(2.0절).
+
+### 범주형 필드 값 도메인 (원본 데이터의 코드값 — 한글 라벨이 아니다)
+
+| 필드 | 값 |
+|---|---|
+| `support_method` | `grant`(보조금) `guarantee`(보증) `loan`(융자) `mixed`(혼합) `other` `service`(현물) `voucher`(바우처) |
+| `support_unit` | `company`(기업당) `person`(인당) `project`(과제당) `team`(팀당) |
+| `amount_type` | `per_company` `per_project` `periodic` `total_budget` `unknown` |
+| `agency_type` | `central`(중앙부처) `local`(지자체) `public`(공공기관) |
+| `cohort` | `bizinfo` `taxonomy` (출처) |
+| `support_type` | 모델 1 출력 19클래스 한글 그대로 (`사업화`·`판로`·`융자` 등) |
+| `category_large` | `경영`·`금융`·`기술`·`기타`·`내수`·`소상`·`수출`·`인력`·`창업` |
+
+### 입력 필드 (`m56_m2_canonical.SERVING_FIELDS`) — `predict()`
 
 | 필드 | 비고 |
 |---|---|
 | `title` | 사업 제목 (TF-IDF+SVD 로 벡터화됨) |
-| `support_type` | 지원성격 (모델 1 출력) |
-| `support_method` | 지원방식 (보조금/융자 등) |
-| `support_unit` | 지원단위 (기업당/과제당 등) |
-| `cohort` | 비교군 구분 |
-| `category_large` | 대분류 |
-| `industry` | 업종 |
-| `agency_type` | 기관계열 |
-| `amount_type` | 금액 의미 (per_company/per_project 등) |
+| `support_type` | 위 도메인표 |
+| `support_method` | 위 도메인표 |
+| `support_unit` | 위 도메인표 |
+| `cohort` | 위 도메인표 |
+| `category_large` | 위 도메인표 |
+| `industry` | 업종(자유 텍스트 — 학습 상위 15종 밖이면 "기타업종"으로 자동 그룹화) |
+| `agency_type` | 위 도메인표 |
+| `amount_type` | 위 도메인표 |
 | `support_count` | 지원건수 |
 | `support_ratio` | 지원비율 |
 | `self_burden_ratio` | 자기부담비율 |
@@ -152,23 +183,37 @@ KLUE-BERT 파인튜닝을 CPU로 돌리면 비현실적으로 오래 걸리고, 
 
 ### 출력
 
+**`predict()`** (회귀 참고값)
+
 | 컬럼 | 의미 |
 |---|---|
 | `pred_log10` / `lo_log10` / `hi_log10` | log10(원) 점추정 · 구간(CQR 보정) |
 | `pred_won` / `lo_won` / `hi_won` | 원 단위 환산값 |
 
-**주의**: 이것은 회귀 참고값이다. 모델 2 의 1차 산출물인 "비교군
-percentile 위치"(`M45.compare`, 예: "상위 38%")는 전체 비교군 참조
-테이블(`design_features` 계열 전체)이 있어야 계산되며, 이 최소 패키지
-에는 포함하지 않았다 — 필요하면 `ml/pipelines/m45_m2_amount.py` 의
-`build_reference()`/`compare()` 를 같은 방식으로 감싸야 한다(추가 데이터
-필요, 원본 코드 재사용 원칙은 동일).
+**`percentile(value_won, support_type, support_method, unit, cohort)`**
+(1차 산출물)
 
-### 출력 예시 (스모크 테스트 실측)
+| 필드 | 의미 |
+|---|---|
+| `status` | `비교가능` / `비교군_부족` / `비교불가`(사유는 `reason`) |
+| `level` | 실제 매칭된 비교군 사다리 단계(좁은 것부터 성격x방식x단위x출처 → 성격x단위x출처 → 단위x출처) |
+| `n` | 비교군 표본수 |
+| `distribution` | p1~p99 분위값(원) |
+| `percentile_rank` | 이 금액이 비교군의 몇 % 이하인가 |
+| `spread_x` | p90/p10 배율 — 비교군이 얼마나 넓게 퍼져 있는가 |
+| `statement` | 사람에게 보여줄 문장("유사사업 N건 중 약 X%가 이 값 이하다") |
+| `interval_tier` | 이 최소 패키지에서는 계산하지 않음(OOF 재적합 필요) — 항상 `None` |
+
+### 출력 예시 (스모크 테스트 실측 — `support_type="사업화" support_method="grant"
+`support_unit="company"` `cohort="taxonomy"` 조합)
 
 ```text
-   pred_log10  lo_log10  hi_log10    pred_won      lo_won       hi_won
-0    7.767004  7.055977   8.57406  58479612.0  11375667.0  375025184.0
+   pred_log10  lo_log10  hi_log10     pred_won      lo_won       hi_won
+0    8.333573  7.457255  8.999291  215562560.0  28658594.0  998369792.0
+
+{'status': '비교가능', 'value': 200000000.0, 'level': '성격x방식x단위x출처',
+ 'n': 316, 'percentile_rank': 62.5, 'spread_x': 16.7, 'interval_tier': None,
+ 'statement': '유사사업 316건 중 약 62%가 이 값 이하다.'}
 ```
 
 ### 실행 예시
@@ -176,17 +221,18 @@ percentile 위치"(`M45.compare`, 예: "상위 38%")는 전체 비교군 참조
 ```python
 import sys
 sys.path.insert(0, "ml/serving/model2")
-from inference import predict
+from inference import predict, percentile
 
 records = [{
     "title": "2023년 수출유망상품화 사업",
-    "support_type": "판로", "support_method": "보조금", "support_unit": "기업당",
-    "cohort": "중소기업", "category_large": "수출", "industry": "제조업",
-    "agency_type": "공공기관", "amount_type": "per_company",
+    "support_type": "사업화", "support_method": "grant", "support_unit": "company",
+    "cohort": "taxonomy", "category_large": "수출", "industry": "제조업",
+    "agency_type": "public", "amount_type": "per_company",
     "support_count": 50, "support_ratio": 70, "self_burden_ratio": 30,
     "project_duration": 12, "year": 2023,
 }]
 print(predict(records))
+print(percentile(200_000_000, "사업화", "grant", "company", "taxonomy"))
 ```
 
 ```bash
@@ -201,7 +247,12 @@ python ml/serving/model2/inference.py
 ### smoke test
 
 `python ml/serving/model2/inference.py` 실행 → 위 출력 예시와 동일하게
-1행 DataFrame 정상 반환 확인(2026-09-01).
+`predict()`(1행 DataFrame)·`percentile()`(비교가능, n=316, 62.5%) 모두
+정상 반환 확인(2026-09-01). 최초 시도에서 `support_method`/`support_unit`
+등에 한글 값("보조금"·"기업당")을 썼더니 `predict()`는 조용히 결측
+범주로 처리해 그럴듯한 값을 냈지만 `percentile()`은 "비교군 없음"을
+정확히 반환했다 — 위 도메인표의 영문 코드값으로 바꾸자 둘 다 의도대로
+동작했다.
 
 ---
 
@@ -214,12 +265,15 @@ weight가 없는 모델이다 — 매 요청마다 이 비교군 pool 전체를 
 
 ### 입력 필드
 
+값 도메인(`support_method`/`support_unit`/`amount_type`)은 모델 2 절의
+도메인표와 같다 — 한글 라벨이 아니라 원본 데이터의 영문 코드값이다.
+
 | 필드 | 필수 | 비고 |
 |---|---|---|
-| `support_type` | **예 — 없으면 그 행은 채점되지 않는다** | 비교군 사다리 1단계 키 |
-| `support_method` | 권장 | 비교군 사다리 1단계 키 |
-| `support_unit` | 선택 | |
-| `amount_type` | 선택 | |
+| `support_type` | **예 — 없으면 그 행은 채점되지 않는다** | 비교군 사다리 1단계 키. 모델 1 출력 19클래스 한글 그대로 |
+| `support_method` | 권장 | 비교군 사다리 1단계 키. `grant`/`guarantee`/`loan`/`mixed`/`other`/`service`/`voucher` |
+| `support_unit` | 선택 | `company`/`person`/`project`/`team` |
+| `amount_type` | 선택 | `per_company`/`per_project`/`periodic`/`total_budget`/`unknown` |
 | `per_recipient` | 수치축(기업당 지원액) | 없으면 그 축만 결측 처리 |
 | `support_count` | 수치축(지원건수) | 〃 |
 | `project_duration` | 수치축(사업기간) | 〃 |
@@ -250,8 +304,8 @@ weight가 없는 모델이다 — 매 요청마다 이 비교군 pool 전체를 
 ### 출력 예시 (스모크 테스트 실측)
 
 ```text
-    row_id  score            level cohort_key  cohort_n         top1_axis
-0  DEMO001    1.0  L2 support_type         판로       255  project_duration
+    row_id  score                        level    cohort_key  cohort_n         top1_axis
+0  DEMO001    1.0  L1 support_type x support_method  사업화|grant       748  project_duration
 ```
 
 ### 실행 예시
@@ -263,7 +317,7 @@ from inference import predict
 
 records = [{
     "row_id": "REQ001",
-    "support_type": "판로", "support_method": "보조금", "support_unit": "기업당",
+    "support_type": "사업화", "support_method": "grant", "support_unit": "company",
     "amount_type": "per_company", "per_recipient": 500_000_000,
     "support_count": 3, "project_duration": 12, "support_ratio": 70,
 }]
@@ -283,4 +337,8 @@ python ml/serving/model3/inference.py
 ### smoke test
 
 `python ml/serving/model3/inference.py` 실행 → 위 출력 예시와 동일하게
-1행 DataFrame + 허용 문구 목록 정상 반환 확인(2026-09-01).
+1행 DataFrame + 허용 문구 목록 정상 반환 확인(2026-09-01). 처음엔
+`support_method`에 한글 값("보조금")을 써서 그 조합이 pool에 없으니
+`L1`을 못 찾고 `L2 support_type`로 자동 후퇴하는 것까지만 확인했었다 —
+도메인표의 영문 코드값(`grant`)으로 바꾸자 의도한 `L1
+support_type x support_method`(비교군 748건)에서 정상 채점됐다.

@@ -95,9 +95,11 @@ def predict(records):
 
 
 if __name__ == "__main__":
+    # support_method/support_unit/amount_type 는 한글 라벨이 아니라 원본
+    # 데이터의 영문 코드값이다(예: 보조금 -> grant, 기업당 -> company).
     demo = [{
         "row_id": "DEMO001",
-        "support_type": "판로", "support_method": "보조금", "support_unit": "기업당",
+        "support_type": "사업화", "support_method": "grant", "support_unit": "company",
         "amount_type": "per_company", "per_recipient": 500_000_000,
         "support_count": 3, "project_duration": 12, "support_ratio": 70,
     }]
