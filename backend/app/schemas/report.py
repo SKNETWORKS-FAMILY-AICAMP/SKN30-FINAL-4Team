@@ -170,5 +170,99 @@ class ReportJsonV01(BaseModel):
         return self
 
 
-class ReportResponse(ReportJsonV01):
+class ReportExcerpt(BaseModel):
+    """The only evidence detail the result screen needs to render."""
+
+    excerpt: str
+
+
+class CheckboxOption(BaseModel):
+    code: str
+    label: str
+    selected: bool
+
+
+class CheckboxGroupDisplay(BaseModel):
+    type: Literal["checkbox_group"] = "checkbox_group"
+    summary: str
+    options: list[CheckboxOption]
+
+
+class ReportSelfCheckItem(BaseModel):
+    field_code: str
+    status: CplStatus
+    display: CheckboxGroupDisplay | None = None
+    evidence: list[ReportExcerpt] = Field(default_factory=list)
+
+
+class ReportSelfCheck(BaseModel):
+    confirmed_count: int
+    total_count: Literal[13] = 13
+    confirmation_rate: float
+    items: list[ReportSelfCheckItem]
+
+
+class ReportFitAvailability(BaseModel):
+    assessable_count: int = Field(ge=0, le=FIT_TOTAL_RELATIONS)
+    total_count: Literal[7] = FIT_TOTAL_RELATIONS
+
+
+class ReportStructuralRelation(BaseModel):
+    relation_id: FitRelationId
+    status: FitStatus
+    summary: str
+    left_evidence: list[ReportExcerpt] = Field(default_factory=list)
+    right_evidence: list[ReportExcerpt] = Field(default_factory=list)
+
+
+class ReportStructuralConsistency(BaseModel):
+    module_status: Literal["AVAILABLE", "UNAVAILABLE"]
+    availability: ReportFitAvailability
+    relations: list[ReportStructuralRelation]
+
+
+class ReportReviewIssue(BaseModel):
+    source: Literal["CPL", "FIT", "SIM"]
+    status: ReviewIssueStatus
+    evidence: list[ReportExcerpt] = Field(default_factory=list)
+
+
+class ReportSimAxisDisplay(BaseModel):
+    status: SimStatus
+    summary: str
+    common_points: list[str] = Field(default_factory=list)
+    differences: list[str] = Field(default_factory=list)
+    request_evidence: list[ReportExcerpt] = Field(default_factory=list)
+    candidate_evidence: list[ReportExcerpt] = Field(default_factory=list)
+
+
+class ReportSimAxesDisplay(BaseModel):
+    purpose: ReportSimAxisDisplay
+    target: ReportSimAxisDisplay
+    content: ReportSimAxisDisplay
+    delivery: ReportSimAxisDisplay
+
+
+class ReportSimCandidateDisplay(BaseModel):
+    rank: int = Field(ge=1)
+    title: str
+    source_url: str
+    relevance_score: int = Field(ge=0, le=100)
+    comparison_summary: str
+    axes: ReportSimAxesDisplay
+
+
+class ReportCaseDisplay(BaseModel):
+    title: str
+
+
+class ReportResponse(BaseModel):
+    """Result-screen projection of the immutable, internal report snapshot."""
+
+    case: ReportCaseDisplay
+    ui_status: Literal["COMPLETED"] = "COMPLETED"
+    self_check: ReportSelfCheck
+    structural_consistency: ReportStructuralConsistency
+    review_issues: list[ReportReviewIssue] = Field(default_factory=list)
+    similar_candidates: list[ReportSimCandidateDisplay] = Field(default_factory=list)
     report_download_url: str | None = None

@@ -15,13 +15,26 @@ from app.schemas.cpl import CplItem, CplOccurrence, CplResult, CplStatus
 from app.schemas.fit import FitResult, FitStatus
 from app.schemas.report import (
     REPORT_SCHEMA_VERSION,
+    CheckboxGroupDisplay,
+    CheckboxOption,
     ReportCase,
+    ReportCaseDisplay,
     ReportEvidence,
+    ReportExcerpt,
+    ReportFitAvailability,
     ReportJsonV01,
     ReportResponse,
     ReportSimAxes,
     ReportSimAxis,
     ReportSimCandidate,
+    ReportSimAxesDisplay,
+    ReportSimAxisDisplay,
+    ReportSimCandidateDisplay,
+    ReportReviewIssue,
+    ReportSelfCheck,
+    ReportSelfCheckItem,
+    ReportStructuralConsistency,
+    ReportStructuralRelation,
     ReviewIssue,
     SelfCheck,
     SelfCheckItem,
@@ -204,15 +217,13 @@ def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportRespon
     if row is None:
         raise ReportNotReadyError
     report = ReportJsonV01.model_validate(row["report_json"])
-    return ReportResponse.model_validate(
-        {
-            **report.model_dump(mode="python"),
-            "report_download_url": (
-                f"/api/v1/cases/{case_id}/report.pdf"
-                if row["artifact_id"] is not None
-                else None
-            ),
-        }
+    return _report_response(
+        report,
+        report_download_url=(
+            f"/api/v1/cases/{case_id}/report.pdf"
+            if row["artifact_id"] is not None
+            else None
+        ),
     )
 
 
@@ -438,6 +449,146 @@ def _cpl_evidence(
         )
         for index, occurrence in enumerate(item.occurrences)
     ]
+
+
+def _report_response(
+    report: ReportJsonV01,
+    *,
+    report_download_url: str | None,
+) -> ReportResponse:
+    return ReportResponse(
+        case=ReportCaseDisplay(title=report.case.title),
+        self_check=ReportSelfCheck(
+            confirmed_count=report.self_check.confirmed_count,
+            confirmation_rate=report.self_check.confirmation_rate,
+            items=[
+                _self_check_item(item)
+                for item in report.self_check.items
+                if item.status != CplStatus.PARSE_FAILED
+            ],
+        ),
+        structural_consistency=ReportStructuralConsistency(
+            module_status=report.structural_consistency.module_status,
+            availability=ReportFitAvailability(
+                assessable_count=report.structural_consistency.score.assessable_count,
+            ),
+            relations=[
+                ReportStructuralRelation(
+                    relation_id=relation.relation_id,
+                    status=relation.status,
+                    summary=relation.summary,
+                    left_evidence=_display_evidence(relation.left_evidence),
+                    right_evidence=_display_evidence(relation.right_evidence),
+                )
+                for relation in report.structural_consistency.relations
+            ],
+        ),
+        review_issues=[
+            ReportReviewIssue(
+                source=issue.source,
+                status=issue.status,
+                evidence=_display_evidence(issue.evidence),
+            )
+            for issue in report.review_issues
+            if not (issue.source == "CPL" and issue.status == "PARSE_FAILED")
+        ],
+        similar_candidates=[_sim_candidate_display(candidate) for candidate in report.similar_candidates],
+        report_download_url=report_download_url,
+    )
+
+
+def _self_check_item(item: SelfCheckItem) -> ReportSelfCheckItem:
+    show_evidence = item.status in {
+        CplStatus.MISSING,
+        CplStatus.NEEDS_CONFIRMATION,
+    }
+    return ReportSelfCheckItem(
+        field_code=item.field_code,
+        status=item.status,
+        display=_checkbox_group(item),
+        evidence=_display_evidence(item.occurrences) if show_evidence else [],
+    )
+
+
+def _checkbox_group(item: SelfCheckItem) -> CheckboxGroupDisplay | None:
+    if item.field_code != "REQUEST_TYPE":
+        return None
+    options = []
+    for occurrence in item.occurrences:
+        value = occurrence.normalized_value
+        if not isinstance(value, dict) or not isinstance(value.get("request_reason"), str):
+            continue
+        mark = value.get("mark")
+        label = occurrence.excerpt
+        if isinstance(mark, str):
+            label = label.replace(mark, "", 1).strip()
+        options.append(
+            CheckboxOption(
+                code=value["request_reason"],
+                label=label,
+                selected=value.get("selected") is True,
+            )
+        )
+    if not options:
+        return None
+    selected = [option.label for option in options if option.selected]
+    summary = (
+        f"선택된 요청 유형: {', '.join(selected)}"
+        if len(selected) == 1
+        else "선택된 요청 유형이 없습니다."
+        if not selected
+        else "복수의 요청 유형이 선택되었습니다."
+    )
+    return CheckboxGroupDisplay(summary=summary, options=options)
+
+
+def _display_evidence(evidence: list[ReportEvidence]) -> list[ReportExcerpt]:
+    """Keep source passages, not every extraction fragment from a passage."""
+    unique = []
+    for item in evidence:
+        normalized = _normalized_excerpt(item.excerpt)
+        if not normalized or any(
+            normalized in _normalized_excerpt(saved.excerpt) for saved in unique
+        ):
+            continue
+        unique = [
+            saved
+            for saved in unique
+            if _normalized_excerpt(saved.excerpt) not in normalized
+        ]
+        unique.append(ReportExcerpt(excerpt=item.excerpt))
+    return [ReportExcerpt(excerpt="\n\n".join(item.excerpt for item in unique))] if unique else []
+
+
+def _normalized_excerpt(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _sim_candidate_display(candidate: ReportSimCandidate) -> ReportSimCandidateDisplay:
+    return ReportSimCandidateDisplay(
+        rank=candidate.rank,
+        title=candidate.title,
+        source_url=candidate.source_url,
+        relevance_score=candidate.semantic_similarity_display,
+        comparison_summary=candidate.comparison_summary,
+        axes=ReportSimAxesDisplay(
+            purpose=_sim_axis_display(candidate.axes.purpose),
+            target=_sim_axis_display(candidate.axes.target),
+            content=_sim_axis_display(candidate.axes.content),
+            delivery=_sim_axis_display(candidate.axes.delivery),
+        ),
+    )
+
+
+def _sim_axis_display(axis: ReportSimAxis) -> ReportSimAxisDisplay:
+    return ReportSimAxisDisplay(
+        status=axis.status,
+        summary=axis.summary,
+        common_points=axis.common_points,
+        differences=axis.differences,
+        request_evidence=_display_evidence(axis.request_evidence),
+        candidate_evidence=_display_evidence(axis.candidate_evidence),
+    )
 
 
 def _occurrence_evidence(

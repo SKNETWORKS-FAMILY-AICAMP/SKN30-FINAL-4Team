@@ -15,8 +15,8 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.infrastructure.local_object_storage import LocalObjectStorage
 from app.infrastructure.reportlab_pdf_renderer import ReportLabPdfRenderer
-from app.schemas.cpl import CPL_FIELDS, CplItem, CplResult, CplStatus
-from app.schemas.report import REPORT_SCHEMA_VERSION
+from app.schemas.cpl import CPL_FIELDS, CplItem, CplOccurrence, CplResult, CplStatus
+from app.schemas.report import REPORT_SCHEMA_VERSION, ReportEvidence
 import app.services.reporting as reporting
 from app.services.reporting import (
     ReportNotReadyError,
@@ -285,6 +285,120 @@ def test_composer_keeps_v01_reserved_fields_and_dynamic_url_outside_snapshot(
     assert "report_download_url" not in snapshot
     assert snapshot["structural_consistency"]["module_status"] == "UNAVAILABLE"
     assert len(snapshot["self_check"]["items"]) == 13
+
+
+def test_result_screen_projection_hides_internal_evidence_metadata(
+    database_url: str,
+    tmp_path: Path,
+) -> None:
+    result = cpl_result()
+    result.items[0] = CplItem(
+        field_code=CPL_FIELDS[0],
+        status=CplStatus.NEEDS_CONFIRMATION,
+        reason_code="REQUEST_TYPE_AMBIGUOUS",
+        occurrences=[
+            CplOccurrence(
+                raw_text="□ 내역사업 신설",
+                normalized_value={
+                    "mark": "□",
+                    "selected": False,
+                    "request_reason": "SUBPROGRAM_NEW",
+                },
+                block_id="body:4",
+                extraction_method="RULE",
+            ),
+            CplOccurrence(
+                raw_text="□ 내내역사업 신설",
+                normalized_value={
+                    "mark": "□",
+                    "selected": False,
+                    "request_reason": "SUBSUBPROGRAM_NEW",
+                },
+                block_id="body:4",
+                extraction_method="RULE",
+            ),
+            CplOccurrence(
+                raw_text="□ 사업내용 변경",
+                normalized_value={
+                    "mark": "□",
+                    "selected": False,
+                    "request_reason": "CONTENT_CHANGE",
+                },
+                block_id="body:4",
+                extraction_method="RULE",
+            ),
+        ],
+    )
+    result.items[1] = CplItem(
+        field_code=CPL_FIELDS[1],
+        status=CplStatus.PARSE_FAILED,
+    )
+    report = compose_report(
+        settings(database_url, tmp_path),
+        case_id=1,
+        title="request.hwpx",
+        created_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
+        cpl_result=result,
+        fit_result=None,
+        sim_results=[],
+        expected_candidate_count=0,
+    )
+
+    response = reporting._report_response(report, report_download_url=None).model_dump(
+        mode="json",
+        exclude_none=True,
+    )
+
+    assert "schema_version" not in response
+    assert "warnings" not in response
+    assert "PURPOSE_GOAL" not in {
+        item["field_code"] for item in response["self_check"]["items"]
+    }
+    assert all("summary" not in issue for issue in response["review_issues"])
+    item = response["self_check"]["items"][0]
+    assert item == {
+        "field_code": "REQUEST_TYPE",
+        "status": "NEEDS_CONFIRMATION",
+        "display": {
+            "type": "checkbox_group",
+            "summary": "선택된 요청 유형이 없습니다.",
+            "options": [
+                {"code": "SUBPROGRAM_NEW", "label": "내역사업 신설", "selected": False},
+                {
+                    "code": "SUBSUBPROGRAM_NEW",
+                    "label": "내내역사업 신설",
+                    "selected": False,
+                },
+                {"code": "CONTENT_CHANGE", "label": "사업내용 변경", "selected": False},
+            ],
+        },
+        "evidence": [
+            {
+                "excerpt": "□ 내역사업 신설\n\n□ 내내역사업 신설\n\n□ 사업내용 변경"
+            }
+        ],
+    }
+
+
+def test_cpl_screen_evidence_keeps_full_source_not_its_fragments() -> None:
+    evidence = [
+        ReportEvidence.model_construct(excerpt="업력 3년 이상 10년 이내"),
+        ReportEvidence.model_construct(excerpt="최근 3개년 연평균 매출액 10억원 이상 300억원 이하"),
+        ReportEvidence.model_construct(
+            excerpt=(
+                "- 업력: 업력 3년 이상 10년 이내\n"
+                "- 매출액: 최근 3개년 연평균 매출액 10억원 이상 300억원 이하"
+            )
+        ),
+    ]
+
+    display_evidence = reporting._display_evidence(evidence)
+
+    assert [item.excerpt for item in display_evidence] == [
+        "- 업력: 업력 3년 이상 10년 이내\n"
+        "- 매출액: 최근 3개년 연평균 매출액 10억원 이상 300억원 이하"
+    ]
 
 
 def test_reportlab_renderer_produces_pdf_bytes(

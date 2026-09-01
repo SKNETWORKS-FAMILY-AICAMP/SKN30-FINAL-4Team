@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORI
 @router.get(
     "/{case_id}/report",
     response_model=ReportResponse,
+    response_model_exclude_none=True,
     responses={**NOT_FOUND, **CONFLICT},
 )
 def report_result(case_id: int, request: Request, user: CurrentUser) -> ReportResponse:
