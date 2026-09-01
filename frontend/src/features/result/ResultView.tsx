@@ -1,17 +1,41 @@
+import { useState, useEffect } from 'react'
 import AiChat from './AiChat'
 
 interface ResultViewProps {
+    reportData: any               // 컨트롤러에서 전달받은 API 응답 객체
     onExportPDF: () => void
     onBackToUpload?: () => void
-    onClose?: () => void          // 💡 SCR-007-P1용 닫기 버튼 핸들러
-    readOnlyChat?: boolean       // 💡 AI 챗봇 읽기 전용 여부
+    onClose?: () => void          
+    readOnlyChat?: boolean       
 }
 
 export default function ResultView({ 
+    reportData,
     onExportPDF, 
     onClose, 
     readOnlyChat = false 
 }: ResultViewProps) {
+    // API 데이터를 컴포넌트 내부 상태로 등록
+    const [report, setReport] = useState<any>(reportData || {})
+
+    useEffect(() => {
+        if (reportData) {
+            setReport(reportData)
+        }
+    }, [reportData])
+
+    // API 응답 데이터 구조 분해 할당 (데이터가 없을 경우를 대비해 빈 배열/객체 기본값 설정)
+    const {
+        fileName = '',
+        caseId = '',
+        timestamp = '',
+        status = '',
+        summary = {},
+        selfChecks = [],     // 2번 자기진단 항목 데이터 배열
+        fitAnalysis = [],    // 3번 구조적 정합성 검증 결과 테이블 데이터 배열
+        similarCandidates = [] // 4번 유사 사업 공고 추천 데이터 배열
+    } = report
+
     return (
         <>
             <div className="flex-1 flex flex-col min-w-0 overflow-y-auto h-screen pb-xl px-md md:px-lg xl:px-xl w-full relative">
@@ -21,7 +45,7 @@ export default function ResultView({
                     <div>
                         <h2 className="font-headline-md text-headline-md text-on-surface">분석 결과</h2>
                         <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
-                            문서 ID: PRG-2024-883A • 처리일시: 오늘, 오전 09:42
+                            문서명: {fileName} (Case ID: {caseId}) • 처리일시: {timestamp}
                         </p>
                     </div>
                     <div className="flex items-center gap-sm">
@@ -34,7 +58,6 @@ export default function ResultView({
                             보고서 내보내기
                         </button>
 
-                        {/* 💡 SCR-007-P1 우측 상단 고정 닫기(X) 버튼[cite: 1, 2] */}
                         {onClose && (
                             <button 
                                 type="button"
@@ -48,13 +71,76 @@ export default function ResultView({
                     </div>
                 </div>
 
-                {/* 대시보드 그리드 본문 (기존 분석 결과 피처 컴포넌트 재사용) */}
+                {/* 대시보드 그리드 본문 */}
                 <div className="grid grid-cols-12 gap-lg">
-                    {/* 자체 점검도, 구조적 정합성, 검토 쟁점 테이블 등 기존 피처 그대로 렌더링[cite: 1] */}
+                    
+                    {/* 1. 종합 분석 요약 */}
+                    <div className="col-span-12 bg-surface-container-low p-md rounded border border-outline-variant">
+                        <h3 className="font-title-md text-on-surface mb-sm">1. 📋 종합 분석 요약</h3>
+                        <ul className="list-disc pl-md space-y-xs font-body-sm text-on-surface-variant">
+                            <li>자기진단 확인율: {summary.selfCheckRate} ({summary.selfCheckDetail})</li>
+                            <li>구조적 정합성 점수: {summary.fitScore} ({summary.fitScoreDetail})</li>
+                            <li>UI 처리 상태: {status}</li>
+                        </ul>
+                    </div>
+
+                    {/* 2. 주요 항목별 자기진단 (Self-Check) 현황 (동적 렌더링) */}
+                    <div className="col-span-12 lg:col-span-6 bg-surface-container-low p-md rounded border border-outline-variant">
+                        <h3 className="font-title-md text-on-surface mb-sm">2. 🔍 주요 항목별 자기진단 (Self-Check) 현황</h3>
+                        <ul className="list-disc pl-md space-y-xs font-body-sm text-on-surface-variant">
+                            {selfChecks.map((item: any, index: number) => (
+                                <li key={index}>
+                                    {item.label}: {item.value} {item.status ? `(${item.status})` : ''}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    {/* 3. 유사 사업 공고 추천 (동적 렌더링) */}
+                    <div className="col-span-12 lg:col-span-6 bg-surface-container-low p-md rounded border border-outline-variant">
+                        <h3 className="font-title-md text-on-surface mb-sm">4. 🔗 유사 사업 공고 추천 (Similar Candidates)</h3>
+                        <ul className="list-disc pl-md space-y-xs font-body-sm text-on-surface-variant">
+                            {similarCandidates.map((candidate: any, index: number) => (
+                                <li key={index}>
+                                    Rank {candidate.rank || index + 1}: {candidate.title} (유사도: {candidate.similarity}%, 상태: {candidate.status})
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    {/* 4. 구조적 정합성 검증 결과 테이블 (동적 매핑 렌더링) */}
+                    <div className="col-span-12 bg-surface-container-low p-md rounded border border-outline-variant">
+                        <h3 className="font-title-md text-on-surface mb-sm">3. ⚠️ 구조적 정합성 검증 (FIT Analysis) 결과</h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse font-body-sm text-on-surface-variant">
+                                <thead>
+                                    <tr className="border-b border-outline-variant">
+                                        <th className="p-xs">항목 ID</th>
+                                        <th className="p-xs">상태 (Status)</th>
+                                        <th className="p-xs">점수</th>
+                                        <th className="p-xs">주요 내용 및 요약</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {fitAnalysis.map((fit: any, index: number) => (
+                                        <tr key={index} className="border-b border-outline-variant/50">
+                                            <td className="p-xs font-bold">{fit.id}</td>
+                                            <td className={`p-xs ${fit.status === 'CONFLICT' ? 'text-error font-bold' : ''}`}>
+                                                {fit.status}
+                                            </td>
+                                            <td className="p-xs">{fit.score !== null && fit.score !== undefined ? `${fit.score}점` : '-'}</td>
+                                            <td className="p-xs">{fit.description}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
-            {/* AI 질의응답 (readOnly 상태를 props로 전달) */}
+            {/* AI 질의응답 */}
             <AiChat readOnly={readOnlyChat} />
         </>
     )

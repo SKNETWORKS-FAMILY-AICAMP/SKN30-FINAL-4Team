@@ -95,14 +95,16 @@
     --text-headline-md: 24px;
     --text-headline-md--line-height: 32px;
     --text-headline-md--letter-spacing: -0.01em;
+    --text-headline-md--font-weight: 600;
 
     --text-display-lg: 30px;
     --text-display-lg--line-height: 38px;
-    --text-display-lg--font-weight: 700;
+    --text-display-lg--font-weight: 600;
     --text-display-lg--letter-spacing: -0.02em;
 
     --text-label-caps: 12px;
     --text-label-caps--line-height: 16px;
+    --text-label-caps--font-weight: 600;
     --text-label-caps--letter-spacing: 0.05em;
 
     --text-data-mono: 13px;

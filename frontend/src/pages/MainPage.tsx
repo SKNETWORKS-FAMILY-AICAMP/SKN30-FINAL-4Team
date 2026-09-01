@@ -5,9 +5,15 @@ import Result from '../features/result/Result'
 export default function MainPage() {
     // 현재 화면 상태 관리 ('upload': 업로드 화면, 'result': 결과 화면)
     const [viewState, setViewState] = useState<'upload' | 'result'>('upload')
+    
+    // 💡 1. 케이스 ID와 최종 리포트 데이터를 담을 부모 상태 선언
+    const [caseId, setCaseId] = useState<string | number | null>(null)
+    const [reportData, setReportData] = useState<any>(null)
 
-    // 파일 업로드 완료 시 실행될 핸들러
-    const handleAnalysisComplete = () => {
+    // 💡 2. 업로드 완료 시 Upload 컴포넌트에서 caseId와 reportData를 받아올 핸들러
+    const handleAnalysisComplete = (completedCaseId: string | number, data: any) => {
+        setCaseId(completedCaseId)
+        setReportData(data)
         setViewState('result')
     }
 
@@ -19,7 +25,8 @@ export default function MainPage() {
                     onAnalysisComplete={handleAnalysisComplete}
                 />
             ) : (
-                <Result 
+                <Result
+                    reportData={reportData}
                     onBackToUpload={() => setViewState('upload')}
                 />
             )}
