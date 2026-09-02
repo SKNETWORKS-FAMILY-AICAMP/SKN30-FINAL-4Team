@@ -1,58 +1,23 @@
-from typing import Literal
-
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser
-from app.api.v1.responses import CONFLICT, NOT_FOUND, UNAUTHORIZED
+from app.api.v1.responses import NOT_FOUND, UNAUTHORIZED
 from app.services.document_parsing import (
     CaseNotFoundError,
-    CaseStateConflictError,
-    get_case_status,
-    start_analysis,
+    UiStatus,
+    wait_for_case_status,
 )
 
 
 router = APIRouter(prefix="/api/v1/cases", tags=["analysis"], responses=UNAUTHORIZED)
 
 
-class StartAnalysisResponse(BaseModel):
-    case_id: int
-    job_id: str
-    status: Literal["PARSING"]
-
-
 class CaseStatusResponse(BaseModel):
+    """실패 사유는 담지 않는다. 화면은 실패 하나로만 다룬다."""
+
     case_id: int
-    status: Literal["분석 중", "분석 완료", "분석 실패"]
-    failure_code: str | None
-    failure_message: str | None
-
-
-@router.post(
-    "/{case_id}/analyze",
-    response_model=StartAnalysisResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    responses={**NOT_FOUND, **CONFLICT},
-)
-async def analyze_case(
-    case_id: int,
-    request: Request,
-    user: CurrentUser,
-) -> StartAnalysisResponse:
-    try:
-        started = await start_analysis(
-            request.app.state.database_engine,
-            request.app.state.job_dispatcher,
-            request.app.state.document_parser,
-            user.id,
-            case_id,
-        )
-    except CaseNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from None
-    except CaseStateConflictError as error:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
-    return StartAnalysisResponse(**started.__dict__)
+    status: UiStatus
 
 
 @router.get(
@@ -60,13 +25,14 @@ async def analyze_case(
     response_model=CaseStatusResponse,
     responses=NOT_FOUND,
 )
-def case_status(
+async def case_status(
     case_id: int,
     request: Request,
     user: CurrentUser,
 ) -> CaseStatusResponse:
+    """상태가 바뀔 때까지 기다렸다가 바뀌는 즉시 응답한다(롱폴링)."""
     try:
-        result = get_case_status(
+        result = await wait_for_case_status(
             request.app.state.database_engine,
             user.id,
             case_id,

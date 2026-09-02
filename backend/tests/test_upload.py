@@ -313,8 +313,8 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
         for _ in range(2)
     ]
 
-    assert [response.status_code for response in responses] == [200, 200]
-    assert all(response.json()["status"] == "UPLOADED" for response in responses)
+    assert [response.status_code for response in responses] == [202, 202]
+    assert all(response.json()["started_at"] for response in responses)
     case_ids = [response.json()["case_id"] for response in responses]
     assert len(set(case_ids)) == 2
 
@@ -348,7 +348,8 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
     assert len({row["storage_key"] for row in rows}) == 2
     for row in rows:
         assert row["owner_user_id"] == user_id
-        assert row["status"] == "UPLOADED"
+        # 업로드가 곧 분석 시작이라 검사 건은 UPLOADED 에 머물지 않는다.
+        assert row["status"] != "UPLOADED"
         assert row["case_id"] == row["file_case_id"] == row["document_case_id"]
         assert row["original_filename"] == "request.HWPX"
         assert row["detected_mime_type"] == "application/hwp+zip"

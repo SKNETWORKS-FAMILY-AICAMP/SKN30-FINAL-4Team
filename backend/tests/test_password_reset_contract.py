@@ -41,4 +41,5 @@ def test_openapi_reset_validation_matches_actual_envelope():
         assert schema["components"]["schemas"]["PasswordResetResponse"]["required"] == ["message"]
         assert not operation.get("security")
     operations = sum(method in {"get", "post", "put", "delete", "patch"} for path in schema["paths"].values() for method in path)
-    assert operations == 16
+    # 분석 시작·로그아웃을 없애고 세션 연장을 더했다.
+    assert operations == 15

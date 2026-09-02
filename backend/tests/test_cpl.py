@@ -2319,11 +2319,9 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        assert uploaded.status_code == 200
+        # 업로드가 곧 분석 시작이다.
+        assert uploaded.status_code == 202
         case_id = uploaded.json()["case_id"]
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=headers
-        ).status_code == 202
 
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:

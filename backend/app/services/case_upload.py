@@ -3,6 +3,7 @@ import hashlib
 import logging
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO, Literal
 from uuid import uuid4
@@ -45,6 +46,7 @@ class ValidatedUpload:
 @dataclass(frozen=True)
 class CreatedCase:
     case_id: int
+    created_at: datetime
     status: Literal["UPLOADED"] = "UPLOADED"
 
 
@@ -160,18 +162,19 @@ async def create_case_from_upload(
 
     try:
         with engine.begin() as connection:
-            case_id = connection.scalar(
+            created = connection.execute(
                 text(
                     """
                     INSERT INTO sims.inspection_case (owner_user_id)
                     VALUES (:owner_user_id)
-                    RETURNING id
+                    RETURNING id, created_at
                     """
                 ),
                 {"owner_user_id": owner_user_id},
-            )
-            if case_id is None:
+            ).one_or_none()
+            if created is None:
                 raise RuntimeError("Failed to create inspection case")
+            case_id, created_at = created
 
             storage_key = (
                 f"users/{owner_user_id}/cases/{case_id}/"
@@ -252,4 +255,4 @@ async def create_case_from_upload(
                 logger.exception("Failed to compensate stored upload: %s", cleanup_key)
         raise
 
-    return CreatedCase(case_id=case_id)
+    return CreatedCase(case_id=case_id, created_at=created_at)

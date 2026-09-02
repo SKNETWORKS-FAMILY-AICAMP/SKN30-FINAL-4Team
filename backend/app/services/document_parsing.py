@@ -1,7 +1,9 @@
 import asyncio
+import base64
 import hashlib
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import BinaryIO, Literal
@@ -26,6 +28,10 @@ class CaseStateConflictError(ValueError):
     pass
 
 
+class InvalidCursorError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class StartedAnalysis:
     case_id: int
@@ -33,25 +39,35 @@ class StartedAnalysis:
     status: Literal["PARSING"] = "PARSING"
 
 
+UiStatus = Literal["IN_PROGRESS", "COMPLETED", "FAILED"]
+
+# 롱폴링 한 번이 응답을 붙잡고 있는 시간. 중간 네트워크 장비가 보통 30~60초
+# 유휴 연결을 끊으므로 그 전에 한 번 끊고 다시 잇는다.
+STATUS_WAIT_SECONDS = 25
+STATUS_POLL_INTERVAL_SECONDS = 1.0
+
+
 @dataclass(frozen=True)
 class CaseStatus:
     case_id: int
-    status: Literal["분석 중", "분석 완료", "분석 실패"]
-    failure_code: str | None
-    failure_message: str | None
+    status: UiStatus
 
 
-# ponytail: 데모 계정 하나의 이력은 수십 건 규모라 고정 상한으로 충분하다.
-# 프론트가 실제로 더 요구하면 그때 페이지네이션을 넣는다.
-MAX_HISTORY_ITEMS = 50
+DEFAULT_HISTORY_LIMIT = 5
+MAX_HISTORY_LIMIT = 50
 
 
 @dataclass(frozen=True)
 class CaseSummary:
     case_id: int
     title: str | None
-    status: Literal["분석 중", "분석 완료", "분석 실패"]
-    created_at: datetime
+    completed_at: datetime
+
+
+@dataclass(frozen=True)
+class CasePage:
+    items: list[CaseSummary]
+    next_cursor: str | None
 
 
 async def start_analysis(
@@ -238,11 +254,12 @@ def get_case_status(
     owner_user_id: int,
     case_id: int,
 ) -> CaseStatus:
+    """실패 사유는 내보내지 않는다. 화면은 실패 하나로만 다룬다."""
     with engine.connect() as connection:
         row = connection.execute(
             text(
                 """
-                SELECT id, status, failure_code, failure_message
+                SELECT id, status
                 FROM sims.inspection_case
                 WHERE id = :case_id AND owner_user_id = :owner_user_id
                 """
@@ -251,45 +268,120 @@ def get_case_status(
         ).mappings().one_or_none()
     if row is None:
         raise CaseNotFoundError
-    return CaseStatus(
-        case_id=row["id"],
-        status=_ui_status(row["status"]),
-        failure_code=row["failure_code"],
-        failure_message=row["failure_message"],
+    return CaseStatus(case_id=row["id"], status=_ui_status(row["status"]))
+
+
+async def wait_for_case_status(
+    engine: Engine,
+    owner_user_id: int,
+    case_id: int,
+    *,
+    timeout_seconds: float = STATUS_WAIT_SECONDS,
+    interval_seconds: float = STATUS_POLL_INTERVAL_SECONDS,
+) -> CaseStatus:
+    """상태가 바뀔 때까지 응답을 붙잡고 있다가 바뀌는 즉시 돌려준다.
+
+    짧은 주기로 계속 물어보는 방식은 프론트가 거부했고, SSE 와 WebSocket 은
+    브라우저 API 가 Authorization 헤더를 지원하지 않아 인증 우회가 필요하다.
+    같은 엔드포인트를 그대로 두고 서버가 기다리는 편이 요청 수도 적고
+    완료를 더 빨리 알린다.
+
+    제한 시간 안에 바뀌지 않으면 현재 상태로 응답한다. 호출자가 다시 부른다.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    current = await asyncio.to_thread(
+        get_case_status, engine, owner_user_id, case_id
     )
+    while current.status == "IN_PROGRESS" and time.monotonic() < deadline:
+        await asyncio.sleep(interval_seconds)
+        current = await asyncio.to_thread(
+            get_case_status, engine, owner_user_id, case_id
+        )
+    return current
 
 
-def list_cases(engine: Engine, owner_user_id: int) -> list[CaseSummary]:
-    """Return one owner's analysis history, newest first."""
+def list_cases(
+    engine: Engine,
+    owner_user_id: int,
+    *,
+    limit: int = DEFAULT_HISTORY_LIMIT,
+    cursor: str | None = None,
+) -> CasePage:
+    """완료된 분석만 최신순으로 한 쪽씩 돌려준다.
+
+    진행 중인 건은 담지 않는다. 업로드한 브라우저가 case_id 로 복구하며,
+    분석이 끝나면 이력에 나타난다. 실패한 건은 업로드 화면에서만 알린다.
+    그래서 이력 항목에는 상태 필드가 없다.
+    """
+    limit = max(1, min(limit, MAX_HISTORY_LIMIT))
+    keyset = _decode_cursor(cursor)
     with engine.connect() as connection:
         rows = connection.execute(
             text(
                 """
-                SELECT c.id, c.status, c.created_at, f.original_filename
+                SELECT c.id, c.completed_at, f.original_filename
                 FROM sims.inspection_case c
                 LEFT JOIN sims.uploaded_document d
                        ON d.inspection_case_id = c.id
                 LEFT JOIN sims.file_asset f
                        ON f.id = d.file_asset_id
                 WHERE c.owner_user_id = :owner_user_id
-                ORDER BY c.created_at DESC, c.id DESC
+                  AND c.status = 'COMPLETED'
+                  AND c.completed_at IS NOT NULL
+                  AND (
+                        CAST(:cursor_completed_at AS timestamptz) IS NULL
+                     OR (c.completed_at, c.id)
+                        < (CAST(:cursor_completed_at AS timestamptz), :cursor_id)
+                  )
+                ORDER BY c.completed_at DESC, c.id DESC
                 LIMIT :limit
                 """
             ),
-            {"owner_user_id": owner_user_id, "limit": MAX_HISTORY_ITEMS},
+            {
+                "owner_user_id": owner_user_id,
+                "cursor_completed_at": keyset[0] if keyset else None,
+                "cursor_id": keyset[1] if keyset else 0,
+                "limit": limit + 1,
+            },
         ).mappings().all()
 
-    # ADR-006: 요청서에서 추출한 사업명을 쓰고, 없으면 원본 파일명을 쓴다.
-    # 사업명 추출은 아직 없으므로 지금은 파일명만 채운다.
-    return [
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    # ADR-006: 요청서에서 추출한 사업명을 쓰기로 했으나 추출 기능을 만들지
+    # 않기로 해서 업로드한 파일명을 그대로 쓴다.
+    items = [
         CaseSummary(
             case_id=row["id"],
             title=row["original_filename"],
-            status=_ui_status(row["status"]),
-            created_at=row["created_at"],
+            completed_at=row["completed_at"],
         )
         for row in rows
     ]
+    next_cursor = (
+        _encode_cursor(items[-1].completed_at, items[-1].case_id)
+        if has_more and items
+        else None
+    )
+    return CasePage(items=items, next_cursor=next_cursor)
+
+
+def _encode_cursor(completed_at: datetime, case_id: int) -> str:
+    raw = f"{completed_at.isoformat()}|{case_id}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(cursor: str | None) -> tuple[datetime, int] | None:
+    """커서는 서버가 만든 값만 받는다. 조작된 값은 조용히 무시한다."""
+    if not cursor:
+        return None
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        completed_at, _, case_id = base64.urlsafe_b64decode(padded).decode(
+            "utf-8"
+        ).rpartition("|")
+        return datetime.fromisoformat(completed_at), int(case_id)
+    except (ValueError, TypeError):
+        raise InvalidCursorError from None
 
 
 def _claim_parse_run(engine: Engine, case_id: int) -> tuple[dict, int]:
@@ -351,14 +443,12 @@ def _verify_stored_source(
         raise ValueError("Stored source does not match its upload snapshot")
 
 
-def _ui_status(
-    internal_status: str,
-) -> Literal["분석 중", "분석 완료", "분석 실패"]:
+def _ui_status(internal_status: str) -> UiStatus:
     if internal_status == "COMPLETED":
-        return "분석 완료"
+        return "COMPLETED"
     if internal_status == "FAILED":
-        return "분석 실패"
-    return "분석 중"
+        return "FAILED"
+    return "IN_PROGRESS"
 
 
 def _record_failure(engine: Engine, case_id: int) -> None:

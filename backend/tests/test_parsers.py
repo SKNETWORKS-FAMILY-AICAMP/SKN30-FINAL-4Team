@@ -18,7 +18,8 @@ from app.parsers import hwp_parser
 from app.parsers.hwp_parser import DocumentParsingError, RhwpDocumentParser
 from app.ports.document_parser import FileSource
 from app.schemas.parsed_document import DocumentBlock, ParsedDocument
-from app.services.document_parsing import start_analysis
+from app.infrastructure.local_object_storage import LocalObjectStorage
+from app.services.document_parsing import run_case_parsing, start_analysis
 from main import create_app
 
 
@@ -101,19 +102,19 @@ def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
 def wait_for_internal_status(
     engine: Engine,
     case_id: int,
-    expected_status: str,
-) -> None:
-    deadline = time.monotonic() + 3
+    *expected_statuses: str,
+) -> str:
+    deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         with engine.connect() as connection:
             current_status = connection.scalar(
                 text("SELECT status FROM sims.inspection_case WHERE id = :case_id"),
                 {"case_id": case_id},
             )
-        if current_status == expected_status:
-            return
+        if current_status in expected_statuses:
+            return current_status
         time.sleep(0.01)
-    pytest.fail(f"Analysis did not reach {expected_status} status")
+    pytest.fail(f"Analysis did not reach {expected_statuses} status")
 
 
 class FakeParser:
@@ -372,19 +373,17 @@ def test_analysis_keeps_parse_snapshot_when_retrieval_is_unavailable(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
+        # 업로드 응답이 곧 분석 시작이다. 별도의 분석 시작 호출은 없다.
+        assert upload.status_code == 202
+        assert set(upload.json()) == {"case_id", "started_at"}
         case_id = upload.json()["case_id"]
 
-        started = client.post(f"/api/v1/cases/{case_id}/analyze", headers=headers)
-        assert started.status_code == 202
-        assert started.json()["case_id"] == case_id
-        assert started.json()["status"] == "PARSING"
-        assert started.json()["job_id"]
         wait_for_internal_status(engine, case_id, "FAILED")
         public_status = client.get(
             f"/api/v1/cases/{case_id}/status", headers=headers
         )
-        assert public_status.json()["status"] == "분석 실패"
-        assert public_status.json()["failure_code"] == "RETRIEVAL_UNAVAILABLE"
+        # 실패 사유는 내보내지 않는다. 화면은 실패 하나로만 다룬다.
+        assert public_status.json() == {"case_id": case_id, "status": "FAILED"}
 
     with engine.connect() as connection:
         row = connection.execute(
@@ -439,21 +438,14 @@ def test_parser_failure_is_safe_and_terminal(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
+        assert upload.status_code == 202
         case_id = upload.json()["case_id"]
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=headers
-        ).status_code == 202
         wait_for_internal_status(engine, case_id, "FAILED")
         result = client.get(
             f"/api/v1/cases/{case_id}/status", headers=headers
         ).json()
 
-    assert result == {
-        "case_id": case_id,
-        "status": "분석 실패",
-        "failure_code": "DOCUMENT_PARSE_FAILED",
-        "failure_message": "The uploaded document could not be parsed",
-    }
+    assert result == {"case_id": case_id, "status": "FAILED"}
     with engine.connect() as connection:
         row = connection.execute(
             text(
@@ -502,6 +494,8 @@ def test_changed_stored_source_is_rejected_before_parser(
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
         case_id = upload.json()["case_id"]
+        wait_for_internal_status(engine, case_id, "FAILED", "CHECKING")
+
         with engine.connect() as connection:
             storage_key = connection.scalar(
                 text(
@@ -513,9 +507,42 @@ def test_changed_stored_source_is_rejected_before_parser(
         assert storage_key is not None
         (tmp_path / storage_key).write_bytes(b"changed after upload")
 
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=headers
-        ).status_code == 202
+        # 업로드가 곧 분석 시작이라 두 API 사이에 끼어들 틈이 없다. 파서에
+        # 넘기기 전에 저장본을 검증한다는 불변식을 서비스에서 직접 확인한다.
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE sims.inspection_case SET status = 'PARSING' "
+                    "WHERE id = :case_id"
+                ),
+                {"case_id": case_id},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO sims.document_parse_run (
+                        file_asset_id, attempt_no, parser_name,
+                        parser_version, status
+                    )
+                    SELECT d.file_asset_id,
+                           (SELECT COALESCE(max(attempt_no), 0) + 1
+                            FROM sims.document_parse_run r
+                            WHERE r.file_asset_id = d.file_asset_id),
+                           'fake', '0', 'PENDING'
+                    FROM sims.uploaded_document d
+                    WHERE d.inspection_case_id = :case_id
+                    """
+                ),
+                {"case_id": case_id},
+            )
+        asyncio.run(
+            run_case_parsing(
+                engine,
+                LocalObjectStorage(tmp_path),
+                FakeParser(),
+                case_id,
+            )
+        )
         wait_for_internal_status(engine, case_id, "FAILED")
 
     with engine.connect() as connection:
@@ -554,6 +581,19 @@ def test_cancelled_enqueue_does_not_leave_case_parsing(
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
         case_id = upload.json()["case_id"]
+        # 업로드가 이미 분석을 시작했다. 취소 시나리오를 재현하려면 검사 건을
+        # 시작 전 상태로 되돌린 뒤 다시 걸어야 한다.
+        wait_for_internal_status(engine, case_id, "FAILED", "CHECKING", "COMPLETED")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE sims.inspection_case "
+                    "SET status = 'UPLOADED', failure_code = NULL, "
+                    "    failure_message = NULL "
+                    "WHERE id = :case_id"
+                ),
+                {"case_id": case_id},
+            )
 
         with pytest.raises(asyncio.CancelledError):
             asyncio.run(
@@ -575,6 +615,8 @@ def test_cancelled_enqueue_does_not_leave_case_parsing(
                 JOIN sims.uploaded_document d ON d.inspection_case_id = c.id
                 JOIN sims.document_parse_run r ON r.file_asset_id = d.file_asset_id
                 WHERE c.id = :case_id
+                ORDER BY r.attempt_no DESC
+                LIMIT 1
                 """
             ),
             {"case_id": case_id},
@@ -604,17 +646,13 @@ def test_analysis_is_owner_scoped_and_cannot_start_twice(
             headers=owner_headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
+        assert upload.status_code == 202
         case_id = upload.json()["case_id"]
 
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=stranger_headers
-        ).status_code == 404
+        # 분석은 업로드가 시작한다. 남의 검사 건은 상태도 볼 수 없다.
         assert client.get(
             f"/api/v1/cases/{case_id}/status", headers=stranger_headers
         ).status_code == 404
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=owner_headers
-        ).status_code == 202
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=owner_headers
-        ).status_code == 409
+        assert client.get(
+            f"/api/v1/cases/{case_id}/status", headers=owner_headers
+        ).status_code == 200

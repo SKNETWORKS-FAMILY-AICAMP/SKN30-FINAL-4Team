@@ -1,7 +1,15 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -18,41 +26,64 @@ from app.services.case_upload import (
     UploadTooLargeError,
     create_case_from_upload,
 )
-from app.services.document_parsing import list_cases
+from app.services.document_parsing import (
+    DEFAULT_HISTORY_LIMIT,
+    InvalidCursorError,
+    MAX_HISTORY_LIMIT,
+    list_cases,
+    start_analysis,
+)
 
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"], responses=UNAUTHORIZED)
 
 
 class CreateCaseResponse(BaseModel):
+    """업로드가 끝나면 분석이 이미 시작된 상태다."""
+
     case_id: int
-    status: Literal["UPLOADED"]
+    started_at: datetime
 
 
 class CaseSummaryResponse(BaseModel):
     case_id: int
     title: str | None
-    status: Literal["분석 중", "분석 완료", "분석 실패"]
-    created_at: datetime
+    completed_at: datetime
 
 
 class CaseListResponse(BaseModel):
-    cases: list[CaseSummaryResponse]
+    """완료된 분석만 최신순으로 담는다. 상태 필드가 없는 이유다."""
+
+    items: list[CaseSummaryResponse]
+    next_cursor: str | None
 
 
-@router.get("", response_model=CaseListResponse)
-def list_case_history(request: Request, user: CurrentUser) -> CaseListResponse:
+@router.get("", response_model=CaseListResponse, responses=BAD_REQUEST)
+def list_case_history(
+    request: Request,
+    user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=MAX_HISTORY_LIMIT)] = DEFAULT_HISTORY_LIMIT,
+    cursor: str | None = None,
+) -> CaseListResponse:
+    try:
+        page = list_cases(
+            request.app.state.database_engine,
+            user.id,
+            limit=limit,
+            cursor=cursor,
+        )
+    except InvalidCursorError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST) from None
     return CaseListResponse(
-        cases=[
-            CaseSummaryResponse(**summary.__dict__)
-            for summary in list_cases(request.app.state.database_engine, user.id)
-        ]
+        items=[CaseSummaryResponse(**item.__dict__) for item in page.items],
+        next_cursor=page.next_cursor,
     )
 
 
 @router.post(
     "",
     response_model=CreateCaseResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={**BAD_REQUEST, **PAYLOAD_TOO_LARGE, **UNSUPPORTED_MEDIA_TYPE},
 )
 async def create_case(
@@ -102,4 +133,15 @@ async def create_case(
     finally:
         await file.close()
 
-    return CreateCaseResponse(case_id=created.case_id, status=created.status)
+    # 검증을 통과하면 곧바로 분석을 시작한다. 별도의 분석 시작 API 를 두지 않는다.
+    await start_analysis(
+        request.app.state.database_engine,
+        request.app.state.job_dispatcher,
+        request.app.state.document_parser,
+        user.id,
+        created.case_id,
+    )
+    return CreateCaseResponse(
+        case_id=created.case_id,
+        started_at=created.created_at,
+    )
