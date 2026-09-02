@@ -133,7 +133,34 @@ def create_app(
 
     application = FastAPI(
         title="Pre-review API",
-        version="0.1.0",
+        version="1.0.0",
+        summary="사전협의 요청서 AI 사전검토 서비스의 백엔드 API",
+        description=(
+            "이 문서가 프론트와의 계약이다. **어떤 상황에 어떤 상태 코드가 나가는지**가 "
+            "계약의 핵심이며, 화면에 띄울 문구는 프론트가 상태 코드를 보고 정한다. "
+            "응답의 `message` 는 폴백이자 여기 설명용이다. "
+            "성공 응답은 공통 래퍼 없이 데이터만 담고, 실패 응답은 문구 하나만 담는다. "
+            "로그인과 비밀번호 재설정을 뺀 모든 API 는 `Authorization: Bearer <토큰>` 이 필요하다."
+        ),
+        openapi_tags=[
+            {
+                "name": "인증",
+                "description": (
+                    "로그인·세션 연장·비밀번호 변경과 재설정. "
+                    "세션은 1시간이고 자동으로 늘어나지 않는다. 연장 시점은 화면이 정한다. "
+                    "로그아웃 API 는 없다. 저장한 토큰을 지우는 것으로 끝나며 그 토큰은 "
+                    "만료까지 유효하다."
+                ),
+            },
+            {
+                "name": "분석",
+                "description": (
+                    "요청서 업로드부터 결과 조회·PDF·AI 질의응답까지. "
+                    "업로드가 곧 분석 시작이며 따로 시작하는 API 는 없다. "
+                    "진행 상태는 롱폴링으로 확인한다."
+                ),
+            },
+        ],
         lifespan=lifespan,
     )
     application.add_middleware(

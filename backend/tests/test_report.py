@@ -479,7 +479,7 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
         assert result.json()["case"]["case_id"] == case_id
         assert result.json()["chat"]["messages"] == []
         download = client.get(
-            f"/api/v1/cases/{case_id}/report.pdf",
+            f"/api/v1/cases/{case_id}/report",
             headers=owner_headers,
         )
         assert download.status_code == 200
@@ -489,7 +489,7 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
             f"/api/v1/cases/{case_id}", headers=other_headers
         ).status_code == 404
         assert client.get(
-            f"/api/v1/cases/{case_id}/report.pdf", headers=other_headers
+            f"/api/v1/cases/{case_id}/report", headers=other_headers
         ).status_code == 404
 
 

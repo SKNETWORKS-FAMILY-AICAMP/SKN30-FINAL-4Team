@@ -13,21 +13,40 @@ from pydantic import BaseModel
 
 
 class ErrorResponse(BaseModel):
-    """HTTPException 이 만드는 본문.
+    """실패 응답 본문.
 
-    검증 오류(422)만 detail 이 배열이고 나머지는 문자열이다.
-    클라이언트는 detail 의 타입을 확인해야 한다.
+    화면에 표시할 문구 하나뿐이다. 내부 오류 코드·스택·필드별 검증 세부는
+    담지 않는다. 문구의 주인은 프론트이며 여기 message 는 폴백이다.
+    프론트는 상태 코드로 화면 동작을 정한다.
     """
 
-    detail: str
+    message: str
 
 
 def _error(status_code: int, description: str) -> dict[int | str, dict[str, Any]]:
     return {status_code: {"model": ErrorResponse, "description": description}}
 
 
+def describe(
+    responses: dict[int | str, dict[str, Any]],
+    **overrides: str,
+) -> dict[int | str, dict[str, Any]]:
+    """공통 오류 선언에 라우트별 설명을 덧씌운다.
+
+    같은 상태 코드라도 화면이 해야 할 일이 다르면 그것을 적는다.
+    예를 들어 재설정 확인의 400 은 링크 문제라 재요청으로 보내야 하고,
+    비밀번호 변경의 400 은 현재 비밀번호 오류라 그 자리에서 다시 받는다.
+    """
+    merged = {code: dict(value) for code, value in responses.items()}
+    for code, description in overrides.items():
+        key = int(code.removeprefix("_"))
+        merged.setdefault(key, {"model": ErrorResponse})
+        merged[key] = {**merged[key], "description": description}
+    return merged
+
+
 # 인증이 필요한 전 경로. 로그인 자체도 자격 증명이 틀리면 이 코드를 쓴다.
-UNAUTHORIZED = _error(401, "토큰이 없거나 만료됐거나 잘못됐다")
+UNAUTHORIZED = _error(401, "토큰이 없거나 만료됐거나 잘못됐다. 재로그인이 필요하다")
 
 # 존재하지 않는 건과 남의 건을 구분하지 않는다. 구분하면 해당 번호가
 # 존재한다는 사실이 새기 때문이다.

@@ -16,6 +16,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from app.api.deps import CurrentUser
 from app.api.v1.responses import (
     BAD_REQUEST,
+    describe,
     PAYLOAD_TOO_LARGE,
     UNAUTHORIZED,
     UNSUPPORTED_MEDIA_TYPE,
@@ -35,7 +36,7 @@ from app.services.document_parsing import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["cases"], responses=UNAUTHORIZED)
+router = APIRouter(prefix="/api/v1/cases", tags=["분석"], responses=UNAUTHORIZED)
 
 
 class CreateCaseResponse(BaseModel):
@@ -58,12 +59,38 @@ class CaseListResponse(BaseModel):
     next_cursor: str | None
 
 
-@router.get("", response_model=CaseListResponse, responses=BAD_REQUEST)
+@router.get(
+    "",
+    response_model=CaseListResponse,
+    summary="분석 이력 목록",
+    description=(
+        "완료된 분석만 최신순으로 한 쪽씩 준다. "
+        "**진행 중이거나 실패한 건은 담기지 않는다.** 진행 중인 분석은 업로드할 때 받은 "
+        "`case_id` 로 상태를 조회해 복구하고, 실패는 업로드 화면에서만 알린다. "
+        "그래서 항목에 상태 필드가 없다. "
+        "더보기는 응답의 `next_cursor` 를 그대로 `cursor` 에 넣어 다시 호출한다. "
+        "`next_cursor` 가 `null` 이면 마지막 쪽이다."
+    ),
+    responses=describe(
+        {**UNAUTHORIZED, **BAD_REQUEST},
+        _400="cursor 값이 서버가 만든 것이 아니다",
+    ),
+)
 def list_case_history(
     request: Request,
     user: CurrentUser,
-    limit: Annotated[int, Query(ge=1, le=MAX_HISTORY_LIMIT)] = DEFAULT_HISTORY_LIMIT,
-    cursor: str | None = None,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=MAX_HISTORY_LIMIT,
+            description="한 번에 받을 개수. 화면은 5를 쓴다",
+        ),
+    ] = DEFAULT_HISTORY_LIMIT,
+    cursor: Annotated[
+        str | None,
+        Query(description="이전 응답의 next_cursor 를 그대로 넣는다. 첫 쪽은 비운다"),
+    ] = None,
 ) -> CaseListResponse:
     try:
         page = list_cases(
@@ -84,7 +111,21 @@ def list_case_history(
     "",
     response_model=CreateCaseResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    responses={**BAD_REQUEST, **PAYLOAD_TOO_LARGE, **UNSUPPORTED_MEDIA_TYPE},
+    summary="요청서 업로드 및 분석 시작",
+    description=(
+        "사전협의 요청서 한 건을 올린다. **검증을 통과하면 곧바로 분석이 시작된다.** "
+        "분석을 따로 시작하는 API 는 없다. "
+        "지원 형식은 HWP 와 HWPX 뿐이고 최대 50MB 다. "
+        "받은 `case_id` 를 브라우저에 저장해 두면 새로고침해도 진행 상태를 다시 조회해 "
+        "대기 화면을 복구할 수 있다."
+    ),
+    responses=describe(
+        {**UNAUTHORIZED, **BAD_REQUEST, **PAYLOAD_TOO_LARGE, **UNSUPPORTED_MEDIA_TYPE},
+        _400="파일이 없거나 둘 이상이다",
+        _413="50MB 를 넘는다",
+        _415="HWP 또는 HWPX 가 아니다",
+        _422="파일이 비었거나 확장자와 내용이 다르다",
+    ),
 )
 async def create_case(
     request: Request,

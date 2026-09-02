@@ -196,11 +196,11 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
         owner_headers = bearer(client, owner_login)
         other_headers = bearer(client, other_login)
         assert client.get(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=owner_headers,
         ).status_code == 200
         answer = client.post(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=owner_headers,
             json={"content": "이 결과를 설명해줘"},
         )
@@ -211,11 +211,11 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
         assert body["user_message"]["role"] == "USER"
         assert body["assistant_message"]["role"] == "ASSISTANT"
         assert client.get(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=other_headers,
         ).status_code == 404
         assert client.post(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=other_headers,
             json={"content": "남의 결과"},
         ).status_code == 404
@@ -229,11 +229,11 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
                 {"owner_id": other_id},
             )
         assert client.get(
-            f"/api/v1/cases/{pending_id}/chat/messages",
+            f"/api/v1/cases/{pending_id}/messages",
             headers=other_headers,
         ).status_code == 409
         assert client.post(
-            f"/api/v1/cases/{pending_id}/chat/messages",
+            f"/api/v1/cases/{pending_id}/messages",
             headers=other_headers,
             json={"content": "아직 안 끝났나요?"},
         ).status_code == 409
