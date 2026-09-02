@@ -92,7 +92,7 @@ def create_user(engine: Engine) -> Iterator[Callable[[str], int]]:
 def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": login_id, "password": PASSWORD},
+        json={"email": f"{login_id}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}

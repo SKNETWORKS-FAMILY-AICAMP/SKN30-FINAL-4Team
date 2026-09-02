@@ -230,7 +230,7 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
     user_id = create_user("reset-confirm-user", email="confirm@example.com")
     access_response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "reset-confirm-user", "password": OLD_PASSWORD},
+        json={"email": "confirm@example.com", "password": OLD_PASSWORD},
     )
     assert access_response.status_code == 200
     access_token = access_response.json()["access_token"]
@@ -257,11 +257,11 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
     ).status_code == 401
     assert client.post(
         "/api/v1/auth/login",
-        json={"login_id": "reset-confirm-user", "password": OLD_PASSWORD},
+        json={"email": "confirm@example.com", "password": OLD_PASSWORD},
     ).status_code == 401
     assert client.post(
         "/api/v1/auth/login",
-        json={"login_id": "reset-confirm-user", "password": NEW_PASSWORD},
+        json={"email": "confirm@example.com", "password": NEW_PASSWORD},
     ).status_code == 200
 
     with engine.connect() as connection:
@@ -444,7 +444,7 @@ def test_same_password_is_rejected_without_history(
         "/api/v1/auth/password-reset/confirm",
         json={"token": token, "new_password": NEW_PASSWORD},
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
     with engine.connect() as connection:
         assert connection.scalar(
             text("SELECT count(*) FROM sims.password_change_history WHERE user_id = :user_id"),

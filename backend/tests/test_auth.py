@@ -109,10 +109,11 @@ def bearer(token: str) -> dict[str, str]:
 def login(client: TestClient, login_id: str, password: str) -> str:
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": login_id, "password": password},
+        json={"email": f"{login_id}@example.com", "password": password},
     )
     assert response.status_code == 200
-    assert response.json()["token_type"] == "bearer"
+    # 토큰만 반환한다. token_type 은 값이 고정이라 없앴다.
+    assert set(response.json()) == {"access_token"}
     return response.json()["access_token"]
 
 
@@ -252,11 +253,13 @@ def test_login_failures_are_indistinguishable_and_do_not_update_last_login(
 ) -> None:
     active_id = create_user("wrong-password-user")
     inactive_id = create_user("inactive-user", is_active=False)
+    # 이메일 형식은 갖췄지만 인증에 실패하는 네 경우다. 계정이 있는지,
+    # 비활성인지, 아예 없는지를 응답으로 구분할 수 없어야 한다.
     requests = [
-        {"login_id": "wrong-password-user", "password": "wrong-password"},
-        {"login_id": "missing-user", "password": "wrong-password"},
-        {"login_id": "inactive-user", "password": OLD_PASSWORD},
-        {"login_id": "' OR 1=1 --", "password": "wrong-password"},
+        {"email": "wrong-password-user@example.com", "password": "wrong-password"},
+        {"email": "missing-user@example.com", "password": "wrong-password"},
+        {"email": "inactive-user@example.com", "password": OLD_PASSWORD},
+        {"email": "or1=1--@example.com", "password": "wrong-password"},
     ]
 
     responses = [client.post("/api/v1/auth/login", json=body) for body in requests]
@@ -282,7 +285,7 @@ def test_invalid_login_password_is_not_echoed(client: TestClient) -> None:
     exposed_password = "must-not-appear-" + ("x" * 128)
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "any-user", "password": exposed_password},
+        json={"email": "any-user@example.com", "password": exposed_password},
     )
 
     assert response.status_code == 422
@@ -293,12 +296,14 @@ def test_me_rejects_bad_tokens_and_returns_minimal_user(
     client: TestClient,
     create_user: Callable[..., int],
 ) -> None:
-    user_id = create_user("me-user")
+    create_user("me-user")
     token = login(client, "me-user", OLD_PASSWORD)
 
     response = client.get("/api/v1/auth/me", headers=bearer(token))
     assert response.status_code == 200
-    assert response.json() == {"id": user_id, "login_id": "me-user"}
+    # 이메일의 @ 앞부분만 나가고 전체 주소는 담기지 않는다.
+    assert response.json() == {"name": "me-user"}
+    assert "@example.com" not in response.text
 
     missing = client.get("/api/v1/auth/me")
     wrong_scheme = client.get(
@@ -371,8 +376,14 @@ def test_password_change_is_atomic_and_invalidates_old_token(
         headers=bearer(old_token),
         json={"current_password": OLD_PASSWORD, "new_password": NEW_PASSWORD},
     )
-    assert response.status_code == 204
-    assert response.content == b""
+    # 응답에 실려 온 새 토큰으로는 계속 쓸 수 있고, 기존 토큰은 죽는다.
+    assert response.status_code == 200
+    reissued = response.json()["access_token"]
+    assert reissued != old_token
+    assert client.get(
+        "/api/v1/auth/me",
+        headers=bearer(reissued),
+    ).status_code == 200
     assert client.get(
         "/api/v1/auth/me",
         headers=bearer(old_token),
@@ -396,7 +407,7 @@ def test_password_change_is_atomic_and_invalidates_old_token(
 
     failed_old_login = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "password-change-user", "password": OLD_PASSWORD},
+        json={"email": "password-change-user@example.com", "password": OLD_PASSWORD},
     )
     assert failed_old_login.status_code == 401
     new_token = login(client, "password-change-user", NEW_PASSWORD)
@@ -430,8 +441,9 @@ def test_failed_password_change_leaves_no_history(
         headers=bearer(token),
         json={"current_password": current_password, "new_password": new_password},
     )
-    assert response.status_code == 400
-    assert response.json() == {"message": "요청을 처리할 수 없습니다."}
+    expected_status = 422 if current_password == new_password else 400
+    assert response.status_code == expected_status
+    assert set(response.json()) == {"message"}
     with engine.connect() as connection:
         assert connection.scalar(
             text(
@@ -480,14 +492,15 @@ def test_unicode_password_can_be_compared_and_changed(
             "new_password": current_password,
         },
     )
-    assert unchanged.status_code == 400
+    assert unchanged.status_code == 422
 
     changed = client.post(
         "/api/v1/auth/change-password",
         headers=bearer(token),
         json={"current_password": current_password, "new_password": new_password},
     )
-    assert changed.status_code == 204
+    assert changed.status_code == 200
+    assert changed.json()["access_token"]
     assert login(client, "unicode-password-user", new_password)
     with engine.connect() as connection:
         assert connection.scalar(
@@ -498,16 +511,19 @@ def test_unicode_password_can_be_compared_and_changed(
         ) == 1
 
 
-def test_logout_is_stateless_client_token_disposal(
+def test_logout_endpoint_does_not_exist(
     client: TestClient,
     create_user: Callable[..., int],
 ) -> None:
+    """로그아웃은 클라이언트가 토큰을 지우는 것으로 끝난다.
+
+    서버가 토큰을 폐기하지 않기로 해서 아무 일도 하지 않는 껍데기였다.
+    발급된 토큰은 만료 시각까지 유효하다.
+    """
     create_user("logout-user")
     token = login(client, "logout-user", OLD_PASSWORD)
 
-    response = client.post("/api/v1/auth/logout", headers=bearer(token))
-    assert response.status_code == 204
-    assert response.content == b""
+    assert client.post("/api/v1/auth/logout", headers=bearer(token)).status_code == 404
     assert client.get("/api/v1/auth/me", headers=bearer(token)).status_code == 200
 
 
@@ -519,7 +535,7 @@ def test_malformed_stored_hash_is_a_generic_login_failure(
 
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "broken-hash-user", "password": OLD_PASSWORD},
+        json={"email": "broken-hash-user@example.com", "password": OLD_PASSWORD},
     )
     assert response.status_code == 401
     assert response.json() == {"message": "인증 정보를 확인해 주세요."}

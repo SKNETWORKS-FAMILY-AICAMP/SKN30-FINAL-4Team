@@ -144,10 +144,17 @@ def confirm_password_reset_route(
             body.new_password.get_secret_value(),
             request.app.state.settings.jwt_secret.get_secret_value(),
         )
-    except (InvalidResetTokenError, PasswordUnchangedError):
+    except InvalidResetTokenError:
+        # 링크 문제. 사용자는 재설정을 다시 요청해야 한다.
         return _response(
             status.HTTP_400_BAD_REQUEST,
-            "비밀번호 재설정 링크가 유효하지 않거나 새 비밀번호가 기존 비밀번호와 같습니다.",
+            "비밀번호 재설정 링크가 유효하지 않습니다.",
+        )
+    except PasswordUnchangedError:
+        # 입력 문제. 사용자는 그 자리에서 다시 입력하면 된다.
+        return _response(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "새 비밀번호가 기존 비밀번호와 같습니다.",
         )
     return _response(
         status.HTTP_200_OK,

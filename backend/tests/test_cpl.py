@@ -2311,7 +2311,7 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
     with TestClient(create_app(settings, CplFakeParser(), None, None)) as client:
         token = client.post(
             "/api/v1/auth/login",
-            json={"login_id": login_id, "password": PASSWORD},
+            json={"email": f"{login_id}@example.com", "password": PASSWORD},
         ).json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
         uploaded = client.post(
