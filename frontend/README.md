@@ -40,18 +40,13 @@ npm run build
 - Routing: 
 <img src="https://shields.io/badge/react%20router%207.18-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white" alt="React Router" style="vertical-align: middle; display: inline-block;" />
 
-- Styling:
-<img src="https://shields.io/badge/css-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" style="vertical-align: middle; display: inline-block;" />
-<img src="https://shields.io/badge/tailwind%20css%204.3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" style="vertical-align: middle; display: inline-block;" />
+- Styling: <img src="https://shields.io/badge/css-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" style="vertical-align: middle; display: inline-block;" /> <img src="https://shields.io/badge/tailwind%20css%204.3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" style="vertical-align: middle; display: inline-block;" />
 
-- Network:
-<img src="https://shields.io/badge/Axios%201.19-5A29E4?style=for-the-badge&logo=axios&logoColor=white" alt="Axios" style="vertical-align: middle; display: inline-block;" />
+- Network: <img src="https://shields.io/badge/Axios%201.19-5A29E4?style=for-the-badge&logo=axios&logoColor=white" alt="Axios" style="vertical-align: middle; display: inline-block;" />
 
-- Build Tool:
-<img src="https://shields.io/badge/vite%208.2-9135FF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" style="vertical-align: middle; display: inline-block;" />
+- Build Tool: <img src="https://shields.io/badge/vite%208.2-9135FF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" style="vertical-align: middle; display: inline-block;" />
 
-- Language:
-<img src="https://shields.io/badge/typescript%206.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" style="vertical-align: middle; display: inline-block;" />
+- Language: <img src="https://shields.io/badge/typescript%206.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" style="vertical-align: middle; display: inline-block;" />
 
 ## 📁 폴더 구조
 
@@ -67,7 +62,7 @@ frontend/
 │   ├── features/          # 기능별 모듈 (랜딩, 인증, 분석 등)
 │   ├── hooks/             # 커스텀 훅
 │   ├── pages/             # 페이지 단위 컴포넌트
-│   ├── routes/            # 라우팅 설정 (AppRouter.tsx)
+│   ├── routes/            # 라우팅 설정
 │   ├── services/          # API 통신 및 비즈니스 로직
 │   ├── index.css          # 글로벌 스타일 및 테마 정의
 │   └── main.tsx           # 애플리케이션 진입점
