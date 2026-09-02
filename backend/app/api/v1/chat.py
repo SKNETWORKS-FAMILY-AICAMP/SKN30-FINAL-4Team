@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app.api.envelope import EnvelopeRoute
 from app.api.deps import CurrentUser
 from app.api.v1.responses import (
     BAD_GATEWAY,
@@ -23,7 +22,7 @@ from app.services.chat import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["chat"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
+router = APIRouter(prefix="/api/v1/cases", tags=["chat"], responses=UNAUTHORIZED)
 
 
 @router.get(

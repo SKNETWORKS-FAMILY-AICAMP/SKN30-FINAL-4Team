@@ -35,9 +35,10 @@ def test_openapi_reset_validation_matches_actual_envelope():
     schema = create_app(settings).openapi()
     for action in ("request", "confirm"):
         operation = schema["paths"][f"/api/v1/auth/password-reset/{action}"]["post"]
-        # 오류는 모든 업무 API 가 같은 봉투를 쓴다.
+        # 실패 응답은 화면 문구 하나만 담는다.
         schema_ref = operation["responses"]["422"]["content"]["application/json"]["schema"]
-        assert schema_ref["$ref"].endswith("/ErrorEnvelope")
+        assert schema_ref["$ref"].endswith("/PasswordResetResponse")
+        assert schema["components"]["schemas"]["PasswordResetResponse"]["required"] == ["message"]
         assert not operation.get("security")
     operations = sum(method in {"get", "post", "put", "delete", "patch"} for path in schema["paths"].values() for method in path)
     assert operations == 16

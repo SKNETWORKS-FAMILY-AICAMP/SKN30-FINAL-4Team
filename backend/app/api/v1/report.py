@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
-from app.api.envelope import EnvelopeRoute
 from app.api.deps import CurrentUser
 from app.api.v1.responses import (
     CONFLICT,
@@ -22,7 +21,7 @@ from app.services.reporting import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
+router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORIZED)
 
 
 @router.get(

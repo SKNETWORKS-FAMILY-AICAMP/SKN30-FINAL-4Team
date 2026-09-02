@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.envelope import apply_envelope_to_openapi, error_body
+from app.api.envelope import error_body
 from app.api.request_body_limit import RequestBodyLimitMiddleware
 from app.api.router import router
 from app.core.config import Settings
@@ -196,8 +196,6 @@ def create_app(
         )
 
     application.include_router(router)
-    # 응답을 라우터 바깥에서 감싸므로 OpenAPI 도 같은 모양을 말하게 맞춘다.
-    apply_envelope_to_openapi(application)
     return application
 
 

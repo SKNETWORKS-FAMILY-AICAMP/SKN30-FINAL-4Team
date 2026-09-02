@@ -166,9 +166,8 @@ def test_request_has_generic_response_and_sends_only_to_active_registered_email(
 
     assert registered.status_code == unknown.status_code == 200
     assert registered.json() == unknown.json()
-    assert registered.json()["code"] == "SUCCESS"
-    assert registered.json()["data"] is None
-    assert registered.json()["errors"] == []
+    # 가입 여부를 응답으로 구분할 수 없어야 한다. 본문은 문구 하나뿐이다.
+    assert set(registered.json()) == {"message"}
     assert len(mail_sender.sent) == 1
     to_email, reset_url = mail_sender.sent[0]
     assert to_email == "Reset.User@example.com"
@@ -234,7 +233,7 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
         json={"login_id": "reset-confirm-user", "password": OLD_PASSWORD},
     )
     assert access_response.status_code == 200
-    access_token = access_response.json()["data"]["access_token"]
+    access_token = access_response.json()["access_token"]
     request_response = client.post(
         "/api/v1/auth/password-reset/request",
         json={"email": "confirm@example.com"},
@@ -247,7 +246,7 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
         json={"token": reset_token, "new_password": NEW_PASSWORD},
     )
     assert confirmed.status_code == 200
-    assert confirmed.json()["data"] is None
+    assert set(confirmed.json()) == {"message"}
     assert client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -284,7 +283,6 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
         json={"token": reset_token, "new_password": "Another-password-2!"},
     )
     assert reused.status_code == 400
-    assert reused.json()["code"] == "BAD_REQUEST"
 
 
 def test_reset_token_rejects_email_change_and_inactive_user(
@@ -427,7 +425,6 @@ def test_mail_failures_are_hidden_and_missing_configuration_is_503(
             json={"email": "missing@example.com"},
         )
         assert response.status_code == 503
-        assert response.json()["code"] == "SERVICE_UNAVAILABLE"
 
 
 def test_same_password_is_rejected_without_history(

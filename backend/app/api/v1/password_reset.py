@@ -1,10 +1,7 @@
-from typing import Literal
-
 from fastapi import APIRouter, BackgroundTasks, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
-from app.api.envelope import EnvelopeRoute
 from app.core.password_policy import validate_new_password
 from app.services.password_reset import (
     InvalidEmailError,
@@ -16,7 +13,7 @@ from app.services.password_reset import (
 )
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"], route_class=EnvelopeRoute)
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 class PasswordResetRequest(BaseModel):
@@ -46,27 +43,10 @@ class PasswordResetConfirmRequest(BaseModel):
         return value
 
 
-class PasswordResetError(BaseModel):
-    type: str | None = None
-    loc: list[str | int] | None = None
-    msg: str | None = None
-    url: str | None = None
-
-
-PasswordResetCode = Literal[
-    "SUCCESS",
-    "BAD_REQUEST",
-    "TOO_MANY_REQUESTS",
-    "SERVICE_UNAVAILABLE",
-    "VALIDATION_ERROR",
-]
-
-
 class PasswordResetResponse(BaseModel):
+    """화면에 표시할 문구 하나. 상태 코드가 상황을 구분한다."""
+
     message: str
-    code: PasswordResetCode
-    data: None = None
-    errors: list[PasswordResetError] = Field(default_factory=list)
 
 
 def _client_ip(request: Request) -> str:
@@ -75,7 +55,6 @@ def _client_ip(request: Request) -> str:
 
 def _response(
     http_status: int,
-    code: PasswordResetCode,
     message: str,
     *,
     retry_after: int | None = None,
@@ -83,7 +62,7 @@ def _response(
     headers = {"Cache-Control": "no-store"}
     if retry_after is not None:
         headers["Retry-After"] = str(retry_after)
-    body = PasswordResetResponse(message=message, code=code)
+    body = PasswordResetResponse(message=message)
     return JSONResponse(
         status_code=http_status,
         content=body.model_dump(mode="json"),
@@ -112,7 +91,6 @@ def request_password_reset(
     if mail_sender is None or not password_reset_url:
         return _response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "SERVICE_UNAVAILABLE",
             "비밀번호 재설정 메일 서비스를 사용할 수 없습니다.",
         )
 
@@ -120,7 +98,6 @@ def request_password_reset(
     if not limiter.allow_request(_client_ip(request), body.email):
         return _response(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            "TOO_MANY_REQUESTS",
             "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
             retry_after=limiter.RETRY_AFTER_SECONDS,
         )
@@ -135,7 +112,6 @@ def request_password_reset(
     )
     return _response(
         status.HTTP_200_OK,
-        "SUCCESS",
         "등록된 이메일이라면 비밀번호 재설정 안내가 발송됩니다.",
     )
 
@@ -157,7 +133,6 @@ def confirm_password_reset_route(
     if not limiter.allow_confirm(_client_ip(request)):
         return _response(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            "TOO_MANY_REQUESTS",
             "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
             retry_after=limiter.RETRY_AFTER_SECONDS,
         )
@@ -172,11 +147,9 @@ def confirm_password_reset_route(
     except (InvalidResetTokenError, PasswordUnchangedError):
         return _response(
             status.HTTP_400_BAD_REQUEST,
-            "BAD_REQUEST",
             "비밀번호 재설정 링크가 유효하지 않거나 새 비밀번호가 기존 비밀번호와 같습니다.",
         )
     return _response(
         status.HTTP_200_OK,
-        "SUCCESS",
         "비밀번호가 재설정되었습니다.",
     )

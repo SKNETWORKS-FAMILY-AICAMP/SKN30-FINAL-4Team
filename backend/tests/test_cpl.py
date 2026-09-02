@@ -2312,7 +2312,7 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
         token = client.post(
             "/api/v1/auth/login",
             json={"login_id": login_id, "password": PASSWORD},
-        ).json()["data"]["access_token"]
+        ).json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
         uploaded = client.post(
             "/api/v1/cases",
@@ -2320,7 +2320,7 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
         assert uploaded.status_code == 200
-        case_id = uploaded.json()["data"]["case_id"]
+        case_id = uploaded.json()["case_id"]
         assert client.post(
             f"/api/v1/cases/{case_id}/analyze", headers=headers
         ).status_code == 202

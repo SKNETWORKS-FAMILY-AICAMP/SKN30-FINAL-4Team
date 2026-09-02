@@ -112,8 +112,8 @@ def login(client: TestClient, login_id: str, password: str) -> str:
         json={"login_id": login_id, "password": password},
     )
     assert response.status_code == 200
-    assert response.json()["data"]["token_type"] == "bearer"
-    return response.json()["data"]["access_token"]
+    assert response.json()["token_type"] == "bearer"
+    return response.json()["access_token"]
 
 
 def test_password_hash_is_argon2id_salted_and_verifiable() -> None:
@@ -262,7 +262,7 @@ def test_login_failures_are_indistinguishable_and_do_not_update_last_login(
     responses = [client.post("/api/v1/auth/login", json=body) for body in requests]
     assert {response.status_code for response in responses} == {401}
     assert {response.text for response in responses} == {
-        '{"detail":"Could not validate credentials"}'
+        '{"message":"인증 정보를 확인해 주세요."}'
     }
     with engine.connect() as connection:
         last_logins = connection.execute(
@@ -431,7 +431,7 @@ def test_failed_password_change_leaves_no_history(
         json={"current_password": current_password, "new_password": new_password},
     )
     assert response.status_code == 400
-    assert response.json() == {"detail": "Password change failed"}
+    assert response.json() == {"message": "요청을 처리할 수 없습니다."}
     with engine.connect() as connection:
         assert connection.scalar(
             text(
@@ -522,4 +522,4 @@ def test_malformed_stored_hash_is_a_generic_login_failure(
         json={"login_id": "broken-hash-user", "password": OLD_PASSWORD},
     )
     assert response.status_code == 401
-    assert response.json() == {"detail": "Could not validate credentials"}
+    assert response.json() == {"message": "인증 정보를 확인해 주세요."}

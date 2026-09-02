@@ -3,7 +3,6 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from app.api.envelope import EnvelopeRoute
 from app.api.deps import CurrentUser
 from app.api.v1.responses import CONFLICT, NOT_FOUND, UNAUTHORIZED
 from app.services.document_parsing import (
@@ -14,7 +13,7 @@ from app.services.document_parsing import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["analysis"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
+router = APIRouter(prefix="/api/v1/cases", tags=["analysis"], responses=UNAUTHORIZED)
 
 
 class StartAnalysisResponse(BaseModel):
