@@ -355,33 +355,24 @@ def test_result_screen_projection_hides_internal_evidence_metadata(
     assert set(detail["case"]) == {"case_id", "title", "completed_at"}
     assert "schema_version" not in response
     assert "warnings" not in response
+    # 검토 쟁점은 AI 질의응답으로 대체해 응답에서 뺐다.
+    assert set(response) == {"cpl", "fit", "similar_candidates"}
+    # 확인율 퍼센트는 담지 않는다. 13개 중 몇 개인지만 준다.
+    assert set(response["cpl"]) == {"confirmed_count", "total_count", "items"}
     assert "PURPOSE_GOAL" not in {
-        item["field_code"] for item in response["self_check"]["items"]
+        item["field_code"] for item in response["cpl"]["items"]
     }
-    assert all("summary" not in issue for issue in response["review_issues"])
-    item = response["self_check"]["items"][0]
-    assert item == {
+    # 요청 유형도 다른 항목과 같이 상태와 근거만 준다. 체크박스 표시는 없앴다.
+    merged_excerpt = "\n\n".join(
+        ["□ 내역사업 신설", "□ 내내역사업 신설", "□ 사업내용 변경"]
+    )
+    assert response["cpl"]["items"][0] == {
         "field_code": "REQUEST_TYPE",
         "status": "NEEDS_CONFIRMATION",
-        "display": {
-            "type": "checkbox_group",
-            "summary": "선택된 요청 유형이 없습니다.",
-            "options": [
-                {"code": "SUBPROGRAM_NEW", "label": "내역사업 신설", "selected": False},
-                {
-                    "code": "SUBSUBPROGRAM_NEW",
-                    "label": "내내역사업 신설",
-                    "selected": False,
-                },
-                {"code": "CONTENT_CHANGE", "label": "사업내용 변경", "selected": False},
-            ],
-        },
-        "evidence": [
-            {
-                "excerpt": "□ 내역사업 신설\n\n□ 내내역사업 신설\n\n□ 사업내용 변경"
-            }
-        ],
+        "evidence": [{"excerpt": merged_excerpt}],
     }
+    # FIT 은 점수를 담지 않는다.
+    assert set(response["fit"]) == {"module_status", "availability", "relations"}
 
 
 def test_cpl_screen_evidence_keeps_full_source_not_its_fragments() -> None:

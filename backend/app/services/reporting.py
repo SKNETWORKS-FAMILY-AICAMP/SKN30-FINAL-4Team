@@ -15,13 +15,13 @@ from app.schemas.cpl import CplItem, CplOccurrence, CplResult, CplStatus
 from app.schemas.fit import FitResult, FitStatus
 from app.schemas.report import (
     REPORT_SCHEMA_VERSION,
-    CheckboxGroupDisplay,
-    CheckboxOption,
     ReportCase,
     ReportCaseDisplay,
     ReportEvidence,
     ReportExcerpt,
-    ReportFitAvailability,
+    FitAvailabilityDisplay,
+    FitDisplay,
+    FitRelationDisplay,
     ReportJsonV01,
     AnalysisReport,
     CaseReport,
@@ -31,11 +31,8 @@ from app.schemas.report import (
     ReportSimAxesDisplay,
     ReportSimAxisDisplay,
     ReportSimCandidateDisplay,
-    ReportReviewIssue,
-    ReportSelfCheck,
-    ReportSelfCheckItem,
-    ReportStructuralConsistency,
-    ReportStructuralRelation,
+    CplDisplay,
+    CplItemDisplay,
     ReviewIssue,
     SelfCheck,
     SelfCheckItem,
@@ -453,22 +450,21 @@ def _report_response(report: ReportJsonV01) -> CaseReport:
             completed_at=report.case.completed_at,
         ),
         report=AnalysisReport(
-            self_check=ReportSelfCheck(
+            cpl=CplDisplay(
                 confirmed_count=report.self_check.confirmed_count,
-                confirmation_rate=report.self_check.confirmation_rate,
                 items=[
                     _self_check_item(item)
                     for item in report.self_check.items
                     if item.status != CplStatus.PARSE_FAILED
                 ],
             ),
-            structural_consistency=ReportStructuralConsistency(
+            fit=FitDisplay(
                 module_status=structural.module_status,
-                availability=ReportFitAvailability(
+                availability=FitAvailabilityDisplay(
                     assessable_count=structural.score.assessable_count,
                 ),
                 relations=[
-                    ReportStructuralRelation(
+                    FitRelationDisplay(
                         relation_id=relation.relation_id,
                         status=relation.status,
                         summary=relation.summary,
@@ -478,15 +474,6 @@ def _report_response(report: ReportJsonV01) -> CaseReport:
                     for relation in structural.relations
                 ],
             ),
-            review_issues=[
-                ReportReviewIssue(
-                    source=issue.source,
-                    status=issue.status,
-                    evidence=_display_evidence(issue.evidence),
-                )
-                for issue in report.review_issues
-                if not (issue.source == "CPL" and issue.status == "PARSE_FAILED")
-            ],
             similar_candidates=[
                 _sim_candidate_display(candidate)
                 for candidate in report.similar_candidates
@@ -495,49 +482,16 @@ def _report_response(report: ReportJsonV01) -> CaseReport:
     )
 
 
-def _self_check_item(item: SelfCheckItem) -> ReportSelfCheckItem:
+def _self_check_item(item: SelfCheckItem) -> CplItemDisplay:
     show_evidence = item.status in {
         CplStatus.MISSING,
         CplStatus.NEEDS_CONFIRMATION,
     }
-    return ReportSelfCheckItem(
+    return CplItemDisplay(
         field_code=item.field_code,
         status=item.status,
-        display=_checkbox_group(item),
         evidence=_display_evidence(item.occurrences) if show_evidence else [],
     )
-
-
-def _checkbox_group(item: SelfCheckItem) -> CheckboxGroupDisplay | None:
-    if item.field_code != "REQUEST_TYPE":
-        return None
-    options = []
-    for occurrence in item.occurrences:
-        value = occurrence.normalized_value
-        if not isinstance(value, dict) or not isinstance(value.get("request_reason"), str):
-            continue
-        mark = value.get("mark")
-        label = occurrence.excerpt
-        if isinstance(mark, str):
-            label = label.replace(mark, "", 1).strip()
-        options.append(
-            CheckboxOption(
-                code=value["request_reason"],
-                label=label,
-                selected=value.get("selected") is True,
-            )
-        )
-    if not options:
-        return None
-    selected = [option.label for option in options if option.selected]
-    summary = (
-        f"선택된 요청 유형: {', '.join(selected)}"
-        if len(selected) == 1
-        else "선택된 요청 유형이 없습니다."
-        if not selected
-        else "복수의 요청 유형이 선택되었습니다."
-    )
-    return CheckboxGroupDisplay(summary=summary, options=options)
 
 
 def _display_evidence(evidence: list[ReportEvidence]) -> list[ReportExcerpt]:
@@ -564,10 +518,8 @@ def _normalized_excerpt(value: str) -> str:
 
 def _sim_candidate_display(candidate: ReportSimCandidate) -> ReportSimCandidateDisplay:
     return ReportSimCandidateDisplay(
-        rank=candidate.rank,
         title=candidate.title,
         source_url=candidate.source_url,
-        relevance_score=candidate.semantic_similarity_display,
         comparison_summary=candidate.comparison_summary,
         axes=ReportSimAxesDisplay(
             purpose=_sim_axis_display(candidate.axes.purpose),
