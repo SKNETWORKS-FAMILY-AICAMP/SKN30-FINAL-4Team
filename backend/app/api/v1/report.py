@@ -2,6 +2,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from app.api.deps import CurrentUser
@@ -11,7 +12,9 @@ from app.api.v1.responses import (
     SERVICE_UNAVAILABLE,
     UNAUTHORIZED,
 )
-from app.schemas.report import ReportResponse
+from app.schemas.chat import ChatMessagesResponse
+from app.schemas.report import AnalysisReport, ReportCaseDisplay
+from app.services.chat import get_chat_history
 from app.services.reporting import (
     ReportFileUnavailableError,
     ReportNotFoundError,
@@ -24,15 +27,33 @@ from app.services.reporting import (
 router = APIRouter(prefix="/api/v1/cases", tags=["reports"], responses=UNAUTHORIZED)
 
 
+class CaseDetailResponse(BaseModel):
+    """분석 결과 화면과 과거 이력 상세가 함께 쓰는 응답.
+
+    보고서와 대화를 한 번에 담아 화면을 열 때 요청을 한 번만 보낸다. PDF 는
+    경로가 고정이라 링크를 담지 않고, 완료된 건은 PDF 가 항상 존재한다.
+    """
+
+    case: ReportCaseDisplay
+    report: AnalysisReport
+    chat: ChatMessagesResponse
+
+
 @router.get(
-    "/{case_id}/report",
-    response_model=ReportResponse,
+    "/{case_id}",
+    response_model=CaseDetailResponse,
     response_model_exclude_none=True,
     responses={**NOT_FOUND, **CONFLICT},
 )
-def report_result(case_id: int, request: Request, user: CurrentUser) -> ReportResponse:
+def case_detail(
+    case_id: int,
+    request: Request,
+    user: CurrentUser,
+) -> CaseDetailResponse:
+    engine = request.app.state.database_engine
     try:
-        return get_report(request.app.state.database_engine, user.id, case_id)
+        result = get_report(engine, user.id, case_id)
+        chat = get_chat_history(engine, user.id, case_id)
     except ReportNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from None
     except ReportNotReadyError as error:
@@ -40,6 +61,11 @@ def report_result(case_id: int, request: Request, user: CurrentUser) -> ReportRe
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error) or "Report is not ready",
         ) from None
+    return CaseDetailResponse(
+        case=result.case,
+        report=result.report,
+        chat=chat,
+    )
 
 
 @router.get(

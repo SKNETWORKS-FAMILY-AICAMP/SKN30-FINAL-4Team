@@ -23,7 +23,8 @@ from app.schemas.report import (
     ReportExcerpt,
     ReportFitAvailability,
     ReportJsonV01,
-    ReportResponse,
+    AnalysisReport,
+    CaseReport,
     ReportSimAxes,
     ReportSimAxis,
     ReportSimCandidate,
@@ -192,7 +193,7 @@ def compose_report(
     )
 
 
-def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportResponse:
+def get_report(engine: Engine, owner_user_id: int, case_id: int) -> CaseReport:
     with engine.connect() as connection:
         case_exists = connection.scalar(
             text(
@@ -206,9 +207,8 @@ def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportRespon
         row = connection.execute(
             text(
                 """
-                SELECT r.report_json, a.id AS artifact_id
+                SELECT r.report_json
                 FROM sims.inspection_report r
-                LEFT JOIN sims.output_artifact a ON a.inspection_report_id = r.id
                 WHERE r.inspection_case_id = :case_id
                 """
             ),
@@ -216,15 +216,7 @@ def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportRespon
         ).mappings().one_or_none()
     if row is None:
         raise ReportNotReadyError
-    report = ReportJsonV01.model_validate(row["report_json"])
-    return _report_response(
-        report,
-        report_download_url=(
-            f"/api/v1/cases/{case_id}/report.pdf"
-            if row["artifact_id"] is not None
-            else None
-        ),
-    )
+    return _report_response(ReportJsonV01.model_validate(row["report_json"]))
 
 
 async def open_report_file(
@@ -451,49 +443,55 @@ def _cpl_evidence(
     ]
 
 
-def _report_response(
-    report: ReportJsonV01,
-    *,
-    report_download_url: str | None,
-) -> ReportResponse:
-    return ReportResponse(
-        case=ReportCaseDisplay(title=report.case.title),
-        self_check=ReportSelfCheck(
-            confirmed_count=report.self_check.confirmed_count,
-            confirmation_rate=report.self_check.confirmation_rate,
-            items=[
-                _self_check_item(item)
-                for item in report.self_check.items
-                if item.status != CplStatus.PARSE_FAILED
-            ],
+def _report_response(report: ReportJsonV01) -> CaseReport:
+    """PDF 링크를 담지 않는다. 완료된 건은 PDF 가 항상 있고 경로가 고정이다."""
+    structural = report.structural_consistency
+    return CaseReport(
+        case=ReportCaseDisplay(
+            case_id=report.case.case_id,
+            title=report.case.title,
+            completed_at=report.case.completed_at,
         ),
-        structural_consistency=ReportStructuralConsistency(
-            module_status=report.structural_consistency.module_status,
-            availability=ReportFitAvailability(
-                assessable_count=report.structural_consistency.score.assessable_count,
+        report=AnalysisReport(
+            self_check=ReportSelfCheck(
+                confirmed_count=report.self_check.confirmed_count,
+                confirmation_rate=report.self_check.confirmation_rate,
+                items=[
+                    _self_check_item(item)
+                    for item in report.self_check.items
+                    if item.status != CplStatus.PARSE_FAILED
+                ],
             ),
-            relations=[
-                ReportStructuralRelation(
-                    relation_id=relation.relation_id,
-                    status=relation.status,
-                    summary=relation.summary,
-                    left_evidence=_display_evidence(relation.left_evidence),
-                    right_evidence=_display_evidence(relation.right_evidence),
+            structural_consistency=ReportStructuralConsistency(
+                module_status=structural.module_status,
+                availability=ReportFitAvailability(
+                    assessable_count=structural.score.assessable_count,
+                ),
+                relations=[
+                    ReportStructuralRelation(
+                        relation_id=relation.relation_id,
+                        status=relation.status,
+                        summary=relation.summary,
+                        left_evidence=_display_evidence(relation.left_evidence),
+                        right_evidence=_display_evidence(relation.right_evidence),
+                    )
+                    for relation in structural.relations
+                ],
+            ),
+            review_issues=[
+                ReportReviewIssue(
+                    source=issue.source,
+                    status=issue.status,
+                    evidence=_display_evidence(issue.evidence),
                 )
-                for relation in report.structural_consistency.relations
+                for issue in report.review_issues
+                if not (issue.source == "CPL" and issue.status == "PARSE_FAILED")
+            ],
+            similar_candidates=[
+                _sim_candidate_display(candidate)
+                for candidate in report.similar_candidates
             ],
         ),
-        review_issues=[
-            ReportReviewIssue(
-                source=issue.source,
-                status=issue.status,
-                evidence=_display_evidence(issue.evidence),
-            )
-            for issue in report.review_issues
-            if not (issue.source == "CPL" and issue.status == "PARSE_FAILED")
-        ],
-        similar_candidates=[_sim_candidate_display(candidate) for candidate in report.similar_candidates],
-        report_download_url=report_download_url,
     )
 
 

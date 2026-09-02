@@ -253,16 +253,24 @@ class ReportSimCandidateDisplay(BaseModel):
 
 
 class ReportCaseDisplay(BaseModel):
+    """화면 Header 에 쓰는 검사 건 정보."""
+
+    case_id: int
     title: str
+    completed_at: datetime
 
 
-class ReportResponse(BaseModel):
+class AnalysisReport(BaseModel):
     """Result-screen projection of the immutable, internal report snapshot."""
 
-    case: ReportCaseDisplay
-    ui_status: Literal["COMPLETED"] = "COMPLETED"
     self_check: ReportSelfCheck
     structural_consistency: ReportStructuralConsistency
     review_issues: list[ReportReviewIssue] = Field(default_factory=list)
     similar_candidates: list[ReportSimCandidateDisplay] = Field(default_factory=list)
-    report_download_url: str | None = None
+
+
+class CaseReport(BaseModel):
+    """분석 결과 화면과 과거 이력 상세가 함께 쓰는 조각."""
+
+    case: ReportCaseDisplay
+    report: AnalysisReport

@@ -30,9 +30,24 @@ router = APIRouter(prefix="/api/v1/cases", tags=["chat"], responses=UNAUTHORIZED
     response_model=ChatMessagesResponse,
     responses={**NOT_FOUND, **CONFLICT},
 )
-def chat_messages(case_id: int, request: Request, user: CurrentUser) -> ChatMessagesResponse:
+def chat_messages(
+    case_id: int,
+    request: Request,
+    user: CurrentUser,
+    cursor: int | None = None,
+) -> ChatMessagesResponse:
+    """이전 대화를 더 불러온다.
+
+    화면을 열 때는 GET /cases/{case_id} 가 최근 대화를 함께 준다. 이 API 는
+    위로 스크롤해 그보다 앞선 대화를 볼 때만 쓴다.
+    """
     try:
-        return get_chat_history(request.app.state.database_engine, user.id, case_id)
+        return get_chat_history(
+            request.app.state.database_engine,
+            user.id,
+            case_id,
+            cursor=cursor,
+        )
     except ChatNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from None
     except ChatNotReadyError as error:

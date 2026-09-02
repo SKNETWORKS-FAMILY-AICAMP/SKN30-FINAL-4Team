@@ -147,8 +147,8 @@ def test_chat_history_and_answer_are_stored_in_sequence(
     settings = runtime(database_url, tmp_path)
 
     before = get_chat_history(engine, owner_id, case_id)
-    assert before.chat_session_id is None
     assert before.messages == []
+    assert before.next_cursor is None
 
     turn = asyncio.run(
         answer_chat(
@@ -160,17 +160,21 @@ def test_chat_history_and_answer_are_stored_in_sequence(
             question="왜 검토가 필요한가요?",
         )
     )
-    assert turn.user_message.sequence_no == 1
-    assert turn.assistant_message.sequence_no == 2
+    assert turn.user_message.role == "USER"
     assert turn.assistant_message.role == "ASSISTANT"
-    assert turn.assistant_message.model_name == "gpt-4o-mini"
-    assert turn.assistant_message.evidence_refs == []
+    # 모델명·토큰 수·근거 식별자는 내부 정보라 응답에 담지 않는다.
+    assert set(turn.model_dump()) == {"user_message", "assistant_message"}
+    assert set(turn.user_message.model_dump()) == {
+        "id",
+        "role",
+        "content",
+        "created_at",
+    }
     assert llm.calls[0]["report_json"]["schema_version"] == "alpha-report-v0.1"
 
     history = get_chat_history(engine, owner_id, case_id)
-    assert history.chat_session_id == turn.chat_session_id
-    assert [item.sequence_no for item in history.messages] == [1, 2]
     assert [item.role for item in history.messages] == ["USER", "ASSISTANT"]
+    assert history.next_cursor is None
 
 
 def test_chat_api_is_owner_scoped_and_rejects_unready_case(
@@ -202,7 +206,8 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
         )
         assert answer.status_code == 200
         body = answer.json()
-        assert body["case_id"] == case_id
+        # 응답에는 말풍선 두 개만 담는다.
+        assert set(body) == {"user_message", "assistant_message"}
         assert body["user_message"]["role"] == "USER"
         assert body["assistant_message"]["role"] == "ASSISTANT"
         assert client.get(

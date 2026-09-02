@@ -24,6 +24,10 @@ from app.schemas.report import ReportJsonV01
 
 CHAT_CONTEXT_MESSAGE_LIMIT = 20
 
+# 화면이 한 번에 받는 대화 수. 이력 목록(5건)보다 크게 잡는다. 질문 몇 번이면
+# 끝나는 분량이라 대부분 한 번에 다 보인다.
+CHAT_PAGE_SIZE = 20
+
 
 class ChatNotFoundError(LookupError):
     pass
@@ -63,7 +67,14 @@ def get_chat_history(
     engine: Engine,
     owner_user_id: int,
     case_id: int,
+    *,
+    limit: int = CHAT_PAGE_SIZE,
+    cursor: int | None = None,
 ) -> ChatMessagesResponse:
+    """최근 대화부터 limit 개를 시간순으로 돌려준다.
+
+    cursor 는 이전 쪽의 가장 오래된 sequence_no 다. 그보다 앞선 대화를 준다.
+    """
     _load_ready_report(engine, owner_user_id, case_id)
     with engine.connect() as connection:
         session_id = connection.scalar(
@@ -74,24 +85,37 @@ def get_chat_history(
             {"case_id": case_id},
         )
         if session_id is None:
-            return ChatMessagesResponse(case_id=case_id, messages=[])
+            return ChatMessagesResponse(messages=[])
         rows = connection.execute(
             text(
                 """
-                SELECT id, sequence_no, role, content, model_name,
-                       model_version, input_tokens, output_tokens,
-                       evidence_refs, created_at
+                SELECT id, sequence_no, role, content, created_at
                 FROM sims.chat_message
                 WHERE chat_session_id = :session_id
-                ORDER BY sequence_no
+                  AND (CAST(:cursor AS integer) IS NULL
+                       OR sequence_no < CAST(:cursor AS integer))
+                ORDER BY sequence_no DESC
+                LIMIT :limit
                 """
             ),
-            {"session_id": session_id},
+            {"session_id": session_id, "cursor": cursor, "limit": limit + 1},
         ).mappings().all()
+
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    oldest_sequence_no = rows[-1]["sequence_no"] if rows else None
     return ChatMessagesResponse(
-        case_id=case_id,
-        chat_session_id=session_id,
-        messages=[ChatMessageResponse.model_validate(row) for row in rows],
+        # 조회는 최신순이지만 화면은 시간순으로 그린다.
+        messages=[
+            ChatMessageResponse(
+                id=row["id"],
+                role=row["role"],
+                content=row["content"],
+                created_at=row["created_at"],
+            )
+            for row in reversed(rows)
+        ],
+        next_cursor=str(oldest_sequence_no) if has_more else None,
     )
 
 
@@ -284,9 +308,7 @@ def _persist_chat_turn(
                 ) VALUES (
                     :session_id, :sequence_no, 'USER', :content, '[]'::jsonb
                 )
-                RETURNING id, sequence_no, role, content, model_name,
-                          model_version, input_tokens, output_tokens,
-                          evidence_refs, created_at
+                RETURNING id, role, content, created_at
                 """
             ),
             {
@@ -305,9 +327,7 @@ def _persist_chat_turn(
                     :session_id, :sequence_no, 'ASSISTANT', :content,
                     :model_name, CAST(:evidence_refs AS jsonb)
                 )
-                RETURNING id, sequence_no, role, content, model_name,
-                          model_version, input_tokens, output_tokens,
-                          evidence_refs, created_at
+                RETURNING id, role, content, created_at
                 """
             ),
             {
@@ -320,8 +340,6 @@ def _persist_chat_turn(
         ).mappings().one()
 
     return ChatTurnResponse(
-        case_id=case_id,
-        chat_session_id=session_id,
         user_message=ChatMessageResponse.model_validate(user_row),
         assistant_message=ChatMessageResponse.model_validate(assistant_row),
     )

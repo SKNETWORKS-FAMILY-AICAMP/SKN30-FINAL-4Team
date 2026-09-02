@@ -345,11 +345,14 @@ def test_result_screen_projection_hides_internal_evidence_metadata(
         expected_candidate_count=0,
     )
 
-    response = reporting._report_response(report, report_download_url=None).model_dump(
+    detail = reporting._report_response(report).model_dump(
         mode="json",
         exclude_none=True,
     )
+    response = detail["report"]
 
+    assert set(detail) == {"case", "report"}
+    assert set(detail["case"]) == {"case_id", "title", "completed_at"}
     assert "schema_version" not in response
     assert "warnings" not in response
     assert "PURPOSE_GOAL" not in {
@@ -478,11 +481,12 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     with TestClient(create_app(runtime, pdf_renderer=FakePdfRenderer())) as client:
         owner_headers = bearer(client, owner_login)
         other_headers = bearer(client, other_login)
-        result = client.get(f"/api/v1/cases/{case_id}/report", headers=owner_headers)
+        result = client.get(f"/api/v1/cases/{case_id}", headers=owner_headers)
         assert result.status_code == 200
-        assert result.json()["report_download_url"].endswith(
-            f"/{case_id}/report.pdf"
-        )
+        # 보고서와 대화를 한 번에 준다. PDF 링크는 경로가 고정이라 담지 않는다.
+        assert set(result.json()) == {"case", "report", "chat"}
+        assert result.json()["case"]["case_id"] == case_id
+        assert result.json()["chat"]["messages"] == []
         download = client.get(
             f"/api/v1/cases/{case_id}/report.pdf",
             headers=owner_headers,
@@ -491,7 +495,7 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
         assert download.headers["content-type"] == "application/pdf"
         assert download.content.startswith(b"%PDF-")
         assert client.get(
-            f"/api/v1/cases/{case_id}/report", headers=other_headers
+            f"/api/v1/cases/{case_id}", headers=other_headers
         ).status_code == 404
         assert client.get(
             f"/api/v1/cases/{case_id}/report.pdf", headers=other_headers
