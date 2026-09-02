@@ -129,19 +129,28 @@ def test_password_hash_is_argon2id_salted_and_verifiable() -> None:
 
 
 def test_access_token_contract_and_validation() -> None:
-    token = create_access_token(7, JWT_SECRET, 1800)
+    password_version = 1788356831.5
+    token = create_access_token(7, JWT_SECRET, 1800, password_version)
     claims = decode_access_token(token, JWT_SECRET)
 
     assert claims["sub"] == "7"
     assert isinstance(claims["iat"], float)
     assert claims["exp"] - claims["iat"] == 1800
-    assert set(claims) == {"sub", "iat", "exp"}
+    # 발급 당시의 비밀번호 버전을 그대로 담는다. 인증은 이 값이 DB 의
+    # 현재 값과 같은지만 보므로 앱과 DB 의 시계 차이가 끼어들지 않는다.
+    assert claims["pwd"] == password_version
+    assert set(claims) == {"sub", "iat", "exp", "pwd"}
 
     with pytest.raises(InvalidSignatureError):
         decode_access_token(token, "different-secret-that-is-32-bytes")
 
     expired = jwt.encode(
-        {"sub": "7", "iat": time.time() - 2, "exp": time.time() - 1},
+        {
+            "sub": "7",
+            "iat": time.time() - 2,
+            "exp": time.time() - 1,
+            "pwd": password_version,
+        },
         JWT_SECRET,
         algorithm="HS256",
     )
@@ -149,7 +158,12 @@ def test_access_token_contract_and_validation() -> None:
         decode_access_token(expired, JWT_SECRET)
 
     wrong_algorithm = jwt.encode(
-        {"sub": "7", "iat": time.time(), "exp": time.time() + 60},
+        {
+            "sub": "7",
+            "iat": time.time(),
+            "exp": time.time() + 60,
+            "pwd": password_version,
+        },
         "s" * 64,
         algorithm="HS384",
     )
@@ -316,11 +330,18 @@ def test_me_rejects_bad_tokens_and_returns_minimal_user(
         assert failure.headers["www-authenticate"] == "Bearer"
 
 
-def test_token_timestamp_boundary_uses_fractional_seconds(
+def test_token_is_bound_to_the_password_version_not_to_clock_order(
     client: TestClient,
     engine: Engine,
     create_user: Callable[..., int],
 ) -> None:
+    """토큰은 발급 당시의 비밀번호 버전에 묶인다.
+
+    두 시각의 앞뒤를 비교하지 않는다. password_changed_at 은 DB 시계로,
+    iat 는 앱 시계로 찍히는데 실측에서 DB 가 0.1~0.4초 앞서 있었고, 그 차이를
+    iat 로 메우면 PyJWT 가 미래 토큰(약 0.39초 초과)으로 보고 거부했다.
+    값이 같은지만 보면 시계 차이가 끼어들 여지가 없다.
+    """
     user_id = create_user("time-boundary-user")
     with engine.connect() as connection:
         changed_at = connection.scalar(
@@ -330,21 +351,27 @@ def test_token_timestamp_boundary_uses_fractional_seconds(
             {"user_id": user_id},
         )
     assert changed_at is not None
-    timestamp = changed_at.timestamp()
+    password_version = changed_at.timestamp()
 
-    exact = jwt.encode(
-        {"sub": str(user_id), "iat": timestamp, "exp": time.time() + 60},
-        JWT_SECRET,
-        algorithm="HS256",
-    )
-    older = jwt.encode(
-        {"sub": str(user_id), "iat": timestamp - 0.001, "exp": time.time() + 60},
-        JWT_SECRET,
-        algorithm="HS256",
-    )
+    def token_with(pwd: float) -> str:
+        return jwt.encode(
+            {
+                "sub": str(user_id),
+                "iat": time.time(),
+                "exp": time.time() + 60,
+                "pwd": pwd,
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
 
-    assert client.get("/api/v1/auth/me", headers=bearer(exact)).status_code == 200
-    assert client.get("/api/v1/auth/me", headers=bearer(older)).status_code == 401
+    # 발급 시각은 둘 다 지금이다. 통과 여부를 가르는 것은 비밀번호 버전뿐이다.
+    assert client.get(
+        "/api/v1/auth/me", headers=bearer(token_with(password_version))
+    ).status_code == 200
+    assert client.get(
+        "/api/v1/auth/me", headers=bearer(token_with(password_version - 0.001))
+    ).status_code == 401
 
 
 def test_existing_token_is_rejected_after_user_is_deactivated(

@@ -1,4 +1,3 @@
-import time
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -72,12 +71,10 @@ def _issue_token(
     user_id: int,
     password_changed_at: datetime,
 ) -> TokenResponse:
-    """비밀번호 변경 시각보다 이르지 않은 발급 시각을 쓴다.
+    """토큰에 지금의 비밀번호 버전을 함께 담는다.
 
-    인증은 password_changed_at 보다 먼저 발급된 토큰을 거부하는데, 그 값은
-    DB 시계로 찍히고 토큰은 앱 시계로 찍힌다. 앱이 DB 보다 조금이라도
-    뒤지면 비밀번호를 바꾼 직후 발급한 토큰이 곧바로 거부된다. 두 시각 중
-    늦은 쪽을 써서 그 창을 없앤다.
+    인증은 이 값이 DB 의 현재 값과 같은지만 본다. 비밀번호가 바뀌면 값이
+    달라져 그 전에 발급된 토큰이 전부 무효가 된다.
     """
     settings = request.app.state.settings
     return TokenResponse(
@@ -85,7 +82,7 @@ def _issue_token(
             user_id,
             settings.jwt_secret.get_secret_value(),
             settings.jwt_access_token_expire_minutes * 60,
-            issued_at=max(time.time(), password_changed_at.timestamp()),
+            password_changed_at.timestamp(),
         )
     )
 

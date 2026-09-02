@@ -35,11 +35,13 @@ def get_current_user(
             request.app.state.settings.jwt_secret.get_secret_value(),
         )
         subject = claims["sub"]
-        issued_at = claims["iat"]
+        password_version = claims["pwd"]
         if not isinstance(subject, str) or not subject.isdigit():
             raise ValueError("Invalid token subject")
-        if isinstance(issued_at, bool) or not isinstance(issued_at, (int, float)):
-            raise ValueError("Invalid token issued-at time")
+        if isinstance(password_version, bool) or not isinstance(
+            password_version, (int, float)
+        ):
+            raise ValueError("Invalid token password version")
         user = get_user_by_id(
             request.app.state.database_engine,
             int(subject),
@@ -47,10 +49,13 @@ def get_current_user(
     except (InvalidTokenError, KeyError, TypeError, ValueError):
         raise unauthorized() from None
 
+    # 발급 당시의 비밀번호 버전과 지금 값을 비교한다. 앞뒤를 재지 않으므로
+    # 앱과 DB 의 시계 차이가 끼어들지 않는다. 비밀번호가 바뀌면 값이 달라져
+    # 그 전에 발급된 토큰이 전부 무효가 된다.
     if (
         user is None
         or not user.is_active
-        or float(issued_at) < user.password_changed_at.timestamp()
+        or float(password_version) != user.password_changed_at.timestamp()
     ):
         raise unauthorized()
 

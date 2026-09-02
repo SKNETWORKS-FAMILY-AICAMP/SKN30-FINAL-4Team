@@ -216,7 +216,7 @@ def test_reset_token_is_domain_separated_expiring_and_fingerprint_bound(
             JWT_SECRET,
         )
 
-    access_token = create_access_token(user_id, JWT_SECRET, 600)
+    access_token = create_access_token(user_id, JWT_SECRET, 600, time.time())
     with pytest.raises(InvalidResetTokenError):
         decode_password_reset_token(access_token, JWT_SECRET)
 
