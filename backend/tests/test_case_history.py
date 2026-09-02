@@ -9,6 +9,7 @@ from sqlalchemy import Engine, create_engine, text
 
 from app.core.config import Settings
 from app.core.security import hash_password
+from app.services.document_parsing import fail_interrupted_analyses
 from main import create_app
 
 
@@ -351,3 +352,65 @@ def test_history_rejects_a_forged_cursor(
         params={"cursor": "not-a-real-cursor"},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "internal_status",
+    ["UPLOADED", "PARSING", "CHECKING", "RETRIEVING", "REPORTING"],
+)
+def test_restart_marks_unfinished_analyses_as_failed(
+    engine: Engine,
+    create_user: Callable[[str], int],
+    internal_status: str,
+) -> None:
+    """서버가 뜰 때 끝나지 않은 분석을 실패로 정리한다.
+
+    분석은 프로세스 안의 태스크로만 돌기 때문에 프로세스가 새로 뜨면 이전
+    진행 건은 유실된 상태다. 그대로 두면 화면이 영원히 분석 중으로 남는다.
+    """
+    login_id = f"history-interrupted-{uuid.uuid4().hex[:8]}"
+    user_id = create_user(login_id)
+    case_id = make_case(
+        engine,
+        user_id,
+        status=internal_status,
+        created_at=datetime.now(timezone.utc),
+        filename="interrupted.hwpx",
+    )
+
+    assert fail_interrupted_analyses(engine) >= 1
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT status, failure_code FROM sims.inspection_case "
+                "WHERE id = :case_id"
+            ),
+            {"case_id": case_id},
+        ).mappings().one()
+    assert row["status"] == "FAILED"
+    assert row["failure_code"] == "ANALYSIS_INTERRUPTED"
+
+
+def test_restart_does_not_touch_finished_analyses(
+    engine: Engine,
+    create_user: Callable[[str], int],
+) -> None:
+    login_id = f"history-finished-{uuid.uuid4().hex[:8]}"
+    user_id = create_user(login_id)
+    done = make_case(
+        engine,
+        user_id,
+        status="COMPLETED",
+        created_at=datetime.now(timezone.utc),
+        filename="done.hwpx",
+    )
+
+    fail_interrupted_analyses(engine)
+
+    with engine.connect() as connection:
+        status = connection.scalar(
+            text("SELECT status FROM sims.inspection_case WHERE id = :case_id"),
+            {"case_id": done},
+        )
+    assert status == "COMPLETED"

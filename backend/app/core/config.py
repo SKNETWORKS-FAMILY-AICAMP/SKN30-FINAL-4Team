@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
     database_connect_timeout_seconds: int = Field(default=3, ge=1)
     jwt_secret: SecretStr = Field(min_length=32)
-    jwt_access_token_expire_minutes: int = Field(default=30, ge=1)
+    jwt_access_token_expire_minutes: int = Field(default=60, ge=1)
+    # 기동할 때 끊긴 분석을 실패로 정리할지. 분석이 프로세스 안의 태스크로만
+    # 돌기 때문에 단일 프로세스에서는 켜 두는 것이 맞다. 서버를 여러 개
+    # 띄우면 새로 뜬 쪽이 다른 쪽에서 처리 중인 건을 죽이므로 꺼야 한다.
+    sweep_interrupted_analyses_on_startup: bool = True
     smtp_host: str | None = None
     smtp_port: int = Field(default=465, ge=1, le=65535)
     smtp_username: str | None = None

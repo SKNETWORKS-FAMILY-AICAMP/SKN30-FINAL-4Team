@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -30,7 +32,10 @@ from app.ports.mail_sender import MailSender
 from app.infrastructure.smtp_mail_sender import SmtpMailSender
 from app.services.password_reset import ResetRateLimiter
 from app.services.analysis_pipeline import run_analysis_pipeline
+from app.services.document_parsing import fail_interrupted_analyses
 
+
+logger = logging.getLogger(__name__)
 
 _LLM_FROM_SETTINGS = object()
 _EMBEDDING_FROM_SETTINGS = object()
@@ -54,6 +59,32 @@ def create_app(
         )
         application.state.database_engine = engine
         application.state.settings = runtime_settings
+
+        # 분석은 이 프로세스 안의 태스크로만 돈다. 새로 뜨는 순간 이전에
+        # 진행 중이던 건은 유실된 상태이므로, 영원히 분석 중으로 남지 않게
+        # 실패로 정리한다.
+        #
+        # 기동을 막지 않고 뒤에서 돌린다. DB 가 없어도 서버는 떠야 하고
+        # /health/live 는 응답해야 한다. 실패하면 다음 기동에 다시 시도된다.
+        async def sweep_interrupted() -> None:
+            try:
+                interrupted = await asyncio.to_thread(
+                    fail_interrupted_analyses, engine
+                )
+            except Exception as error:
+                logger.warning(
+                    "끊긴 분석 정리를 건너뜁니다: %s", type(error).__name__
+                )
+            else:
+                if interrupted:
+                    logger.warning(
+                        "서버 재시작으로 끊긴 분석 %s건을 실패로 정리했습니다",
+                        interrupted,
+                    )
+
+        sweep_task: asyncio.Task[None] | None = None
+        if runtime_settings.sweep_interrupted_analyses_on_startup:
+            sweep_task = asyncio.create_task(sweep_interrupted())
         active_mail_sender = mail_sender
         if active_mail_sender is None and all((
             runtime_settings.smtp_host, runtime_settings.smtp_username,
@@ -129,6 +160,8 @@ def create_app(
             yield
         finally:
             await dispatcher.shutdown()
+            if sweep_task is not None:
+                sweep_task.cancel()
             engine.dispose()
 
     application = FastAPI(

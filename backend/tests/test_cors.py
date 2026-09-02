@@ -28,6 +28,8 @@ def settings_for(
     values: dict[str, object] = {
         "bizinfo_api_key": None,
         "openai_api_key": None,
+        # DB 가 닿지 않는 앱이라 기동 정리가 연결 타임아웃을 기다리게 된다.
+        "sweep_interrupted_analyses_on_startup": False,
     }
     values.update(overrides)
     return Settings(

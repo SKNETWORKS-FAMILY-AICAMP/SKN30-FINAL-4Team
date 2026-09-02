@@ -15,7 +15,12 @@ TEST_JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 
 
 def settings_for(database_url: str) -> Settings:
-    return Settings(database_url=database_url, jwt_secret=TEST_JWT_SECRET)
+    return Settings(
+        database_url=database_url,
+        jwt_secret=TEST_JWT_SECRET,
+        # DB 가 닿지 않는 앱이라 기동 정리가 연결 타임아웃을 기다리게 된다.
+        sweep_interrupted_analyses_on_startup=False,
+    )
 
 
 def test_live_works_while_database_is_unreachable() -> None:

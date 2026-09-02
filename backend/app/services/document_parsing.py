@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 SAFE_FAILURE_CODE = "DOCUMENT_PARSE_FAILED"
 SAFE_FAILURE_MESSAGE = "The uploaded document could not be parsed"
 
+INTERRUPTED_FAILURE_CODE = "ANALYSIS_INTERRUPTED"
+INTERRUPTED_FAILURE_MESSAGE = "The analysis did not survive a server restart"
+
+# 분석이 끝나지 않은 상태들. 프로세스가 사라지면 이 상태로 영원히 남는다.
+UNFINISHED_STATUSES = ("UPLOADED", "PARSING", "CHECKING", "RETRIEVING", "REPORTING")
+
 
 class CaseNotFoundError(LookupError):
     pass
@@ -489,3 +495,58 @@ def _record_failure(engine: Engine, case_id: int) -> None:
                 "failure_message": SAFE_FAILURE_MESSAGE,
             },
         )
+
+
+def fail_interrupted_analyses(engine: Engine) -> int:
+    """서버가 뜰 때 끝나지 않은 분석을 실패로 정리한다.
+
+    분석은 이 프로세스 안의 태스크로만 돌기 때문에, 프로세스가 새로 뜨는
+    순간 이전에 진행 중이던 건은 반드시 유실된 상태다. 그대로 두면 화면이
+    영원히 분석 중으로 남는다. 실패로 바꾸면 업로드 화면이 알려줄 수 있다.
+
+    기록은 지우지 않는다. 이력에는 완료된 건만 담으므로 사용자 눈에는
+    보이지 않는다.
+
+    주의: 서버를 여러 개 띄우면 새로 뜬 쪽이 다른 쪽에서 처리 중인 건을
+    죽인다. 지금은 단일 프로세스 전제이며, 워커를 늘릴 때는 시간 기준
+    정리로 바꿔야 한다.
+    """
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE sims.document_parse_run r
+                SET status = 'FAILED',
+                    error_code = :failure_code,
+                    error_message = :failure_message,
+                    finished_at = statement_timestamp()
+                FROM sims.uploaded_document d
+                JOIN sims.inspection_case c ON c.id = d.inspection_case_id
+                WHERE d.file_asset_id = r.file_asset_id
+                  AND r.status IN ('PENDING', 'PARSING')
+                  AND c.status = ANY(:statuses)
+                """
+            ),
+            {
+                "failure_code": INTERRUPTED_FAILURE_CODE,
+                "failure_message": INTERRUPTED_FAILURE_MESSAGE,
+                "statuses": list(UNFINISHED_STATUSES),
+            },
+        )
+        result = connection.execute(
+            text(
+                """
+                UPDATE sims.inspection_case
+                SET status = 'FAILED',
+                    failure_code = :failure_code,
+                    failure_message = :failure_message
+                WHERE status = ANY(:statuses)
+                """
+            ),
+            {
+                "failure_code": INTERRUPTED_FAILURE_CODE,
+                "failure_message": INTERRUPTED_FAILURE_MESSAGE,
+                "statuses": list(UNFINISHED_STATUSES),
+            },
+        )
+    return result.rowcount
