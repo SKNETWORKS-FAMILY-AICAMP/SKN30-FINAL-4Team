@@ -14,9 +14,15 @@ from sqlalchemy import Engine, create_engine, text
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.infrastructure.local_object_storage import LocalObjectStorage
+from app.infrastructure import reportlab_pdf_renderer as renderer_module
 from app.infrastructure.reportlab_pdf_renderer import ReportLabPdfRenderer
 from app.schemas.cpl import CPL_FIELDS, CplItem, CplOccurrence, CplResult, CplStatus
-from app.schemas.report import REPORT_SCHEMA_VERSION, ReportEvidence
+from app.schemas.report import (
+    REPORT_SCHEMA_VERSION,
+    CplItemDisplay,
+    ReportEvidence,
+    ReportExcerpt,
+)
 import app.services.reporting as reporting
 from app.services.reporting import (
     ReportNotReadyError,
@@ -410,9 +416,40 @@ def test_reportlab_renderer_produces_pdf_bytes(
         sim_results=[],
         expected_candidate_count=0,
     )
-    content = asyncio.run(ReportLabPdfRenderer().render(report))
+    # PDF 는 화면과 같은 투영을 그린다. 내부 보고서를 넘기지 않는다.
+    content = asyncio.run(
+        ReportLabPdfRenderer().render(reporting._report_response(report))
+    )
     assert content.startswith(b"%PDF-")
     assert len(content) > 1_000
+
+
+def test_pdf_rows_carry_the_same_labels_and_evidence_as_the_screen() -> None:
+    """화면에 나가는 근거가 PDF 행에도 실려야 한다.
+
+    이전 렌더러는 내부 보고서를 그리면서 근거를 아예 읽지 않았고, 화면에서
+    뺀 확인율과 점수를 대신 찍었다.
+    """
+
+    styles = renderer_module._styles("Helvetica")
+    row = renderer_module._cpl_row(
+        CplItemDisplay(
+            field_code="PURPOSE_GOAL",
+            status=CplStatus.NEEDS_CONFIRMATION,
+            evidence=[ReportExcerpt(excerpt="사업 목적 원문 발췌")],
+        ),
+        styles,
+    )
+    rendered = [cell.text for cell in row]
+    assert rendered[0] == "사업 목적·목표"
+    assert rendered[1] == "확인 필요"
+    assert "사업 목적 원문 발췌" in rendered[2]
+
+    empty = renderer_module._cpl_row(
+        CplItemDisplay(field_code="BUDGET", status=CplStatus.PRESENT),
+        styles,
+    )
+    assert [cell.text for cell in empty] == ["예산", "확인", "-"]
 
 
 def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(

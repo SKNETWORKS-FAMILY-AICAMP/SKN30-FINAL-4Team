@@ -100,7 +100,8 @@ async def finalize_report(
             sim_results=sim_results,
             expected_candidate_count=expected_candidate_count,
         )
-        pdf_bytes = await renderer.render(report)
+        # 화면과 같은 것을 그린다. 내부 보고서를 그리면 둘이 어긋난다.
+        pdf_bytes = await renderer.render(_report_response(report))
         if not pdf_bytes.startswith(b"%PDF-"):
             raise ValueError("PDF renderer returned invalid content")
         stored = await storage.put(storage_key, io.BytesIO(pdf_bytes))
