@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -64,8 +65,9 @@ def create_app(
         # 진행 중이던 건은 유실된 상태이므로, 영원히 분석 중으로 남지 않게
         # 실패로 정리한다.
         #
-        # 기동을 막지 않고 뒤에서 돌린다. DB 가 없어도 서버는 떠야 하고
-        # /health/live 는 응답해야 한다. 실패하면 다음 기동에 다시 시도된다.
+        # 단일 프로세스가 요청을 받기 전에 정리해야 새 업로드와 경합하지 않는다.
+        # DB 가 없어도 예외를 삼키므로 서버는 그대로 뜨고, 다음 기동에 다시
+        # 시도된다.
         async def sweep_interrupted() -> None:
             try:
                 interrupted = await asyncio.to_thread(
@@ -82,13 +84,13 @@ def create_app(
                         interrupted,
                     )
 
-        sweep_task: asyncio.Task[None] | None = None
         if runtime_settings.sweep_interrupted_analyses_on_startup:
-            sweep_task = asyncio.create_task(sweep_interrupted())
+            await sweep_interrupted()
         active_mail_sender = mail_sender
         if active_mail_sender is None and all((
             runtime_settings.smtp_host, runtime_settings.smtp_username,
             runtime_settings.smtp_password, runtime_settings.smtp_from_email,
+            runtime_settings.password_reset_url,
         )):
             active_mail_sender = SmtpMailSender(
                 host=runtime_settings.smtp_host,
@@ -98,7 +100,7 @@ def create_app(
                 from_email=runtime_settings.smtp_from_email,
             )
         application.state.mail_sender = active_mail_sender
-        if active_mail_sender is None:
+        if active_mail_sender is None or not runtime_settings.password_reset_url:
             # 사용자에게는 알리지 않기로 했으므로 운영자가 볼 곳은 여기뿐이다.
             logger.warning(
                 "SMTP 설정이 없어 비밀번호 재설정 메일이 발송되지 않습니다"
@@ -164,38 +166,24 @@ def create_app(
             yield
         finally:
             await dispatcher.shutdown()
-            if sweep_task is not None:
-                sweep_task.cancel()
             engine.dispose()
 
     application = FastAPI(
         title="Pre-review API",
         version="1.0.0",
         summary="사전협의 요청서 AI 사전검토 서비스의 백엔드 API",
-        description=(
-            "이 문서가 프론트와의 계약이다. **어떤 상황에 어떤 상태 코드가 나가는지**가 "
-            "계약의 핵심이며, 화면에 띄울 문구는 프론트가 상태 코드를 보고 정한다. "
-            "응답의 `message` 는 폴백이자 여기 설명용이다. "
-            "성공 응답은 공통 래퍼 없이 데이터만 담고, 실패 응답은 문구 하나만 담는다. "
-            "로그인과 비밀번호 재설정을 뺀 모든 API 는 `Authorization: Bearer <토큰>` 이 필요하다."
-        ),
         openapi_tags=[
             {
                 "name": "인증",
                 "description": (
                     "로그인·세션 연장·비밀번호 변경과 재설정. "
-                    "세션은 1시간이고 자동으로 늘어나지 않는다. 연장 시점은 화면이 정한다. "
-                    "로그아웃 API 는 없다. 저장한 토큰을 지우는 것으로 끝나며 그 토큰은 "
-                    "만료까지 유효하다."
+                    "세션은 1시간이고 자동으로 늘어나지 않습니다. 연장 시점은 화면이 정하며, "
+                    "로그아웃 API는 따로 두지 않았습니다."
                 ),
             },
             {
                 "name": "분석",
-                "description": (
-                    "요청서 업로드부터 결과 조회·PDF·AI 질의응답까지. "
-                    "업로드가 곧 분석 시작이며 따로 시작하는 API 는 없다. "
-                    "진행 상태는 롱폴링으로 확인한다."
-                ),
+                "description": "요청서를 업로드하고 분석 진행 상태와 결과를 조회합니다. PDF 다운로드와 AI 질의응답을 제공합니다.",
             },
         ],
         lifespan=lifespan,
@@ -214,7 +202,10 @@ def create_app(
     )
 
     # 비밀번호 흐름의 응답은 캐시에 남기지 않는다.
-    _NO_STORE_PATHS = {"/api/v1/auth/password-reset/request"}
+    _NO_STORE_PATHS = {
+        "/api/v1/auth/password/reset/request",
+        "/api/v1/auth/password/reset/confirm",
+    }
 
     def _no_store(request: Request) -> dict[str, str]:
         return (
@@ -237,9 +228,12 @@ def create_app(
             }
             for item in error.errors()
         ]
+        # 로그인 입력 검증 실패도 인증 실패와 구분하지 않는다. 그 외 요청의
+        # 형식·값 검증 오류는 프론트 계약의 일반 입력 오류인 400으로 통일한다.
+        response_status = 401 if request.url.path == "/api/v1/auth/login" else 400
         return JSONResponse(
-            status_code=422,
-            content=jsonable_encoder(error_body(422, safe_errors)),
+            status_code=response_status,
+            content=jsonable_encoder(error_body(response_status, safe_errors)),
             headers=_no_store(request),
         )
 
@@ -257,6 +251,27 @@ def create_app(
         )
 
     application.include_router(router)
+
+    # FastAPI는 검증 가능한 경로·본문이 있으면 422를 자동으로 OpenAPI에
+    # 추가한다. 실제 응답 계약은 400(로그인은 401)이므로 자동 항목을 제거한다.
+    def custom_openapi() -> dict:
+        if application.openapi_schema:
+            return application.openapi_schema
+        schema = get_openapi(
+            title=application.title,
+            version=application.version,
+            summary=application.summary,
+            routes=application.routes,
+            tags=application.openapi_tags,
+        )
+        for path_item in schema.get("paths", {}).values():
+            for operation in path_item.values():
+                if isinstance(operation, dict):
+                    operation.get("responses", {}).pop("422", None)
+        application.openapi_schema = schema
+        return schema
+
+    application.openapi = custom_openapi  # type: ignore[method-assign]
     return application
 
 

@@ -302,7 +302,7 @@ def test_invalid_login_password_is_not_echoed(client: TestClient) -> None:
         json={"email": "any-user@example.com", "password": exposed_password},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 401
     assert exposed_password not in response.text
 
 
@@ -399,7 +399,7 @@ def test_password_change_is_atomic_and_invalidates_old_token(
     old_token = login(client, "password-change-user", OLD_PASSWORD)
 
     response = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(old_token),
         json={"current_password": OLD_PASSWORD, "new_password": NEW_PASSWORD},
     )
@@ -464,12 +464,11 @@ def test_failed_password_change_leaves_no_history(
     token = login(client, login_id, stored_password)
 
     response = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json={"current_password": current_password, "new_password": new_password},
     )
-    expected_status = 422 if current_password == new_password else 400
-    assert response.status_code == expected_status
+    assert response.status_code == 400
     assert set(response.json()) == {"message"}
     with engine.connect() as connection:
         assert connection.scalar(
@@ -493,11 +492,11 @@ def test_invalid_change_password_input_is_not_echoed(
     body[field] = exposed_password
 
     response = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json=body,
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert exposed_password not in response.text
 
 
@@ -512,17 +511,17 @@ def test_unicode_password_can_be_compared_and_changed(
     token = login(client, "unicode-password-user", current_password)
 
     unchanged = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json={
             "current_password": current_password,
             "new_password": current_password,
         },
     )
-    assert unchanged.status_code == 422
+    assert unchanged.status_code == 400
 
     changed = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json={"current_password": current_password, "new_password": new_password},
     )

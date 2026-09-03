@@ -1,25 +1,37 @@
 import os
 import ssl
 import smtplib
+import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
+from app.api.v1.password_reset import PasswordResetConfirmRequest
 from app.core.config import Settings
-from app.core.password_policy import validate_new_password
-from app.core.security import hash_password, verify_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.services.password_reset import (
+    InvalidResetTokenError,
+    RESET_TOKEN_AUDIENCE,
+    RESET_TOKEN_PURPOSE,
+    RESET_TOKEN_TTL_SECONDS,
     ResetRateLimiter,
-    generate_temporary_password,
+    confirm_password_reset,
+    create_password_reset_token,
+    decode_password_reset_token,
 )
 from main import create_app
 
 
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 OLD_PASSWORD = "old-password-without-digit"
+NEW_PASSWORD = "New-password-1!"
+RESET_REQUEST_PATH = "/api/v1/auth/password/reset/request"
+RESET_CONFIRM_PATH = "/api/v1/auth/password/reset/confirm"
 
 
 @dataclass
@@ -27,10 +39,10 @@ class FakeMailSender:
     sent: list[tuple[str, str]] = field(default_factory=list)
     fail: bool = False
 
-    def send_temporary_password(self, to_email: str, temporary_password: str) -> None:
+    def send_password_reset(self, to_email: str, reset_url: str) -> None:
         if self.fail:
             raise OSError("smtp unavailable")
-        self.sent.append((to_email, temporary_password))
+        self.sent.append((to_email, reset_url))
 
 
 @pytest.fixture(scope="module")
@@ -98,175 +110,246 @@ def mail_sender() -> FakeMailSender:
 
 @pytest.fixture
 def client(database_url: str, mail_sender: FakeMailSender) -> Iterator[TestClient]:
-    settings = Settings(database_url=database_url, jwt_secret=JWT_SECRET)
+    settings = Settings(
+        database_url=database_url,
+        jwt_secret=JWT_SECRET,
+        password_reset_url="http://localhost:3000/reset-password",
+    )
     with TestClient(create_app(settings, mail_sender=mail_sender)) as value:
         yield value
 
 
-def _password_hash(engine: Engine, user_id: int) -> str:
+def _row(engine: Engine, user_id: int) -> dict[str, object]:
     with engine.connect() as connection:
-        return str(
-            connection.scalar(
-                text("SELECT password_hash FROM sims.app_user WHERE id = :user_id"),
+        return dict(
+            connection.execute(
+                text(
+                    """
+                    SELECT id, email::text AS email, password_hash, password_changed_at
+                    FROM sims.app_user WHERE id = :user_id
+                    """
+                ),
                 {"user_id": user_id},
             )
+            .mappings()
+            .one()
         )
 
 
-def test_generated_temporary_password_always_satisfies_the_policy() -> None:
-    """정책을 만족할 때까지 다시 뽑는 방식이 아니라 확정적으로 만족해야 한다."""
-
-    passwords = {generate_temporary_password() for _ in range(200)}
-    for password in passwords:
-        validate_new_password(password)
-    # 매번 같은 값이 나오면 임시 비밀번호의 의미가 없다.
-    assert len(passwords) > 190
+def test_new_password_schema_requires_ascii_letter_digit_and_punctuation() -> None:
+    PasswordResetConfirmRequest(token="token", new_password=NEW_PASSWORD)
+    for password in ("short1!", "abcdefgh!", "abcdefg1", "가나다라마바사1!"):
+        with pytest.raises(ValueError):
+            PasswordResetConfirmRequest(token="token", new_password=password)
 
 
-def test_request_has_generic_response_and_mails_only_active_registered_email(
+def test_request_has_generic_response_and_sends_only_to_active_registered_email(
     client: TestClient,
     create_user: Callable[..., int],
     mail_sender: FakeMailSender,
 ) -> None:
     create_user("reset-request-user", email="Reset.User@example.com")
-    create_user("reset-inactive-user", email="inactive@example.com", is_active=False)
 
-    responses = [
-        client.post("/api/v1/auth/password-reset/request", json={"email": email})
-        for email in (
-            "reset.user@example.com",
-            "unknown@example.com",
-            "inactive@example.com",
-        )
-    ]
+    registered = client.post(RESET_REQUEST_PATH, json={"email": "reset.user@example.com"})
+    unknown = client.post(RESET_REQUEST_PATH, json={"email": "unknown@example.com"})
 
-    assert {response.status_code for response in responses} == {200}
-    # 가입 여부·활성 여부를 응답으로 구분할 수 없어야 한다. 본문은 문구 하나뿐이다.
-    assert responses[0].json() == responses[1].json() == responses[2].json()
-    assert set(responses[0].json()) == {"message"}
+    assert registered.status_code == unknown.status_code == 200
+    assert registered.json() == unknown.json()
+    assert set(registered.json()) == {"message"}
     assert len(mail_sender.sent) == 1
-    to_email, temporary_password = mail_sender.sent[0]
+    to_email, reset_url = mail_sender.sent[0]
     assert to_email == "Reset.User@example.com"
-    validate_new_password(temporary_password)
+    assert reset_url.startswith("http://localhost:3000/reset-password?token=")
 
 
-def test_mailed_temporary_password_replaces_the_old_one_and_its_sessions(
+def test_reset_token_is_domain_separated_expiring_and_fingerprint_bound(
+    engine: Engine,
+    create_user: Callable[..., int],
+) -> None:
+    user_id = create_user("reset-token-user", email="token@example.com")
+    user = _row(engine, user_id)
+    token = create_password_reset_token(
+        user_id,
+        str(user["email"]),
+        user["password_changed_at"],
+        JWT_SECRET,
+    )
+    claims = decode_password_reset_token(token, JWT_SECRET)
+    assert claims["uid"] == str(user_id)
+    assert claims["aud"] == RESET_TOKEN_AUDIENCE
+    assert claims["purpose"] == RESET_TOKEN_PURPOSE
+    assert "sub" not in claims
+    assert claims["exp"] - claims["iat"] == RESET_TOKEN_TTL_SECONDS
+
+    with pytest.raises(InvalidResetTokenError):
+        decode_password_reset_token(token + "x", JWT_SECRET)
+    with pytest.raises(InvalidResetTokenError):
+        decode_password_reset_token(
+            jwt.encode(
+                {"sub": str(user_id), "iat": time.time(), "exp": time.time() + 60},
+                JWT_SECRET,
+                algorithm="HS256",
+            ),
+            JWT_SECRET,
+        )
+    with pytest.raises(InvalidResetTokenError):
+        decode_password_reset_token(
+            create_password_reset_token(
+                user_id,
+                str(user["email"]),
+                user["password_changed_at"],
+                JWT_SECRET,
+                now=time.time() - RESET_TOKEN_TTL_SECONDS - 1,
+            ),
+            JWT_SECRET,
+        )
+
+    access_token = create_access_token(user_id, JWT_SECRET, 600, time.time())
+    with pytest.raises(InvalidResetTokenError):
+        decode_password_reset_token(access_token, JWT_SECRET)
+
+
+def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_tokens(
     client: TestClient,
     engine: Engine,
     create_user: Callable[..., int],
     mail_sender: FakeMailSender,
 ) -> None:
-    user_id = create_user("temp-login-user", email="temp-login@example.com")
-    signed_in = client.post(
+    user_id = create_user("reset-confirm-user", email="confirm@example.com")
+    access_response = client.post(
         "/api/v1/auth/login",
-        json={"email": "temp-login@example.com", "password": OLD_PASSWORD},
+        json={"email": "confirm@example.com", "password": OLD_PASSWORD},
     )
-    assert signed_in.status_code == 200
-    access_token = signed_in.json()["access_token"]
+    assert access_response.status_code == 200
+    access_token = access_response.json()["access_token"]
+    request_response = client.post(
+        RESET_REQUEST_PATH,
+        json={"email": "confirm@example.com"},
+    )
+    assert request_response.status_code == 200
+    reset_token = mail_sender.sent[-1][1].split("?token=", 1)[1]
 
-    client.post(
-        "/api/v1/auth/password-reset/request",
-        json={"email": "temp-login@example.com"},
+    confirmed = client.post(
+        RESET_CONFIRM_PATH,
+        json={"token": reset_token, "new_password": NEW_PASSWORD},
     )
-    _, temporary_password = mail_sender.sent[0]
-
-    with_temporary = client.post(
-        "/api/v1/auth/login",
-        json={"email": "temp-login@example.com", "password": temporary_password},
-    )
-    with_old = client.post(
-        "/api/v1/auth/login",
-        json={"email": "temp-login@example.com", "password": OLD_PASSWORD},
-    )
-
-    assert with_temporary.status_code == 200
-    assert with_temporary.json()["access_token"]
-    assert with_old.status_code == 401
-    # 발급 전에 로그인해 둔 세션도 끊긴다.
+    assert confirmed.status_code == 200
+    assert set(confirmed.json()) == {"message"}
     assert client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {access_token}"},
     ).status_code == 401
+    assert client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {reset_token}"},
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "confirm@example.com", "password": OLD_PASSWORD},
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "confirm@example.com", "password": NEW_PASSWORD},
+    ).status_code == 200
+
     with engine.connect() as connection:
-        assert connection.scalar(
+        row = connection.execute(
             text(
-                "SELECT count(*) FROM sims.password_change_history"
-                " WHERE user_id = :user_id"
+                """
+                SELECT password_hash,
+                       (SELECT count(*) FROM sims.password_change_history h
+                        WHERE h.user_id = sims.app_user.id) AS history_count
+                FROM sims.app_user WHERE id = :user_id
+                """
             ),
             {"user_id": user_id},
-        ) == 1
+        ).mappings().one()
+    assert verify_password(NEW_PASSWORD, row["password_hash"])
+    assert row["history_count"] == 1
+    reused = client.post(
+        RESET_CONFIRM_PATH,
+        json={"token": reset_token, "new_password": "Another-password-2!"},
+    )
+    assert reused.status_code == 400
+    assert set(reused.json()) == {"message"}
 
 
-def test_failed_delivery_leaves_the_old_password_working(
-    database_url: str,
+def test_reset_token_rejects_email_change_and_inactive_user(
+    client: TestClient,
+    engine: Engine,
+    create_user: Callable[..., int],
+    mail_sender: FakeMailSender,
+) -> None:
+    user_id = create_user("email-change-reset", email="before@example.com")
+    user = _row(engine, user_id)
+    token = create_password_reset_token(
+        user_id,
+        str(user["email"]),
+        user["password_changed_at"],
+        JWT_SECRET,
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE sims.app_user SET email = :email WHERE id = :user_id"),
+            {"email": "after@example.com", "user_id": user_id},
+        )
+    changed = client.post(
+        RESET_CONFIRM_PATH,
+        json={"token": token, "new_password": NEW_PASSWORD},
+    )
+    assert changed.status_code == 400
+
+    active_id = create_user("deactivated-reset", email="deactivate@example.com")
+    active_user = _row(engine, active_id)
+    active_token = create_password_reset_token(
+        active_id,
+        str(active_user["email"]),
+        active_user["password_changed_at"],
+        JWT_SECRET,
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE sims.app_user SET is_active = false WHERE id = :user_id"),
+            {"user_id": active_id},
+        )
+    deactivated = client.post(
+        RESET_CONFIRM_PATH,
+        json={"token": active_token, "new_password": NEW_PASSWORD},
+    )
+    assert deactivated.status_code == 400
+
+    create_user("inactive-reset", email="inactive@example.com", is_active=False)
+    response = client.post(
+        RESET_REQUEST_PATH,
+        json={"email": "inactive@example.com"},
+    )
+    assert response.status_code == 200
+    assert not any(address == "inactive@example.com" for address, _ in mail_sender.sent)
+
+
+def test_concurrent_reset_with_one_token_has_one_winner(
     engine: Engine,
     create_user: Callable[..., int],
 ) -> None:
-    """보내지 못했으면 바꾸지도 않아야 한다.
-
-    먼저 바꾸고 나서 발송이 실패하면 아무도 모르는 값으로 계정이 잠긴다.
-    """
-
-    user_id = create_user("mail-failure-user", email="mail-failure@example.com")
-    before = _password_hash(engine, user_id)
-
-    settings = Settings(database_url=database_url, jwt_secret=JWT_SECRET)
-    with TestClient(
-        create_app(settings, mail_sender=FakeMailSender(fail=True))
-    ) as client:
-        response = client.post(
-            "/api/v1/auth/password-reset/request",
-            json={"email": "mail-failure@example.com"},
-        )
-        login = client.post(
-            "/api/v1/auth/login",
-            json={"email": "mail-failure@example.com", "password": OLD_PASSWORD},
-        )
-
-    assert response.status_code == 200
-    assert login.status_code == 200
-    assert _password_hash(engine, user_id) == before
-    assert verify_password(OLD_PASSWORD, before)
-
-
-def test_mail_problems_are_hidden_from_the_screen(
-    database_url: str,
-    create_user: Callable[..., int],
-) -> None:
-    """메일이 나가지 않아도 화면에는 드러내지 않는다.
-
-    가입 여부를 숨기는 것과 같은 이유다. 발송 실패든 설정 누락이든 응답이
-    같아야 이메일을 넣어보며 무언가를 알아낼 수 없다. 운영자는 서버 로그로
-    확인한다.
-    """
-
-    settings = Settings(database_url=database_url, jwt_secret=JWT_SECRET)
-    create_user("smtp-failure-user", email="smtp-failure@example.com")
-
-    # 발송이 실패하는 경우
-    with TestClient(
-        create_app(settings, mail_sender=FakeMailSender(fail=True))
-    ) as client:
-        failed = client.post(
-            "/api/v1/auth/password-reset/request",
-            json={"email": "smtp-failure@example.com"},
-        )
-
-    # 메일 기능이 아예 설정돼 있지 않은 경우
-    unconfigured_settings = Settings(
-        _env_file=None,
-        database_url=database_url,
-        jwt_secret=JWT_SECRET,
+    user_id = create_user("concurrent-reset", email="concurrent@example.com")
+    user = _row(engine, user_id)
+    token = create_password_reset_token(
+        user_id,
+        str(user["email"]),
+        user["password_changed_at"],
+        JWT_SECRET,
     )
-    with TestClient(create_app(unconfigured_settings)) as client:
-        unconfigured = client.post(
-            "/api/v1/auth/password-reset/request",
-            json={"email": "smtp-failure@example.com"},
-        )
 
-    assert failed.status_code == unconfigured.status_code == 200
-    assert failed.json() == unconfigured.json()
-    assert "smtp-failure@example.com" not in failed.text
+    def reset(password: str) -> str:
+        try:
+            confirm_password_reset(engine, token, password, JWT_SECRET)
+        except Exception as error:
+            return type(error).__name__
+        return "success"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(reset, ("Concurrent-one-1!", "Concurrent-two-2!")))
+    assert sorted(results) == ["InvalidResetTokenError", "success"]
 
 
 def test_request_rate_limit_returns_retry_after(
@@ -276,13 +359,14 @@ def test_request_rate_limit_returns_retry_after(
     create_user("rate-limit-user", email="rate@example.com")
     responses = [
         client.post(
-            "/api/v1/auth/password-reset/request",
+            RESET_REQUEST_PATH,
             json={"email": f"rate-{index}@example.com"},
         )
         for index in range(6)
     ]
     assert responses[-1].status_code == 429
     assert responses[-1].headers["Retry-After"] == "900"
+
 
 
 def test_rate_limiter_applies_request_limit_to_each_email_across_ips() -> None:
@@ -294,19 +378,76 @@ def test_rate_limiter_applies_request_limit_to_each_email_across_ips() -> None:
     assert not limiter.allow_request("198.51.100.99", "same@example.com")
 
 
-def test_request_validation_does_not_echo_the_address(client: TestClient) -> None:
-    address = "not-an-email-" + ("x" * 300)
-    response = client.post(
-        "/api/v1/auth/password-reset/request",
-        json={"email": address},
-    )
-    assert response.status_code == 422
-    assert address not in response.text
-
-
-def test_smtp_sender_uses_verified_ssl_and_carries_the_password(
-    monkeypatch: pytest.MonkeyPatch,
+def test_mail_problems_are_hidden_from_the_screen(
+    database_url: str,
+    create_user: Callable[..., int],
 ) -> None:
+    settings = Settings(
+        database_url=database_url,
+        jwt_secret=JWT_SECRET,
+        password_reset_url="http://localhost:3000/reset-password",
+    )
+    create_user("smtp-failure-user", email="smtp-failure@example.com")
+
+    with TestClient(create_app(settings, mail_sender=FakeMailSender(fail=True))) as client:
+        failed = client.post(
+            RESET_REQUEST_PATH,
+            json={"email": "smtp-failure@example.com"},
+        )
+
+    unconfigured_settings = Settings(
+        _env_file=None,
+        database_url=database_url,
+        jwt_secret=JWT_SECRET,
+    )
+    with TestClient(create_app(unconfigured_settings)) as client:
+        unconfigured = client.post(
+            RESET_REQUEST_PATH,
+            json={"email": "smtp-failure@example.com"},
+        )
+
+    assert failed.status_code == unconfigured.status_code == 200
+    assert failed.json() == unconfigured.json()
+    assert "smtp-failure@example.com" not in failed.text
+
+
+def test_same_password_is_rejected_without_history(
+    client: TestClient,
+    engine: Engine,
+    create_user: Callable[..., int],
+) -> None:
+    user_id = create_user("same-reset", password=NEW_PASSWORD, email="same@example.com")
+    user = _row(engine, user_id)
+    token = create_password_reset_token(
+        user_id,
+        str(user["email"]),
+        user["password_changed_at"],
+        JWT_SECRET,
+    )
+    response = client.post(
+        RESET_CONFIRM_PATH,
+        json={"token": token, "new_password": NEW_PASSWORD},
+    )
+    assert response.status_code == 400
+    assert set(response.json()) == {"message"}
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT count(*) FROM sims.password_change_history WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        ) == 0
+
+
+def test_password_reset_validation_does_not_echo_secret(client: TestClient) -> None:
+    secret = "sensitive-reset-token-" + ("x" * 4096)
+    response = client.post(
+        RESET_CONFIRM_PATH,
+        json={"token": secret, "new_password": NEW_PASSWORD},
+    )
+    assert response.status_code == 400
+    assert secret not in response.text
+
+
+def test_smtp_sender_uses_verified_ssl_and_plain_message(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
     class FakeSMTP:
@@ -330,7 +471,7 @@ def test_smtp_sender_uses_verified_ssl_and_carries_the_password(
 
     SmtpMailSender(
         "smtp.example.com", 465, "mailer", "secret", "from@example.com"
-    ).send_temporary_password("to@example.com", "Ab3!xY7qWz2#")
+    ).send_password_reset("to@example.com", "https://front.example/reset?token=abc")
     assert seen["host"] == "smtp.example.com"
     assert seen["port"] == 465
     context = seen["context"]
@@ -340,7 +481,4 @@ def test_smtp_sender_uses_verified_ssl_and_carries_the_password(
     message = seen["message"]
     assert message["From"] == "from@example.com"
     assert message["To"] == "to@example.com"
-    content = message.get_content()
-    assert "Ab3!xY7qWz2#" in content
-    # 이 메일이 나간 뒤에는 기존 비밀번호를 못 쓴다. 무시하라고 안내하면 안 된다.
-    assert "무시" not in content
+    assert "?token=abc" in message.get_content()

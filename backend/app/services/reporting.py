@@ -446,7 +446,6 @@ def _report_response(report: ReportJsonV01) -> CaseReport:
     structural = report.structural_consistency
     return CaseReport(
         case=ReportCaseDisplay(
-            case_id=report.case.case_id,
             title=report.case.title,
             completed_at=report.case.completed_at,
         ),

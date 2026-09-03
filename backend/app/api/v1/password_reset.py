@@ -1,10 +1,14 @@
 from fastapi import APIRouter, BackgroundTasks, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
+from app.core.password_policy import validate_new_password
 from app.services.password_reset import (
     InvalidEmailError,
-    issue_temporary_password,
+    InvalidResetTokenError,
+    PasswordUnchangedError,
+    confirm_password_reset,
+    issue_password_reset_email,
     normalize_email,
 )
 
@@ -24,6 +28,19 @@ class PasswordResetRequest(BaseModel):
             return normalize_email(value)
         except InvalidEmailError as error:
             raise ValueError("Invalid email address") from error
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: SecretStr = Field(min_length=1, max_length=4096)
+    new_password: SecretStr = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: SecretStr) -> SecretStr:
+        validate_new_password(value.get_secret_value())
+        return value
 
 
 class PasswordResetResponse(BaseModel):
@@ -54,25 +71,18 @@ def _response(
 
 
 @router.post(
-    "/password-reset/request",
+    "/password/reset/request",
     summary="비밀번호 재설정 요청",
     description=(
-        "가입 이메일로 **임시 비밀번호를 발급해 보낸다.** 화면이 따로 만들 것은 없고, "
-        "사용자는 메일에 적힌 임시 비밀번호로 평소처럼 로그인하면 된다. "
-        "발송에 성공하면 그 계정의 **기존 비밀번호는 즉시 쓸 수 없게 된다.** "
-        "**가입되지 않은 주소여도 성공을 돌려준다.** 이메일을 하나씩 넣어보며 "
-        "가입 여부를 알아내는 것을 막기 위해서다. 메일 기능이 설정돼 있지 않을 때도 "
-        "성공을 돌려주며 서버 로그에만 경고가 남는다. "
-        "그래서 화면은 성공·실패로 분기하지 말고 "
-        "`등록된 주소라면 메일이 갑니다` 같은 한 가지 안내만 띄우고 로그인 화면을 유지하면 된다. "
-        "임시 비밀번호는 만료되지 않으므로, 로그인한 뒤 비밀번호 변경을 안내하는 편이 좋다."
+        "입력한 이메일이 가입된 활성 계정과 일치하면 10분 동안 유효한 "
+        "비밀번호 재설정 링크를 발송합니다. 가입 여부 보호를 위해 이메일 일치 여부와 "
+        "관계없이 동일한 응답을 반환합니다."
     ),
     response_model=PasswordResetResponse,
     responses={
-        200: {"model": PasswordResetResponse, "description": "발송 요청을 접수했다. 가입 여부와 무관하게 같은 응답이다"},
-        400: {"model": PasswordResetResponse, "description": "요청 본문이 형식에 맞지 않다"},
-        422: {"model": PasswordResetResponse, "description": "이메일 형식이 아니다"},
-        429: {"model": PasswordResetResponse, "description": "요청 제한을 넘었다. Retry-After 헤더에 남은 시간이 있다"},
+        200: {"model": PasswordResetResponse, "description": "요청을 접수합니다."},
+        400: {"model": PasswordResetResponse, "description": "이메일 입력을 확인해 주세요."},
+        429: {"model": PasswordResetResponse, "description": "요청이 많습니다. 잠시 후 다시 시도해 주세요."},
     },
 )
 def request_password_reset(
@@ -80,6 +90,7 @@ def request_password_reset(
     body: PasswordResetRequest,
     background_tasks: BackgroundTasks,
 ) -> JSONResponse:
+    settings = request.app.state.settings
     mail_sender = request.app.state.mail_sender
 
     limiter = request.app.state.password_reset_limiter
@@ -90,17 +101,58 @@ def request_password_reset(
             retry_after=limiter.RETRY_AFTER_SECONDS,
         )
 
-    # 메일 기능이 설정돼 있지 않아도 성공을 돌려준다. 가입 여부를 숨기는
-    # 것과 같은 이유로, 메일이 나가지 않았다는 사실도 화면에 드러내지 않는다.
-    # 대신 서버 기동 시 로그에 경고를 남긴다.
-    if mail_sender is not None:
+    # 가입 여부와 메일 설정 여부를 화면에 드러내지 않는다. 운영자는 서버 로그로 확인한다.
+    if mail_sender is not None and settings.password_reset_url:
         background_tasks.add_task(
-            issue_temporary_password,
+            issue_password_reset_email,
             request.app.state.database_engine,
             mail_sender,
+            settings.password_reset_url,
+            settings.jwt_secret.get_secret_value(),
             body.email,
         )
     return _response(
         status.HTTP_200_OK,
-        "등록된 이메일이라면 임시 비밀번호가 발송됩니다.",
+        "등록된 이메일이라면 비밀번호 재설정 안내가 발송됩니다.",
+    )
+
+
+@router.post(
+    "/password/reset/confirm",
+    summary="비밀번호 재설정 확인",
+    description=(
+        "이메일로 받은 링크의 토큰을 확인하고 새 비밀번호로 변경합니다. "
+        "링크는 발급 후 10분 동안 유효합니다. 변경이 완료되면 기존 로그인 세션과 "
+        "재설정 링크는 사용할 수 없습니다."
+    ),
+    response_model=PasswordResetResponse,
+    responses={
+        200: {"model": PasswordResetResponse, "description": "비밀번호를 변경합니다."},
+        400: {"model": PasswordResetResponse, "description": "링크 또는 새 비밀번호를 확인해 주세요."},
+    },
+)
+def confirm_password_reset_route(
+    request: Request,
+    body: PasswordResetConfirmRequest,
+) -> JSONResponse:
+    try:
+        confirm_password_reset(
+            request.app.state.database_engine,
+            body.token.get_secret_value(),
+            body.new_password.get_secret_value(),
+            request.app.state.settings.jwt_secret.get_secret_value(),
+        )
+    except InvalidResetTokenError:
+        return _response(
+            status.HTTP_400_BAD_REQUEST,
+            "비밀번호 재설정 링크가 유효하지 않습니다.",
+        )
+    except PasswordUnchangedError:
+        return _response(
+            status.HTTP_400_BAD_REQUEST,
+            "새 비밀번호가 기존 비밀번호와 같습니다.",
+        )
+    return _response(
+        status.HTTP_200_OK,
+        "비밀번호가 재설정되었습니다.",
     )

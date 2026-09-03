@@ -1,7 +1,6 @@
-from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatAnswer(BaseModel):
@@ -18,6 +17,13 @@ class ChatMessageRequest(BaseModel):
 
     content: str = Field(min_length=1, max_length=4_000)
 
+    @field_validator("content")
+    @classmethod
+    def reject_blank_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Chat question must not be blank")
+        return value
+
 
 class ChatMessageResponse(BaseModel):
     """말풍선 하나에 필요한 것만 담는다.
@@ -32,7 +38,6 @@ class ChatMessageResponse(BaseModel):
     id: int
     role: Literal["USER", "ASSISTANT"]
     content: str = Field(min_length=1)
-    created_at: datetime
 
 
 class ChatMessagesResponse(BaseModel):

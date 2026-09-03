@@ -39,22 +39,109 @@ _RESTORE_ACTIVE_SUMMARY_PROFILES = text(
 
 _CURRENT_ANNOUNCEMENT_STATUS = text(
     """
-    SELECT id, search_status FROM sims.announcement_version WHERE is_current
+    SELECT av.id, av.announcement_id, av.search_status,
+           av.status_checked_at, av.status_source, a.last_seen_at
+      FROM sims.announcement_version av
+      JOIN sims.announcement a ON a.id = av.announcement_id
+     WHERE av.is_current
     """
 )
 
 _RESTORE_ANNOUNCEMENT_STATUS = text(
     """
     UPDATE sims.announcement_version av
-       SET search_status = snapshot.search_status
+       SET search_status = snapshot.search_status,
+           status_checked_at = snapshot.status_checked_at,
+           status_source = snapshot.status_source
       FROM (
             SELECT unnest(CAST(:ids AS bigint[])) AS id,
-                   unnest(CAST(:statuses AS text[])) AS search_status
+                   unnest(CAST(:statuses AS text[])) AS search_status,
+                   unnest(CAST(:checked_at AS timestamptz[])) AS status_checked_at,
+                   unnest(CAST(:sources AS text[])) AS status_source
            ) AS snapshot
      WHERE av.id = snapshot.id
-       AND av.search_status <> snapshot.search_status
+       AND (
+            av.search_status IS DISTINCT FROM snapshot.search_status
+            OR av.status_checked_at IS DISTINCT FROM snapshot.status_checked_at
+            OR av.status_source IS DISTINCT FROM snapshot.status_source
+       )
     """
 )
+
+_RESTORE_ANNOUNCEMENT_LAST_SEEN = text(
+    """
+    UPDATE sims.announcement a
+       SET last_seen_at = snapshot.last_seen_at
+      FROM (
+            SELECT unnest(CAST(:ids AS bigint[])) AS id,
+                   unnest(CAST(:last_seen_at AS timestamptz[])) AS last_seen_at
+           ) AS snapshot
+     WHERE a.id = snapshot.id
+       AND a.last_seen_at IS DISTINCT FROM snapshot.last_seen_at
+    """
+)
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_shared_database_startup_sweep():
+    """공유 DB 테스트에서 기존 분석을 기동 sweep으로 실패 처리하지 않는다."""
+    if os.getenv("TEST_DATABASE_URL") is None:
+        yield
+        return
+
+    env_name = "SWEEP_INTERRUPTED_ANALYSES_ON_STARTUP"
+    previous = os.environ.get(env_name)
+    os.environ[env_name] = "false"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(env_name, None)
+        else:
+            os.environ[env_name] = previous
+
+
+@pytest.fixture
+def global_seed_cleanup(engine):
+    """전역 FK가 없는 테스트 seed 행을 seed가 만든 PK로 정리한다."""
+    created: dict[str, list[int]] = {
+        "form_schema_ids": [],
+        "embedding_profile_ids": [],
+        "embedding_model_ids": [],
+    }
+    yield created
+    with engine.begin() as connection:
+        if created["embedding_profile_ids"]:
+            for table in (
+                "announcement_embedding",
+                "inspection_embedding",
+                "chunk_embedding",
+            ):
+                connection.execute(
+                    text(
+                        f"DELETE FROM sims.{table} "
+                        "WHERE embedding_profile_id = ANY(:ids)"
+                    ),
+                    {"ids": created["embedding_profile_ids"]},
+                )
+            connection.execute(
+                text(
+                    "DELETE FROM sims.embedding_profile "
+                    "WHERE id = ANY(:ids)"
+                ),
+                {"ids": created["embedding_profile_ids"]},
+            )
+        if created["form_schema_ids"]:
+            connection.execute(
+                text("DELETE FROM sims.form_schema WHERE id = ANY(:ids)"),
+                {"ids": created["form_schema_ids"]},
+            )
+        if created["embedding_model_ids"]:
+            connection.execute(
+                text(
+                    "DELETE FROM sims.embedding_model WHERE id = ANY(:ids)"
+                ),
+                {"ids": created["embedding_model_ids"]},
+            )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -81,7 +168,16 @@ def keep_shared_database_operational():
                         _RESTORE_ANNOUNCEMENT_STATUS,
                         {
                             "ids": [row[0] for row in announcements],
-                            "statuses": [row[1] for row in announcements],
+                            "statuses": [row[2] for row in announcements],
+                            "checked_at": [row[3] for row in announcements],
+                            "sources": [row[4] for row in announcements],
+                        },
+                    )
+                    connection.execute(
+                        _RESTORE_ANNOUNCEMENT_LAST_SEEN,
+                        {
+                            "ids": [row[1] for row in announcements],
+                            "last_seen_at": [row[5] for row in announcements],
                         },
                     )
     finally:

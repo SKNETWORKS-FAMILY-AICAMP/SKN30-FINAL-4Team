@@ -32,14 +32,24 @@ def test_full_limiter_keeps_live_counters_and_releases_expired_ones(monkeypatch)
 def test_openapi_reset_validation_matches_actual_envelope():
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://test:test@localhost/test", jwt_secret="x" * 32)
     schema = create_app(settings).openapi()
-    operation = schema["paths"]["/api/v1/auth/password-reset/request"]["post"]
+    operation = schema["paths"]["/api/v1/auth/password/reset/request"]["post"]
     # 실패 응답은 화면 문구 하나만 담는다.
-    schema_ref = operation["responses"]["422"]["content"]["application/json"]["schema"]
+    schema_ref = operation["responses"]["400"]["content"]["application/json"]["schema"]
     assert schema_ref["$ref"].endswith("/PasswordResetResponse")
     assert schema["components"]["schemas"]["PasswordResetResponse"]["required"] == ["message"]
     assert not operation.get("security")
-    # 임시 비밀번호를 메일로 보내므로 확인 단계가 없다.
-    assert "/api/v1/auth/password-reset/confirm" not in schema["paths"]
+    confirm = schema["paths"]["/api/v1/auth/password/reset/confirm"]["post"]
+    assert confirm["responses"]["400"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/PasswordResetResponse"
+    )
+    assert "422" not in operation["responses"]
+    assert "429" not in confirm["responses"]
     operations = sum(method in {"get", "post", "put", "delete", "patch"} for path in schema["paths"].values() for method in path)
-    # 분석 시작·로그아웃·재설정 확인을 없애고 세션 연장을 더했다.
-    assert operations == 14
+    assert operations == 15
+
+
+def test_password_change_uses_the_confirmed_route():
+    settings = Settings(_env_file=None, database_url="postgresql+psycopg://test:test@localhost/test", jwt_secret="x" * 32)
+    schema = create_app(settings).openapi()
+    assert "/api/v1/auth/password/change" in schema["paths"]
+    assert "/api/v1/auth/change-password" not in schema["paths"]

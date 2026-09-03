@@ -374,8 +374,8 @@ def test_analysis_keeps_parse_snapshot_when_retrieval_is_unavailable(
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
         # 업로드 응답이 곧 분석 시작이다. 별도의 분석 시작 호출은 없다.
-        assert upload.status_code == 202
-        assert set(upload.json()) == {"case_id", "started_at"}
+        assert upload.status_code == 200
+        assert set(upload.json()) == {"case_id"}
         case_id = upload.json()["case_id"]
 
         wait_for_internal_status(engine, case_id, "FAILED")
@@ -383,7 +383,7 @@ def test_analysis_keeps_parse_snapshot_when_retrieval_is_unavailable(
             f"/api/v1/cases/{case_id}/status", headers=headers
         )
         # 실패 사유는 내보내지 않는다. 화면은 실패 하나로만 다룬다.
-        assert public_status.json() == {"case_id": case_id, "status": "FAILED"}
+        assert public_status.json() == {"status": "FAILED"}
 
     with engine.connect() as connection:
         row = connection.execute(
@@ -438,14 +438,14 @@ def test_parser_failure_is_safe_and_terminal(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        assert upload.status_code == 202
+        assert upload.status_code == 200
         case_id = upload.json()["case_id"]
         wait_for_internal_status(engine, case_id, "FAILED")
         result = client.get(
             f"/api/v1/cases/{case_id}/status", headers=headers
         ).json()
 
-    assert result == {"case_id": case_id, "status": "FAILED"}
+    assert result == {"status": "FAILED"}
     with engine.connect() as connection:
         row = connection.execute(
             text(
@@ -646,7 +646,7 @@ def test_analysis_is_owner_scoped_and_cannot_start_twice(
             headers=owner_headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        assert upload.status_code == 202
+        assert upload.status_code == 200
         case_id = upload.json()["case_id"]
 
         # 분석은 업로드가 시작한다. 남의 검사 건은 상태도 볼 수 없다.

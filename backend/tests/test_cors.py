@@ -172,14 +172,14 @@ def test_allowed_origin_gets_cors_on_existing_404(client: TestClient) -> None:
     assert_allowed_origin(response)
 
 
-def test_allowed_origin_gets_cors_on_existing_422(client: TestClient) -> None:
+def test_allowed_origin_gets_cors_on_login_validation_failure(client: TestClient) -> None:
     response = client.post(
         "/api/v1/auth/login",
         headers={"Origin": DEFAULT_ORIGIN},
         json={},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 401
     assert_allowed_origin(response)
 
 

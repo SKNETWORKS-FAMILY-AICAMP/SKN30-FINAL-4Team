@@ -16,7 +16,6 @@ router = APIRouter(prefix="/api/v1/cases", tags=["분석"], responses=UNAUTHORIZ
 class CaseStatusResponse(BaseModel):
     """실패 사유는 담지 않는다. 화면은 실패 하나로만 다룬다."""
 
-    case_id: int
     status: UiStatus
 
 
@@ -25,14 +24,12 @@ class CaseStatusResponse(BaseModel):
     response_model=CaseStatusResponse,
     summary="분석 진행 상태 (롱폴링)",
     description=(
-        "**상태가 바뀔 때까지 응답을 붙잡고 있다가 바뀌는 즉시 돌려준다.** "
-        "최대 25초 기다리며, 그 안에 변화가 없으면 현재 상태로 응답하므로 다시 호출하면 된다. "
-        "짧은 주기로 반복 호출할 필요가 없다. "
-        "실패 사유는 담지 않는다. 화면은 실패 하나로만 다룬다."
+        "분석 상태가 변경될 때까지 최대 25초간 기다립니다. 상태가 변경되거나 대기 시간이 "
+        "지나면 현재 상태를 반환합니다. `IN_PROGRESS`이면 다시 요청합니다."
     ),
     responses=describe(
         {**UNAUTHORIZED, **NOT_FOUND},
-        _200="현재 상태. IN_PROGRESS 이면 아직 끝나지 않았으니 다시 호출한다",
+        _200="현재 분석 상태를 반환합니다.",
     ),
 )
 async def case_status(
@@ -49,4 +46,4 @@ async def case_status(
         )
     except CaseNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from None
-    return CaseStatusResponse(**result.__dict__)
+    return CaseStatusResponse(status=result.status)

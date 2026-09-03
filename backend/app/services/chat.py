@@ -89,7 +89,7 @@ def get_chat_history(
         rows = connection.execute(
             text(
                 """
-                SELECT id, sequence_no, role, content, created_at
+                SELECT id, sequence_no, role, content
                 FROM sims.chat_message
                 WHERE chat_session_id = :session_id
                   AND (CAST(:cursor AS integer) IS NULL
@@ -111,7 +111,6 @@ def get_chat_history(
                 id=row["id"],
                 role=row["role"],
                 content=row["content"],
-                created_at=row["created_at"],
             )
             for row in reversed(rows)
         ],
@@ -308,7 +307,7 @@ def _persist_chat_turn(
                 ) VALUES (
                     :session_id, :sequence_no, 'USER', :content, '[]'::jsonb
                 )
-                RETURNING id, role, content, created_at
+                RETURNING id, role, content
                 """
             ),
             {
@@ -327,7 +326,7 @@ def _persist_chat_turn(
                     :session_id, :sequence_no, 'ASSISTANT', :content,
                     :model_name, CAST(:evidence_refs AS jsonb)
                 )
-                RETURNING id, role, content, created_at
+                RETURNING id, role, content
                 """
             ),
             {

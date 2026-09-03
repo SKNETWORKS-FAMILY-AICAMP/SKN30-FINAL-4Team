@@ -91,16 +91,8 @@ def _issue_token(
     "/login",
     response_model=TokenResponse,
     summary="로그인",
-    description=(
-        "이메일과 비밀번호로 인증하고 접근 토큰을 발급한다. "
-        "사용자 이름은 담지 않으며, 화면에 표시할 이름은 `/auth/me` 에서 받는다. "
-        "토큰 수명은 1시간이고 남은 시간은 토큰의 `exp` 클레임에 들어 있다."
-    ),
-    responses=describe(
-        UNAUTHORIZED,
-        _401="이메일 또는 비밀번호가 맞지 않다. 계정이 있는지 없는지는 알려주지 않는다",
-        _422="이메일 형식이 아니거나 입력이 비었다",
-    ),
+    description="이메일과 비밀번호로 인증하고 토큰을 발급합니다.",
+    responses=describe(UNAUTHORIZED, _401="이메일 또는 비밀번호를 확인해 주세요."),
 )
 def login_user(request: Request, body: LoginRequest) -> TokenResponse:
     try:
@@ -119,12 +111,8 @@ def login_user(request: Request, body: LoginRequest) -> TokenResponse:
     "/refresh",
     response_model=TokenResponse,
     summary="세션 연장",
-    description=(
-        "아직 만료되지 않은 토큰으로 새 토큰을 받는다. 수명은 발급 시점부터 다시 1시간이다. "
-        "요청마다 자동으로 늘어나지 않으며 언제 연장할지는 화면이 정한다. "
-        "이미 만료된 뒤에는 연장할 수 없고 재로그인해야 한다."
-    ),
-    responses=describe(UNAUTHORIZED, _401="토큰이 이미 만료됐거나 잘못됐다. 재로그인이 필요하다"),
+    description="만료되지 않은 토큰으로 세션을 1시간 연장합니다. 만료된 경우 다시 로그인해야 합니다.",
+    responses=describe(UNAUTHORIZED, _401="토큰 오류 또는 만료입니다."),
 )
 def refresh_token(request: Request, user: CurrentUser) -> TokenResponse:
     """만료되지 않은 토큰으로만 세션을 연장한다.
@@ -140,9 +128,8 @@ def refresh_token(request: Request, user: CurrentUser) -> TokenResponse:
     response_model=MeResponse,
     summary="로그인 사용자 확인",
     description=(
-        "사이드바 사용자 영역에 표시할 이름을 준다. "
-        "이름은 계정 이메일의 `@` 앞부분이며 전체 주소는 담지 않는다. "
-        "새로고침 후 로그인 상태를 확인할 때도 쓴다."
+        "사이드바 사용자를 표시할 때 쓰입니다. 계정 이메일의 `@` 앞부분입니다. "
+        "새로고침 후 로그인 상태를 확인할 때도 쓰입니다."
     ),
 )
 def me(user: CurrentUser) -> MeResponse:
@@ -151,19 +138,17 @@ def me(user: CurrentUser) -> MeResponse:
 
 
 @router.post(
-    "/change-password",
+    "/password/change",
     response_model=TokenResponse,
     summary="비밀번호 변경 (로그인 상태)",
     description=(
-        "현재 비밀번호를 확인하고 새 비밀번호로 바꾼다. "
-        "**응답의 새 토큰으로 교체하면 이 브라우저는 로그인이 유지되고, "
-        "다른 기기에 남아 있던 세션은 끊긴다.** "
-        "비밀번호 확인란 일치는 화면에서 검사하며 서버는 새 비밀번호 하나만 받는다."
+        "로그인 상태에서 새 비밀번호로 바꿉니다. 응답의 새 토큰으로 교체하면 "
+        "이 브라우저는 로그인이 유지되고, 다른 기기에 남아 있던 세션은 끊깁니다. "
+        "비밀번호 확인란 일치는 화면에서 검사하며 서버는 새 비밀번호 하나만 받습니다."
     ),
     responses=describe(
         {**UNAUTHORIZED, **BAD_REQUEST},
-        _400="현재 비밀번호가 맞지 않다. 그 자리에서 다시 입력받는다",
-        _422="비밀번호 규칙(영문·숫자·특수문자 8자 이상) 위반이거나 기존 비밀번호와 같다",
+        _400="현재 비밀번호 또는 새 비밀번호 입력을 확인해 주세요.",
     ),
 )
 def update_password(
@@ -190,9 +175,8 @@ def update_password(
             detail="Current password does not match",
         ) from None
     except PasswordUnchangedError:
-        # 입력을 고치면 되는 문제라 현재 비밀번호 불일치와 구분한다.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password must differ from the current password",
         ) from None
 

@@ -15,6 +15,7 @@ from main import create_app
 
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 PASSWORD = "correct-horse"
+ISOLATED_DATABASE = os.getenv("TEST_DATABASE_ISOLATED") == "1"
 
 
 @pytest.fixture(scope="module")
@@ -358,6 +359,10 @@ def test_history_rejects_a_forged_cursor(
     "internal_status",
     ["UPLOADED", "PARSING", "CHECKING", "RETRIEVING", "REPORTING"],
 )
+@pytest.mark.skipif(
+    not ISOLATED_DATABASE,
+    reason="global startup recovery may run only against an isolated test database",
+)
 def test_restart_marks_unfinished_analyses_as_failed(
     engine: Engine,
     create_user: Callable[[str], int],
@@ -392,6 +397,10 @@ def test_restart_marks_unfinished_analyses_as_failed(
     assert row["failure_code"] == "ANALYSIS_INTERRUPTED"
 
 
+@pytest.mark.skipif(
+    not ISOLATED_DATABASE,
+    reason="global startup recovery may run only against an isolated test database",
+)
 def test_restart_does_not_touch_finished_analyses(
     engine: Engine,
     create_user: Callable[[str], int],

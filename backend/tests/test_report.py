@@ -64,7 +64,10 @@ def engine(database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def users(engine: Engine) -> Iterator[Callable[[str], int]]:
+def users(
+    engine: Engine,
+    global_seed_cleanup: dict[str, list[int]],
+) -> Iterator[Callable[[str], int]]:
     ids: list[int] = []
 
     def create(login_id: str) -> int:
@@ -124,6 +127,8 @@ def cpl_result() -> CplResult:
 def seed_reporting_case(
     engine: Engine,
     owner_user_id: int,
+    *,
+    cleanup: dict[str, list[int]] | None = None,
 ) -> tuple[int, int, int]:
     marker = uuid.uuid4().hex
     with engine.begin() as connection:
@@ -255,6 +260,10 @@ def seed_reporting_case(
             ),
             {"case_id": case_id, "embedding_id": embedding_id},
         )
+    if cleanup is not None:
+        cleanup["form_schema_ids"].append(form_id)
+        cleanup["embedding_profile_ids"].append(profile_id)
+        cleanup["embedding_model_ids"].append(model_id)
     assert case_id and missing_id and retrieval_id
     return case_id, missing_id, retrieval_id
 
@@ -358,13 +367,13 @@ def test_result_screen_projection_hides_internal_evidence_metadata(
     response = detail["report"]
 
     assert set(detail) == {"case", "report"}
-    assert set(detail["case"]) == {"case_id", "title", "completed_at"}
+    assert set(detail["case"]) == {"title", "completed_at"}
     assert "schema_version" not in response
     assert "warnings" not in response
     # 검토 쟁점은 AI 질의응답으로 대체해 응답에서 뺐다.
     assert set(response) == {"cpl", "fit", "similar_candidates"}
     # 확인율 퍼센트는 담지 않는다. 13개 중 몇 개인지만 준다.
-    assert set(response["cpl"]) == {"confirmed_count", "total_count", "items"}
+    assert set(response["cpl"]) == {"confirmed_count", "items"}
     assert "PURPOSE_GOAL" not in {
         item["field_code"] for item in response["cpl"]["items"]
     }
@@ -456,6 +465,7 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     marker = uuid.uuid4().hex[:8]
@@ -463,7 +473,9 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     other_login = f"report-other-{marker}"
     owner_id = users(owner_login)
     users(other_login)
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, owner_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, owner_id, cleanup=global_seed_cleanup
+    )
     runtime = settings(database_url, tmp_path)
     storage = LocalObjectStorage(tmp_path)
 
@@ -513,7 +525,7 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
         assert result.status_code == 200
         # 보고서와 대화를 한 번에 준다. PDF 링크는 경로가 고정이라 담지 않는다.
         assert set(result.json()) == {"case", "report", "chat"}
-        assert result.json()["case"]["case_id"] == case_id
+        assert set(result.json()["case"]) == {"title", "completed_at"}
         assert result.json()["chat"]["messages"] == []
         download = client.get(
             f"/api/v1/cases/{case_id}/report",
@@ -559,10 +571,13 @@ def test_pdf_failure_marks_case_failed_without_freezing_report(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     user_id = users(f"report-pdf-failed-{uuid.uuid4().hex[:8]}")
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, user_id, cleanup=global_seed_cleanup
+    )
 
     with pytest.raises(ValueError, match="invalid content"):
         asyncio.run(
@@ -607,11 +622,14 @@ def test_composer_failure_marks_case_failed(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = users(f"report-compose-failed-{uuid.uuid4().hex[:8]}")
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, user_id, cleanup=global_seed_cleanup
+    )
 
     def fail_composition(*_args, **_kwargs):
         raise ValueError("invalid report source data")
@@ -650,10 +668,13 @@ def test_non_successful_cpl_run_cannot_be_frozen_into_report(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     user_id = users(f"report-cpl-failed-{uuid.uuid4().hex[:8]}")
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, user_id, cleanup=global_seed_cleanup
+    )
     with engine.begin() as connection:
         connection.execute(
             text(

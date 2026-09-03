@@ -40,6 +40,8 @@ from app.schemas.report import (
     ReportSimAxisDisplay,
     ReportSimCandidateDisplay,
 )
+from app.schemas.cpl import CPL_TOTAL_FIELDS
+from app.schemas.fit import FIT_TOTAL_RELATIONS
 
 
 FONT_NAME = "PreReviewKorean"
@@ -149,7 +151,7 @@ def _cpl_story(report: CaseReport, styles: dict) -> list:
     return [
         Paragraph("요청자료 완전성·기초구조 점검", styles["heading"]),
         _paragraph(
-            f"확인 {cpl.confirmed_count} / {cpl.total_count}", styles["body"]
+            f"확인 {cpl.confirmed_count} / {CPL_TOTAL_FIELDS}", styles["body"]
         ),
         Spacer(1, 2 * mm),
         _table(
@@ -179,7 +181,7 @@ def _fit_story(report: CaseReport, styles: dict) -> list:
     story += [
         _paragraph(
             f"판단 가능 {fit.availability.assessable_count} / "
-            f"{fit.availability.total_count}",
+            f"{FIT_TOTAL_RELATIONS}",
             styles["body"],
         ),
         Spacer(1, 2 * mm),
@@ -240,7 +242,11 @@ def _sim_candidate(
             _paragraph(candidate.source_url, styles["link"]),
             _paragraph(candidate.comparison_summary, styles["body"]),
             Spacer(1, 2 * mm),
-            _table(rows, [26 * mm, 24 * mm, 60 * mm, 64 * mm]),
+            _table(
+                rows,
+                [26 * mm, 24 * mm, 60 * mm, 64 * mm],
+                split_in_row=True,
+            ),
         ]
     )
 
@@ -339,8 +345,19 @@ def _styles(font_name: str) -> dict:
     }
 
 
-def _table(rows: list[list[object]], widths: list[float]) -> Table:
-    table = Table(rows, colWidths=widths, repeatRows=1, hAlign="LEFT")
+def _table(
+    rows: list[list[object]],
+    widths: list[float],
+    *,
+    split_in_row: bool = False,
+) -> Table:
+    table = Table(
+        rows,
+        colWidths=widths,
+        repeatRows=1,
+        hAlign="LEFT",
+        splitInRow=split_in_row,
+    )
     table.setStyle(
         TableStyle(
             [

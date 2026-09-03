@@ -197,13 +197,11 @@ class CplDisplay(BaseModel):
     """
 
     confirmed_count: int
-    total_count: Literal[13] = 13
     items: list[CplItemDisplay]
 
 
 class FitAvailabilityDisplay(BaseModel):
     assessable_count: int = Field(ge=0, le=FIT_TOTAL_RELATIONS)
-    total_count: Literal[7] = FIT_TOTAL_RELATIONS
 
 
 class FitRelationDisplay(BaseModel):
@@ -252,7 +250,6 @@ class ReportSimCandidateDisplay(BaseModel):
 class ReportCaseDisplay(BaseModel):
     """화면 Header 에 쓰는 검사 건 정보."""
 
-    case_id: int
     title: str
     completed_at: datetime
 

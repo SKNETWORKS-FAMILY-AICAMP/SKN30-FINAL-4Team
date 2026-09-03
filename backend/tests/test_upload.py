@@ -313,8 +313,8 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
         for _ in range(2)
     ]
 
-    assert [response.status_code for response in responses] == [202, 202]
-    assert all(response.json()["started_at"] for response in responses)
+    assert [response.status_code for response in responses] == [200, 200]
+    assert all(set(response.json()) == {"case_id"} for response in responses)
     case_ids = [response.json()["case_id"] for response in responses]
     assert len(set(case_ids)) == 2
 
@@ -420,7 +420,7 @@ def test_upload_requires_exactly_one_file(
         ],
     )
 
-    assert missing.status_code == 422
+    assert missing.status_code == 400
     assert multiple.status_code == 400
     with engine.connect() as connection:
         assert connection.scalar(

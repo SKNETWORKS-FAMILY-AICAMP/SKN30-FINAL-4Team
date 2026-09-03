@@ -45,15 +45,10 @@ class CaseDetailResponse(BaseModel):
     response_model=CaseDetailResponse,
     response_model_exclude_none=True,
     summary="분석 상세 조회",
-    description=(
-        "분석 결과 화면과 과거 이력 상세가 함께 쓴다. "
-        "보고서와 **최근 대화 20개**를 한 번에 준다. 더 이전 대화는 대화 조회 API 로 "
-        "`chat.next_cursor` 를 넣어 가져온다. "
-        "PDF 링크는 담지 않는다. 경로가 고정이고 완료된 건은 PDF 가 항상 존재한다."
-    ),
+    description="완료된 분석 결과와 최근 대화 20개를 조회합니다. 이전 대화는 대화 조회 API로 추가 조회할 수 있습니다.",
     responses=describe(
         {**UNAUTHORIZED, **NOT_FOUND, **CONFLICT},
-        _409="아직 분석이 끝나지 않았다",
+        _409="아직 분석이 완료되지 않았습니다.",
     ),
 )
 def case_detail(
@@ -84,11 +79,7 @@ def case_detail(
     # 성공만 PDF 바이너리다. 기본값대로 두면 OpenAPI 가 JSON 이라고 말한다.
     response_class=StreamingResponse,
     summary="보고서 PDF 다운로드",
-    description=(
-        "분석 보고서를 PDF 로 받는다. `Content-Disposition` 헤더의 파일명을 쓰면 된다. "
-        "다른 API 와 같이 `Authorization` 헤더가 필요하므로 링크를 그대로 여는 방식으로는 "
-        "받을 수 없다."
-    ),
+    description="완료된 분석 보고서를 PDF 파일로 다운로드합니다.",
     responses=describe(
         {
             200: {
@@ -100,8 +91,8 @@ def case_detail(
             **CONFLICT,
             **SERVICE_UNAVAILABLE,
         },
-        _409="아직 분석이 끝나지 않아 PDF 가 없다",
-        _503="파일 저장소에서 PDF 를 읽지 못했다",
+        _409="아직 분석이 완료되지 않았습니다.",
+        _503="파일 서비스를 일시적으로 사용할 수 없습니다.",
     ),
 )
 async def report_pdf(
