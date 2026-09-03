@@ -40,7 +40,9 @@ def describe(
     merged = {code: dict(value) for code, value in responses.items()}
     for code, description in overrides.items():
         key = int(code.removeprefix("_"))
-        merged.setdefault(key, {"model": ErrorResponse})
+        # 성공 코드에 오류 모델을 붙이면 스웨거가 본문을 {message} 로 보여준다.
+        # 그 코드의 본문은 라우트의 response_model 이 정한다.
+        merged.setdefault(key, {} if key < 400 else {"model": ErrorResponse})
         merged[key] = {**merged[key], "description": description}
     return merged
 
