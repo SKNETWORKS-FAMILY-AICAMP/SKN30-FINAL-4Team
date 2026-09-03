@@ -126,10 +126,10 @@ def create_user(engine: Engine) -> Iterator[Callable[[str], int]]:
 def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": login_id, "password": PASSWORD},
+        json={"email": f"{login_id}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def test_hwpx_validation_uses_container_mimetype_not_client_mime() -> None:
@@ -314,8 +314,8 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
     ]
 
     assert [response.status_code for response in responses] == [200, 200]
-    assert all(response.json()["data"]["status"] == "UPLOADED" for response in responses)
-    case_ids = [response.json()["data"]["case_id"] for response in responses]
+    assert all(set(response.json()) == {"case_id"} for response in responses)
+    case_ids = [response.json()["case_id"] for response in responses]
     assert len(set(case_ids)) == 2
 
     with engine.connect() as connection:
@@ -348,7 +348,8 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
     assert len({row["storage_key"] for row in rows}) == 2
     for row in rows:
         assert row["owner_user_id"] == user_id
-        assert row["status"] == "UPLOADED"
+        # 업로드가 곧 분석 시작이라 검사 건은 UPLOADED 에 머물지 않는다.
+        assert row["status"] != "UPLOADED"
         assert row["case_id"] == row["file_case_id"] == row["document_case_id"]
         assert row["original_filename"] == "request.HWPX"
         assert row["detected_mime_type"] == "application/hwp+zip"
@@ -419,7 +420,7 @@ def test_upload_requires_exactly_one_file(
         ],
     )
 
-    assert missing.status_code == 422
+    assert missing.status_code == 400
     assert multiple.status_code == 400
     with engine.connect() as connection:
         assert connection.scalar(

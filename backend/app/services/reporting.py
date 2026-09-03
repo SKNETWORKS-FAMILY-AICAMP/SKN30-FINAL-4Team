@@ -15,26 +15,24 @@ from app.schemas.cpl import CplItem, CplOccurrence, CplResult, CplStatus
 from app.schemas.fit import FitResult, FitStatus
 from app.schemas.report import (
     REPORT_SCHEMA_VERSION,
-    CheckboxGroupDisplay,
-    CheckboxOption,
     ReportCase,
     ReportCaseDisplay,
     ReportEvidence,
     ReportExcerpt,
-    ReportFitAvailability,
+    FitAvailabilityDisplay,
+    FitDisplay,
+    FitRelationDisplay,
     ReportJsonV01,
-    ReportResponse,
+    AnalysisReport,
+    CaseReport,
     ReportSimAxes,
     ReportSimAxis,
     ReportSimCandidate,
     ReportSimAxesDisplay,
     ReportSimAxisDisplay,
     ReportSimCandidateDisplay,
-    ReportReviewIssue,
-    ReportSelfCheck,
-    ReportSelfCheckItem,
-    ReportStructuralConsistency,
-    ReportStructuralRelation,
+    CplDisplay,
+    CplItemDisplay,
     ReviewIssue,
     SelfCheck,
     SelfCheckItem,
@@ -102,7 +100,8 @@ async def finalize_report(
             sim_results=sim_results,
             expected_candidate_count=expected_candidate_count,
         )
-        pdf_bytes = await renderer.render(report)
+        # 화면과 같은 것을 그린다. 내부 보고서를 그리면 둘이 어긋난다.
+        pdf_bytes = await renderer.render(_report_response(report))
         if not pdf_bytes.startswith(b"%PDF-"):
             raise ValueError("PDF renderer returned invalid content")
         stored = await storage.put(storage_key, io.BytesIO(pdf_bytes))
@@ -192,7 +191,7 @@ def compose_report(
     )
 
 
-def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportResponse:
+def get_report(engine: Engine, owner_user_id: int, case_id: int) -> CaseReport:
     with engine.connect() as connection:
         case_exists = connection.scalar(
             text(
@@ -206,9 +205,8 @@ def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportRespon
         row = connection.execute(
             text(
                 """
-                SELECT r.report_json, a.id AS artifact_id
+                SELECT r.report_json
                 FROM sims.inspection_report r
-                LEFT JOIN sims.output_artifact a ON a.inspection_report_id = r.id
                 WHERE r.inspection_case_id = :case_id
                 """
             ),
@@ -216,15 +214,7 @@ def get_report(engine: Engine, owner_user_id: int, case_id: int) -> ReportRespon
         ).mappings().one_or_none()
     if row is None:
         raise ReportNotReadyError
-    report = ReportJsonV01.model_validate(row["report_json"])
-    return _report_response(
-        report,
-        report_download_url=(
-            f"/api/v1/cases/{case_id}/report.pdf"
-            if row["artifact_id"] is not None
-            else None
-        ),
-    )
+    return _report_response(ReportJsonV01.model_validate(row["report_json"]))
 
 
 async def open_report_file(
@@ -451,95 +441,57 @@ def _cpl_evidence(
     ]
 
 
-def _report_response(
-    report: ReportJsonV01,
-    *,
-    report_download_url: str | None,
-) -> ReportResponse:
-    return ReportResponse(
-        case=ReportCaseDisplay(title=report.case.title),
-        self_check=ReportSelfCheck(
-            confirmed_count=report.self_check.confirmed_count,
-            confirmation_rate=report.self_check.confirmation_rate,
-            items=[
-                _self_check_item(item)
-                for item in report.self_check.items
-                if item.status != CplStatus.PARSE_FAILED
-            ],
+def _report_response(report: ReportJsonV01) -> CaseReport:
+    """PDF 링크를 담지 않는다. 완료된 건은 PDF 가 항상 있고 경로가 고정이다."""
+    structural = report.structural_consistency
+    return CaseReport(
+        case=ReportCaseDisplay(
+            title=report.case.title,
+            completed_at=report.case.completed_at,
         ),
-        structural_consistency=ReportStructuralConsistency(
-            module_status=report.structural_consistency.module_status,
-            availability=ReportFitAvailability(
-                assessable_count=report.structural_consistency.score.assessable_count,
+        report=AnalysisReport(
+            cpl=CplDisplay(
+                confirmed_count=report.self_check.confirmed_count,
+                items=[
+                    _self_check_item(item)
+                    for item in report.self_check.items
+                    if item.status != CplStatus.PARSE_FAILED
+                ],
             ),
-            relations=[
-                ReportStructuralRelation(
-                    relation_id=relation.relation_id,
-                    status=relation.status,
-                    summary=relation.summary,
-                    left_evidence=_display_evidence(relation.left_evidence),
-                    right_evidence=_display_evidence(relation.right_evidence),
-                )
-                for relation in report.structural_consistency.relations
+            fit=FitDisplay(
+                module_status=structural.module_status,
+                availability=FitAvailabilityDisplay(
+                    assessable_count=structural.score.assessable_count,
+                ),
+                relations=[
+                    FitRelationDisplay(
+                        relation_id=relation.relation_id,
+                        status=relation.status,
+                        summary=relation.summary,
+                        left_evidence=_display_evidence(relation.left_evidence),
+                        right_evidence=_display_evidence(relation.right_evidence),
+                    )
+                    for relation in structural.relations
+                ],
+            ),
+            similar_candidates=[
+                _sim_candidate_display(candidate)
+                for candidate in report.similar_candidates
             ],
         ),
-        review_issues=[
-            ReportReviewIssue(
-                source=issue.source,
-                status=issue.status,
-                evidence=_display_evidence(issue.evidence),
-            )
-            for issue in report.review_issues
-            if not (issue.source == "CPL" and issue.status == "PARSE_FAILED")
-        ],
-        similar_candidates=[_sim_candidate_display(candidate) for candidate in report.similar_candidates],
-        report_download_url=report_download_url,
     )
 
 
-def _self_check_item(item: SelfCheckItem) -> ReportSelfCheckItem:
+def _self_check_item(item: SelfCheckItem) -> CplItemDisplay:
     show_evidence = item.status in {
         CplStatus.MISSING,
         CplStatus.NEEDS_CONFIRMATION,
     }
-    return ReportSelfCheckItem(
+    return CplItemDisplay(
         field_code=item.field_code,
         status=item.status,
-        display=_checkbox_group(item),
         evidence=_display_evidence(item.occurrences) if show_evidence else [],
     )
-
-
-def _checkbox_group(item: SelfCheckItem) -> CheckboxGroupDisplay | None:
-    if item.field_code != "REQUEST_TYPE":
-        return None
-    options = []
-    for occurrence in item.occurrences:
-        value = occurrence.normalized_value
-        if not isinstance(value, dict) or not isinstance(value.get("request_reason"), str):
-            continue
-        mark = value.get("mark")
-        label = occurrence.excerpt
-        if isinstance(mark, str):
-            label = label.replace(mark, "", 1).strip()
-        options.append(
-            CheckboxOption(
-                code=value["request_reason"],
-                label=label,
-                selected=value.get("selected") is True,
-            )
-        )
-    if not options:
-        return None
-    selected = [option.label for option in options if option.selected]
-    summary = (
-        f"선택된 요청 유형: {', '.join(selected)}"
-        if len(selected) == 1
-        else "선택된 요청 유형이 없습니다."
-        if not selected
-        else "복수의 요청 유형이 선택되었습니다."
-    )
-    return CheckboxGroupDisplay(summary=summary, options=options)
 
 
 def _display_evidence(evidence: list[ReportEvidence]) -> list[ReportExcerpt]:
@@ -566,10 +518,8 @@ def _normalized_excerpt(value: str) -> str:
 
 def _sim_candidate_display(candidate: ReportSimCandidate) -> ReportSimCandidateDisplay:
     return ReportSimCandidateDisplay(
-        rank=candidate.rank,
         title=candidate.title,
         source_url=candidate.source_url,
-        relevance_score=candidate.semantic_similarity_display,
         comparison_summary=candidate.comparison_summary,
         axes=ReportSimAxesDisplay(
             purpose=_sim_axis_display(candidate.axes.purpose),

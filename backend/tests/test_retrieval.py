@@ -242,8 +242,27 @@ class FakePublicDataClient:
 
 
 class FakeEmbeddingClient:
-    def __init__(self, vectors_by_marker: dict[str, list[float]]) -> None:
+    """이 테스트가 만든 공고에만 정해진 벡터를 요구한다.
+
+    임베딩 대상은 새 프로필에 임베딩이 없는 현재 공고 전부다. 새 프로필을
+    만들면 DB 에 이미 있던 공고까지 대상이 되므로, 코퍼스가 비어 있다고
+    가정하면 남의 공고에서 멈춘다.
+
+    그런 공고에는 질의와 직교하는 벡터를 준다. 유사도가 0 이라 이 테스트가
+    만든 후보들보다 항상 뒤에 오고, 상위 후보 검사에 끼어들지 않는다.
+    """
+
+    # 질의 벡터는 [1, 0, 0] 이다. 이 값은 그것과 직교한다.
+    OUTSIDE_CORPUS_VECTOR = [0.0, 0.0, 1.0]
+
+    def __init__(
+        self,
+        vectors_by_marker: dict[str, list[float]],
+        *,
+        owned_marker: str,
+    ) -> None:
         self.vectors_by_marker = vectors_by_marker
+        self.owned_marker = owned_marker
         self.embed_calls = 0
 
     async def embed(self, texts: list[str]) -> EmbeddingBatch:
@@ -255,10 +274,14 @@ class FakeEmbeddingClient:
                 None,
             )
             if matched is None:
-                raise AssertionError(f"No fake vector for: {value}")
+                if self.owned_marker in value:
+                    raise AssertionError(f"No fake vector for: {value}")
+                matched = self.OUTSIDE_CORPUS_VECTOR
             vectors.append(matched)
         return EmbeddingBatch(
-            model_name="text-embedding-3-small",
+            # 테스트마다 고유한 identity를 사용해 기존 모델의
+            # is_enabled를 ON CONFLICT로 바꾸지 않게 한다.
+            model_name=f"text-embedding-3-small-test-{self.owned_marker}",
             vectors=vectors,
         )
 
@@ -378,11 +401,107 @@ def engine() -> Engine:
         value.dispose()
 
 
-def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) -> None:
+@pytest.fixture
+def retrieval_cleanup(engine: Engine):
+    """이 테스트가 만든 것을 반드시 지운다.
+
+    정리를 본문 끝에 두면 단언이 하나만 실패해도 돌지 않아 공용 DB 에
+    공고가 쌓인다. 실제로 이 테스트가 실패하는 동안 273건이 남았다.
+    """
+    created: dict[str, list] = {
+        "users": [],
+        "announcement_ids": [],
+        "sync_run_ids": [],
+        "profile_ids": [],
+        "embedding_model_ids": [],
+    }
+    yield created
+    with engine.begin() as connection:
+        if created["users"]:
+            connection.execute(
+                text("DELETE FROM sims.app_user WHERE id = ANY(:ids)"),
+                {"ids": created["users"]},
+            )
+        if created["announcement_ids"]:
+            connection.execute(
+                text(
+                    """
+                    DELETE FROM sims.announcement_embedding ae
+                    USING sims.announcement_version av
+                    WHERE ae.announcement_version_id = av.id
+                      AND av.announcement_id = ANY(:ids)
+                    """
+                ),
+                {"ids": created["announcement_ids"]},
+            )
+            connection.execute(
+                text(
+                    "DELETE FROM sims.announcement_version "
+                    "WHERE announcement_id = ANY(:ids)"
+                ),
+                {"ids": created["announcement_ids"]},
+            )
+            connection.execute(
+                text("DELETE FROM sims.announcement WHERE id = ANY(:ids)"),
+                {"ids": created["announcement_ids"]},
+            )
+        if created["sync_run_ids"]:
+            connection.execute(
+                text("DELETE FROM sims.api_sync_run WHERE id = ANY(:ids)"),
+                {"ids": created["sync_run_ids"]},
+            )
+        if created["profile_ids"]:
+            # 이 프로필로 만들어진 임베딩은 남의 공고에도 붙는다. 새 프로필을
+            # 만들면 코퍼스 전체가 임베딩 대상이 되기 때문이다. 프로필을
+            # 지우려면 그것들부터 지워야 한다.
+            for table, column in (
+                ("announcement_embedding", "embedding_profile_id"),
+                ("inspection_embedding", "embedding_profile_id"),
+                ("chunk_embedding", "embedding_profile_id"),
+            ):
+                connection.execute(
+                    text(
+                        f"""
+                        DELETE FROM sims.{table}
+                        WHERE {column} = ANY(:ids)
+                        """
+                    ),
+                    {"ids": created["profile_ids"]},
+                )
+            connection.execute(
+                text("DELETE FROM sims.embedding_profile WHERE id = ANY(:ids)"),
+                {"ids": created["profile_ids"]},
+            )
+        if created["embedding_model_ids"]:
+            connection.execute(
+                text("DELETE FROM sims.embedding_model WHERE id = ANY(:ids)"),
+                {"ids": created["embedding_model_ids"]},
+            )
+
+
+def test_sync_versioning_embedding_profile_and_exact_top_five(
+    engine: Engine,
+    retrieval_cleanup: dict,
+) -> None:
     marker = uuid.uuid4().hex[:10]
     profile_name = f"retrieval-test-{marker}"
     ids = [f"PBLN_{marker}_{index}" for index in range(7)]
     titles = [f"후보-{marker}-{index}" for index in range(7)]
+    with engine.connect() as connection:
+        assert connection.execute(
+            text(
+                "SELECT count(*) FROM sims.announcement "
+                "WHERE pblanc_id = ANY(:ids)"
+            ),
+            {"ids": ids},
+        ).scalar_one() == 0
+        existing_profile_id = connection.scalar(
+            text(
+                "SELECT id FROM sims.embedding_profile "
+                "WHERE profile_name = :profile_name AND version_no = 1"
+            ),
+            {"profile_name": profile_name},
+        )
     items = [
         announcement(
             ids[index],
@@ -398,11 +517,25 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
     sync_result = asyncio.run(
         sync_announcements(engine, public_client, sync_date_kst=sync_date)
     )
+    if not sync_result.reused_success:
+        retrieval_cleanup["sync_run_ids"].append(sync_result.sync_run_id)
+    with engine.connect() as connection:
+        retrieval_cleanup["announcement_ids"] = list(
+            connection.execute(
+                text(
+                    "SELECT id FROM sims.announcement "
+                    "WHERE pblanc_id = ANY(:ids)"
+                ),
+                {"ids": ids},
+            ).scalars()
+        )
     assert sync_result.rows_inserted == 7
 
     reused = asyncio.run(
         sync_announcements(engine, public_client, sync_date_kst=sync_date)
     )
+    if not reused.reused_success:
+        retrieval_cleanup["sync_run_ids"].append(reused.sync_run_id)
     assert reused.reused_success is True
     assert public_client.calls == 1
 
@@ -416,7 +549,7 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
         titles[6]: [1.0, 0.0, 0.0],
         "요청 목적": [1.0, 0.0, 0.0],
     }
-    embedding_client = FakeEmbeddingClient(vectors)
+    embedding_client = FakeEmbeddingClient(vectors, owned_marker=marker)
     embedded = asyncio.run(
         embed_current_announcements(
             engine,
@@ -428,7 +561,40 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
             batch_size=3,
         )
     )
-    assert embedded.embedded_count == 7
+    if (
+        embedded.embedding_profile_id is not None
+        and embedded.embedding_profile_id != existing_profile_id
+    ):
+        retrieval_cleanup["profile_ids"].append(embedded.embedding_profile_id)
+        with engine.connect() as connection:
+            model_id = connection.scalar(
+                text(
+                    "SELECT embedding_model_id FROM sims.embedding_profile "
+                    "WHERE id = :profile_id"
+                ),
+                {"profile_id": embedded.embedding_profile_id},
+            )
+        if model_id is not None:
+            retrieval_cleanup["embedding_model_ids"].append(model_id)
+    # 임베딩 대상은 이 프로필에 임베딩이 없는 현재 공고 전부다. 새 프로필을
+    # 만들었으니 DB 에 이미 있던 공고까지 포함된다. 이 테스트가 만든 7건이
+    # 모두 임베딩됐는지만 확인한다.
+    with engine.connect() as connection:
+        owned_embedded = connection.scalar(
+            text(
+                """
+                SELECT count(*)
+                FROM sims.announcement_embedding ae
+                JOIN sims.announcement_version av
+                  ON av.id = ae.announcement_version_id
+                JOIN sims.announcement a ON a.id = av.announcement_id
+                WHERE a.pblanc_id = ANY(:ids)
+                """
+            ),
+            {"ids": ids},
+        )
+    assert owned_embedded == 7
+    assert embedded.embedded_count >= 7
 
     with engine.begin() as connection:
         user_id = connection.scalar(
@@ -440,6 +606,7 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
             ),
             {"login_id": f"retrieval-{marker}", "email": f"retrieval-{marker}@example.com"},
         )
+        retrieval_cleanup["users"] = [user_id]
         case_id = connection.scalar(
             text(
                 """
@@ -556,6 +723,8 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
             sync_date_kst=sync_date + timedelta(days=1),
         )
     )
+    if not next_sync.reused_success:
+        retrieval_cleanup["sync_run_ids"].append(next_sync.sync_run_id)
     assert next_sync.rows_versioned == 1
     reembedded = asyncio.run(
         embed_current_announcements(
@@ -634,45 +803,6 @@ def test_sync_versioning_embedding_profile_and_exact_top_five(engine: Engine) ->
         "UNKNOWN",
     ]
     assert unknown_verification == "NEEDS_CONFIRMATION"
-
-    with engine.begin() as connection:
-        connection.execute(
-            text("DELETE FROM sims.app_user WHERE id = :user_id"),
-            {"user_id": user_id},
-        )
-        connection.execute(
-            text(
-                """
-                DELETE FROM sims.announcement_version av
-                USING sims.announcement a
-                WHERE av.announcement_id = a.id AND a.pblanc_id = ANY(:ids)
-                """
-            ),
-            {"ids": ids},
-        )
-        connection.execute(
-            text("DELETE FROM sims.announcement WHERE pblanc_id = ANY(:ids)"),
-            {"ids": ids},
-        )
-        connection.execute(
-            text("DELETE FROM sims.api_sync_run WHERE sync_date_kst IN (:first, :second)"),
-            {"first": sync_date, "second": sync_date + timedelta(days=1)},
-        )
-        connection.execute(
-            text("DELETE FROM sims.embedding_profile WHERE profile_name = :profile_name"),
-            {"profile_name": profile_name},
-        )
-        connection.execute(
-            text(
-                """
-                DELETE FROM sims.embedding_model m
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM sims.embedding_profile p
-                    WHERE p.embedding_model_id = m.id
-                )
-                """
-            )
-        )
 
 
 def _portal_client(handler) -> BizinfoPublicDataClient:

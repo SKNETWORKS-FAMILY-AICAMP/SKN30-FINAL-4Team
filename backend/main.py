@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -6,11 +8,12 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.envelope import apply_envelope_to_openapi, error_body
+from app.api.envelope import error_body
 from app.api.request_body_limit import RequestBodyLimitMiddleware
 from app.api.router import router
 from app.core.config import Settings
@@ -30,7 +33,10 @@ from app.ports.mail_sender import MailSender
 from app.infrastructure.smtp_mail_sender import SmtpMailSender
 from app.services.password_reset import ResetRateLimiter
 from app.services.analysis_pipeline import run_analysis_pipeline
+from app.services.document_parsing import fail_interrupted_analyses
 
+
+logger = logging.getLogger(__name__)
 
 _LLM_FROM_SETTINGS = object()
 _EMBEDDING_FROM_SETTINGS = object()
@@ -54,6 +60,32 @@ def create_app(
         )
         application.state.database_engine = engine
         application.state.settings = runtime_settings
+
+        # 분석은 이 프로세스 안의 태스크로만 돈다. 새로 뜨는 순간 이전에
+        # 진행 중이던 건은 유실된 상태이므로, 영원히 분석 중으로 남지 않게
+        # 실패로 정리한다.
+        #
+        # 단일 프로세스가 요청을 받기 전에 정리해야 새 업로드와 경합하지 않는다.
+        # DB 가 없어도 예외를 삼키므로 서버는 그대로 뜨고, 다음 기동에 다시
+        # 시도된다.
+        async def sweep_interrupted() -> None:
+            try:
+                interrupted = await asyncio.to_thread(
+                    fail_interrupted_analyses, engine
+                )
+            except Exception as error:
+                logger.warning(
+                    "끊긴 분석 정리를 건너뜁니다: %s", type(error).__name__
+                )
+            else:
+                if interrupted:
+                    logger.warning(
+                        "서버 재시작으로 끊긴 분석 %s건을 실패로 정리했습니다",
+                        interrupted,
+                    )
+
+        if runtime_settings.sweep_interrupted_analyses_on_startup:
+            await sweep_interrupted()
         active_mail_sender = mail_sender
         if active_mail_sender is None and all((
             runtime_settings.smtp_host, runtime_settings.smtp_username,
@@ -68,6 +100,11 @@ def create_app(
                 from_email=runtime_settings.smtp_from_email,
             )
         application.state.mail_sender = active_mail_sender
+        if active_mail_sender is None or not runtime_settings.password_reset_url:
+            # 사용자에게는 알리지 않기로 했으므로 운영자가 볼 곳은 여기뿐이다.
+            logger.warning(
+                "SMTP 설정이 없어 비밀번호 재설정 메일이 발송되지 않습니다"
+            )
         application.state.password_reset_limiter = ResetRateLimiter()
         object_storage = LocalObjectStorage(
             runtime_settings.local_storage_root
@@ -133,7 +170,22 @@ def create_app(
 
     application = FastAPI(
         title="Pre-review API",
-        version="0.1.0",
+        version="1.0.0",
+        summary="사전협의 요청서 AI 사전검토 서비스의 백엔드 API",
+        openapi_tags=[
+            {
+                "name": "인증",
+                "description": (
+                    "로그인·세션 연장·비밀번호 변경과 재설정. "
+                    "세션은 1시간이고 자동으로 늘어나지 않습니다. 연장 시점은 화면이 정하며, "
+                    "로그아웃 API는 따로 두지 않았습니다."
+                ),
+            },
+            {
+                "name": "분석",
+                "description": "요청서를 업로드하고 분석 진행 상태와 결과를 조회합니다. PDF 다운로드와 AI 질의응답을 제공합니다.",
+            },
+        ],
         lifespan=lifespan,
     )
     application.add_middleware(
@@ -151,8 +203,8 @@ def create_app(
 
     # 비밀번호 흐름의 응답은 캐시에 남기지 않는다.
     _NO_STORE_PATHS = {
-        "/api/v1/auth/password-reset/request",
-        "/api/v1/auth/password-reset/confirm",
+        "/api/v1/auth/password/reset/request",
+        "/api/v1/auth/password/reset/confirm",
     }
 
     def _no_store(request: Request) -> dict[str, str]:
@@ -176,9 +228,12 @@ def create_app(
             }
             for item in error.errors()
         ]
+        # 로그인 입력 검증 실패도 인증 실패와 구분하지 않는다. 그 외 요청의
+        # 형식·값 검증 오류는 프론트 계약의 일반 입력 오류인 400으로 통일한다.
+        response_status = 401 if request.url.path == "/api/v1/auth/login" else 400
         return JSONResponse(
-            status_code=422,
-            content=jsonable_encoder(error_body(422, safe_errors)),
+            status_code=response_status,
+            content=jsonable_encoder(error_body(response_status, safe_errors)),
             headers=_no_store(request),
         )
 
@@ -196,8 +251,27 @@ def create_app(
         )
 
     application.include_router(router)
-    # 응답을 라우터 바깥에서 감싸므로 OpenAPI 도 같은 모양을 말하게 맞춘다.
-    apply_envelope_to_openapi(application)
+
+    # FastAPI는 검증 가능한 경로·본문이 있으면 422를 자동으로 OpenAPI에
+    # 추가한다. 실제 응답 계약은 400(로그인은 401)이므로 자동 항목을 제거한다.
+    def custom_openapi() -> dict:
+        if application.openapi_schema:
+            return application.openapi_schema
+        schema = get_openapi(
+            title=application.title,
+            version=application.version,
+            summary=application.summary,
+            routes=application.routes,
+            tags=application.openapi_tags,
+        )
+        for path_item in schema.get("paths", {}).values():
+            for operation in path_item.values():
+                if isinstance(operation, dict):
+                    operation.get("responses", {}).pop("422", None)
+        application.openapi_schema = schema
+        return schema
+
+    application.openapi = custom_openapi  # type: ignore[method-assign]
     return application
 
 
