@@ -1,4 +1,4 @@
-"""SMTP implementation of the password-reset mail port."""
+"""SMTP implementation of the temporary-password mail port."""
 
 import smtplib
 import ssl
@@ -22,7 +22,7 @@ class SmtpMailSender:
         self.password = password
         self.from_email = from_email
 
-    def send_password_reset(self, to_email: str, reset_url: str) -> None:
+    def send_temporary_password(self, to_email: str, temporary_password: str) -> None:
         for address in (to_email, self.from_email):
             if not address or any(
                 character in address
@@ -31,14 +31,17 @@ class SmtpMailSender:
                 raise ValueError("Email address contains unsafe characters")
 
         message = EmailMessage()
-        message["Subject"] = "Pre-review 비밀번호 재설정"
+        message["Subject"] = "Pre-review 임시 비밀번호"
         message["From"] = self.from_email
         message["To"] = to_email
+        # 이 메일이 나간 뒤에는 기존 비밀번호를 쓸 수 없다. "요청하지 않았으면
+        # 무시하세요" 라고 안내하면 로그인이 안 되는 이유를 알 수 없게 된다.
         message.set_content(
-            "비밀번호를 재설정하려면 아래 링크를 여세요.\n\n"
-            f"{reset_url}\n\n"
-            "이 링크는 발송 후 10분 동안만 유효합니다.\n"
-            "본인이 요청하지 않았다면 이 메일을 무시하세요."
+            "임시 비밀번호를 발급했습니다. 아래 값으로 로그인해 주세요.\n\n"
+            f"    {temporary_password}\n\n"
+            "기존 비밀번호는 더 이상 사용할 수 없습니다.\n"
+            "로그인한 뒤 비밀번호를 변경해 주세요.\n"
+            "본인이 요청하지 않았다면 관리자에게 알려 주세요."
         )
 
         if self.username and self.password is None:

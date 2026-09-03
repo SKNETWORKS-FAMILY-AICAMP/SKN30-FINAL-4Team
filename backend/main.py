@@ -89,7 +89,6 @@ def create_app(
         if active_mail_sender is None and all((
             runtime_settings.smtp_host, runtime_settings.smtp_username,
             runtime_settings.smtp_password, runtime_settings.smtp_from_email,
-            runtime_settings.password_reset_url,
         )):
             active_mail_sender = SmtpMailSender(
                 host=runtime_settings.smtp_host,
@@ -99,7 +98,7 @@ def create_app(
                 from_email=runtime_settings.smtp_from_email,
             )
         application.state.mail_sender = active_mail_sender
-        if active_mail_sender is None or not runtime_settings.password_reset_url:
+        if active_mail_sender is None:
             # 사용자에게는 알리지 않기로 했으므로 운영자가 볼 곳은 여기뿐이다.
             logger.warning(
                 "SMTP 설정이 없어 비밀번호 재설정 메일이 발송되지 않습니다"
@@ -215,10 +214,7 @@ def create_app(
     )
 
     # 비밀번호 흐름의 응답은 캐시에 남기지 않는다.
-    _NO_STORE_PATHS = {
-        "/api/v1/auth/password-reset/request",
-        "/api/v1/auth/password-reset/confirm",
-    }
+    _NO_STORE_PATHS = {"/api/v1/auth/password-reset/request"}
 
     def _no_store(request: Request) -> dict[str, str]:
         return (
