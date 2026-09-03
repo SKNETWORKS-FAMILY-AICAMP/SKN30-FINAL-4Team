@@ -34,25 +34,18 @@ npm run build
 
 ## 📦 기술 스택
 
-- Core:
-<img src="https://shields.io/badge/react%2019.2-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" style="vertical-align: middle; display: inline-block;" />
-
-- Routing: 
-<img src="https://shields.io/badge/react%20router%207.18-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white" alt="React Router" style="vertical-align: middle; display: inline-block;" />
-
-- Styling: <img src="https://shields.io/badge/css-663399?style=for-the-badge&logo=css&logoColor=white" alt="CSS" style="vertical-align: middle; display: inline-block;" /> <img src="https://shields.io/badge/tailwind%20css%204.3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" style="vertical-align: middle; display: inline-block;" />
-
-- Network: <img src="https://shields.io/badge/Axios%201.19-5A29E4?style=for-the-badge&logo=axios&logoColor=white" alt="Axios" style="vertical-align: middle; display: inline-block;" />
-
-- Build Tool: <img src="https://shields.io/badge/vite%208.2-9135FF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" style="vertical-align: middle; display: inline-block;" />
-
-- Language: <img src="https://shields.io/badge/typescript%206.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" style="vertical-align: middle; display: inline-block;" />
+![React](https://shields.io/badge/react%2019.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![React Router](https://shields.io/badge/react%20router%207.18-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white)
+![Tailwind CSS](https://shields.io/badge/tailwind%20css%204.3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![Axios](https://shields.io/badge/Axios%201.19-5A29E4?style=for-the-badge&logo=axios&logoColor=white)
+![Vite](https://shields.io/badge/vite%208.2-9135FF?style=for-the-badge&logo=vite&logoColor=white)
+![TypeScript](https://shields.io/badge/typescript%206.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
 ## 📁 폴더 구조
 
 ```text
 frontend/
-├── public/                # 정적 에셋 (이미지 등)
+├── public/                # 정적 에셋 (이미지, html 등)
 ├── src/
 │   ├── assets/            # 스타일 및 이미지 에셋
 │   ├── components/        # 공통 UI 컴포넌트
@@ -60,7 +53,6 @@ frontend/
 │   │   └── layout/        # 레이아웃 관련 컴포넌트
 │   │       └── shared/    # 공유 레이아웃 서브 컴포넌트
 │   ├── features/          # 기능별 모듈 (랜딩, 인증, 분석 등)
-│   ├── hooks/             # 커스텀 훅
 │   ├── pages/             # 페이지 단위 컴포넌트
 │   ├── routes/            # 라우팅 설정
 │   ├── services/          # API 통신 및 비즈니스 로직

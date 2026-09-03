@@ -5,7 +5,6 @@ interface LogoProps {
 }
 
 export default function Logo({ href = '/', size = 'md', className = '' }: LogoProps) {
-    // 사이즈별 이미지 높이 매핑 (사이드바 h=86 공간 등을 고려한 sm 포함)
     const sizeClasses = {
         sm: 'h-[32px]',
         md: 'h-[40px]',
@@ -17,8 +16,8 @@ export default function Logo({ href = '/', size = 'md', className = '' }: LogoPr
         >
             <img
                 src="/images/pre-review.png"
-                alt="Pre-review Logo"
                 className={`${sizeClasses[size]} w-auto object-contain`}
+                alt="Pre-review Logo"
             />
         </a>
     )
