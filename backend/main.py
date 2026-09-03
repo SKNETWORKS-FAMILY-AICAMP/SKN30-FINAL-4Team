@@ -99,6 +99,11 @@ def create_app(
                 from_email=runtime_settings.smtp_from_email,
             )
         application.state.mail_sender = active_mail_sender
+        if active_mail_sender is None or not runtime_settings.password_reset_url:
+            # 사용자에게는 알리지 않기로 했으므로 운영자가 볼 곳은 여기뿐이다.
+            logger.warning(
+                "SMTP 설정이 없어 비밀번호 재설정 메일이 발송되지 않습니다"
+            )
         application.state.password_reset_limiter = ResetRateLimiter()
         object_storage = LocalObjectStorage(
             runtime_settings.local_storage_root

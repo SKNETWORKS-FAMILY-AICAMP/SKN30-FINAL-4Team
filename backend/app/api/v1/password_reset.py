@@ -87,7 +87,6 @@ def _response(
         400: {"model": PasswordResetResponse, "description": "요청 본문이 형식에 맞지 않다"},
         422: {"model": PasswordResetResponse, "description": "이메일 형식이 아니다"},
         429: {"model": PasswordResetResponse, "description": "요청 제한을 넘었다. Retry-After 헤더에 남은 시간이 있다"},
-        503: {"model": PasswordResetResponse, "description": "메일 서비스를 쓸 수 없다"},
     },
 )
 def request_password_reset(
@@ -98,11 +97,6 @@ def request_password_reset(
     settings = request.app.state.settings
     mail_sender = request.app.state.mail_sender
     password_reset_url = settings.password_reset_url
-    if mail_sender is None or not password_reset_url:
-        return _response(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "비밀번호 재설정 메일 서비스를 사용할 수 없습니다.",
-        )
 
     limiter = request.app.state.password_reset_limiter
     if not limiter.allow_request(_client_ip(request), body.email):
@@ -112,14 +106,18 @@ def request_password_reset(
             retry_after=limiter.RETRY_AFTER_SECONDS,
         )
 
-    background_tasks.add_task(
-        issue_password_reset_email,
-        request.app.state.database_engine,
-        mail_sender,
-        str(password_reset_url),
-        settings.jwt_secret.get_secret_value(),
-        body.email,
-    )
+    # 메일 기능이 설정돼 있지 않아도 성공을 돌려준다. 가입 여부를 숨기는
+    # 것과 같은 이유로, 메일이 나가지 않았다는 사실도 화면에 드러내지 않는다.
+    # 대신 서버 기동 시 로그에 경고를 남긴다.
+    if mail_sender is not None and password_reset_url:
+        background_tasks.add_task(
+            issue_password_reset_email,
+            request.app.state.database_engine,
+            mail_sender,
+            str(password_reset_url),
+            settings.jwt_secret.get_secret_value(),
+            body.email,
+        )
     return _response(
         status.HTTP_200_OK,
         "등록된 이메일이라면 비밀번호 재설정 안내가 발송됩니다.",

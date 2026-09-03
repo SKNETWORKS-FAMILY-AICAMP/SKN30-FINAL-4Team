@@ -400,31 +400,47 @@ def test_rate_limiter_applies_request_limit_to_each_email_across_ips() -> None:
     assert not limiter.allow_request("198.51.100.99", "same@example.com")
 
 
-def test_mail_failures_are_hidden_and_missing_configuration_is_503(
+def test_mail_problems_are_hidden_from_the_screen(
     database_url: str,
     create_user: Callable[..., int],
 ) -> None:
+    """메일이 나가지 않아도 화면에는 드러내지 않는다.
+
+    가입 여부를 숨기는 것과 같은 이유다. 발송 실패든 설정 누락이든 응답이
+    같아야 이메일을 넣어보며 무언가를 알아낼 수 없다. 운영자는 서버 로그로
+    확인한다.
+    """
     settings = Settings(
         database_url=database_url,
         jwt_secret=JWT_SECRET,
         password_reset_url="http://localhost:3000/reset-password",
     )
-    sender = FakeMailSender(fail=True)
     create_user("smtp-failure-user", email="smtp-failure@example.com")
-    with TestClient(create_app(settings, mail_sender=sender)) as client:
-        response = client.post(
+
+    # 발송이 실패하는 경우
+    with TestClient(
+        create_app(settings, mail_sender=FakeMailSender(fail=True))
+    ) as client:
+        failed = client.post(
             "/api/v1/auth/password-reset/request",
             json={"email": "smtp-failure@example.com"},
         )
-        assert response.status_code == 200
-        assert "smtp-failure@example.com" not in response.text
 
-    with TestClient(create_app(settings)) as client:
-        response = client.post(
+    # 메일 기능이 아예 설정돼 있지 않은 경우
+    unconfigured_settings = Settings(
+        _env_file=None,
+        database_url=database_url,
+        jwt_secret=JWT_SECRET,
+    )
+    with TestClient(create_app(unconfigured_settings)) as client:
+        unconfigured = client.post(
             "/api/v1/auth/password-reset/request",
-            json={"email": "missing@example.com"},
+            json={"email": "smtp-failure@example.com"},
         )
-        assert response.status_code == 503
+
+    assert failed.status_code == unconfigured.status_code == 200
+    assert failed.json() == unconfigured.json()
+    assert "smtp-failure@example.com" not in failed.text
 
 
 def test_same_password_is_rejected_without_history(
