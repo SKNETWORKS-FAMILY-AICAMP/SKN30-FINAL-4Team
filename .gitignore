@@ -10,11 +10,16 @@ Desktop.ini
 ~$*
 
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *.sublime-workspace
 *.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # ==========================================
 # 2. 보안 파일
@@ -49,12 +54,23 @@ secrets/
 **/.ipynb_checkpoints/
 
 # ==========================================
-# 4. 프론트엔드 (Node.js)
+# 4. 프론트엔드 (Node.js & Vite)
 # ==========================================
 **/node_modules/
 **/dist/
+**/dist-ssr/
 **/.vite/
 **/.npm/
+**/*.local
+
+# 패키지 매니저 및 빌드 로그
+**/logs/
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+**/lerna-debug.log*
 
 # ==========================================
 # 5. Rust (크롤러 관련)
@@ -111,6 +127,16 @@ ml/data/processed/*_ckpt/
 # 리포트를 모델별 하위 폴더(reports/shared/ 등)로 옮긴 뒤에도 걸리도록 ** 로 둔다.
 ml/reports/**/e01_documents*.jsonl
 ml/reports/e01_documents*.jsonl
+ml/reports/**/e02_documents*.jsonl
+ml/reports/e02_documents*.jsonl
+
+# 용량 방어 — 팀 결정(2026-09): parquet·데이터 디렉터리는 기본 제외한다.
+# 주의: 이미 추적 중인 ml/data/processed/*.parquet 과 ml/reports/**/*_oof.parquet
+# 은 그대로 남는다(gitignore 는 추적을 해제하지 않는다). 새로 만드는 근거
+# 산출물을 커밋하려면 `git add -f` 가 필요하다.
+**/*.parquet
+**/data/
+**/dataset/
 
 # ==========================================
 # 7. Docker 및 기타
@@ -118,10 +144,19 @@ ml/reports/e01_documents*.jsonl
 .docker/
 docker-data/
 
-# ==========================================
-# 8. 로컬 도구 상태
+# ===================================# 8. 로컬 도구 상태
 # ==========================================
 # Claude Code 런타임(예약작업 lock 등). 프로젝트 산출물이 아니고 세션마다
 # 다시 생긴다. 팀이 Claude Code 설정을 공유하기로 하면 그때
 # `!.claude/settings.json` 처럼 특정 파일만 예외로 풀 것.
 .claude/
+=======
+/backend/storage/
+
+# E2E · 데모 산출물 (PDF, 프론트 전달본)
+output/
+
+
+# 실행 로그·탐색용 중간 산출물
+/tmp/
+/backend/tmp/

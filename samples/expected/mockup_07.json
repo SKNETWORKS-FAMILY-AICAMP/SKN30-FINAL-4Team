@@ -1,0 +1,69 @@
+{
+  "document": "samples/hwpx/mockup_07_우수사례_서식기준_딥테크스케일업.hwpx",
+  "grade": "HIGH",
+  "source_annotation": "없음. 이 문서는 실제 [서식 1] 의 필수 기재항목만으로 새로 작성했다",
+  "form_reference": "중소기업지원사업 사전협의 요청서 [서식 1] (이미지 양식)",
+  "annotated_defects": [],
+  "arithmetic": "기업당 단가 5,000만원 × 지원기업수 40개사 = 20억원 = 사업예산. 모순 없음",
+  "fit": {
+    "FIT-1": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "목적의 대전 소재 딥테크 창업기업과 지원대상이 일치한다"
+    },
+    "FIT-2": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "목적의 제품화 고도화·사업화 공백 해소와 지원내용의 시제품 고도화·인증·판로개척이 대응한다"
+    },
+    "FIT-3": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "목적의 방향과 기대효과·성과지표가 대응한다"
+    },
+    "FIT-5": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "업력 7년 이내 창업기업과 근로자 5~300명·매출 120억원 이하·벤처 인증은 동시에 성립한다"
+    },
+    "FIT-6": {
+      "status": "INSUFFICIENT",
+      "covered_by_contract": false,
+      "why": "양식의 필수 기재항목은 수행기관까지이고 수행절차·단계별 역할 구역이 없다. FIT-6 은 수행기관과 수행절차를 대조하므로 이 양식을 따른 문서에서는 결함이 없어도 항상 판정 불가다. 목업의 결함이 아니라 관계 설계와 양식의 불일치다"
+    },
+    "FIT-7": {
+      "status": "INSUFFICIENT",
+      "covered_by_contract": false,
+      "why": "양식은 지원기업수와 단가를 지원내용 안에 적게 하고 지원규모를 따로 두지 않는다. FIT-7 은 지원내용 구역과 지원규모 구역을 대조하므로 이 양식에서는 항상 단측이다"
+    },
+    "FIT-4": {
+      "status": "INSUFFICIENT",
+      "covered_by_contract": false,
+      "why": "세부사업 신설이라 내역·내내역이 없다. 계층 비교 표본은 내역사업 신설 유형 문서가 필요하다"
+    }
+  },
+  "cpl": {
+    "IMPLEMENTATION_PLAN": "양식에 연차별·내역사업별 추진계획 구역이 없다. 이 필드가 CPL 13필드에 있는 근거를 재확인해야 한다"
+  },
+  "axes_expected": {
+    "TARGET_AND_CONDITIONS": [
+      "TARGET_GROUP",
+      "COND_BUSINESS_AGE",
+      "COND_HEADCOUNT",
+      "COND_REVENUE",
+      "COND_CERTIFICATION"
+    ],
+    "SUPPORT_CONTENT_AND_SCALE": [
+      "SUPPORT_ACTIVITY",
+      "SUPPORT_ITEM",
+      "COMPANY_COUNT",
+      "PER_COMPANY_LIMIT",
+      "SELF_BURDEN_RATE"
+    ],
+    "DELIVERY_SYSTEM": [
+      "DELIVERY_ORG_NAME",
+      "DELIVERY_METHOD_TYPE"
+    ]
+  },
+  "blank_markers": {}
+}
