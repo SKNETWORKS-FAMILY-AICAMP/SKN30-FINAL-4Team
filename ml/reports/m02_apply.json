@@ -1,0 +1,68 @@
+{
+  "train_rows": 1404,
+  "train_classes": 19,
+  "applied_rows": 1570,
+  "thresholds": {
+    "hold": 0.2,
+    "trust": 0.35
+  },
+  "conditions": {
+    "A. E01 + 전처리없음 (=M07)": {
+      "n_with_document": 906,
+      "mean_confidence": 0.2836,
+      "mean_conf_with_doc": 0.2599,
+      "n_trust": 379,
+      "n_ref": 668,
+      "n_hold": 523,
+      "hold_rate": 0.3331,
+      "usable_rate": 0.6669
+    },
+    "B. E01 + 전처리": {
+      "n_with_document": 906,
+      "mean_confidence": 0.2943,
+      "mean_conf_with_doc": 0.2784,
+      "n_trust": 439,
+      "n_ref": 626,
+      "n_hold": 505,
+      "hold_rate": 0.3217,
+      "usable_rate": 0.6783
+    },
+    "C. E01 + 전처리없음": {
+      "n_with_document": 1411,
+      "mean_confidence": 0.2673,
+      "mean_conf_with_doc": 0.2577,
+      "n_trust": 319,
+      "n_ref": 698,
+      "n_hold": 553,
+      "hold_rate": 0.3522,
+      "usable_rate": 0.6478
+    },
+    "D. E01 + 전처리": {
+      "n_with_document": 1411,
+      "mean_confidence": 0.2831,
+      "mean_conf_with_doc": 0.2753,
+      "n_trust": 400,
+      "n_ref": 634,
+      "n_hold": 536,
+      "hold_rate": 0.3414,
+      "usable_rate": 0.6586
+    }
+  },
+  "chosen": "B. E01 + 전처리",
+  "chosen_by": "usable_rate 최댓값 (실측 기반, 사전 지정 아님)",
+  "hold_rate_change": -0.0114,
+  "predicted_class_dist": {
+    "사업화": 250,
+    "컨설팅": 221,
+    "판로": 172,
+    "융자": 132,
+    "고용보조": 89,
+    "연구개발": 66,
+    "설비": 61,
+    "교육훈련": 15,
+    "창업보육": 12,
+    "해외인증": 10
+  },
+  "note": "E01(pdf-inspector+rhwp) 원문과 전처리(관인제거+본문발췌)의 기여를 분리 측정. 모델·임계값은 M07과 동일.",
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail_with_support_type_v2.parquet"
+}

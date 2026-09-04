@@ -1,0 +1,198 @@
+{
+  "목적": "M44 Freeze 구조가 임의의 구현 선택에 기대는지, 거리 점수가 특정 feature 에 쏠리는지 확인. 새 모델 탐색이 아니다",
+  "주지표": "pool 전체 Spearman 순위상관 · Top-K 겹침 (라벨 불필요)",
+  "참고지표": "clean 53건(양성 5) ROC-AUC/PR-AUC — 변형 간 우열 판정 불가",
+  "판정문턱": {
+    "top30_overlap_min": 0.918,
+    "roc_tolerance": 0.041,
+    "출처": "M44 재표집 변동폭 (hold-out 유지율 0.918 / ROC 0.738~0.779)"
+  },
+  "n_pool": 1948,
+  "n_clean": 53,
+  "n_positive": 5,
+  "baseline": {
+    "roc_auc": 0.7542,
+    "pr_auc": 0.2184,
+    "recall": 0.6,
+    "precision": 0.2727
+  },
+  "representative_vector": {
+    "mean": {
+      "spearman": 1.0,
+      "top30_overlap": 1.0,
+      "top39_overlap": 1.0,
+      "roc_auc": 0.7542,
+      "pr_auc": 0.2184,
+      "recall": 0.6,
+      "precision": 0.2727,
+      "verdict": "기준"
+    },
+    "median": {
+      "spearman": 0.9598,
+      "top30_overlap": 0.8333,
+      "top39_overlap": 0.8718,
+      "roc_auc": 0.6625,
+      "pr_auc": 0.1522,
+      "recall": 0.2,
+      "precision": 0.0909,
+      "verdict": "차이 큼 — 라벨 확대 후 재판정 필요"
+    },
+    "trimmed": {
+      "spearman": 0.9875,
+      "top30_overlap": 0.8667,
+      "top39_overlap": 0.8718,
+      "roc_auc": 0.7208,
+      "pr_auc": 0.2008,
+      "recall": 0.4,
+      "precision": 0.1818,
+      "verdict": "순위는 바뀌나 성능차는 변동폭 안 — 기존 유지"
+    }
+  },
+  "scaling": {
+    "standard": {
+      "spearman": 1.0,
+      "top30_overlap": 1.0,
+      "top39_overlap": 1.0,
+      "roc_auc": 0.7542,
+      "pr_auc": 0.2184,
+      "recall": 0.6,
+      "precision": 0.2727,
+      "verdict": "기준"
+    },
+    "robust": {
+      "spearman": 0.6732,
+      "top30_overlap": 0.3333,
+      "top39_overlap": 0.3077,
+      "roc_auc": 0.7583,
+      "pr_auc": 0.2393,
+      "recall": 0.4,
+      "precision": 0.1818,
+      "verdict": "순위는 바뀌나 성능차는 변동폭 안 — 기존 유지"
+    },
+    "mad": {
+      "spearman": 0.9682,
+      "top30_overlap": 0.7667,
+      "top39_overlap": 0.7692,
+      "roc_auc": 0.7458,
+      "pr_auc": 0.2295,
+      "recall": 0.4,
+      "precision": 0.1818,
+      "verdict": "순위는 바뀌나 성능차는 변동폭 안 — 기존 유지"
+    }
+  },
+  "feature_ablation": {
+    "__none__": {
+      "spearman": 1.0,
+      "top30_overlap": 1.0,
+      "top39_overlap": 1.0,
+      "roc_auc": 0.7542,
+      "pr_auc": 0.2184,
+      "recall": 0.6,
+      "precision": 0.2727
+    },
+    "log_per_recipient": {
+      "spearman": 0.8597,
+      "top30_overlap": 0.7333,
+      "top39_overlap": 0.7436,
+      "roc_auc": 0.7417,
+      "pr_auc": 0.1915,
+      "recall": 0.4,
+      "precision": 0.1818
+    },
+    "log_support_count": {
+      "spearman": 0.7614,
+      "top30_overlap": 0.7333,
+      "top39_overlap": 0.7436,
+      "roc_auc": 0.6542,
+      "pr_auc": 0.1803,
+      "recall": 0.4,
+      "precision": 0.1818
+    },
+    "project_duration": {
+      "spearman": 0.9388,
+      "top30_overlap": 0.6,
+      "top39_overlap": 0.5897,
+      "roc_auc": 0.7792,
+      "pr_auc": 0.2456,
+      "recall": 0.6,
+      "precision": 0.2727
+    },
+    "support_ratio": {
+      "spearman": 0.8877,
+      "top30_overlap": 0.6,
+      "top39_overlap": 0.6923,
+      "roc_auc": 0.7021,
+      "pr_auc": 0.2189,
+      "recall": 0.6,
+      "precision": 0.2727
+    }
+  },
+  "rank_vs_roc": [
+    {
+      "section": "scaling",
+      "variant": "robust",
+      "top30_changed": 0.6667,
+      "roc_diff": 0.0041
+    },
+    {
+      "section": "ablation",
+      "variant": "project_duration",
+      "top30_changed": 0.4,
+      "roc_diff": 0.025
+    },
+    {
+      "section": "ablation",
+      "variant": "support_ratio",
+      "top30_changed": 0.4,
+      "roc_diff": -0.0521
+    },
+    {
+      "section": "ablation",
+      "variant": "log_per_recipient",
+      "top30_changed": 0.2667,
+      "roc_diff": -0.0125
+    },
+    {
+      "section": "ablation",
+      "variant": "log_support_count",
+      "top30_changed": 0.2667,
+      "roc_diff": -0.1
+    },
+    {
+      "section": "scaling",
+      "variant": "mad",
+      "top30_changed": 0.2333,
+      "roc_diff": -0.0084
+    },
+    {
+      "section": "대표벡터",
+      "variant": "median",
+      "top30_changed": 0.1667,
+      "roc_diff": -0.0917
+    },
+    {
+      "section": "대표벡터",
+      "variant": "trimmed",
+      "top30_changed": 0.1333,
+      "roc_diff": -0.0334
+    }
+  ],
+  "axis_dependence": [
+    {
+      "feature": "log_support_count",
+      "one_minus_spearman": 0.2386
+    },
+    {
+      "feature": "log_per_recipient",
+      "one_minus_spearman": 0.1403
+    },
+    {
+      "feature": "support_ratio",
+      "one_minus_spearman": 0.1123
+    },
+    {
+      "feature": "project_duration",
+      "one_minus_spearman": 0.0612
+    }
+  ]
+}

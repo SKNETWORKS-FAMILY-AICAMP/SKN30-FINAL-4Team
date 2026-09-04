@@ -59,6 +59,6 @@
     "per_project": 17,
     "total_budget": 10
   },
-  "mean_confidence": 0.443,
+  "mean_confidence": 0.4407,
   "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/business_taxonomy.parquet"
 }

@@ -1,7 +1,7 @@
 """최종 파이프라인 smoke test — 구조를 바꾼 뒤에도 같은 결과가 나오는지 확인한다.
 
 무엇을 재는가 (전부 결과서에 적힌 수치와 대조한다):
-  0  기준 테이블(F01~F05)이 리포트에 적힌 행수를 담고 있는가
+  0  수집 표본(D02)·기준 테이블(F01~F05)이 리포트에 적힌 건수를 담고 있는가
   1  F06 변형이 얼어 있는 지문을 bit 단위로 재현하는가 (v1 / v2 / v3)
   2  모델 2 serving artifact 를 저장물만으로 불러 추론이 되는가
   3  모델 3 스코어링 스택이 pool 을 읽어 점수를 내는가
@@ -63,6 +63,30 @@ def check(name, ok, detail=""):
 def skip(name, why):
     print("  [SKIP] %s  — %s" % (name, why))
     SKIPPED.append(name)
+
+
+def t00_collect():
+    """수집 표본이 리포트에 적힌 건수를 담고 있는가 (D02 · D02B/D03)."""
+    print("\n== 0-1 수집 표본 (D02)")
+    import json
+    import pandas as pd
+    REPORTS = os.path.join(_ML, "reports")
+    spec = [(("d02_sample.json",), "sampled", "list_sample.parquet"),
+            (("d02b_targeted_sample.json", "d03_targeted_sample.json"), "sampled",
+             "list_sample_targeted.parquet")]
+    seen = 0
+    for reps, key, out in spec:
+        rp = next((os.path.join(REPORTS, r) for r in reps
+                   if os.path.exists(os.path.join(REPORTS, r))), None)
+        op = os.path.join(PROC, out)
+        if rp is None or not os.path.exists(op):
+            continue
+        seen += 1
+        want = json.load(open(rp, encoding="utf-8")).get(key)
+        n = len(pd.read_parquet(op))
+        check("%s = %s 건" % (out, format(want, ",")), n == want, "실측 %s" % format(n, ","))
+    if seen == 0:
+        skip("수집 표본 전체", "list_sample*.parquet 이 없다")
 
 
 def t0_tables():
@@ -206,7 +230,7 @@ if __name__ == "__main__":
     if CODE is None:
         print("\nml/pipelines/ 도 ml/scripts/ 도 없다 — 검사할 것이 없다")
         sys.exit(0)
-    for fn in (t0_tables, t1_f06, t2_model2, t3_model3, t4_model1):
+    for fn in (t00_collect, t0_tables, t1_f06, t2_model2, t3_model3, t4_model1):
         try:
             fn()
         except Exception as e:                                    # noqa: BLE001

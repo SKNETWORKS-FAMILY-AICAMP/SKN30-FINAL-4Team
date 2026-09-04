@@ -41,8 +41,8 @@ OUT = PROC + "/announcement_detail_enriched.parquet"
 # PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다.
 #   - 한 셀에 금액 3개 이상 병합: 표 보유 PDF 의 13.6% (HWP 는 0.0%)
 #   - 예: "238만원|119만원|476만원|1,900만원" 4행이 뭉쳐 39억원으로 파싱
-# A02 가 이미 같은 기준으로 PDF 를 빼고 있는데 이 병합본만 PDF 값을 갖고 있으면
-# A02 의 요약문 폴백 경로로 오염된 금액이 되돌아온다. 기준을 맞춘다.
+# F05 가 이미 같은 기준으로 PDF 를 빼고 있는데 이 병합본만 PDF 값을 갖고 있으면
+# F05 의 요약문 폴백 경로로 오염된 금액이 되돌아온다. 기준을 맞춘다.
 EXCLUDE_EXT = {"pdf"}
 
 TYPED = {"per_company", "per_project", "total_budget", "periodic"}
@@ -161,8 +161,8 @@ def main():
         "excluded_ext": sorted(EXCLUDE_EXT),
         "exclusion_reason": (
             "PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 "
-            "13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), A02 도 같은 기준으로 "
-            "PDF 를 제외한다. 이 병합본만 PDF 값을 가지면 A02 의 요약문 폴백 경로로 "
+            "13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), F05 도 같은 기준으로 "
+            "PDF 를 제외한다. 이 병합본만 PDF 값을 가지면 F05 의 요약문 폴백 경로로 "
             "오염된 금액이 되돌아온다."),
         "output": OUT,
     }

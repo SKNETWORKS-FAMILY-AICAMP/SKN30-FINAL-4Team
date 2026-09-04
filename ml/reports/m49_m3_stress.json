@@ -1,0 +1,83 @@
+{
+  "질문": "사람 라벨 없이 모델 방향성이 상식적으로 작동하는지 (방향서 §8.5)",
+  "구조": "M44 Freeze 그대로. 이 실험은 진단이지 튜닝이 아니다",
+  "n_pool": 1948,
+  "n_cases": 60,
+  "multipliers": [
+    0.1,
+    0.2,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0
+  ],
+  "n_perturbed": 1078,
+  "기준": "배수 1배가 아니라 '비교군 중앙값에서의 거리'를 x축으로 쓴다. 원래 값이 이미 중앙에서 벗어난 사업이 있기 때문이다",
+  "monotonicity": {
+    "log_per_recipient": {
+      "n_cases": 59,
+      "spearman_mean": 0.9668,
+      "spearman_median": 1.0,
+      "positive_rate": 1.0
+    },
+    "log_support_count": {
+      "n_cases": 52,
+      "spearman_mean": 0.9538,
+      "spearman_median": 0.9549,
+      "positive_rate": 1.0
+    },
+    "project_duration": {
+      "n_cases": 14,
+      "spearman_mean": 0.9538,
+      "spearman_median": 0.9643,
+      "positive_rate": 1.0
+    },
+    "support_ratio": {
+      "n_cases": 29,
+      "spearman_mean": 0.9893,
+      "spearman_median": 0.9903,
+      "positive_rate": 1.0
+    }
+  },
+  "u_shape": {
+    "log_per_recipient": {
+      "n": 59,
+      "interior_min_rate": 0.7119
+    },
+    "log_support_count": {
+      "n": 52,
+      "interior_min_rate": 0.7885
+    },
+    "project_duration": {
+      "n": 14,
+      "interior_min_rate": 1.0
+    },
+    "support_ratio": {
+      "n": 29,
+      "interior_min_rate": 1.0
+    }
+  },
+  "axis_attribution": {
+    "log_per_recipient": {
+      "x0.1": 0.5593,
+      "x10.0": 0.5593,
+      "extreme_mean": 0.5593
+    },
+    "log_support_count": {
+      "x0.1": 0.75,
+      "x10.0": 0.6923,
+      "extreme_mean": 0.7212
+    },
+    "project_duration": {
+      "x0.1": 0.5714,
+      "x10.0": 1.0,
+      "extreme_mean": 0.7857
+    },
+    "support_ratio": {
+      "x0.1": 1.0,
+      "x10.0": 0.8966,
+      "extreme_mean": 0.9483
+    }
+  }
+}

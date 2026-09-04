@@ -14,7 +14,10 @@ PROC = os.path.join(DATA, "processed")
 ATT = os.path.join(RAW, "attachments")
 REPORTS = os.path.join(ROOT, "reports")
 FIGURES = os.path.join(ROOT, "figures")
-for _d in (RAW, PROC, ATT, REPORTS, FIGURES):
+# 채택 모델의 serving artifact. 데이터가 아니라 모델이라 data/ 밖에 둔다.
+# `_archive/` 에는 직전 세대를 남긴다 (m56 = 모델2 v1 세대).
+MODELS = os.path.join(ROOT, "models")
+for _d in (RAW, PROC, ATT, REPORTS, FIGURES, MODELS):
     os.makedirs(_d, exist_ok=True)
 
 # 사용자가 지정한 원천 4종
@@ -122,8 +125,9 @@ def save_report(name, obj):
 # 실례: "예산규모는 1조 4,517억원"(정부 전체 예산)에서 '1조'를 놓쳐
 #       4,517억원이 per_company 로 잡힌 건이 있었다.
 #
-# 정의를 common 에 두는 이유: a03(STL)·a04(예측)·a05(참고범위)가 같은 기준을
-# 써야 한다. 예전에는 a05 에만 있어서 STL·예측이 오류값을 그대로 보고 있었다.
+# 정의를 common 에 두는 이유: 금액을 보는 모든 하류가 같은 기준을 써야 한다.
+# 예전에는 참고범위 산출 스크립트에만 있어서 STL·예측이 오류값을 그대로 보고
+# 있었다(그 셋은 이후 제거됐다). 지금 소비처는 s03f/s07a/s08a/s09a 다.
 SANE_RANGE = {
     "per_company": (1e5, 5e9),      # 10만원 ~ 50억원
     "per_project": (1e5, 1e10),     # 10만원 ~ 100억원

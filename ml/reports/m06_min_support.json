@@ -1,0 +1,363 @@
+{
+  "purpose": "MIN_SUPPORT 컷오프를 통계적 신뢰도로 결정 (탐색이 아니라 신뢰도 기준)",
+  "method": {
+    "B_free": "표본 수 -> Wilson 95% CI 폭. 학습 0회. 본 판단 근거.",
+    "A_one_cv": "가장 낮은 컷오프로 CV 1회 -> 클래스별 F1 재사용해 전 컷오프 근사.",
+    "C_full": "컷오프별 전량 재학습. --full 일 때만. A 의 근사 오차 확인용."
+  },
+  "folds": 5,
+  "seed": 42,
+  "labeled_rows": 1447,
+  "reference_ci_by_n": {
+    "3": {
+      "ci_half_width": 0.3747,
+      "verdict": "매우 불안정"
+    },
+    "4": {
+      "ci_half_width": 0.35,
+      "verdict": "매우 불안정"
+    },
+    "5": {
+      "ci_half_width": 0.3296,
+      "verdict": "매우 불안정"
+    },
+    "6": {
+      "ci_half_width": 0.3124,
+      "verdict": "매우 불안정"
+    },
+    "8": {
+      "ci_half_width": 0.2848,
+      "verdict": "참고용"
+    },
+    "10": {
+      "ci_half_width": 0.2634,
+      "verdict": "참고용"
+    },
+    "12": {
+      "ci_half_width": 0.2462,
+      "verdict": "참고용"
+    },
+    "15": {
+      "ci_half_width": 0.2258,
+      "verdict": "참고용"
+    },
+    "20": {
+      "ci_half_width": 0.2007,
+      "verdict": "사용가능"
+    },
+    "30": {
+      "ci_half_width": 0.1685,
+      "verdict": "사용가능"
+    },
+    "50": {
+      "ci_half_width": 0.1336,
+      "verdict": "신뢰가능"
+    },
+    "100": {
+      "ci_half_width": 0.0962,
+      "verdict": "신뢰가능"
+    },
+    "150": {
+      "ci_half_width": 0.079,
+      "verdict": "신뢰가능"
+    }
+  },
+  "per_class": [
+    {
+      "class": "법률서비스",
+      "n": 3,
+      "f1": 0.5,
+      "ci_low": 0.1253,
+      "ci_high": 0.8747,
+      "ci_half_width": 0.3747,
+      "verdict": "매우 불안정"
+    },
+    {
+      "class": "수출보험",
+      "n": 3,
+      "f1": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.5615,
+      "ci_half_width": 0.2808,
+      "verdict": "참고용"
+    },
+    {
+      "class": "근속장려금",
+      "n": 4,
+      "f1": 1.0,
+      "ci_low": 0.5101,
+      "ci_high": 1.0,
+      "ci_half_width": 0.245,
+      "verdict": "참고용"
+    },
+    {
+      "class": "연구장비",
+      "n": 4,
+      "f1": 0.8571,
+      "ci_low": 0.3812,
+      "ci_high": 0.9832,
+      "ci_half_width": 0.301,
+      "verdict": "매우 불안정"
+    },
+    {
+      "class": "종합지원",
+      "n": 4,
+      "f1": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.4899,
+      "ci_half_width": 0.245,
+      "verdict": "참고용"
+    },
+    {
+      "class": "공공구매",
+      "n": 5,
+      "f1": 0.75,
+      "ci_low": 0.336,
+      "ci_high": 0.9468,
+      "ci_half_width": 0.3054,
+      "verdict": "매우 불안정"
+    },
+    {
+      "class": "매출채권",
+      "n": 6,
+      "f1": 0.9091,
+      "ci_low": 0.5091,
+      "ci_high": 0.9897,
+      "ci_half_width": 0.2403,
+      "verdict": "참고용"
+    },
+    {
+      "class": "자격인증",
+      "n": 8,
+      "f1": 0.6154,
+      "ci_low": 0.2983,
+      "ci_high": 0.8576,
+      "ci_half_width": 0.2796,
+      "verdict": "참고용"
+    },
+    {
+      "class": "기술·IP평가",
+      "n": 10,
+      "f1": 0.8235,
+      "ci_low": 0.5137,
+      "ci_high": 0.9537,
+      "ci_half_width": 0.22,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "보증",
+      "n": 10,
+      "f1": 0.8421,
+      "ci_low": 0.5329,
+      "ci_high": 0.9614,
+      "ci_half_width": 0.2143,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "상담",
+      "n": 14,
+      "f1": 0.5455,
+      "ci_low": 0.3044,
+      "ci_high": 0.7669,
+      "ci_half_width": 0.2313,
+      "verdict": "참고용"
+    },
+    {
+      "class": "수출물류",
+      "n": 14,
+      "f1": 0.8276,
+      "ci_low": 0.5681,
+      "ci_high": 0.946,
+      "ci_half_width": 0.1889,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "수출통관",
+      "n": 14,
+      "f1": 0.7333,
+      "ci_low": 0.4718,
+      "ci_high": 0.8944,
+      "ci_half_width": 0.2113,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "경진대회",
+      "n": 15,
+      "f1": 0.8966,
+      "ci_low": 0.6562,
+      "ci_high": 0.9752,
+      "ci_half_width": 0.1595,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "해외인증",
+      "n": 19,
+      "f1": 0.8108,
+      "ci_low": 0.5896,
+      "ci_high": 0.9274,
+      "ci_half_width": 0.1689,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "SW·솔루션",
+      "n": 20,
+      "f1": 0.5778,
+      "ci_low": 0.3666,
+      "ci_high": 0.7639,
+      "ci_half_width": 0.1987,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "성능인증",
+      "n": 21,
+      "f1": 0.5641,
+      "ci_low": 0.3589,
+      "ci_high": 0.7494,
+      "ci_half_width": 0.1953,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "창업보육",
+      "n": 27,
+      "f1": 0.6667,
+      "ci_low": 0.4782,
+      "ci_high": 0.8136,
+      "ci_half_width": 0.1677,
+      "verdict": "사용가능"
+    },
+    {
+      "class": "해외수주·실증",
+      "n": 29,
+      "f1": 0.7931,
+      "ci_low": 0.6161,
+      "ci_high": 0.9015,
+      "ci_half_width": 0.1427,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "고용보조",
+      "n": 52,
+      "f1": 0.8958,
+      "ci_low": 0.784,
+      "ci_high": 0.9532,
+      "ci_half_width": 0.0846,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "교육훈련",
+      "n": 55,
+      "f1": 0.8119,
+      "ci_low": 0.6896,
+      "ci_high": 0.8934,
+      "ci_half_width": 0.1019,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "설비",
+      "n": 77,
+      "f1": 0.7805,
+      "ci_low": 0.6759,
+      "ci_high": 0.8584,
+      "ci_half_width": 0.0912,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "융자",
+      "n": 95,
+      "f1": 0.9375,
+      "ci_low": 0.8698,
+      "ci_high": 0.9712,
+      "ci_half_width": 0.0507,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "연구개발",
+      "n": 154,
+      "f1": 0.8496,
+      "ci_low": 0.7846,
+      "ci_high": 0.8975,
+      "ci_half_width": 0.0564,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "판로",
+      "n": 168,
+      "f1": 0.8659,
+      "ci_low": 0.8061,
+      "ci_high": 0.9093,
+      "ci_half_width": 0.0516,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "컨설팅",
+      "n": 172,
+      "f1": 0.7412,
+      "ci_low": 0.671,
+      "ci_high": 0.8009,
+      "ci_half_width": 0.065,
+      "verdict": "신뢰가능"
+    },
+    {
+      "class": "사업화",
+      "n": 438,
+      "f1": 0.8394,
+      "ci_low": 0.8021,
+      "ci_high": 0.8708,
+      "ci_half_width": 0.0344,
+      "verdict": "신뢰가능"
+    }
+  ],
+  "cutoff_approx": {
+    "3": {
+      "classes": 27,
+      "rows": 1441,
+      "dropped_rows": 6,
+      "dropped_pct": 0.41,
+      "macro_f1_approx": 0.7198,
+      "worst_ci_half_width": 0.3747
+    },
+    "5": {
+      "classes": 22,
+      "rows": 1423,
+      "dropped_rows": 24,
+      "dropped_pct": 1.66,
+      "macro_f1_approx": 0.7762,
+      "worst_ci_half_width": 0.3054
+    },
+    "8": {
+      "classes": 20,
+      "rows": 1412,
+      "dropped_rows": 35,
+      "dropped_pct": 2.42,
+      "macro_f1_approx": 0.7709,
+      "worst_ci_half_width": 0.2796
+    },
+    "10": {
+      "classes": 19,
+      "rows": 1404,
+      "dropped_rows": 43,
+      "dropped_pct": 2.97,
+      "macro_f1_approx": 0.7791,
+      "worst_ci_half_width": 0.2313
+    },
+    "15": {
+      "classes": 14,
+      "rows": 1342,
+      "dropped_rows": 105,
+      "dropped_pct": 7.26,
+      "macro_f1_approx": 0.7879,
+      "worst_ci_half_width": 0.1987
+    },
+    "20": {
+      "classes": 12,
+      "rows": 1308,
+      "dropped_rows": 139,
+      "dropped_pct": 9.61,
+      "macro_f1_approx": 0.777,
+      "worst_ci_half_width": 0.1987
+    }
+  },
+  "caution": "컷오프를 올리면 macro F1 은 어려운 클래스를 제거한 효과로 저절로 오른다. 성능 최대화로 컷오프를 고르면 안 된다.",
+  "structural_note": "5-fold CV 는 클래스당 최소 5건을 요구한다. 그 미만이면 일부 fold 에 해당 클래스가 없어 구조적으로 맞힐 수 없다.",
+  "seed_std_warning": "표본 3~4건 구간은 시드 표준편차가 0 으로 나오지만 안정적이라는 뜻이 아니다. 각 표본이 한 번씩만 예측돼 결과가 결정적일 뿐이다."
+}

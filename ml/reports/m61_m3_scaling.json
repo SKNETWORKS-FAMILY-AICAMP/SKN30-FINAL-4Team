@@ -1,0 +1,1008 @@
+{
+  "실험": "D. scaling / distance 재점검 (지시서 Part B 7절)",
+  "순서": "축 진단 -> 진단이 지목한 후보만 비교",
+  "n_pool": 1948,
+  "axis_diagnostics": [
+    {
+      "축": "기업당 지원액(원)",
+      "모델입력": "log_per_recipient",
+      "n": 1785,
+      "결측": 163,
+      "0값비율": 0.0,
+      "최소": 178.57142857142858,
+      "중앙": 60000000.0,
+      "최대": 330000000000.0,
+      "최대/중앙": 5500.0,
+      "왜도_원": 20.6,
+      "첨도_원": 469.02,
+      "왜도_모델": -0.14,
+      "첨도_모델": 0.81,
+      "IQR밖3배": 140
+    },
+    {
+      "축": "지원 기업수",
+      "모델입력": "log_support_count",
+      "n": 1626,
+      "결측": 322,
+      "0값비율": 0.0,
+      "최소": 1.0,
+      "중앙": 10.0,
+      "최대": 80000.0,
+      "최대/중앙": 8000.0,
+      "왜도_원": 30.43,
+      "첨도_원": 1047.1,
+      "왜도_모델": 1.06,
+      "첨도_모델": 1.68,
+      "IQR밖3배": 182
+    },
+    {
+      "축": "사업기간(개월)",
+      "모델입력": "project_duration",
+      "n": 434,
+      "결측": 1514,
+      "0값비율": 0.0,
+      "최소": 0.08,
+      "중앙": 2.0,
+      "최대": 26.0,
+      "최대/중앙": 13.0,
+      "왜도_원": 3.76,
+      "첨도_원": 15.63,
+      "왜도_모델": 3.76,
+      "첨도_모델": 15.63,
+      "IQR밖3배": 25
+    },
+    {
+      "축": "지원비율(%)",
+      "모델입력": "support_ratio",
+      "n": 886,
+      "결측": 1062,
+      "0값비율": 0.0045,
+      "최소": -320.0,
+      "중앙": 80.0,
+      "최대": 100.0,
+      "최대/중앙": 1.2,
+      "왜도_원": -9.37,
+      "첨도_원": 170.28,
+      "왜도_모델": -9.37,
+      "첨도_모델": 170.28,
+      "IQR밖3배": 15
+    }
+  ],
+  "가중치_정의": "축가중 Euclid 의 가중치 = 비교군 내부 잔차 표준편차의 역수. 사람 라벨을 한 건도 쓰지 않는다 (지시서 7절 주의)",
+  "variants": {
+    "현행 (standard · Euclid)": {
+      "config": {},
+      "cohort": {
+        "level_dist": {
+          "L0 전체": 79,
+          "L1 support_typexsupport_method": 1741,
+          "L2 support_type": 128
+        },
+        "n_global_fallback": 79,
+        "n_thin": 195,
+        "cohort_size_median": 226,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 39,
+        "n_distinct_cohorts": 25,
+        "cat_block_share_of_D": 0.2409,
+        "within_cohort_spread": 1.0349,
+        "within_cohort_spread_num": 0.9088
+      },
+      "stability": {
+        "frac_0.9": {
+          "spearman_mean": 0.9829,
+          "spearman_min": 0.9655,
+          "top10_mean": 0.5133,
+          "top20_mean": 0.8267,
+          "top30_mean": 0.8644,
+          "top39_mean": 0.8821,
+          "top10_min": 0.2,
+          "top20_min": 0.75,
+          "top30_min": 0.7333,
+          "top39_min": 0.7949
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9692,
+          "spearman_min": 0.9574,
+          "top10_mean": 0.3867,
+          "top20_mean": 0.7033,
+          "top30_mean": 0.7956,
+          "top39_mean": 0.8308,
+          "top10_min": 0.1,
+          "top20_min": 0.5,
+          "top30_min": 0.6667,
+          "top39_min": 0.6667
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9517,
+          "spearman_min": 0.9414,
+          "top10_mean": 0.2467,
+          "top20_mean": 0.65,
+          "top30_mean": 0.7533,
+          "top39_mean": 0.7761,
+          "top10_min": 0.1,
+          "top20_min": 0.55,
+          "top30_min": 0.6333,
+          "top39_min": 0.641
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9394,
+          "spearman_min": 0.932,
+          "top10_mean": 0.1067,
+          "top20_mean": 0.5033,
+          "top30_mean": 0.6556,
+          "top39_mean": 0.7026,
+          "top10_min": 0.0,
+          "top20_min": 0.3,
+          "top30_min": 0.4667,
+          "top39_min": 0.4872
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 59,
+            "spearman_mean": 0.9668,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 52,
+            "spearman_mean": 0.9538,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 14,
+            "spearman_mean": 0.9538,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 29,
+            "spearman_mean": 0.9893,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5593,
+          "log_support_count": 0.7212,
+          "project_duration": 0.7857,
+          "support_ratio": 0.9483
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.7536
+      },
+      "dependency": {
+        "top39_contribution_share": {
+          "log_per_recipient": 0.1249,
+          "log_support_count": 0.1834,
+          "project_duration": 0.3768,
+          "support_ratio": 0.2578
+        },
+        "top39_categorical_share": 0.057,
+        "max_axis_share": 0.3768,
+        "dominant_axis": "project_duration",
+        "ablation": {
+          "log_per_recipient": {
+            "spearman": 0.8587,
+            "top30_overlap": 0.7333
+          },
+          "log_support_count": {
+            "spearman": 0.7592,
+            "top30_overlap": 0.7
+          },
+          "project_duration": {
+            "spearman": 0.9419,
+            "top30_overlap": 0.6333
+          },
+          "support_ratio": {
+            "spearman": 0.8923,
+            "top30_overlap": 0.6667
+          }
+        },
+        "min_ablation_spearman": 0.7592
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9733,
+        "top1_axis_agreement_min": 0.9
+      },
+      "labeled": {
+        "roc_auc": 0.7542,
+        "pr_auc": 0.2184,
+        "recall": 0.6,
+        "precision": 0.2727
+      },
+      "vs_base": {
+        "spearman": 1.0,
+        "top10_overlap": 1.0,
+        "top20_overlap": 1.0,
+        "top30_overlap": 1.0,
+        "top39_overlap": 1.0
+      },
+      "fails": [],
+      "verdict": "기준선"
+    },
+    "robust scaling": {
+      "config": {
+        "scaler": "robust"
+      },
+      "cohort": {
+        "level_dist": {
+          "L0 전체": 79,
+          "L1 support_typexsupport_method": 1741,
+          "L2 support_type": 128
+        },
+        "n_global_fallback": 79,
+        "n_thin": 195,
+        "cohort_size_median": 226,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 39,
+        "n_distinct_cohorts": 25,
+        "cat_block_share_of_D": 0.3281,
+        "within_cohort_spread": 1.2403,
+        "within_cohort_spread_num": 1.0824
+      },
+      "stability": {
+        "frac_0.9": {
+          "spearman_mean": 0.9876,
+          "spearman_min": 0.9717,
+          "top10_mean": 0.34,
+          "top20_mean": 0.7367,
+          "top30_mean": 0.8355,
+          "top39_mean": 0.8684,
+          "top10_min": 0.1,
+          "top20_min": 0.65,
+          "top30_min": 0.8,
+          "top39_min": 0.8205
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9728,
+          "spearman_min": 0.9581,
+          "top10_mean": 0.2867,
+          "top20_mean": 0.61,
+          "top30_mean": 0.7511,
+          "top39_mean": 0.8188,
+          "top10_min": 0.1,
+          "top20_min": 0.45,
+          "top30_min": 0.6,
+          "top39_min": 0.7436
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9568,
+          "spearman_min": 0.9495,
+          "top10_mean": 0.2333,
+          "top20_mean": 0.5267,
+          "top30_mean": 0.6956,
+          "top39_mean": 0.7538,
+          "top10_min": 0.0,
+          "top20_min": 0.4,
+          "top30_min": 0.5667,
+          "top39_min": 0.6667
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9407,
+          "spearman_min": 0.9234,
+          "top10_mean": 0.1267,
+          "top20_mean": 0.44,
+          "top30_mean": 0.64,
+          "top39_mean": 0.6974,
+          "top10_min": 0.0,
+          "top20_min": 0.25,
+          "top30_min": 0.5,
+          "top39_min": 0.6154
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 57,
+            "spearman_mean": 0.961,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 52,
+            "spearman_mean": 0.9564,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 14,
+            "spearman_mean": 0.9409,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 29,
+            "spearman_mean": 0.9625,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.0593,
+          "log_support_count": 0.3173,
+          "project_duration": 0.75,
+          "support_ratio": 1.0
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.5316
+      },
+      "dependency": {
+        "top39_contribution_share": {
+          "log_per_recipient": 0.0006,
+          "log_support_count": 0.0017,
+          "project_duration": 0.0194,
+          "support_ratio": 0.9581
+        },
+        "top39_categorical_share": 0.0202,
+        "max_axis_share": 0.9581,
+        "dominant_axis": "support_ratio",
+        "ablation": {
+          "log_per_recipient": {
+            "spearman": 0.9832,
+            "top30_overlap": 0.4667
+          },
+          "log_support_count": {
+            "spearman": 0.9436,
+            "top30_overlap": 0.8667
+          },
+          "project_duration": {
+            "spearman": 0.9473,
+            "top30_overlap": 1.0
+          },
+          "support_ratio": {
+            "spearman": 0.4224,
+            "top30_overlap": 0.0333
+          }
+        },
+        "min_ablation_spearman": 0.4224
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 1.0,
+        "top1_axis_agreement_min": 1.0
+      },
+      "labeled": {
+        "roc_auc": 0.7583,
+        "pr_auc": 0.2393,
+        "recall": 0.4,
+        "precision": 0.1818
+      },
+      "vs_base": {
+        "spearman": 0.6727,
+        "top10_overlap": 0.2,
+        "top20_overlap": 0.4,
+        "top30_overlap": 0.3667,
+        "top39_overlap": 0.3333
+      },
+      "fails": [
+        "특정 축 지배 심화",
+        "Top30 목록 63% 교체 (문턱 8%)"
+      ],
+      "verdict": "REJECT"
+    },
+    "MAD scaling": {
+      "config": {
+        "scaler": "mad"
+      },
+      "cohort": {
+        "level_dist": {
+          "L0 전체": 79,
+          "L1 support_typexsupport_method": 1741,
+          "L2 support_type": 128
+        },
+        "n_global_fallback": 79,
+        "n_thin": 195,
+        "cohort_size_median": 226,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 39,
+        "n_distinct_cohorts": 25,
+        "cat_block_share_of_D": 0.2392,
+        "within_cohort_spread": 1.0489,
+        "within_cohort_spread_num": 0.9244
+      },
+      "stability": {
+        "frac_0.9": {
+          "spearman_mean": 0.9791,
+          "spearman_min": 0.9626,
+          "top10_mean": 0.4733,
+          "top20_mean": 0.79,
+          "top30_mean": 0.8711,
+          "top39_mean": 0.8957,
+          "top10_min": 0.2,
+          "top20_min": 0.6,
+          "top30_min": 0.7333,
+          "top39_min": 0.8205
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9663,
+          "spearman_min": 0.9519,
+          "top10_mean": 0.3467,
+          "top20_mean": 0.6933,
+          "top30_mean": 0.8244,
+          "top39_mean": 0.8513,
+          "top10_min": 0.2,
+          "top20_min": 0.5,
+          "top30_min": 0.7,
+          "top39_min": 0.7692
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9499,
+          "spearman_min": 0.9396,
+          "top10_mean": 0.24,
+          "top20_mean": 0.6,
+          "top30_mean": 0.7511,
+          "top39_mean": 0.7915,
+          "top10_min": 0.1,
+          "top20_min": 0.35,
+          "top30_min": 0.5667,
+          "top39_min": 0.6667
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9353,
+          "spearman_min": 0.9223,
+          "top10_mean": 0.16,
+          "top20_mean": 0.46,
+          "top30_mean": 0.6556,
+          "top39_mean": 0.7299,
+          "top10_min": 0.0,
+          "top20_min": 0.25,
+          "top30_min": 0.4667,
+          "top39_min": 0.641
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 59,
+            "spearman_mean": 0.9611,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 52,
+            "spearman_mean": 0.9555,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 14,
+            "spearman_mean": 0.953,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 29,
+            "spearman_mean": 0.9932,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5,
+          "log_support_count": 0.8654,
+          "project_duration": 0.75,
+          "support_ratio": 0.8966
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.753
+      },
+      "dependency": {
+        "top39_contribution_share": {
+          "log_per_recipient": 0.0592,
+          "log_support_count": 0.3668,
+          "project_duration": 0.3219,
+          "support_ratio": 0.2108
+        },
+        "top39_categorical_share": 0.0413,
+        "max_axis_share": 0.3668,
+        "dominant_axis": "log_support_count",
+        "ablation": {
+          "log_per_recipient": {
+            "spearman": 0.9039,
+            "top30_overlap": 0.8667
+          },
+          "log_support_count": {
+            "spearman": 0.6239,
+            "top30_overlap": 0.5667
+          },
+          "project_duration": {
+            "spearman": 0.9539,
+            "top30_overlap": 0.6333
+          },
+          "support_ratio": {
+            "spearman": 0.931,
+            "top30_overlap": 0.7667
+          }
+        },
+        "min_ablation_spearman": 0.6239
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9867,
+        "top1_axis_agreement_min": 0.9667
+      },
+      "labeled": {
+        "roc_auc": 0.7458,
+        "pr_auc": 0.2295,
+        "recall": 0.4,
+        "precision": 0.1818
+      },
+      "vs_base": {
+        "spearman": 0.9697,
+        "top10_overlap": 0.6,
+        "top20_overlap": 0.7,
+        "top30_overlap": 0.8,
+        "top39_overlap": 0.7949
+      },
+      "fails": [
+        "Top30 목록 20% 교체 (문턱 8%)"
+      ],
+      "verdict": "REJECT"
+    },
+    "log1p + standard": {
+      "config": {
+        "log_axes": "['project_duration', 'support_ratio']"
+      },
+      "cohort": {
+        "level_dist": {
+          "L0 전체": 79,
+          "L1 support_typexsupport_method": 1741,
+          "L2 support_type": 128
+        },
+        "n_global_fallback": 79,
+        "n_thin": 195,
+        "cohort_size_median": 226,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 39,
+        "n_distinct_cohorts": 25,
+        "cat_block_share_of_D": 0.2539,
+        "within_cohort_spread": 1.0348,
+        "within_cohort_spread_num": 0.9083
+      },
+      "stability": {
+        "frac_0.9": {
+          "spearman_mean": 0.9727,
+          "spearman_min": 0.9268,
+          "top10_mean": 0.5067,
+          "top20_mean": 0.8,
+          "top30_mean": 0.86,
+          "top39_mean": 0.8615,
+          "top10_min": 0.3,
+          "top20_min": 0.6,
+          "top30_min": 0.6333,
+          "top39_min": 0.7179
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.961,
+          "spearman_min": 0.9148,
+          "top10_mean": 0.5333,
+          "top20_mean": 0.72,
+          "top30_mean": 0.8089,
+          "top39_mean": 0.8239,
+          "top10_min": 0.2,
+          "top20_min": 0.5,
+          "top30_min": 0.6333,
+          "top39_min": 0.641
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9303,
+          "spearman_min": 0.8888,
+          "top10_mean": 0.52,
+          "top20_mean": 0.6267,
+          "top30_mean": 0.72,
+          "top39_mean": 0.7436,
+          "top10_min": 0.2,
+          "top20_min": 0.4,
+          "top30_min": 0.4667,
+          "top39_min": 0.5385
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9089,
+          "spearman_min": 0.8776,
+          "top10_mean": 0.3133,
+          "top20_mean": 0.4667,
+          "top30_mean": 0.5733,
+          "top39_mean": 0.6308,
+          "top10_min": 0.1,
+          "top20_min": 0.25,
+          "top30_min": 0.4667,
+          "top39_min": 0.4872
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 59,
+            "spearman_mean": 0.9647,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 52,
+            "spearman_mean": 0.9589,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 14,
+            "spearman_mean": 0.9734,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 26,
+            "spearman_mean": 0.714,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5847,
+          "log_support_count": 0.7404,
+          "project_duration": 1.0,
+          "support_ratio": 0.0517
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.5942
+      },
+      "dependency": {
+        "top39_contribution_share": {
+          "log_per_recipient": 0.1494,
+          "log_support_count": 0.2549,
+          "project_duration": 0.4989,
+          "support_ratio": 0.0258
+        },
+        "top39_categorical_share": 0.071,
+        "max_axis_share": 0.4989,
+        "dominant_axis": "project_duration",
+        "ablation": {
+          "log_per_recipient": {
+            "spearman": 0.8495,
+            "top30_overlap": 0.7667
+          },
+          "log_support_count": {
+            "spearman": 0.7448,
+            "top30_overlap": 0.6667
+          },
+          "project_duration": {
+            "spearman": 0.8561,
+            "top30_overlap": 0.4667
+          },
+          "support_ratio": {
+            "spearman": 0.9977,
+            "top30_overlap": 0.9667
+          }
+        },
+        "min_ablation_spearman": 0.7448
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.99,
+        "top1_axis_agreement_min": 0.9667
+      },
+      "labeled": {
+        "roc_auc": 0.6667,
+        "pr_auc": 0.1917,
+        "recall": 0.4,
+        "precision": 0.1818
+      },
+      "vs_base": {
+        "spearman": 0.8576,
+        "top10_overlap": 0.3,
+        "top20_overlap": 0.6,
+        "top30_overlap": 0.6333,
+        "top39_overlap": 0.6667
+      },
+      "fails": [
+        "특정 축 지배 심화",
+        "Top30 목록 37% 교체 (문턱 8%)"
+      ],
+      "verdict": "REJECT"
+    },
+    "축가중 Euclid": {
+      "config": {
+        "metric": "diag"
+      },
+      "cohort": {
+        "level_dist": {
+          "L0 전체": 79,
+          "L1 support_typexsupport_method": 1741,
+          "L2 support_type": 128
+        },
+        "n_global_fallback": 79,
+        "n_thin": 195,
+        "cohort_size_median": 226,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 39,
+        "n_distinct_cohorts": 25,
+        "cat_block_share_of_D": 0.5635,
+        "within_cohort_spread": 2.89,
+        "within_cohort_spread_num": 1.5097
+      },
+      "stability": {
+        "frac_0.9": {
+          "spearman_mean": 0.9868,
+          "spearman_min": 0.9702,
+          "top10_mean": 0.3933,
+          "top20_mean": 0.7267,
+          "top30_mean": 0.8267,
+          "top39_mean": 0.8017,
+          "top10_min": 0.0,
+          "top20_min": 0.65,
+          "top30_min": 0.7333,
+          "top39_min": 0.7436
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9679,
+          "spearman_min": 0.9493,
+          "top10_mean": 0.2267,
+          "top20_mean": 0.62,
+          "top30_mean": 0.7511,
+          "top39_mean": 0.7265,
+          "top10_min": 0.0,
+          "top20_min": 0.4,
+          "top30_min": 0.6333,
+          "top39_min": 0.6667
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9403,
+          "spearman_min": 0.9254,
+          "top10_mean": 0.2333,
+          "top20_mean": 0.56,
+          "top30_mean": 0.6844,
+          "top39_mean": 0.6752,
+          "top10_min": 0.0,
+          "top20_min": 0.45,
+          "top30_min": 0.6,
+          "top39_min": 0.5385
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9203,
+          "spearman_min": 0.9164,
+          "top10_mean": 0.1467,
+          "top20_mean": 0.3667,
+          "top30_mean": 0.5667,
+          "top39_mean": 0.5863,
+          "top10_min": 0.0,
+          "top20_min": 0.2,
+          "top30_min": 0.4333,
+          "top39_min": 0.5128
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 59,
+            "spearman_mean": 0.9524,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 52,
+            "spearman_mean": 0.9566,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 14,
+            "spearman_mean": 0.9398,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 29,
+            "spearman_mean": 0.9952,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.6186,
+          "log_support_count": 0.6923,
+          "project_duration": 0.7143,
+          "support_ratio": 0.9483
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.7434
+      },
+      "dependency": {
+        "top39_contribution_share": {
+          "log_per_recipient": 0.0349,
+          "log_support_count": 0.0394,
+          "project_duration": 0.1871,
+          "support_ratio": 0.0482
+        },
+        "top39_categorical_share": 0.6904,
+        "max_axis_share": 0.1871,
+        "dominant_axis": "project_duration",
+        "ablation": {
+          "log_per_recipient": {
+            "spearman": 0.9236,
+            "top30_overlap": 0.9
+          },
+          "log_support_count": {
+            "spearman": 0.8845,
+            "top30_overlap": 0.7333
+          },
+          "project_duration": {
+            "spearman": 0.9691,
+            "top30_overlap": 0.7
+          },
+          "support_ratio": {
+            "spearman": 0.942,
+            "top30_overlap": 0.9333
+          }
+        },
+        "min_ablation_spearman": 0.8845
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9533,
+        "top1_axis_agreement_min": 0.9333
+      },
+      "labeled": {
+        "roc_auc": 0.7333,
+        "pr_auc": 0.2676,
+        "recall": 0.4,
+        "precision": 0.1818
+      },
+      "vs_base": {
+        "spearman": 0.8866,
+        "top10_overlap": 0.4,
+        "top20_overlap": 0.45,
+        "top30_overlap": 0.4667,
+        "top39_overlap": 0.4615
+      },
+      "fails": [
+        "Top30 목록 53% 교체 (문턱 8%)"
+      ],
+      "verdict": "REJECT"
+    },
+    "Mahalanobis 유사": {
+      "config": {
+        "metric": "mahalanobis"
+      },
+      "cohort": {
+        "level_dist": {
+          "L0 전체": 79,
+          "L1 support_typexsupport_method": 1741,
+          "L2 support_type": 128
+        },
+        "n_global_fallback": 79,
+        "n_thin": 195,
+        "cohort_size_median": 226,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 39,
+        "n_distinct_cohorts": 25,
+        "cat_block_share_of_D": 0.1335,
+        "within_cohort_spread": 1.5959,
+        "within_cohort_spread_num": 1.51
+      },
+      "stability": {
+        "frac_0.9": {
+          "spearman_mean": 0.9836,
+          "spearman_min": 0.9694,
+          "top10_mean": 0.4467,
+          "top20_mean": 0.83,
+          "top30_mean": 0.8822,
+          "top39_mean": 0.8923,
+          "top10_min": 0.2,
+          "top20_min": 0.7,
+          "top30_min": 0.7667,
+          "top39_min": 0.8462
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.974,
+          "spearman_min": 0.9638,
+          "top10_mean": 0.3733,
+          "top20_mean": 0.6967,
+          "top30_mean": 0.8067,
+          "top39_mean": 0.8376,
+          "top10_min": 0.3,
+          "top20_min": 0.4,
+          "top30_min": 0.7,
+          "top39_min": 0.7436
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9599,
+          "spearman_min": 0.9509,
+          "top10_mean": 0.3267,
+          "top20_mean": 0.66,
+          "top30_mean": 0.78,
+          "top39_mean": 0.7966,
+          "top10_min": 0.1,
+          "top20_min": 0.5,
+          "top30_min": 0.6667,
+          "top39_min": 0.6923
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9479,
+          "spearman_min": 0.9408,
+          "top10_mean": 0.2333,
+          "top20_mean": 0.5033,
+          "top30_mean": 0.6533,
+          "top39_mean": 0.7419,
+          "top10_min": 0.1,
+          "top20_min": 0.25,
+          "top30_min": 0.5,
+          "top39_min": 0.5897
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 59,
+            "spearman_mean": 0.9629,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 52,
+            "spearman_mean": 0.9721,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 14,
+            "spearman_mean": 0.9455,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 29,
+            "spearman_mean": 0.9761,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.6186,
+          "log_support_count": 0.6827,
+          "project_duration": 0.7143,
+          "support_ratio": 0.9483
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.741
+      },
+      "dependency": {
+        "top39_contribution_share": {
+          "log_per_recipient": 0.1882,
+          "log_support_count": 0.1837,
+          "project_duration": 0.3323,
+          "support_ratio": 0.2774
+        },
+        "top39_categorical_share": 0.0184,
+        "max_axis_share": 0.3323,
+        "dominant_axis": "project_duration",
+        "ablation": {
+          "log_per_recipient": {
+            "spearman": 0.7916,
+            "top30_overlap": 0.7333
+          },
+          "log_support_count": {
+            "spearman": 0.7377,
+            "top30_overlap": 0.7
+          },
+          "project_duration": {
+            "spearman": 0.9435,
+            "top30_overlap": 0.7
+          },
+          "support_ratio": {
+            "spearman": 0.889,
+            "top30_overlap": 0.6667
+          }
+        },
+        "min_ablation_spearman": 0.7377
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9867,
+        "top1_axis_agreement_min": 0.9667
+      },
+      "labeled": {
+        "roc_auc": 0.7542,
+        "pr_auc": 0.2247,
+        "recall": 0.6,
+        "precision": 0.25
+      },
+      "vs_base": {
+        "spearman": 0.9602,
+        "top10_overlap": 0.7,
+        "top20_overlap": 0.9,
+        "top30_overlap": 0.9,
+        "top39_overlap": 0.9231
+      },
+      "fails": [
+        "Top30 목록 10% 교체 (문턱 8%)"
+      ],
+      "verdict": "REJECT"
+    }
+  }
+}
