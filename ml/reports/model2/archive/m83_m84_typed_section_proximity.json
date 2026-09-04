@@ -1,0 +1,211 @@
+{
+  "purpose": "M82 가 연 수치-맥락 축을 typed relation(M83) · section(M84) 으로 정교화",
+  "baseline": "M82/P3 (primary 0.3518 / strict 0.3751)",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "regressor": "M73 soft/ordinal_xgb 재현 블록"
+  },
+  "p3_baseline": {
+    "primary_MAE": 0.3518,
+    "strict_MAE": 0.3751,
+    "within_2x": 0.5717,
+    "within_3x": 0.7437
+  },
+  "m73_baseline": {
+    "primary_MAE": 0.3563,
+    "strict_MAE": 0.3756
+  },
+  "m83": {
+    "relations": {
+      "support_rate": "pct",
+      "self_burden_rate": "pct",
+      "selected_count": "count",
+      "duration_month": "month",
+      "duration_year": "year"
+    },
+    "n_cols": 38,
+    "relation_coverage": {
+      "support_rate": 0.0554,
+      "self_burden_rate": 0.4997,
+      "selected_count": 0.1955,
+      "duration_month": 0.0597,
+      "duration_year": 0.1406
+    },
+    "window": 30
+  },
+  "m84": {
+    "sections": [
+      "scale",
+      "content",
+      "target",
+      "period",
+      "condition",
+      "apply",
+      "select",
+      "exclude",
+      "purpose"
+    ],
+    "section_coverage": {
+      "scale": 0.3527,
+      "content": 0.3479,
+      "target": 0.3815,
+      "period": 0.2904,
+      "condition": 0.6068,
+      "apply": 0.3815,
+      "select": 0.276,
+      "exclude": 0.2302,
+      "purpose": 0.2195
+    },
+    "tfidf_sections": [
+      "scale",
+      "content",
+      "period"
+    ],
+    "svd_per_section": 8,
+    "docs_with_header": 0.878
+  },
+  "leakage": {
+    "relation_value_vs_target": 0,
+    "tfidf_digit_residue": 0,
+    "amount_used_as": "거리(위치)만 — 값·자릿수 미사용"
+  },
+  "results": {
+    "program_stem": {
+      "B0": {
+        "MAE_log10": 0.3518,
+        "within_2x": 0.5717,
+        "within_3x": 0.7437
+      },
+      "R1": {
+        "MAE_log10": 0.3524,
+        "within_2x": 0.5679,
+        "within_3x": 0.7421,
+        "vs_B0": {
+          "delta_MAE": 0.0005,
+          "ci95": [
+            -0.0023,
+            0.0032
+          ],
+          "wilcoxon_p": 0.979,
+          "n_better": 936,
+          "n_worse": 941
+        },
+        "fold_wins_vs_B0": 2
+      },
+      "R2": {
+        "MAE_log10": 0.3534,
+        "within_2x": 0.5679,
+        "within_3x": 0.7427,
+        "vs_B0": {
+          "delta_MAE": 0.0016,
+          "ci95": [
+            -0.0012,
+            0.0045
+          ],
+          "wilcoxon_p": 0.534,
+          "n_better": 948,
+          "n_worse": 929
+        },
+        "fold_wins_vs_B0": 2
+      },
+      "R3": {
+        "MAE_log10": 0.3509,
+        "within_2x": 0.5685,
+        "within_3x": 0.748,
+        "vs_B0": {
+          "delta_MAE": -0.0009,
+          "ci95": [
+            -0.004,
+            0.0021
+          ],
+          "wilcoxon_p": 0.715,
+          "n_better": 942,
+          "n_worse": 935
+        },
+        "fold_wins_vs_B0": 3
+      }
+    },
+    "normalized_title": {
+      "B0": {
+        "MAE_log10": 0.3751,
+        "within_2x": 0.5344,
+        "within_3x": 0.7118
+      },
+      "R1": {
+        "MAE_log10": 0.3765,
+        "within_2x": 0.5269,
+        "within_3x": 0.7139,
+        "vs_B0": {
+          "delta_MAE": 0.0014,
+          "ci95": [
+            -0.0015,
+            0.0042
+          ],
+          "wilcoxon_p": 0.283,
+          "n_better": 922,
+          "n_worse": 955
+        },
+        "fold_wins_vs_B0": 0
+      },
+      "R2": {
+        "MAE_log10": 0.3745,
+        "within_2x": 0.5333,
+        "within_3x": 0.7166,
+        "vs_B0": {
+          "delta_MAE": -0.0006,
+          "ci95": [
+            -0.0036,
+            0.0022
+          ],
+          "wilcoxon_p": 0.5,
+          "n_better": 954,
+          "n_worse": 923
+        },
+        "fold_wins_vs_B0": 4
+      },
+      "R3": {
+        "MAE_log10": 0.3741,
+        "within_2x": 0.5349,
+        "within_3x": 0.7123,
+        "vs_B0": {
+          "delta_MAE": -0.001,
+          "ci95": [
+            -0.004,
+            0.002
+          ],
+          "wilcoxon_p": 0.367,
+          "n_better": 971,
+          "n_worse": 906
+        },
+        "fold_wins_vs_B0": 4
+      }
+    }
+  },
+  "fold_dims": {
+    "B0": 211,
+    "R1": 249,
+    "R2": 286,
+    "R3": 324
+  },
+  "best_candidate": "R3",
+  "reproducibility": {
+    "B0": true,
+    "R1": true,
+    "R2": true,
+    "R3": true
+  },
+  "promotion_checks": {
+    "1. primary MAE < 0.3518 (M82/P3)": true,
+    "1b. 같은 fold B0 보다 낮다": true,
+    "2. strict MAE <= 0.3751": true,
+    "3. 4/5 이상 fold 개선": false,
+    "4. paired CI < 0": false,
+    "5. leakage audit PASS": true,
+    "6. 실질 기준 ΔMAE <= -0.002": false,
+    "7. reproducibility PASS": true
+  },
+  "verdict": "현행 유지 — M82/P3",
+  "seconds": 3729.7
+}

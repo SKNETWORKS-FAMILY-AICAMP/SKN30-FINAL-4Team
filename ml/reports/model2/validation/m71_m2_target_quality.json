@@ -1,0 +1,1041 @@
+{
+  "purpose": "M69 의 남은 오차가 모델 한계인가 bizinfo 타깃 파싱 오류인가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "model": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    },
+    "features": "M69 G 단계 그대로"
+  },
+  "changed": "타깃 품질 — 원문 근거로 교정 / 라벨로 학습 필터·가중",
+  "comparability_note": "타깃을 고치면 y 가 바뀌어 MAE 를 0.3719 과 직접 비교할 수 없다. 판정은 y 가 바뀌지 않은 CORRECT 행(고정 평가셋)에서만 한다. V3/V4 는 학습에서만 라벨을 쓰고 평가 타깃은 V1 것을 그대로 쓴다.",
+  "audit_layer": {
+    "audit_version": "m2-target-audit-v1",
+    "parser_untouched": "amount_parser.py 를 수정하지 않는다 — 모델 3 의 관측 파이프라인(F05->F06->M12/M66)이 같은 파서를 쓴다",
+    "inputs_seen": [
+      "원문 텍스트",
+      "금액 후보의 앞뒤 문맥",
+      "행의 구조화 필드"
+    ],
+    "inputs_not_seen": [
+      "타깃 y",
+      "OOF 예측",
+      "오차"
+    ],
+    "corrected_flags": [
+      "cost",
+      "total_before",
+      "unit anchor 불일치/부재"
+    ],
+    "not_corrected_flags": {
+      "fin": "융자 사업에서는 대출한도가 곧 지원규모다. 전체 101행 평균오차가 오히려 낮아(0.310 vs 0.432) 일괄 교정 대상이 아니다",
+      "qual": "파서가 신청자격 금액을 타깃으로 고른 경우가 드물다(17행, 평균오차 0.172)"
+    },
+    "labels": [
+      "CORRECT",
+      "FIXABLE",
+      "AMBIGUOUS",
+      "NO_EVIDENCE",
+      "SEMANTIC_MISMATCH"
+    ],
+    "error_types": [
+      "unit_conversion",
+      "total_vs_per_recipient",
+      "loan_vs_grant",
+      "project_vs_recipient",
+      "selected_count_confusion",
+      "table_parsing",
+      "multi_amount_candidate",
+      "cost_not_support",
+      "evidence_missing",
+      "other"
+    ],
+    "weights": {
+      "CORRECT": 1.0,
+      "FIXABLE": 1.0,
+      "AMBIGUOUS": 0.4,
+      "NO_EVIDENCE": 0.0,
+      "SEMANTIC_MISMATCH": 0.0
+    },
+    "keep_labels": [
+      "CORRECT",
+      "FIXABLE"
+    ]
+  },
+  "priority_sampling": {
+    "Top50": {
+      "n": 50,
+      "mean_abs_err": 1.59,
+      "share_of_bizinfo_total_error": 0.211
+    },
+    "Top100": {
+      "n": 100,
+      "mean_abs_err": 1.2911,
+      "share_of_bizinfo_total_error": 0.3426
+    },
+    "Top200": {
+      "n": 200,
+      "mean_abs_err": 1.0162,
+      "share_of_bizinfo_total_error": 0.5393
+    }
+  },
+  "label_distribution": {
+    "bizinfo": {
+      "AMBIGUOUS": 27,
+      "CORRECT": 809,
+      "FIXABLE": 44,
+      "NO_EVIDENCE": 19,
+      "SEMANTIC_MISMATCH": 2
+    },
+    "taxonomy": {
+      "AMBIGUOUS": 0,
+      "CORRECT": 969,
+      "FIXABLE": 0,
+      "NO_EVIDENCE": 7,
+      "SEMANTIC_MISMATCH": 0
+    }
+  },
+  "audit_matches_parser": 1.0,
+  "label_error": {
+    "bizinfo/CORRECT": {
+      "n": 809,
+      "mean_abs_err": 0.3863
+    },
+    "taxonomy/CORRECT": {
+      "n": 969,
+      "mean_abs_err": 0.3223
+    },
+    "bizinfo/FIXABLE": {
+      "n": 44,
+      "mean_abs_err": 0.7274
+    },
+    "bizinfo/AMBIGUOUS": {
+      "n": 27,
+      "mean_abs_err": 0.6408
+    },
+    "bizinfo/NO_EVIDENCE": {
+      "n": 19,
+      "mean_abs_err": 0.7674
+    },
+    "taxonomy/NO_EVIDENCE": {
+      "n": 7,
+      "mean_abs_err": 1.2782
+    },
+    "bizinfo/SEMANTIC_MISMATCH": {
+      "n": 2,
+      "mean_abs_err": 0.2268
+    }
+  },
+  "error_types": {
+    "cost_not_support": {
+      "n": 13,
+      "share": 0.0069,
+      "mean_abs_err": 0.8175,
+      "fixable": 0
+    },
+    "multi_amount_candidate": {
+      "n": 49,
+      "share": 0.0261,
+      "mean_abs_err": 0.6888,
+      "fixable": 22
+    },
+    "other": {
+      "n": 4,
+      "share": 0.0021,
+      "mean_abs_err": 1.7564,
+      "fixable": 0
+    },
+    "total_vs_per_recipient": {
+      "n": 33,
+      "share": 0.0176,
+      "mean_abs_err": 0.6632,
+      "fixable": 22
+    }
+  },
+  "corrections": {
+    "n": 44,
+    "median_abs_delta_log10": 0.699,
+    "max_abs_delta_log10": 1.699,
+    "n_lowered": 43,
+    "n_raised": 1,
+    "diff_csv": "reports\\m71_target_corrections.csv"
+  },
+  "leakage_audit": {
+    "감사층이 읽은 것": [
+      "원문 텍스트",
+      "금액 후보의 앞뒤 문맥",
+      "행의 구조화 필드"
+    ],
+    "감사층이 읽지 않은 것": [
+      "타깃 y",
+      "OOF 예측",
+      "오차"
+    ],
+    "amount_parser 수정 여부": "수정하지 않음 — 모델 3 이 같은 파서를 쓴다",
+    "NB feature 가 타깃과 같은 값인 칸 수 (교정 전 y1)": "25 — M69 가 이미 재던 우연 일치",
+    "NB feature 가 타깃과 같은 값인 칸 수 (교정 후 y2)": "25 — y1 보다 늘지 않아야 한다",
+    "교정이 새로 만든 일치": "+0",
+    "구간/가중치 계산에 y 사용": "없음 — 라벨은 텍스트 문맥에서만 나온다"
+  },
+  "leakage_verdict": "PASS",
+  "fixed_eval_n": 1778,
+  "train_rows_kept": 1822,
+  "results": {
+    "program_stem": {
+      "fixed_eval": {
+        "V1 baseline": {
+          "MAE_log10": 0.3514,
+          "MedAE_log10": 0.2683,
+          "geo_mean_error_x": 2.246,
+          "within_2x": 0.5456,
+          "within_3x": 0.7385,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.379,
+            0.3335,
+            0.3476,
+            0.3678,
+            0.3293
+          ],
+          "fold_std": 0.0193,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.3223
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.3863
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3514
+            }
+          }
+        },
+        "V2 corrected": {
+          "MAE_log10": 0.3484,
+          "MedAE_log10": 0.2641,
+          "geo_mean_error_x": 2.231,
+          "within_2x": 0.5506,
+          "within_3x": 0.7396,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.3676,
+            0.3269,
+            0.348,
+            0.37,
+            0.3297
+          ],
+          "fold_std": 0.0182,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.3197
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.3828
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3484
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": -0.003,
+            "ci95": [
+              -0.0063,
+              0.0004
+            ],
+            "wilcoxon_p": 0.0667,
+            "n": 1778,
+            "n_better": 901,
+            "n_worse": 877
+          },
+          "fold_wins": 2
+        },
+        "V3 filtered": {
+          "MAE_log10": 0.3522,
+          "MedAE_log10": 0.264,
+          "geo_mean_error_x": 2.25,
+          "within_2x": 0.5495,
+          "within_3x": 0.7368,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.3725,
+            0.3326,
+            0.3581,
+            0.3647,
+            0.3331
+          ],
+          "fold_std": 0.0164,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.3246
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.3852
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3522
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0008,
+            "ci95": [
+              -0.0038,
+              0.0051
+            ],
+            "wilcoxon_p": 0.73,
+            "n": 1778,
+            "n_better": 878,
+            "n_worse": 900
+          },
+          "fold_wins": 3
+        },
+        "V4 weighted": {
+          "MAE_log10": 0.3526,
+          "MedAE_log10": 0.2635,
+          "geo_mean_error_x": 2.252,
+          "within_2x": 0.5534,
+          "within_3x": 0.7362,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.3773,
+            0.3294,
+            0.359,
+            0.3708,
+            0.3266
+          ],
+          "fold_std": 0.021,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.324
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.3869
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3526
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0012,
+            "ci95": [
+              -0.0032,
+              0.0055
+            ],
+            "wilcoxon_p": 0.597,
+            "n": 1778,
+            "n_better": 877,
+            "n_worse": 901
+          },
+          "fold_wins": 3
+        }
+      },
+      "full": {
+        "V1 baseline": {
+          "MAE_log10": 0.3719,
+          "MedAE_log10": 0.2761,
+          "geo_mean_error_x": 2.355,
+          "within_2x": 0.5301,
+          "within_3x": 0.723,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.3947,
+            0.3499,
+            0.3814,
+            0.3819,
+            0.3517
+          ],
+          "fold_std": 0.0179,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3292
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4182
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3514
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.7274
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6408
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.9049
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.2268
+            }
+          },
+          "comparable_to_V1": true,
+          "seconds": 65.2
+        },
+        "V2 corrected": {
+          "MAE_log10": 0.3608,
+          "MedAE_log10": 0.2687,
+          "geo_mean_error_x": 2.295,
+          "within_2x": 0.5424,
+          "within_3x": 0.7326,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.3767,
+            0.3347,
+            0.3771,
+            0.3712,
+            0.3444
+          ],
+          "fold_std": 0.0178,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3265
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.3979
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3484
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.3804
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6419
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.8979
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.1675
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": -0.0034,
+            "ci95": [
+              -0.0067,
+              0.0
+            ],
+            "wilcoxon_p": 0.0508,
+            "n": 1877,
+            "n_better": 951,
+            "n_worse": 926
+          },
+          "fold_wins": 5,
+          "comparable_to_V1": false,
+          "seconds": 68.6
+        },
+        "V3 filtered": {
+          "MAE_log10": 0.3743,
+          "MedAE_log10": 0.2759,
+          "geo_mean_error_x": 2.368,
+          "within_2x": 0.5328,
+          "within_3x": 0.7176,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.3916,
+            0.3515,
+            0.3934,
+            0.3803,
+            0.3547
+          ],
+          "fold_std": 0.0179,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3317
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4204
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3522
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.7811
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6467
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.9295
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.192
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0024,
+            "ci95": [
+              -0.002,
+              0.0068
+            ],
+            "wilcoxon_p": 0.427,
+            "n": 1877,
+            "n_better": 924,
+            "n_worse": 953
+          },
+          "fold_wins": 2,
+          "comparable_to_V1": true,
+          "seconds": 63.6
+        },
+        "V4 weighted": {
+          "MAE_log10": 0.3748,
+          "MedAE_log10": 0.2743,
+          "geo_mean_error_x": 2.37,
+          "within_2x": 0.5338,
+          "within_3x": 0.7182,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.3964,
+            0.3489,
+            0.3933,
+            0.3852,
+            0.35
+          ],
+          "fold_std": 0.021,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3311
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4221
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3526
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.7842
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6267
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.9485
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.1863
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0028,
+            "ci95": [
+              -0.0014,
+              0.0072
+            ],
+            "wilcoxon_p": 0.272,
+            "n": 1877,
+            "n_better": 915,
+            "n_worse": 962
+          },
+          "fold_wins": 2,
+          "comparable_to_V1": true,
+          "seconds": 65.3
+        }
+      }
+    },
+    "normalized_title": {
+      "fixed_eval": {
+        "V1 baseline": {
+          "MAE_log10": 0.3738,
+          "MedAE_log10": 0.2809,
+          "geo_mean_error_x": 2.365,
+          "within_2x": 0.5253,
+          "within_3x": 0.7019,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.3607,
+            0.3698,
+            0.3969,
+            0.3615,
+            0.3805
+          ],
+          "fold_std": 0.0135,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.35
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.4022
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3738
+            }
+          }
+        },
+        "V2 corrected": {
+          "MAE_log10": 0.3692,
+          "MedAE_log10": 0.2831,
+          "geo_mean_error_x": 2.34,
+          "within_2x": 0.5253,
+          "within_3x": 0.7177,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.3603,
+            0.3633,
+            0.3873,
+            0.3581,
+            0.3776
+          ],
+          "fold_std": 0.0113,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.3456
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.3975
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3692
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": -0.0046,
+            "ci95": [
+              -0.0079,
+              -0.0011
+            ],
+            "wilcoxon_p": 0.0145,
+            "n": 1778,
+            "n_better": 927,
+            "n_worse": 851
+          },
+          "fold_wins": 5
+        },
+        "V3 filtered": {
+          "MAE_log10": 0.3766,
+          "MedAE_log10": 0.2867,
+          "geo_mean_error_x": 2.38,
+          "within_2x": 0.5174,
+          "within_3x": 0.7098,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.364,
+            0.3715,
+            0.4,
+            0.3664,
+            0.3818
+          ],
+          "fold_std": 0.0131,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.3523
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.4057
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3766
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0028,
+            "ci95": [
+              -0.0011,
+              0.0072
+            ],
+            "wilcoxon_p": 0.171,
+            "n": 1778,
+            "n_better": 861,
+            "n_worse": 917
+          },
+          "fold_wins": 0
+        },
+        "V4 weighted": {
+          "MAE_log10": 0.372,
+          "MedAE_log10": 0.285,
+          "geo_mean_error_x": 2.355,
+          "within_2x": 0.5174,
+          "within_3x": 0.7103,
+          "n": 1778,
+          "per_fold_MAE": [
+            0.3644,
+            0.3664,
+            0.3857,
+            0.3623,
+            0.3819
+          ],
+          "fold_std": 0.0097,
+          "cohort": {
+            "taxonomy": {
+              "n": 969,
+              "MAE_log10": 0.3472
+            },
+            "bizinfo": {
+              "n": 809,
+              "MAE_log10": 0.4018
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.372
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": -0.0017,
+            "ci95": [
+              -0.0056,
+              0.0024
+            ],
+            "wilcoxon_p": 0.543,
+            "n": 1778,
+            "n_better": 916,
+            "n_worse": 862
+          },
+          "fold_wins": 2
+        }
+      },
+      "full": {
+        "V1 baseline": {
+          "MAE_log10": 0.3931,
+          "MedAE_log10": 0.293,
+          "geo_mean_error_x": 2.472,
+          "within_2x": 0.512,
+          "within_3x": 0.6878,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.3724,
+            0.394,
+            0.4114,
+            0.3853,
+            0.4026
+          ],
+          "fold_std": 0.0135,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3559
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4334
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3738
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.7488
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6562
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.8634
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.1157
+            }
+          },
+          "comparable_to_V1": true,
+          "seconds": 64.8
+        },
+        "V2 corrected": {
+          "MAE_log10": 0.3803,
+          "MedAE_log10": 0.2866,
+          "geo_mean_error_x": 2.4,
+          "within_2x": 0.5216,
+          "within_3x": 0.7096,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.369,
+            0.3828,
+            0.394,
+            0.3663,
+            0.3893
+          ],
+          "fold_std": 0.0109,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3514
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4115
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3692
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.3989
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6448
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.8439
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.2025
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": -0.0047,
+            "ci95": [
+              -0.0081,
+              -0.0014
+            ],
+            "wilcoxon_p": 0.00876,
+            "n": 1877,
+            "n_better": 980,
+            "n_worse": 897
+          },
+          "fold_wins": 5,
+          "comparable_to_V1": false,
+          "seconds": 67.9
+        },
+        "V3 filtered": {
+          "MAE_log10": 0.3978,
+          "MedAE_log10": 0.3006,
+          "geo_mean_error_x": 2.499,
+          "within_2x": 0.5013,
+          "within_3x": 0.6921,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.3769,
+            0.3963,
+            0.4173,
+            0.3932,
+            0.4054
+          ],
+          "fold_std": 0.0134,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3585
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4404
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.3766
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.8154
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6635
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.8741
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.2661
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0047,
+            "ci95": [
+              0.0005,
+              0.0088
+            ],
+            "wilcoxon_p": 0.0287,
+            "n": 1877,
+            "n_better": 894,
+            "n_worse": 983
+          },
+          "fold_wins": 0,
+          "comparable_to_V1": true,
+          "seconds": 64.7
+        },
+        "V4 weighted": {
+          "MAE_log10": 0.3936,
+          "MedAE_log10": 0.3006,
+          "geo_mean_error_x": 2.475,
+          "within_2x": 0.5013,
+          "within_3x": 0.6926,
+          "n": 1877,
+          "per_fold_MAE": [
+            0.379,
+            0.3917,
+            0.4032,
+            0.3885,
+            0.4057
+          ],
+          "fold_std": 0.0098,
+          "cohort": {
+            "taxonomy": {
+              "n": 976,
+              "MAE_log10": 0.3537
+            },
+            "bizinfo": {
+              "n": 901,
+              "MAE_log10": 0.4369
+            }
+          },
+          "by_label": {
+            "CORRECT": {
+              "n": 1778,
+              "MAE_log10": 0.372
+            },
+            "FIXABLE": {
+              "n": 44,
+              "MAE_log10": 0.8015
+            },
+            "AMBIGUOUS": {
+              "n": 27,
+              "MAE_log10": 0.6531
+            },
+            "NO_EVIDENCE": {
+              "n": 26,
+              "MAE_log10": 0.9219
+            },
+            "SEMANTIC_MISMATCH": {
+              "n": 2,
+              "MAE_log10": 0.2239
+            }
+          },
+          "vs_V1": {
+            "delta_MAE": 0.0005,
+            "ci95": [
+              -0.0034,
+              0.0043
+            ],
+            "wilcoxon_p": 0.669,
+            "n": 1877,
+            "n_better": 950,
+            "n_worse": 927
+          },
+          "fold_wins": 2,
+          "comparable_to_V1": true,
+          "seconds": 64.8
+        }
+      }
+    }
+  },
+  "best_version": "V2 corrected",
+  "reproducibility": {
+    "V1 baseline": true,
+    "V3 filtered": true,
+    "V1 == M69 저장 OOF": true
+  },
+  "promotion_checks": {
+    "1. 고정 평가셋 OOF MAE 가 V1 보다 개선": true,
+    "2. bizinfo MAE 가 V1 보다 개선": true,
+    "3. taxonomy 성능이 악화되지 않음": true,
+    "4. strict split 에서도 개선 유지": true,
+    "5. 5개 fold 대부분에서 개선 (4 이상)": false,
+    "6. paired CI 가 0 아래": false,
+    "7. leakage audit PASS": true,
+    "8. reproducibility PASS": true
+  },
+  "verdict": "현행 유지 (M69)",
+  "goals": {
+    "first": 0.35,
+    "final": 0.3
+  },
+  "published_m69": {
+    "MAE_log10": 0.3719,
+    "within_2x": 0.53,
+    "within_3x": 0.723,
+    "taxonomy": 0.3292,
+    "bizinfo": 0.4182,
+    "strict_MAE": 0.3931
+  },
+  "run_timestamp": "2026-09-02T14:30:30.547932",
+  "seconds": 660.6
+}

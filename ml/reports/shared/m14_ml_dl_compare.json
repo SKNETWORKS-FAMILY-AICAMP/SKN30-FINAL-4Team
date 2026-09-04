@@ -1,0 +1,17 @@
+{
+  "model2": {
+    "ml": "m11_m2_cluster.json",
+    "dl": "dl08_m2_cluster.json",
+    "verdict": "미채택"
+  },
+  "model3": {
+    "ml": "m12_m3_cohort.json",
+    "dl": "dl09_m3_cohort.json",
+    "verdict": "미채택 — ML(LGBM-quantile)을 넘지 못함"
+  },
+  "model4": {
+    "ml": "m13_m4_anomaly.json",
+    "dl": "dl10_m4_anomaly.json",
+    "verdict": "Conditional"
+  }
+}

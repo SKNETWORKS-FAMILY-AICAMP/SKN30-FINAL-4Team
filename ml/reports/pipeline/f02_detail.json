@@ -1,0 +1,37 @@
+{
+  "rows_raw": 1570,
+  "rows_final": 1570,
+  "duplicate_dropped": 0,
+  "hashtag_label_leak_rate": 1.0,
+  "hashtag_leak_note": "hashtags 첫 토큰이 분야 라벨과 동일 → hashtags_safe 사용",
+  "created_year_dist": {
+    "2023": 1,
+    "2025": 23,
+    "2026": 1546
+  },
+  "category_dist": {
+    "경영": 422,
+    "기술": 322,
+    "수출": 257,
+    "금융": 203,
+    "인력": 159,
+    "내수": 114,
+    "창업": 75,
+    "기타": 18
+  },
+  "summary_len_median": 271,
+  "amount_extracted": 611,
+  "typed_amount": 366,
+  "amount_type_dist": {
+    "NaN": 944,
+    "per_company": 277,
+    "unknown": 260,
+    "periodic": 67,
+    "per_project": 15,
+    "total_budget": 7
+  },
+  "mean_confidence": 0.1737,
+  "region_coverage": 0.7255,
+  "note": "지원규모는 CSV 요약 기준. 공고 원문 추출본(E01) 병합 후 재계산 예정",
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail.parquet"
+}

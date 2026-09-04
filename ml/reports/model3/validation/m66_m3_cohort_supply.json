@@ -1,0 +1,756 @@
+{
+  "structure": "M44 Freeze 그대로 — 거리·사다리(성격x방식)·mean·standard·Euclidean·MIN_COHORT=20. 바뀐 것은 입력 데이터뿐",
+  "datasets": {
+    "v2": "data\\processed\\design_features_v2.parquet",
+    "v3": "data\\processed\\design_features_v3.parquet"
+  },
+  "pool_rows": {
+    "v2": 2451,
+    "v3": 2626,
+    "intersection": 2451
+  },
+  "missingness_pct": {
+    "v2": {
+      "support_unit": 16.2,
+      "support_ratio": 61.9,
+      "log_per_recipient": 22.8,
+      "log_support_count": 19.5,
+      "project_duration": 35.5,
+      "agency_type": 47.5
+    },
+    "v3": {
+      "support_unit": 13.1,
+      "support_ratio": 52.9,
+      "log_per_recipient": 17.8,
+      "log_support_count": 21.7,
+      "project_duration": 36.8,
+      "agency_type": 49.5
+    }
+  },
+  "thin_cohorts_near_threshold": [
+    {
+      "cohort": "SW·솔루션|grant",
+      "v2": 17,
+      "v3": 17,
+      "delta": 0,
+      "reached_20": false
+    },
+    {
+      "cohort": "창업보육|grant",
+      "v2": 16,
+      "v3": 17,
+      "delta": 1,
+      "reached_20": false
+    },
+    {
+      "cohort": "연구개발|other",
+      "v2": 16,
+      "v3": 17,
+      "delta": 1,
+      "reached_20": false
+    },
+    {
+      "cohort": "판로|service",
+      "v2": 15,
+      "v3": 30,
+      "delta": 15,
+      "reached_20": true
+    },
+    {
+      "cohort": "사업화|guarantee",
+      "v2": 14,
+      "v3": 19,
+      "delta": 5,
+      "reached_20": false
+    },
+    {
+      "cohort": "컨설팅|loan",
+      "v2": 14,
+      "v3": 14,
+      "delta": 0,
+      "reached_20": false
+    },
+    {
+      "cohort": "판로|other",
+      "v2": 13,
+      "v3": 22,
+      "delta": 9,
+      "reached_20": true
+    },
+    {
+      "cohort": "수출물류|grant",
+      "v2": 12,
+      "v3": 14,
+      "delta": 2,
+      "reached_20": false
+    },
+    {
+      "cohort": "판로|voucher",
+      "v2": 12,
+      "v3": 13,
+      "delta": 1,
+      "reached_20": false
+    },
+    {
+      "cohort": "교육훈련|service",
+      "v2": 11,
+      "v3": 13,
+      "delta": 2,
+      "reached_20": false
+    },
+    {
+      "cohort": "컨설팅|mixed",
+      "v2": 10,
+      "v3": 18,
+      "delta": 8,
+      "reached_20": false
+    },
+    {
+      "cohort": "판로|mixed",
+      "v2": 10,
+      "v3": 14,
+      "delta": 4,
+      "reached_20": false
+    }
+  ],
+  "reached_20": 2,
+  "n_thin_cohorts_examined": 12,
+  "sub_threshold_rows": {
+    "v2": 350,
+    "v3": 368
+  },
+  "evaluation": {
+    "A v2 pool": {
+      "n": 2451,
+      "cohort_profile": {
+        "level_dist": {
+          "L0 전체": 57,
+          "L1 support_typexsupport_method": 2101,
+          "L2 support_type": 293
+        },
+        "n_global_fallback": 57,
+        "n_thin": 274,
+        "cohort_size_median": 228,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 28,
+        "n_distinct_cohorts": 31,
+        "cat_block_share_of_D": 0.2915,
+        "within_cohort_spread": 1.0747,
+        "within_cohort_spread_num": 0.9203
+      },
+      "resample": {
+        "frac_0.9": {
+          "spearman_mean": 0.9767,
+          "spearman_min": 0.9713,
+          "top10_mean": 0.42,
+          "top20_mean": 0.6367,
+          "top30_mean": 0.8378,
+          "top39_mean": 0.7692,
+          "top10_min": 0.1,
+          "top20_min": 0.55,
+          "top30_min": 0.7333,
+          "top39_min": 0.6923
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9654,
+          "spearman_min": 0.9602,
+          "top10_mean": 0.3933,
+          "top20_mean": 0.5967,
+          "top30_mean": 0.7467,
+          "top39_mean": 0.7145,
+          "top10_min": 0.1,
+          "top20_min": 0.5,
+          "top30_min": 0.7,
+          "top39_min": 0.641
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9523,
+          "spearman_min": 0.9452,
+          "top10_mean": 0.32,
+          "top20_mean": 0.5233,
+          "top30_mean": 0.6733,
+          "top39_mean": 0.6718,
+          "top10_min": 0.1,
+          "top20_min": 0.4,
+          "top30_min": 0.4667,
+          "top39_min": 0.5897
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9307,
+          "spearman_min": 0.9218,
+          "top10_mean": 0.3133,
+          "top20_mean": 0.4233,
+          "top30_mean": 0.5378,
+          "top39_mean": 0.6,
+          "top10_min": 0.0,
+          "top20_min": 0.3,
+          "top30_min": 0.4333,
+          "top39_min": 0.4872
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 53,
+            "spearman_mean": 0.9465,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 42,
+            "spearman_mean": 0.9644,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 45,
+            "spearman_mean": 0.9297,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 22,
+            "spearman_mean": 0.9929,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5472,
+          "log_support_count": 0.6786,
+          "project_duration": 0.6222,
+          "support_ratio": 0.9773
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.7063
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9567,
+        "top1_axis_agreement_min": 0.9333
+      },
+      "rank_volatility": {
+        "overall_mean": 2.9113,
+        "overall_median": 1.4402,
+        "thin_mean": 13.0355,
+        "thin_n_rows": 274,
+        "nonthin_mean": 1.6619,
+        "global_mean": 0.7115,
+        "worst_cohorts": [
+          {
+            "cohort": "수출통관|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 58.76
+          },
+          {
+            "cohort": "사업화|service",
+            "level": "L1 support_typexsupport_method",
+            "n": 24,
+            "volatility": 19.53
+          },
+          {
+            "cohort": "SW·솔루션",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 13.04
+          },
+          {
+            "cohort": "성능인증",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 12.78
+          },
+          {
+            "cohort": "창업보육",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 12.08
+          },
+          {
+            "cohort": "성능인증|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 11.47
+          }
+        ]
+      },
+      "fallback_rate": 0.0233
+    },
+    "B 교집합 v2": {
+      "n": 2451,
+      "cohort_profile": {
+        "level_dist": {
+          "L0 전체": 57,
+          "L1 support_typexsupport_method": 2101,
+          "L2 support_type": 293
+        },
+        "n_global_fallback": 57,
+        "n_thin": 274,
+        "cohort_size_median": 228,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 28,
+        "n_distinct_cohorts": 31,
+        "cat_block_share_of_D": 0.2915,
+        "within_cohort_spread": 1.0747,
+        "within_cohort_spread_num": 0.9203
+      },
+      "resample": {
+        "frac_0.9": {
+          "spearman_mean": 0.9767,
+          "spearman_min": 0.9713,
+          "top10_mean": 0.42,
+          "top20_mean": 0.6367,
+          "top30_mean": 0.8378,
+          "top39_mean": 0.7692,
+          "top10_min": 0.1,
+          "top20_min": 0.55,
+          "top30_min": 0.7333,
+          "top39_min": 0.6923
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9654,
+          "spearman_min": 0.9602,
+          "top10_mean": 0.3933,
+          "top20_mean": 0.5967,
+          "top30_mean": 0.7467,
+          "top39_mean": 0.7145,
+          "top10_min": 0.1,
+          "top20_min": 0.5,
+          "top30_min": 0.7,
+          "top39_min": 0.641
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9523,
+          "spearman_min": 0.9452,
+          "top10_mean": 0.32,
+          "top20_mean": 0.5233,
+          "top30_mean": 0.6733,
+          "top39_mean": 0.6718,
+          "top10_min": 0.1,
+          "top20_min": 0.4,
+          "top30_min": 0.4667,
+          "top39_min": 0.5897
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9307,
+          "spearman_min": 0.9218,
+          "top10_mean": 0.3133,
+          "top20_mean": 0.4233,
+          "top30_mean": 0.5378,
+          "top39_mean": 0.6,
+          "top10_min": 0.0,
+          "top20_min": 0.3,
+          "top30_min": 0.4333,
+          "top39_min": 0.4872
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 53,
+            "spearman_mean": 0.9465,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 42,
+            "spearman_mean": 0.9644,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 45,
+            "spearman_mean": 0.9297,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 22,
+            "spearman_mean": 0.9929,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5472,
+          "log_support_count": 0.6786,
+          "project_duration": 0.6222,
+          "support_ratio": 0.9773
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.7063
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9567,
+        "top1_axis_agreement_min": 0.9333
+      },
+      "rank_volatility": {
+        "overall_mean": 2.9113,
+        "overall_median": 1.4402,
+        "thin_mean": 13.0355,
+        "thin_n_rows": 274,
+        "nonthin_mean": 1.6619,
+        "global_mean": 0.7115,
+        "worst_cohorts": [
+          {
+            "cohort": "수출통관|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 58.76
+          },
+          {
+            "cohort": "사업화|service",
+            "level": "L1 support_typexsupport_method",
+            "n": 24,
+            "volatility": 19.53
+          },
+          {
+            "cohort": "SW·솔루션",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 13.04
+          },
+          {
+            "cohort": "성능인증",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 12.78
+          },
+          {
+            "cohort": "창업보육",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 12.08
+          },
+          {
+            "cohort": "성능인증|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 11.47
+          }
+        ]
+      },
+      "fallback_rate": 0.0233
+    },
+    "B 교집합 v3": {
+      "n": 2451,
+      "cohort_profile": {
+        "level_dist": {
+          "L0 전체": 57,
+          "L1 support_typexsupport_method": 2101,
+          "L2 support_type": 293
+        },
+        "n_global_fallback": 57,
+        "n_thin": 274,
+        "cohort_size_median": 228,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 28,
+        "n_distinct_cohorts": 31,
+        "cat_block_share_of_D": 0.2767,
+        "within_cohort_spread": 1.0572,
+        "within_cohort_spread_num": 0.9112
+      },
+      "resample": {
+        "frac_0.9": {
+          "spearman_mean": 0.9754,
+          "spearman_min": 0.9688,
+          "top10_mean": 0.3267,
+          "top20_mean": 0.7067,
+          "top30_mean": 0.7778,
+          "top39_mean": 0.7487,
+          "top10_min": 0.1,
+          "top20_min": 0.6,
+          "top30_min": 0.7,
+          "top39_min": 0.6923
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9624,
+          "spearman_min": 0.9561,
+          "top10_mean": 0.3,
+          "top20_mean": 0.6367,
+          "top30_mean": 0.6822,
+          "top39_mean": 0.682,
+          "top10_min": 0.1,
+          "top20_min": 0.4,
+          "top30_min": 0.6,
+          "top39_min": 0.5897
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9485,
+          "spearman_min": 0.9413,
+          "top10_mean": 0.26,
+          "top20_mean": 0.5533,
+          "top30_mean": 0.6156,
+          "top39_mean": 0.6444,
+          "top10_min": 0.0,
+          "top20_min": 0.45,
+          "top30_min": 0.5667,
+          "top39_min": 0.5897
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.9264,
+          "spearman_min": 0.919,
+          "top10_mean": 0.2,
+          "top20_mean": 0.4667,
+          "top30_mean": 0.4978,
+          "top39_mean": 0.5983,
+          "top10_min": 0.0,
+          "top20_min": 0.25,
+          "top30_min": 0.4,
+          "top39_min": 0.5128
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 53,
+            "spearman_mean": 0.9464,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 42,
+            "spearman_mean": 0.9618,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 45,
+            "spearman_mean": 0.93,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 31,
+            "spearman_mean": 0.9891,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5094,
+          "log_support_count": 0.6786,
+          "project_duration": 0.6,
+          "support_ratio": 0.9355
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.6809
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.9467,
+        "top1_axis_agreement_min": 0.9333
+      },
+      "rank_volatility": {
+        "overall_mean": 2.9886,
+        "overall_median": 1.4225,
+        "thin_mean": 13.8706,
+        "thin_n_rows": 274,
+        "nonthin_mean": 1.6453,
+        "global_mean": 0.6396,
+        "worst_cohorts": [
+          {
+            "cohort": "수출통관|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 59.55
+          },
+          {
+            "cohort": "사업화|service",
+            "level": "L1 support_typexsupport_method",
+            "n": 24,
+            "volatility": 22.15
+          },
+          {
+            "cohort": "SW·솔루션",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 16.54
+          },
+          {
+            "cohort": "성능인증|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 13.36
+          },
+          {
+            "cohort": "성능인증",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 13.12
+          },
+          {
+            "cohort": "창업보육",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 11.84
+          }
+        ]
+      },
+      "fallback_rate": 0.0233
+    },
+    "C v3 pool": {
+      "n": 2626,
+      "cohort_profile": {
+        "level_dist": {
+          "L0 전체": 61,
+          "L1 support_typexsupport_method": 2258,
+          "L2 support_type": 307
+        },
+        "n_global_fallback": 61,
+        "n_thin": 257,
+        "cohort_size_median": 232,
+        "cohort_size_min": 20,
+        "cohort_size_p10": 31,
+        "n_distinct_cohorts": 34,
+        "cat_block_share_of_D": 0.2805,
+        "within_cohort_spread": 1.0631,
+        "within_cohort_spread_num": 0.9127
+      },
+      "resample": {
+        "frac_0.9": {
+          "spearman_mean": 0.9854,
+          "spearman_min": 0.9721,
+          "top10_mean": 0.3333,
+          "top20_mean": 0.67,
+          "top30_mean": 0.8222,
+          "top39_mean": 0.8291,
+          "top10_min": 0.1,
+          "top20_min": 0.5,
+          "top30_min": 0.7667,
+          "top39_min": 0.7436
+        },
+        "frac_0.8": {
+          "spearman_mean": 0.9674,
+          "spearman_min": 0.961,
+          "top10_mean": 0.4067,
+          "top20_mean": 0.64,
+          "top30_mean": 0.7378,
+          "top39_mean": 0.7145,
+          "top10_min": 0.2,
+          "top20_min": 0.5,
+          "top30_min": 0.6667,
+          "top39_min": 0.6667
+        },
+        "frac_0.7": {
+          "spearman_mean": 0.9573,
+          "spearman_min": 0.9515,
+          "top10_mean": 0.2733,
+          "top20_mean": 0.5267,
+          "top30_mean": 0.68,
+          "top39_mean": 0.6598,
+          "top10_min": 0.1,
+          "top20_min": 0.35,
+          "top30_min": 0.6333,
+          "top39_min": 0.5897
+        },
+        "frac_0.5": {
+          "spearman_mean": 0.932,
+          "spearman_min": 0.9246,
+          "top10_mean": 0.1867,
+          "top20_mean": 0.4433,
+          "top30_mean": 0.48,
+          "top39_mean": 0.5436,
+          "top10_min": 0.0,
+          "top20_min": 0.35,
+          "top30_min": 0.3333,
+          "top39_min": 0.4615
+        }
+      },
+      "synthetic": {
+        "monotonicity": {
+          "log_per_recipient": {
+            "n_cases": 55,
+            "spearman_mean": 0.9333,
+            "positive_rate": 1.0
+          },
+          "log_support_count": {
+            "n_cases": 45,
+            "spearman_mean": 0.9449,
+            "positive_rate": 1.0
+          },
+          "project_duration": {
+            "n_cases": 37,
+            "spearman_mean": 0.9177,
+            "positive_rate": 1.0
+          },
+          "support_ratio": {
+            "n_cases": 31,
+            "spearman_mean": 0.9813,
+            "positive_rate": 1.0
+          }
+        },
+        "axis_attribution": {
+          "log_per_recipient": 0.5182,
+          "log_support_count": 0.6889,
+          "project_duration": 0.6351,
+          "support_ratio": 0.9516
+        },
+        "min_positive_rate": 1.0,
+        "mean_axis_attribution": 0.6985
+      },
+      "attribution": {
+        "top_k": 30,
+        "n_iter": 10,
+        "top1_axis_agreement_mean": 0.97,
+        "top1_axis_agreement_min": 0.9667
+      },
+      "rank_volatility": {
+        "overall_mean": 2.7083,
+        "overall_median": 1.3703,
+        "thin_mean": 12.2246,
+        "thin_n_rows": 257,
+        "nonthin_mean": 1.7053,
+        "global_mean": 0.5641,
+        "worst_cohorts": [
+          {
+            "cohort": "수출통관|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 55.89
+          },
+          {
+            "cohort": "수출통관",
+            "level": "L2 support_type",
+            "n": 21,
+            "volatility": 40.92
+          },
+          {
+            "cohort": "SW·솔루션",
+            "level": "L2 support_type",
+            "n": 23,
+            "volatility": 17.85
+          },
+          {
+            "cohort": "판로|other",
+            "level": "L1 support_typexsupport_method",
+            "n": 22,
+            "volatility": 15.98
+          },
+          {
+            "cohort": "성능인증",
+            "level": "L2 support_type",
+            "n": 24,
+            "volatility": 15.2
+          },
+          {
+            "cohort": "성능인증|grant",
+            "level": "L1 support_typexsupport_method",
+            "n": 20,
+            "volatility": 13.25
+          }
+        ]
+      },
+      "fallback_rate": 0.0232
+    }
+  },
+  "verdict": {
+    "B_intersection": [
+      "재표집 Top30 악화 (0.747 -> 0.682)"
+    ],
+    "C_operational": [
+      "유지"
+    ]
+  },
+  "not_run": [
+    "multi-prototype (M59 reject)",
+    "shrinkage (M50 reject)",
+    "robust/quantile scaling (M61 reject)",
+    "cohort 구조 변경 (M58 reject)",
+    "Mahalanobis 유사 거리 (후속 후보)"
+  ],
+  "elapsed_sec": 45.7
+}

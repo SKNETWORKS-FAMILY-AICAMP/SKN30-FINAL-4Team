@@ -1,0 +1,600 @@
+{
+  "purpose": "본문을 semantic embedding 으로 표현하면 M69 0.3719 을 넘는가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "model": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    },
+    "structured_layer": "M69 G 단계 전체",
+    "masking": "mask_amount_expressions -> 남은 모든 숫자를 '#' 로 치환, 앞 4000자"
+  },
+  "changed": "본문을 어떤 벡터로 만드는가 (TF-IDF/SVD vs sentence embedding)",
+  "semantic_layer": {
+    "semantic_version": "m2-semantic-v1",
+    "encoders": {
+      "primary": "jhgan/ko-sroberta-multitask",
+      "secondary": "BM-K/KoSimCSE-roberta-multitask"
+    },
+    "frozen": "fine-tuning 없음 (지시서 12장) — frozen 에서 신호가 없으면 축 종료",
+    "input_text": "m2_source_features 의 마스킹 본문 그대로 (지시서 3장)",
+    "poolings": [
+      "head",
+      "chunk_mean",
+      "section"
+    ],
+    "chunk_chars": "max_seq_length * 2 (한국어 ≈ 토큰당 2자)",
+    "max_chunks": 16,
+    "chunk_aggregation": "덩어리를 L2 정규화한 뒤 평균 — 긴 덩어리가 노름으로 문서 벡터를 지배하지 않게",
+    "leakage": "임베딩은 텍스트만의 함수이고 인코더는 frozen pretrained 다. 차원 축소기(SVD)는 데이터 적합이므로 fold train 안에서만 fit 한다",
+    "cache_dir": "data\\processed\\m72_embeddings"
+  },
+  "embeddings": {
+    "ko-sroberta-multitask|head": {
+      "dim": 768,
+      "cached": true,
+      "generation_seconds": 1.624
+    },
+    "ko-sroberta-multitask|chunk_mean": {
+      "dim": 768,
+      "cached": true,
+      "generation_seconds": 7.042
+    },
+    "ko-sroberta-multitask|section": {
+      "dim": 768,
+      "cached": true,
+      "generation_seconds": 3.607
+    },
+    "KoSimCSE-roberta-multitask|head": {
+      "dim": 768,
+      "cached": true,
+      "generation_seconds": 3.72
+    },
+    "KoSimCSE-roberta-multitask|chunk_mean": {
+      "dim": 768,
+      "cached": true,
+      "generation_seconds": 7.854
+    },
+    "KoSimCSE-roberta-multitask|section": {
+      "dim": 768,
+      "cached": true,
+      "generation_seconds": 6.91
+    }
+  },
+  "baseline_reproduction": {
+    "MAE_log10": 0.3719,
+    "expected": {
+      "MAE_log10": 0.3719,
+      "within_2x": 0.53,
+      "within_3x": 0.723,
+      "strict_MAE": 0.3931,
+      "taxonomy": 0.3292,
+      "bizinfo": 0.4182
+    },
+    "row_level_match_with_m69_oof": true
+  },
+  "leakage_audit": {
+    "임베딩 입력": "M69 마스킹 본문 그대로 — 이 실험은 마스킹을 다시 하지 않는다",
+    "마스킹 본문에 십진 숫자가 남은 행": "0 / 1877 — 0 이어야 한다",
+    "마스킹 본문에 금액 표현이 남은 행": "0 / 1877 — 0 이어야 한다",
+    "원문자(①②③) 만 있는 행": "730 / 1877 — 문단 번호라 자릿수 정보가 없다. 누수 아님",
+    "인코더": "frozen pretrained. y 를 본 적이 없다 (fine-tuning 없음)",
+    "차원 축소기": "fold train 에서만 fit (지시서 8장)",
+    "타깃을 임베딩 생성에 사용": "없음",
+    "임베딩 생성 장치": "GPU(RTX 4090) forward. CPU 대비 최대 절대차 1.8e-06 · 코사인 유사도 최소 0.9999998 로 실측 — 값이 아니라 속도만 다르다",
+    "XGBoost 장치": "CPU tree_method=hist 그대로. 트리를 GPU 로 옮기면 histogram binning 이 달라져 M65 부터의 비교가 깨진다"
+  },
+  "leakage_verdict": "PASS",
+  "phases": [
+    {
+      "phase": "Phase 1 — semantic replacement",
+      "carried_in": "M69 baseline",
+      "candidates": [
+        "A1 semantic만"
+      ],
+      "winner": "M69 baseline",
+      "MAE": {
+        "M69 baseline": 0.3719,
+        "A1 semantic만": 0.3754
+      },
+      "changed": false
+    },
+    {
+      "phase": "Phase 2 — hybrid",
+      "carried_in": "M69 baseline",
+      "candidates": [
+        "B1 TF-IDF+semantic"
+      ],
+      "winner": "B1 TF-IDF+semantic",
+      "MAE": {
+        "M69 baseline": 0.3719,
+        "B1 TF-IDF+semantic": 0.3697
+      },
+      "changed": true
+    },
+    {
+      "phase": "Phase 3 — pooling",
+      "carried_in": "B1 TF-IDF+semantic",
+      "candidates": [
+        "C1 head",
+        "C2 section"
+      ],
+      "winner": "B1 TF-IDF+semantic",
+      "MAE": {
+        "B1 TF-IDF+semantic": 0.3697,
+        "C1 head": 0.3752,
+        "C2 section": 0.372
+      },
+      "changed": false
+    },
+    {
+      "phase": "Phase 4 — embedding 차원",
+      "carried_in": "B1 TF-IDF+semantic",
+      "candidates": [
+        "D1 SVD128",
+        "D2 SVD64"
+      ],
+      "winner": "B1 TF-IDF+semantic",
+      "MAE": {
+        "B1 TF-IDF+semantic": 0.3697,
+        "D1 SVD128": 0.3719,
+        "D2 SVD64": 0.3711
+      },
+      "changed": false
+    }
+  ],
+  "results": {
+    "M69 baseline": {
+      "MAE_log10": 0.3719,
+      "MedAE_log10": 0.2761,
+      "geo_mean_error_x": 2.355,
+      "within_2x": 0.5301,
+      "within_3x": 0.723,
+      "name": "M69 baseline",
+      "spec": "TF-IDF + semantic 없음",
+      "per_fold_MAE": [
+        0.3947,
+        0.3499,
+        0.3814,
+        0.3819,
+        0.3517
+      ],
+      "fold_std": 0.0179,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3292
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4182
+        }
+      },
+      "seconds": 75.2,
+      "n_features": 171,
+      "reducer_explained_variance": null,
+      "fitted_artifact_bytes": 16463672
+    },
+    "A1 semantic만": {
+      "MAE_log10": 0.3754,
+      "MedAE_log10": 0.2811,
+      "geo_mean_error_x": 2.373,
+      "within_2x": 0.5296,
+      "within_3x": 0.7214,
+      "name": "A1 semantic만",
+      "spec": "TF-IDF 없음 + ko-sroberta-multitask/chunk_mean/raw",
+      "per_fold_MAE": [
+        0.3959,
+        0.3567,
+        0.3838,
+        0.3945,
+        0.3459
+      ],
+      "fold_std": 0.0204,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.331
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4234
+        }
+      },
+      "seconds": 302.1,
+      "n_features": 875,
+      "reducer_explained_variance": null,
+      "fitted_artifact_bytes": 5,
+      "vs_baseline": {
+        "delta_MAE": 0.0034,
+        "ci95": [
+          -0.0048,
+          0.0113
+        ],
+        "wilcoxon_p": 0.501,
+        "n_better": 918,
+        "n_worse": 959
+      },
+      "fold_wins": 1
+    },
+    "B1 TF-IDF+semantic": {
+      "MAE_log10": 0.3697,
+      "MedAE_log10": 0.2779,
+      "geo_mean_error_x": 2.342,
+      "within_2x": 0.5306,
+      "within_3x": 0.724,
+      "name": "B1 TF-IDF+semantic",
+      "spec": "TF-IDF + ko-sroberta-multitask/chunk_mean/raw",
+      "per_fold_MAE": [
+        0.3887,
+        0.3522,
+        0.3812,
+        0.3806,
+        0.3457
+      ],
+      "fold_std": 0.0173,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3274
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4155
+        }
+      },
+      "seconds": 470.1,
+      "n_features": 939,
+      "reducer_explained_variance": null,
+      "fitted_artifact_bytes": 16463672,
+      "vs_baseline": {
+        "delta_MAE": -0.0022,
+        "ci95": [
+          -0.0092,
+          0.0045
+        ],
+        "wilcoxon_p": 0.564,
+        "n_better": 957,
+        "n_worse": 920
+      },
+      "fold_wins": 4
+    },
+    "C1 head": {
+      "MAE_log10": 0.3752,
+      "MedAE_log10": 0.2774,
+      "geo_mean_error_x": 2.372,
+      "within_2x": 0.5306,
+      "within_3x": 0.7171,
+      "name": "C1 head",
+      "spec": "TF-IDF + ko-sroberta-multitask/head/raw",
+      "per_fold_MAE": [
+        0.39,
+        0.352,
+        0.395,
+        0.3887,
+        0.3502
+      ],
+      "fold_std": 0.0198,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3314
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4226
+        }
+      },
+      "seconds": 316.6,
+      "n_features": 939,
+      "reducer_explained_variance": null,
+      "fitted_artifact_bytes": 16463672,
+      "vs_baseline": {
+        "delta_MAE": 0.0032,
+        "ci95": [
+          -0.0035,
+          0.0102
+        ],
+        "wilcoxon_p": 0.509,
+        "n_better": 933,
+        "n_worse": 944
+      },
+      "fold_wins": 2
+    },
+    "C2 section": {
+      "MAE_log10": 0.372,
+      "MedAE_log10": 0.2766,
+      "geo_mean_error_x": 2.355,
+      "within_2x": 0.5312,
+      "within_3x": 0.7198,
+      "name": "C2 section",
+      "spec": "TF-IDF + ko-sroberta-multitask/section/raw",
+      "per_fold_MAE": [
+        0.391,
+        0.3592,
+        0.382,
+        0.3775,
+        0.3504
+      ],
+      "fold_std": 0.015,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3277
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.42
+        }
+      },
+      "seconds": 335.6,
+      "n_features": 939,
+      "reducer_explained_variance": null,
+      "fitted_artifact_bytes": 16463672,
+      "vs_baseline": {
+        "delta_MAE": 0.0001,
+        "ci95": [
+          -0.0067,
+          0.0068
+        ],
+        "wilcoxon_p": 0.863,
+        "n_better": 951,
+        "n_worse": 926
+      },
+      "fold_wins": 3
+    },
+    "D1 SVD128": {
+      "MAE_log10": 0.3719,
+      "MedAE_log10": 0.2775,
+      "geo_mean_error_x": 2.354,
+      "within_2x": 0.5333,
+      "within_3x": 0.7171,
+      "name": "D1 SVD128",
+      "spec": "TF-IDF + ko-sroberta-multitask/section/128",
+      "per_fold_MAE": [
+        0.3809,
+        0.3543,
+        0.3856,
+        0.3839,
+        0.3547
+      ],
+      "fold_std": 0.0143,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3285
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4189
+        }
+      },
+      "seconds": 113.3,
+      "n_features": 299,
+      "reducer_explained_variance": 0.9319,
+      "fitted_artifact_bytes": 16858701,
+      "vs_baseline": {
+        "delta_MAE": -0.0001,
+        "ci95": [
+          -0.0048,
+          0.0046
+        ],
+        "wilcoxon_p": 0.78,
+        "n_better": 931,
+        "n_worse": 946
+      },
+      "fold_wins": 1
+    },
+    "D2 SVD64": {
+      "MAE_log10": 0.3711,
+      "MedAE_log10": 0.2747,
+      "geo_mean_error_x": 2.35,
+      "within_2x": 0.5312,
+      "within_3x": 0.7219,
+      "name": "D2 SVD64",
+      "spec": "TF-IDF + ko-sroberta-multitask/section/64",
+      "per_fold_MAE": [
+        0.3817,
+        0.3498,
+        0.385,
+        0.3887,
+        0.3503
+      ],
+      "fold_std": 0.0173,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3255
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4205
+        }
+      },
+      "seconds": 91.4,
+      "n_features": 235,
+      "reducer_explained_variance": 0.8298,
+      "fitted_artifact_bytes": 16661325,
+      "vs_baseline": {
+        "delta_MAE": -0.0008,
+        "ci95": [
+          -0.0054,
+          0.0039
+        ],
+        "wilcoxon_p": 0.348,
+        "n_better": 919,
+        "n_worse": 958
+      },
+      "fold_wins": 3
+    },
+    "E1 KoSimCSE": {
+      "MAE_log10": 0.3691,
+      "MedAE_log10": 0.2783,
+      "geo_mean_error_x": 2.339,
+      "within_2x": 0.5312,
+      "within_3x": 0.7283,
+      "name": "E1 KoSimCSE",
+      "spec": "TF-IDF + KoSimCSE-roberta-multitask/section/64",
+      "per_fold_MAE": [
+        0.3877,
+        0.3441,
+        0.3812,
+        0.3815,
+        0.3507
+      ],
+      "fold_std": 0.0179,
+      "cohort": {
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3294
+        },
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.412
+        }
+      },
+      "seconds": 93.9,
+      "n_features": 235,
+      "reducer_explained_variance": 0.864,
+      "fitted_artifact_bytes": 16661325,
+      "vs_baseline": {
+        "delta_MAE": -0.0029,
+        "ci95": [
+          -0.0082,
+          0.0024
+        ],
+        "wilcoxon_p": 0.319,
+        "n_better": 952,
+        "n_worse": 925
+      },
+      "fold_wins": 5
+    }
+  },
+  "noise_band": {
+    "baseline_MAE": 0.3719,
+    "n_candidates": 7,
+    "delta_range": [
+      -0.0028,
+      0.0035
+    ],
+    "n_with_ci_crossing_zero": 7,
+    "n_significant": 0,
+    "deltas": {
+      "A1 semantic만": 0.0035,
+      "B1 TF-IDF+semantic": -0.0022,
+      "C1 head": 0.0033,
+      "C2 section": 0.0001,
+      "D1 SVD128": 0.0,
+      "D2 SVD64": -0.0008,
+      "E1 KoSimCSE": -0.0028
+    }
+  },
+  "strict_split": {
+    "M69 baseline": {
+      "MAE_log10": 0.3931,
+      "per_fold_MAE": [
+        0.3724,
+        0.394,
+        0.4114,
+        0.3853,
+        0.4026
+      ],
+      "cohort": {
+        "taxonomy": 0.3559,
+        "bizinfo": 0.4334
+      }
+    },
+    "B1 TF-IDF+semantic": {
+      "MAE_log10": 0.3954,
+      "per_fold_MAE": [
+        0.3859,
+        0.3876,
+        0.4082,
+        0.392,
+        0.4034
+      ],
+      "cohort": {
+        "taxonomy": 0.3573,
+        "bizinfo": 0.4367
+      }
+    },
+    "E1 KoSimCSE": {
+      "MAE_log10": 0.3901,
+      "per_fold_MAE": [
+        0.3739,
+        0.3887,
+        0.413,
+        0.3854,
+        0.3895
+      ],
+      "cohort": {
+        "taxonomy": 0.3544,
+        "bizinfo": 0.4287
+      }
+    }
+  },
+  "winner": "E1 KoSimCSE",
+  "winner_spec": {
+    "name": "E1 KoSimCSE",
+    "tfidf": true,
+    "semantic": true,
+    "pooling": "section",
+    "encoder": "BM-K/KoSimCSE-roberta-multitask",
+    "dim": 64
+  },
+  "reproducibility": true,
+  "serving": {
+    "encoder_MB": 443.5,
+    "fitted_artifact_MB": 16.7,
+    "baseline_fitted_artifact_MB": 16.5,
+    "latency": {
+      "n_docs": 32,
+      "n_chunks": 35,
+      "ms_per_doc": 307.1,
+      "ms_per_chunk": 280.7
+    },
+    "m69_needs_encoder": false
+  },
+  "promotion_checks": {
+    "1. OOF MAE 가 0.3719 보다 감소": true,
+    "2. strict split 에서도 같은 방향": true,
+    "3. 5개 fold 중 4개 이상 개선": true,
+    "4. paired CI 가 0 아래": false,
+    "5. taxonomy / bizinfo 양쪽 다 악화되지 않음": false,
+    "6. leakage audit PASS": true,
+    "7. reproducibility PASS": true,
+    "8. serving latency / artifact 증가가 감당 가능": true
+  },
+  "case": "B",
+  "case_action": "통계적으로 일관되면 serving 비용 대비 승격 여부 검토",
+  "verdict": "현행 유지 (M69)",
+  "goals": {
+    "first": 0.35,
+    "final": 0.3,
+    "first_met": false,
+    "final_met": false
+  },
+  "fine_tuning_decision": "frozen embedding 에서 명확한 개선이 있을 때만 검토한다(지시서 12장). 개선이 없으면 fine-tuning 으로 가지 않고 semantic 축을 종료한다.",
+  "published_m69": {
+    "MAE_log10": 0.3719,
+    "within_2x": 0.53,
+    "within_3x": 0.723,
+    "strict_MAE": 0.3931,
+    "taxonomy": 0.3292,
+    "bizinfo": 0.4182
+  },
+  "run_timestamp": "2026-09-02T16:24:20.805789",
+  "seconds": 2425.7
+}

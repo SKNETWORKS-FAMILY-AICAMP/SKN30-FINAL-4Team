@@ -1,0 +1,204 @@
+{
+  "purpose": "M79 가 확인한 알고리즘 공통 오차가 라벨/파싱 오류에서 오는가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "baseline": "M73 soft/ordinal_xgb (저장된 OOF, 재학습 안 함)"
+  },
+  "m73_baseline": {
+    "MAE_log10": 0.3563,
+    "strict_MAE": 0.3756,
+    "within_2x": 0.564,
+    "within_3x": 0.742
+  },
+  "hard_case_definition": "4개 모델(M73 soft/ordinal_xgb, M79 XGB/LGBM/CatBoost) residual 절대값 percentile 이 모두 tier 이상이고 부호가 전부 같음",
+  "residual_correlation": {
+    "resid_m73": {
+      "resid_m73": 1.0,
+      "resid_xgb": 1.0,
+      "resid_lgbm": 0.9898,
+      "resid_cat": 0.9892
+    },
+    "resid_xgb": {
+      "resid_m73": 1.0,
+      "resid_xgb": 1.0,
+      "resid_lgbm": 0.9898,
+      "resid_cat": 0.9892
+    },
+    "resid_lgbm": {
+      "resid_m73": 0.9898,
+      "resid_xgb": 0.9898,
+      "resid_lgbm": 1.0,
+      "resid_cat": 0.9927
+    },
+    "resid_cat": {
+      "resid_m73": 0.9892,
+      "resid_xgb": 0.9892,
+      "resid_lgbm": 0.9927,
+      "resid_cat": 1.0
+    }
+  },
+  "hard_case_n": {
+    "top10": 161,
+    "top10_m73_only": 188,
+    "top5": 82,
+    "top5_m73_only": 94
+  },
+  "audit_engine": "m2_target_audit.py (M71 재사용, 텍스트 문맥만 — y/OOF 미참조)",
+  "overall_label_dist": {
+    "CORRECT": 0.9473,
+    "FIXABLE": 0.0234,
+    "AMBIGUOUS": 0.0144,
+    "NO_EVIDENCE": 0.0139,
+    "SEMANTIC_MISMATCH": 0.0011
+  },
+  "hard_case_stats": {
+    "hard_top10": {
+      "n": 161,
+      "label_dist": {
+        "CORRECT": 0.8137,
+        "FIXABLE": 0.0932,
+        "NO_EVIDENCE": 0.0559,
+        "AMBIGUOUS": 0.0373
+      },
+      "error_rate": 0.1863,
+      "overall_error_rate": 0.0527,
+      "fixable_n": 15
+    },
+    "hard_top5": {
+      "n": 82,
+      "label_dist": {
+        "CORRECT": 0.7439,
+        "FIXABLE": 0.1098,
+        "NO_EVIDENCE": 0.0976,
+        "AMBIGUOUS": 0.0488
+      },
+      "error_rate": 0.2561,
+      "overall_error_rate": 0.0527,
+      "fixable_n": 9
+    }
+  },
+  "by_cohort_label_dist": {
+    "AMBIGUOUS": {
+      "bizinfo": 0.03,
+      "taxonomy": 0.0
+    },
+    "CORRECT": {
+      "bizinfo": 0.8979,
+      "taxonomy": 0.9928
+    },
+    "FIXABLE": {
+      "bizinfo": 0.0488,
+      "taxonomy": 0.0
+    },
+    "NO_EVIDENCE": {
+      "bizinfo": 0.0211,
+      "taxonomy": 0.0072
+    },
+    "SEMANTIC_MISMATCH": {
+      "bizinfo": 0.0022,
+      "taxonomy": 0.0
+    }
+  },
+  "error_types": {
+    "cost_not_support": {
+      "n": 13,
+      "hard_top10_n": 2
+    },
+    "multi_amount_candidate": {
+      "n": 49,
+      "hard_top10_n": 12
+    },
+    "other": {
+      "n": 4,
+      "hard_top10_n": 4
+    },
+    "total_vs_per_recipient": {
+      "n": 33,
+      "hard_top10_n": 12
+    }
+  },
+  "corrections": {
+    "n_fixable": 44,
+    "n_fixable_in_hard_top10": 15,
+    "n_fixable_in_hard_top5": 9,
+    "median_abs_delta_log10": 0.699,
+    "max_abs_delta_log10": 1.699
+  },
+  "leakage_check": {
+    "nb_target_hits_before": 25,
+    "nb_target_hits_after": 25,
+    "pass": true
+  },
+  "retrain_decision": {
+    "threshold_fixable_rows": 5,
+    "n_fixable": 44,
+    "proceed": true
+  },
+  "m81b": {
+    "results": {
+      "program_stem": {
+        "fold_match_v1_v2": true,
+        "fixed_eval": {
+          "V1_MAE": 0.3363,
+          "V2_MAE": 0.3373,
+          "paired": {
+            "delta_MAE": 0.0011,
+            "ci95": [
+              -0.0032,
+              0.0051
+            ],
+            "wilcoxon_p": 0.597,
+            "n": 1778,
+            "n_better": 866,
+            "n_worse": 912
+          },
+          "fold_wins": 1
+        },
+        "full": {
+          "V1_MAE": 0.3563,
+          "V2_MAE": 0.3484,
+          "note": "V2 는 교정된 y2 로 채점 — V1 과 직접비교 불가(참고용)"
+        }
+      },
+      "normalized_title": {
+        "fold_match_v1_v2": true,
+        "fixed_eval": {
+          "V1_MAE": 0.3558,
+          "V2_MAE": 0.3617,
+          "paired": {
+            "delta_MAE": 0.0058,
+            "ci95": [
+              0.0014,
+              0.0106
+            ],
+            "wilcoxon_p": 0.0381,
+            "n": 1778,
+            "n_better": 869,
+            "n_worse": 909
+          },
+          "fold_wins": 0
+        },
+        "full": {
+          "V1_MAE": 0.3756,
+          "V2_MAE": 0.3715,
+          "note": "V2 는 교정된 y2 로 채점 — V1 과 직접비교 불가(참고용)"
+        }
+      }
+    },
+    "promotion_checks": {
+      "1. 실제 라벨 오류가 유의미하게 발견됨(FIXABLE>=5)": true,
+      "2. 교정 후 fixed-eval OOF MAE < 0.3563": true,
+      "3. strict 에서도 개선": false,
+      "4. 최소 4/5 fold 개선": false,
+      "5. CI 가 0 아래": false,
+      "6. 수정 근거가 원문에 존재": true,
+      "7. score-driven label cleaning 아님": true,
+      "8. leakage PASS": true,
+      "9. fold 분할이 V1/V2 간 동일(재현 전제)": true
+    },
+    "verdict": "현행 유지 — M73 원본"
+  },
+  "verdict": "현행 유지 — M73 원본"
+}

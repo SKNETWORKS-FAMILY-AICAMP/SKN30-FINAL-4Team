@@ -24,12 +24,37 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 _ML = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 역할 디렉터리 아래 모델별 하위 폴더까지 전부 올린다 — 스크립트가
+# model1/model2/... 로 나뉜 뒤에도 평면 import 가 그대로 동작해야 한다.
 for _d in ("pipelines", "evaluation", "experiments", "scripts"):
-    _p = os.path.join(_ML, _d)
-    if os.path.isdir(_p):
-        sys.path.insert(0, _p)
+    _base = os.path.join(_ML, _d)
+    if not os.path.isdir(_base):
+        continue
+    for _dp, _dn, _fn in os.walk(_base):
+        if "__pycache__" in _dp:
+            continue
+        if _dp not in sys.path:
+            sys.path.insert(0, _dp)
+
+from common import report_path          # noqa: E402  (경로 설정 뒤에 와야 한다)
 
 CODE = next((d for d in ("pipelines", "scripts") if os.path.isdir(os.path.join(_ML, d))), None)
+
+
+def find_script(fname):
+    """코드 디렉터리 아래에서 스크립트를 찾는다.
+
+    `pipelines/` 가 shared/model1/model2/model3 로 나뉘어 있어 파일이 루트에
+    있다고 가정하면 안 된다. 구조를 또 바꿔도 여기는 안 고치도록 재귀 탐색한다.
+    """
+    if CODE is None:
+        return None
+    for dp, _dn, fn in os.walk(os.path.join(_ML, CODE)):
+        if "__pycache__" in dp:
+            continue
+        if fname in fn:
+            return os.path.join(dp, fname)
+    return None
 PROC = os.path.join(_ML, "data", "processed")
 
 # 결과서(성능 2.5·3.8 / 전처리 8.4·8.5)에 적힌 값
@@ -70,14 +95,13 @@ def t00_collect():
     print("\n== 0-1 수집 표본 (D02)")
     import json
     import pandas as pd
-    REPORTS = os.path.join(_ML, "reports")
     spec = [(("d02_sample.json",), "sampled", "list_sample.parquet"),
             (("d02b_targeted_sample.json", "d03_targeted_sample.json"), "sampled",
              "list_sample_targeted.parquet")]
     seen = 0
     for reps, key, out in spec:
-        rp = next((os.path.join(REPORTS, r) for r in reps
-                   if os.path.exists(os.path.join(REPORTS, r))), None)
+        rp = next((report_path(r) for r in reps
+                   if os.path.exists(report_path(r))), None)
         op = os.path.join(PROC, out)
         if rp is None or not os.path.exists(op):
             continue
@@ -94,7 +118,6 @@ def t0_tables():
     print("\n== 0 기준 테이블 (F01~F06)")
     import json
     import pandas as pd
-    REPORTS = os.path.join(_ML, "reports")
     # (리포트, 행수 키, 산출물)
     spec = [("f01_master.json", "rows_final", "announcement_master.parquet"),
             ("f02_detail.json", "rows_final", "announcement_detail.parquet"),
@@ -103,7 +126,7 @@ def t0_tables():
             ("f05_amount_observations.json", None, "support_amount_observations.parquet")]
     seen = 0
     for rep, key, out in spec:
-        rp, op = os.path.join(REPORTS, rep), os.path.join(PROC, out)
+        rp, op = report_path(rep), os.path.join(PROC, out)
         if not (os.path.exists(rp) and os.path.exists(op)):
             continue
         seen += 1
@@ -120,8 +143,8 @@ def t0_tables():
 def t1_f06():
     """F06 변형 재현. 얼어 있는 파일 자체의 지문도 같이 확인한다."""
     print("\n== 1 F06 재현 (v1 legacy / v2 근거문 수정 / v3 공급 보강)")
-    src = os.path.join(_ML, CODE, "f06_design_features.py")
-    if not os.path.exists(src):
+    src = find_script("f06_design_features.py")
+    if src is None:
         skip("F06 전체", "f06_design_features.py 없음 (이 브랜치 범위 밖)")
         return
     have = [fn for fn in EXPECT if os.path.exists(os.path.join(PROC, fn))]
@@ -136,7 +159,7 @@ def t1_f06():
             out = os.path.join(td, fn)
             r = subprocess.run([sys.executable, src, "--out", out] + flags,
                                capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", cwd=os.path.join(_ML, CODE))
+                               errors="replace", cwd=os.path.dirname(src))
             label = "F06 %s 재생성" % (" ".join(flags) or "(기본)")
             if r.returncode != 0:
                 tail = [l for l in (r.stderr or "").strip().split("\n") if l.strip()][-1:]
@@ -146,31 +169,37 @@ def t1_f06():
 
 
 def t2_model2():
-    """저장물만으로 서빙되는가 — 학습 코드 경로를 타지 않는다."""
-    print("\n== 2 모델 2 serving artifact")
-    art = next((c for c in (os.path.join(_ML, "models", "m65_model2_canonical"),
-                            os.path.join(PROC, "m65_model2_canonical"))
-                if os.path.exists(os.path.join(c, "model2_canonical.joblib"))), None)
-    v2 = os.path.join(PROC, "design_features_v2.parquet")
-    if art is None or not os.path.exists(v2):
-        skip("모델 2 전체", "canonical artifact 또는 design_features_v2 없음")
-        return
-    import joblib
-    import pandas as pd
-    bundle = joblib.load(os.path.join(art, "model2_canonical.joblib"))
-    check("번들 로드", set(bundle) >= {"vectorizer", "svd", "point", "quantile", "meta"},
-          os.path.relpath(art, _ML))
+    """현행 canonical(M82/P3) 번들만으로 서빙되는가 — 학습 코드 경로를 타지 않는다.
 
-    import m56_m2_canonical as M56
+    구세대(M65 단일 XGB)는 `models/_archive/` 로 내렸다. 스모크는 **지금
+    서빙되는 세대**를 봐야 의미가 있다.
+    """
+    print("\n== 2 모델 2 serving artifact (M82/P3)")
+    bundle_path = os.path.join(_ML, "models", "model2_canonical",
+                               "model2_p3_bundle.joblib")
+    v2 = os.path.join(PROC, "design_features_v2.parquet")
+    if not os.path.exists(bundle_path) or not os.path.exists(v2):
+        skip("모델 2 전체", "model2_p3_bundle.joblib 또는 design_features_v2 없음")
+        return
+    import pandas as pd
+    sys.path.insert(0, os.path.join(_ML, "serving", "model2"))
+    import predict as P2
+
+    meta = P2.info(bundle_path)
+    check("번들 메타 = M82/P3", meta["performance"]["experiment"] == "M82/P3",
+          "primary MAE %.4f" % meta["performance"]["primary_MAE_log10"])
+    check("feature 211열", meta["n_features"] == 211, "실측 %d" % meta["n_features"])
+
     import m45_m2_amount as M45
     d, _ = M45.prepare(pd.read_parquet(v2))
     check("필터 후 행수 1,877 (성능결과서 2.5)", len(d) == 1877, "실측 %d" % len(d))
 
-    out = M56.serve(bundle, d.head(20)[M56.SERVING_FIELDS].to_dict("records"))
-    ok = (out["pred_log10"].notna().all() and out["pred_log10"].between(3, 12).all()
-          and bool((out["lo_log10"] <= out["hi_log10"]).all()))
-    check("추론 20건", ok, "pred_log10 %.3f~%.3f · 구간 순서 정상"
-          % (out["pred_log10"].min(), out["pred_log10"].max()))
+    out = P2.predict(d.head(20).to_dict("records"), bundle_path)
+    preds = [r["pred_log10"] for r in out["predictions"]]
+    ok = (len(preds) == 20 and all(3 <= p <= 12 for p in preds))
+    check("추론 20건", ok, "pred_log10 %.3f~%.3f" % (min(preds), max(preds)))
+    check("proximity 문맥 마스킹 (숫자 잔존 0)", out["context_digit_residue"] == 0,
+          "잔존 %d행" % out["context_digit_residue"])
 
 
 def t3_model3():
@@ -208,11 +237,11 @@ def t3_model3():
 def t4_model1():
     """모델 1 가중치는 저장소 밖(400MB+)이라 학습번들의 정합성만 확인한다."""
     print("\n== 4 모델 1 학습번들")
-    b = next((c for c in (os.path.join(_ML, "models", "m1_dl_bundle"),
-                          os.path.join(PROC, "m1_dl_bundle"))
+    b = next((c for c in (os.path.join(_ML, "models", "model1_canonical"),
+                          os.path.join(PROC, "model1_canonical"))
               if os.path.exists(os.path.join(c, "train.parquet"))), None)
     if b is None:
-        skip("모델 1 전체", "m1_dl_bundle 없음 (deep-learning 브랜치 산출물)")
+        skip("모델 1 전체", "model1_canonical 없음 (deep-learning 브랜치 산출물)")
         return
     import pandas as pd
     tr = pd.read_parquet(os.path.join(b, "train.parquet"))

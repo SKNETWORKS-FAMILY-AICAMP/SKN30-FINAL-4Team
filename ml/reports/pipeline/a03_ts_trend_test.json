@@ -1,0 +1,358 @@
+{
+  "question": "분야별·지원성격별로 예상 지원규모가 해마다 어떻게 변했는가",
+  "trend_source": "list_sample",
+  "trend_years": [
+    2019,
+    2025
+  ],
+  "source_control": "관측 출처가 연도로 갈린다(2019~2025 층화표본 / 2026 전량). 이어 붙이면 표본→전수 전환이 증감으로 둔갑하므로 분리했다.",
+  "amount_type": "per_company",
+  "n_rows": 485,
+  "n_with_support_type": 351,
+  "support_type_coverage": 0.7237,
+  "by_support_type": [
+    {
+      "support_type": "컨설팅",
+      "n": 21,
+      "rho": 0.3402,
+      "p": 0.13128742051147455,
+      "first_year_median": 2000000.0,
+      "last_year_median": 5000000.0,
+      "change_ratio": 2.5,
+      "q": 0.7877,
+      "verdict": "추세없음"
+    },
+    {
+      "support_type": "고용보조",
+      "n": 25,
+      "rho": 0.1748,
+      "p": 0.4033584950227626,
+      "first_year_median": 3000000.0,
+      "last_year_median": 4900000.0,
+      "change_ratio": 1.633,
+      "q": 0.799,
+      "verdict": "추세없음"
+    },
+    {
+      "support_type": "설비",
+      "n": 13,
+      "rho": -0.1662,
+      "p": 0.5873455362020212,
+      "first_year_median": 300000000.0,
+      "last_year_median": 40000000.0,
+      "change_ratio": 0.133,
+      "q": 0.799,
+      "verdict": "추세없음"
+    },
+    {
+      "support_type": "사업화",
+      "n": 134,
+      "rho": -0.0303,
+      "p": 0.7281853726753361,
+      "first_year_median": 25000000.0,
+      "last_year_median": 20000000.0,
+      "change_ratio": 0.8,
+      "q": 0.799,
+      "verdict": "추세없음"
+    },
+    {
+      "support_type": "융자",
+      "n": 79,
+      "rho": -0.0341,
+      "p": 0.7652225252028356,
+      "first_year_median": 1000000000.0,
+      "last_year_median": 1400000000.0,
+      "change_ratio": 1.4,
+      "q": 0.799,
+      "verdict": "추세없음"
+    },
+    {
+      "support_type": "판로",
+      "n": 56,
+      "rho": 0.0348,
+      "p": 0.7989752334101214,
+      "first_year_median": 3000000.0,
+      "last_year_median": 2000000.0,
+      "change_ratio": 0.667,
+      "q": 0.799,
+      "verdict": "추세없음"
+    }
+  ],
+  "by_support_type_period": [
+    {
+      "support_type": "고용보조",
+      "n_early": 11,
+      "median_early": 2000000.0,
+      "n_late": 14,
+      "median_late": 10000000.0,
+      "ratio": 5.0,
+      "p": 0.1791690118527678,
+      "q": 0.7353,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "판로",
+      "n_early": 27,
+      "median_early": 2600000.0,
+      "n_late": 29,
+      "median_late": 5000000.0,
+      "ratio": 1.923,
+      "p": 0.3032513531464993,
+      "q": 0.7353,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "융자",
+      "n_early": 48,
+      "median_early": 300000000.0,
+      "n_late": 31,
+      "median_late": 500000000.0,
+      "ratio": 1.667,
+      "p": 0.4889093366597139,
+      "q": 0.7353,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "설비",
+      "n_early": 5,
+      "median_early": 300000000.0,
+      "n_late": 8,
+      "median_late": 29000000.0,
+      "ratio": 0.097,
+      "p": 0.5071359001612117,
+      "q": 0.7353,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "컨설팅",
+      "n_early": 7,
+      "median_early": 3000000.0,
+      "n_late": 14,
+      "median_late": 4500000.0,
+      "ratio": 1.5,
+      "p": 0.5251812663511142,
+      "q": 0.7353,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "사업화",
+      "n_early": 64,
+      "median_early": 22500000.0,
+      "n_late": 70,
+      "median_late": 21000000.0,
+      "ratio": 0.933,
+      "p": 0.7766228607084905,
+      "q": 0.9061,
+      "verdict": "변화없음"
+    },
+    {
+      "support_type": "연구개발",
+      "n_early": 6,
+      "median_early": 65000000.0,
+      "n_late": 5,
+      "median_late": 20000000.0,
+      "ratio": 0.308,
+      "p": 0.9267648238448151,
+      "q": 0.9268,
+      "verdict": "변화없음"
+    }
+  ],
+  "period_split_year": 2021,
+  "period_note": "지원성격 축은 연도 칸이 대부분 한 자릿수라 연 단위 검정이 거의 무력하다. 두 기간으로 묶어 셀을 두껍게 만든 뒤 Mann-Whitney 로 다시 봤다.",
+  "by_large_category": [
+    {
+      "large_category": "기술",
+      "n": 60,
+      "rho": -0.3648,
+      "p": 0.004160823731077033,
+      "first_year_median": 45000000.0,
+      "last_year_median": 10000000.0,
+      "change_ratio": 0.222,
+      "q": 0.0333,
+      "verdict": "감소"
+    },
+    {
+      "large_category": "인력",
+      "n": 41,
+      "rho": 0.3225,
+      "p": 0.03976177828575986,
+      "first_year_median": 4000000.0,
+      "last_year_median": 14500000.0,
+      "change_ratio": 3.625,
+      "q": 0.159,
+      "verdict": "증가(약함)"
+    },
+    {
+      "large_category": "수출",
+      "n": 72,
+      "rho": 0.1657,
+      "p": 0.1643034398339618,
+      "first_year_median": 4000000.0,
+      "last_year_median": 1750000.0,
+      "change_ratio": 0.438,
+      "q": 0.409,
+      "verdict": "추세없음"
+    },
+    {
+      "large_category": "기타",
+      "n": 29,
+      "rho": -0.2427,
+      "p": 0.20450761408450466,
+      "first_year_median": 25000000.0,
+      "last_year_median": 20000000.0,
+      "change_ratio": 0.8,
+      "q": 0.409,
+      "verdict": "추세없음"
+    },
+    {
+      "large_category": "금융",
+      "n": 124,
+      "rho": -0.084,
+      "p": 0.3539050778175586,
+      "first_year_median": 450000000.0,
+      "last_year_median": 250000000.0,
+      "change_ratio": 0.556,
+      "q": 0.5662,
+      "verdict": "추세없음"
+    },
+    {
+      "large_category": "창업",
+      "n": 48,
+      "rho": 0.0507,
+      "p": 0.7319751373866714,
+      "first_year_median": 10000000.0,
+      "last_year_median": 16000000.0,
+      "change_ratio": 1.6,
+      "q": 0.8583,
+      "verdict": "추세없음"
+    },
+    {
+      "large_category": "내수",
+      "n": 48,
+      "rho": 0.028,
+      "p": 0.8501272003896495,
+      "first_year_median": 3300000.0,
+      "last_year_median": 2000000.0,
+      "change_ratio": 0.606,
+      "q": 0.8583,
+      "verdict": "추세없음"
+    },
+    {
+      "large_category": "경영",
+      "n": 63,
+      "rho": -0.0229,
+      "p": 0.8583251152481357,
+      "first_year_median": 25000000.0,
+      "last_year_median": 20000000.0,
+      "change_ratio": 0.8,
+      "q": 0.8583,
+      "verdict": "추세없음"
+    }
+  ],
+  "pooled": {
+    "n": 485,
+    "rho": -0.039,
+    "p": 0.39174157140615345,
+    "first_year_median": 20000000.0,
+    "last_year_median": 16000000.0,
+    "change_ratio": 0.8
+  },
+  "pooled_median_by_year": {
+    "2019": 20000000.0,
+    "2020": 13500000.0,
+    "2021": 20000000.0,
+    "2022": 20000000.0,
+    "2023": 20000000.0,
+    "2024": 20000000.0,
+    "2025": 16000000.0
+  },
+  "pooled_count_by_year": {
+    "2019": 81,
+    "2020": 84,
+    "2021": 74,
+    "2022": 83,
+    "2023": 76,
+    "2024": 42,
+    "2025": 45
+  },
+  "by_amount_type": {
+    "per_company": {
+      "n": 485,
+      "rho": -0.039,
+      "p": 0.39174157140615345,
+      "first_year_median": 20000000.0,
+      "last_year_median": 16000000.0,
+      "change_ratio": 0.8,
+      "verdict": "추세없음"
+    },
+    "per_project": {
+      "n": 98,
+      "rho": 0.0314,
+      "p": 0.7589962109185834,
+      "first_year_median": 50000000.0,
+      "last_year_median": 55000000.0,
+      "change_ratio": 1.1,
+      "verdict": "추세없음"
+    },
+    "total_budget": {
+      "n": 305,
+      "rho": -0.0339,
+      "p": 0.5556047092520133,
+      "first_year_median": 200000000.0,
+      "last_year_median": 369000000.0,
+      "change_ratio": 1.845,
+      "verdict": "추세없음"
+    },
+    "periodic": {
+      "n": 167,
+      "rho": 0.0008,
+      "p": 0.9918930003946476,
+      "first_year_median": 2000000.0,
+      "last_year_median": 1598000.0,
+      "change_ratio": 0.799,
+      "verdict": "추세없음"
+    }
+  },
+  "multiple_comparison": "Benjamini-Hochberg q. 보정 후 유의하지 않으면 '약함' 표기.",
+  "power": {
+    "log10_sd": 0.966,
+    "obs_per_year": 69.3,
+    "se_log10": 0.116,
+    "min_detectable_change_pct": 68.9
+  },
+  "reference_2026": {
+    "융자": {
+      "n": 42,
+      "median": 200000000.0
+    },
+    "사업화": {
+      "n": 41,
+      "median": 15000000.0
+    },
+    "컨설팅": {
+      "n": 22,
+      "median": 10500000.0
+    },
+    "해외인증": {
+      "n": 7,
+      "median": 10000000.0
+    },
+    "고용보조": {
+      "n": 12,
+      "median": 9500000.0
+    },
+    "판로": {
+      "n": 28,
+      "median": 3000000.0
+    },
+    "연구개발": {
+      "n": 12,
+      "median": 2500000.0
+    }
+  },
+  "caveat": "셀이 얇다. 지원성격 축은 라벨 커버리지가 72.4% 라 더 얇다. 연도 칸은 관측 3건 이상일 때만 값을 낸다.",
+  "outputs": [
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/amount_trend_by_year.parquet",
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports/a10_amount_trend.md"
+  ]
+}
