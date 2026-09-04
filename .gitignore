@@ -99,8 +99,17 @@ ml/data/raw/
 # 커밋 대상이다. 새로운 데이터 디렉터리를 만들 때는 이 절에 경로를
 # 구체적으로 추가할 것.
 
-# 중간 산출물: 추출 원문 JSONL. 같은 텍스트가 announcement_detail_enriched.parquet에
-# 압축되어 들어가므로 중복 커밋하지 않는다. e01_extract_text.py로 재생성 가능.
+# 재개용 캐시: fold 단위 체크포인트(.npz/.json). 근거 산출물이 아니라 긴 실험이
+# 중간에 끊겼을 때 이어 돌리기 위한 것이고, 스크립트를 다시 돌리면 재생성된다.
+# 결과서의 근거는 ml/reports/**/m*.json 과 *_oof.parquet 다.
+# M73 만 적어 두었더니 M77~M80 이 그대로 추적 대상이 됐다 — 패턴으로 바꾼다.
+ml/data/processed/*_ckpt/
+
+# 중간 산출물: 추출 원문 JSONL(약 108MB). 같은 텍스트가
+# announcement_detail_enriched.parquet 에 압축되어 들어가므로 중복 커밋하지
+# 않는다. e01_extract_text.py 로 재생성 가능.
+# 리포트를 모델별 하위 폴더(reports/shared/ 등)로 옮긴 뒤에도 걸리도록 ** 로 둔다.
+ml/reports/**/e01_documents*.jsonl
 ml/reports/e01_documents*.jsonl
 
 # ==========================================
@@ -108,3 +117,11 @@ ml/reports/e01_documents*.jsonl
 # ==========================================
 .docker/
 docker-data/
+
+# ==========================================
+# 8. 로컬 도구 상태
+# ==========================================
+# Claude Code 런타임(예약작업 lock 등). 프로젝트 산출물이 아니고 세션마다
+# 다시 생긴다. 팀이 Claude Code 설정을 공유하기로 하면 그때
+# `!.claude/settings.json` 처럼 특정 파일만 예외로 풀 것.
+.claude/

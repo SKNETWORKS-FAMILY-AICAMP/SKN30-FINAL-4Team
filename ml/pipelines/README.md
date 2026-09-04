@@ -1,6 +1,17 @@
 # pipelines/ — canonical 산출물을 만드는 코드
 
+```text
+pipelines/
+├─ shared/   수집(d0*) → 추출(e01) → 기준테이블·feature(f0*) → EDA(a01)
+│            + common.py · amount_parser.py (라이브러리)
+├─ model1/   지원성격 분류 학습·적용·export
+├─ model2/   지원규모 회귀 feature·학습·추론
+└─ model3/   설계 이례성 벡터·비교군·스코어링
+```
+
 실행 순서가 곧 의존 순서다. 앞 단계 산출물이 없으면 뒤 단계가 돌지 않는다.
+`1~3절이 shared/`, `4절이 모델별 폴더`다. 스크립트끼리는 평면 이름으로 import
+하므로(`import common as C`) 폴더가 나뉜 것은 호출부에 영향이 없다.
 
 ## 1. 수집 (d)
 
@@ -38,6 +49,7 @@
 **F06 3변형** — 셋 다 bit 단위로 재현된다(`tools/smoke_test.py` 가 매번 확인).
 
 ```bash
+cd ml/pipelines/shared
 python f06_design_features.py --legacy   # v1  design_features.parquet      9f308112fb99e750…
 python f06_design_features.py            # v2  design_features_v2.parquet   eced88f6767e2e24…
 python f06_design_features.py --supply   # v3  design_features_v3.parquet   79649c095b177583…
@@ -56,7 +68,7 @@ python f06_design_features.py --supply   # v3  design_features_v3.parquet   7964
 | `m01_support_type.py` | TF-IDF+LinearSVM 기준선 · `MIN_SUPPORT`·`coarsen`·`tfidf` 제공 (13개 모듈이 import) |
 | `m02_apply.py` | ML 기준선 적용 → `announcement_detail_with_support_type_v2.parquet` (F06 입력) |
 | `m08_apply_list_sample.py` | 목록 표본에 적용 → `list_sample_support_type.parquet` (F06 입력) |
-| `dl11_m1_export.py` | 학습·외부검증 번들 → `models/m1_dl_bundle/` |
+| `dl11_m1_export.py` | 학습·외부검증 번들 → `models/model1_canonical/` |
 | `dl12_m1_candidates.py` | 백본 6종 학습·선정 (원격 GPU) |
 | `dl07_m1_apply.py` | KLUE-BERT 적용 → `openapi_support_type_roberta_v2.parquet` |
 
@@ -75,7 +87,7 @@ python f06_design_features.py --supply   # v3  design_features_v3.parquet   7964
 | 스크립트 | 역할 |
 |---|---|
 | `m3_lab.py` | 스코어링·안정성 검증 라이브러리 (`score_pool`·`load_pool`·`cohort_profile`) |
-| `m13_m4_anomaly.py` | `prepare`·`encode`·축 정의 (25개 모듈이 import) |
+| `m13_m3_anomaly.py` | `prepare`·`encode`·축 정의 (25개 모듈이 import) |
 | `m12_m3_cohort.py` | `cohort_reference.parquet` |
 | `m38_m3_vector_direction.py` | 벡터 구성 · `MIN_COHORT` |
 | `m47_m3_sensitivity.py` | `build_vectors_v` — v1/v2/v3 어느 데이터로도 벡터를 만든다 |

@@ -1,6 +1,6 @@
 """Model 1 serving wrapper — 지원성격 분류 (KLUE-BERT, 19클래스 + 판단보류).
 
-가중치는 `ml/pipelines/dl20_m1_final_export.py` 로 학습했다. 설정은 새로
+가중치는 `ml/pipelines/model1/dl20_m1_final_export.py` 로 학습했다. 설정은 새로
 고르지 않았다 — `dl12_m1_candidates.py` 가 내부 CV 로 이미 고른 값 그대로
 다(klue/bert-base · lr 5e-5 · epochs 8 · batch 16 · max_len 256 ·
 class_weight · seed 42, `ml/reports/dl20_m1_final_export.json` 에 기록).
@@ -19,9 +19,14 @@ import torch
 _SERVING_DIR = os.path.dirname(os.path.abspath(__file__))
 _ML_ROOT = os.path.abspath(os.path.join(_SERVING_DIR, "..", ".."))
 for _d in ("pipelines", "evaluation", "experiments"):
-    _p = os.path.join(_ML_ROOT, _d)
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+    _base = os.path.join(_ML_ROOT, _d)
+    if not os.path.isdir(_base):
+        continue
+    for _dp, _dn, _fn in os.walk(_base):          # 모델별 하위 폴더까지
+        if "__pycache__" in _dp:
+            continue
+        if _dp not in sys.path:
+            sys.path.insert(0, _dp)
 
 from dl07_m1_apply import HOLD_THRESHOLD, TRUST_THRESHOLD, clean_text, tier  # noqa: E402
 

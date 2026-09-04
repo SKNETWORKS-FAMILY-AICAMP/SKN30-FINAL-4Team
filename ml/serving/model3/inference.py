@@ -1,17 +1,17 @@
 """Model 3 serving wrapper — 유사사업 비교군 대비 설계 이례성 점수.
 
-기존 canonical scoring(`ml/pipelines/m3_lab.py` 의 `score_pool()`)과
-`ml/pipelines/m13_m4_anomaly.py` 의 `prepare()` 를 그대로 호출한다. 별도
+기존 canonical scoring(`ml/pipelines/model3/m3_lab.py` 의 `score_pool()`)과
+`ml/pipelines/model3/m13_m3_anomaly.py` 의 `prepare()` 를 그대로 호출한다. 별도
 학습 weight가 없는 모델이다 — 비교군 reference pool(M66 v3,
 `design_features_v3.parquet`)을 매번 다시 스캔해 거리 기반 점수를 낸다.
 
 Freeze 된 구조를 그대로 쓴다(파라미터를 새로 고르지 않는다):
 비교군 사다리 A0(성격x방식 -> 성격 -> 전체) · MIN_COHORT=20 ·
 mean 대표벡터(n_proto=1) · standard scaling · Euclidean.
-ml/docs/02_모델_1_2_3_성능_결과서.md 3장 · ml/evaluation/m66_m3_cohort_supply.py 참조.
+ml/docs/02_모델_1_2_3_성능_결과서.md 3장 · ml/evaluation/model3/m66_m3_cohort_supply.py 참조.
 
 주의: "이례적"이지 "잘못됐다"가 아니다. 서비스 문구는 ALLOWED 목록만 쓴다
-(m13_m4_anomaly.ALLOWED) — "부적절함"·"지원규모 과다" 같은 판정형 표현은
+(m13_m3_anomaly.ALLOWED) — "부적절함"·"지원규모 과다" 같은 판정형 표현은
 쓰지 않는다.
 """
 import os
@@ -23,12 +23,17 @@ import pandas as pd
 _SERVING_DIR = os.path.dirname(os.path.abspath(__file__))
 _ML_ROOT = os.path.abspath(os.path.join(_SERVING_DIR, "..", ".."))
 for _d in ("pipelines", "evaluation", "experiments"):
-    _p = os.path.join(_ML_ROOT, _d)
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+    _base = os.path.join(_ML_ROOT, _d)
+    if not os.path.isdir(_base):
+        continue
+    for _dp, _dn, _fn in os.walk(_base):          # 모델별 하위 폴더까지
+        if "__pycache__" in _dp:
+            continue
+        if _dp not in sys.path:
+            sys.path.insert(0, _dp)
 
 import m3_lab as L  # noqa: E402
-from m13_m4_anomaly import ALLOWED, MIN_AXES, prepare  # noqa: E402
+from m13_m3_anomaly import ALLOWED, MIN_AXES, prepare  # noqa: E402
 
 POOL_PATH = os.path.join(_SERVING_DIR, "design_features_v3.parquet")
 

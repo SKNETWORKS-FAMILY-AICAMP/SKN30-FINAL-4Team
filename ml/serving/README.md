@@ -11,14 +11,21 @@ ml/serving/
 │  ├─ model/            KLUE-BERT weight (dl20_m1_final_export.py 로 학습)
 │  ├─ tokenizer/
 │  ├─ label_mapping.json
-│  ├─ train.parquet             학습에 쓴 원본 데이터 1,404건 (ml/models/m1_dl_bundle/ 사본)
+│  ├─ train.parquet             학습에 쓴 원본 데이터 1,404건 (ml/models/model1_canonical/ 사본)
 │  ├─ external.parquet          외부 검증 131건 〃
 │  └─ inference.py       dl07_m1_apply.clean_text()/tier() 를 감싸는 wrapper
-├─ model2/
-│  ├─ model2_canonical.joblib   ml/models/m65_model2_canonical/ 사본
-│  ├─ manifest.json             〃
-│  ├─ cohort_reference.parquet  비교군 percentile 참조표 (m45_m2_amount.build_reference 산출물)
-│  └─ inference.py              m56_m2_canonical.serve()·m45_m2_amount.compare() 를 감싸는 wrapper
+├─ model2/                        ★ M82/P3 세대 (2026-09-04 전환)
+│  ├─ predict.py               진입점 — predict()(회귀) · percentile()(비교군 위치)
+│  ├─ preprocessing.py         F06 스키마 입력 정규화 + 필수값 검증
+│  ├─ masking.py               [AMOUNT]/# 마스킹 (학습과 같은 SF.mask_text)
+│  ├─ proximity.py             proximity 추출 (학습과 같은 M82 정규식·window)
+│  ├─ feature_builder.py       211열 조립 + 열 이름·순서 대조
+│  ├─ router.py                ordinal soft routing (global 1 + expert 3 + 이진 2)
+│  ├─ build_bundle.py          번들 재생성 (전체 1,877행 재적합 + 자체검증 6종)
+│  ├─ cohort_reference.parquet 비교군 percentile 참조표 (M65 세대와 동일 — 안 바뀜)
+│  ├─ inference.py             [구세대 M65] 전환 완료 후 삭제 가능
+│  └─ model2_canonical.joblib  [구세대 M65] 〃
+│     번들은 ml/models/model2_canonical/model2_p3_bundle.joblib (20.8 MB) 를 참조한다
 ├─ model3/
 │  ├─ design_features_v3.parquet   ml/data/processed/ 사본
 │  └─ inference.py                 m3_lab.score_pool() 을 감싸는 wrapper
@@ -36,7 +43,7 @@ model2 의 `cohort_reference.parquet` 는 반대로 **추론에 실제로 쓰인
 
 `inference.py` 는 실행 시 `ml/pipelines/`·`ml/evaluation/`·`ml/experiments/`
 를 `sys.path` 에 얹고 원본 모듈(`m56_m2_canonical`, `m45_m2_amount`,
-`m3_lab`, `m13_m4_anomaly`, `dl07_m1_apply` 등)을 그대로 `import` 한다.
+`m3_lab`, `m13_m3_anomaly`, `dl07_m1_apply` 등)을 그대로 `import` 한다.
 **배포 시 이 저장소의
 `ml/pipelines/` 코드가 같이 있어야 한다** — 백엔드가 그 코드를 이해할
 필요는 없지만, 파일은 옆에 있어야 한다. 완전히 코드까지 분리하려면 원본
@@ -50,17 +57,49 @@ import 시점에 `ml/data`·`ml/reports`·`ml/figures`·`ml/models` 디렉터리
 
 ---
 
+## 주의: 모듈 이름이 겹친다 (model1/predict.py · model2/predict.py)
+
+가이드 구조상 두 모델의 진입점 파일명이 같다. 두 모델을 **한 프로세스에서**
+쓰면 `sys.modules` 캐시 때문에 먼저 import 한 쪽이 계속 돌아온다 — 에러 없이
+조용히 틀린 모델이 불린다(이 저장소의 API 스모크가 실제로 이 함정에 걸렸다).
+
+한 모델만 쓰면 문제없다. 둘 이상을 쓸 때는 **파일 경로로 고유 이름을 붙여**
+불러온다.
+
+```python
+import importlib.util, os, sys
+
+def load(sub, modname):
+    d = os.path.join("ml/serving", sub)
+    sys.path.insert(0, d)                      # 형제 모듈(feature_builder 등)
+    spec = importlib.util.spec_from_file_location(
+        "%s_%s" % (sub, modname), os.path.join(d, modname + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+m2 = load("model2", "predict")     # 지원규모
+m3 = load("model3", "score")       # 설계 이례성
+m1 = load("model1", "predict")     # 지원유형
+```
+
+동작 확인은 `python ml/serving/smoke_api.py` — README 에 적힌 호출 경로
+그대로 세 모델을 한 프로세스에서 부른다.
+
+---
+
 ## 1. 모델 1 — 지원성격 분류 (KLUE-BERT)
 
 **weight 확보 경위** — 저장소·이 컴퓨터 어디에도 KLUE-BERT weight가 없어
 처음에는 `BLOCKED: weight missing` 이었다(huggingface 캐시·Downloads까지
 확인). 이후 RunPod GPU 박스(RTX 4090)를 붙여, **동일 최종 설정으로**
-`ml/pipelines/dl20_m1_final_export.py` 를 실행해 재학습했다. 새 설정을
+`ml/pipelines/model1/dl20_m1_final_export.py` 를 실행해 재학습했다. 새 설정을
 만들지 않았다 — `klue/bert-base` · lr `5e-5`(`dl12_m1_candidates.py` 내부
-CV 가 이미 고른 값, `ml/reports/dl12_m1_candidates_dl.json`) · `epochs=8`
+CV 가 이미 고른 값, `ml/reports/model1/core/dl12_m1_candidates_dl.json`) · `epochs=8`
 `batch=16` `max_len=256` `class_weight=True`(dl12.FIXED 그대로) ·
 `seed=42`(내부 CV·저장소 전역 기본 seed 와 동일). 학습 로그·설정·외부
-131건 참고 수치는 `ml/reports/dl20_m1_final_export.json` 에 있다.
+131건 참고 수치는 `ml/reports/model1/core/dl20_m1_final_export.json` 에 있다.
 
 **artifact 위치**: 원본 학습 산출물은 RunPod `/workspace/dl/models/
 m1_klue_bert/`(로컬 저장소 밖 — 400MB+ 라 gitignore 대상인 것은 그대로),
@@ -134,19 +173,51 @@ KLUE-BERT 파인튜닝을 CPU로 돌리면 비현실적으로 오래 걸리고, 
 
 ---
 
-## 2. 모델 2 — 지원규모 상대비교 (비교군 percentile + XGBoost)
+## 2. 모델 2 — 지원규모 (M82/P3, 2026-09-04 전환)
 
-**artifact 위치**: 원본 `ml/models/m65_model2_canonical/` (M65 canonical)
-+ `ml/data/processed/design_features_v2.parquet`(참조표 산출 원본), 사본
-`ml/serving/model2/`. `cohort_reference.parquet` 는 원본 parquet 를
-그대로 옮긴 게 아니라 `m45_m2_amount.prepare()` + `build_reference()` 를
-그 데이터에 적용해 만든 **집계표**(85행, 15KB)다 — 원본 산출 방식은
-`ml/evaluation/m65_m2_canonical_v2.py` STEP C 와 동일하다.
+**세대 전환**: 회귀가 M65 단일 XGBoost → **M82/P3** 로 바뀌었다.
 
-이 모델은 함수가 둘이다. `predict()`(회귀, joblib 만 필요)와
-`percentile()`(비교군 위치, cohort_reference.parquet 만 필요)는 서로
-독립적으로 호출할 수 있다 — 문서상 **`percentile()` 가 1차 산출물**이고
-`predict()` 는 비교군이 얇을 때의 보조 추정이다(2.0절).
+```text
+M65 0.4117 -> M69 0.3719 -> M73 0.3563 -> M82/P3 0.3518   (OOF MAE, log10)
+```
+
+| | 구세대 (M65) | **현행 (M82/P3)** |
+|---|---|---|
+| 모듈 | `inference.py` | **`predict.py`** |
+| 번들 | `serving/model2/model2_canonical.joblib` | **`models/model2_canonical/model2_p3_bundle.joblib`** |
+| 구조 | 단일 XGB + CQR 구간 | global 1 + 구간 expert 3 + ordinal 이진 2 = **6개** |
+| feature | 구조화 + 제목 SVD | **211열** (+ 원천층 · 본문 SVD64 · proximity 24 + SVD16) |
+| OOF MAE | 0.4117 | **0.3518** (strict 0.3751, 5/5 fold, CI [-0.0083, -0.0003]) |
+
+`inference.py` 와 구세대 joblib 은 **아직 지우지 않았다** — 백엔드 전환이
+끝나면 지운다. 새 코드는 `predict.py` 만 부르면 된다.
+
+**artifact 위치**: `ml/models/model2_canonical/` (번들 + manifest). 20.8 MB 라
+`serving/` 에 사본을 두지 않고 참조한다 — 이 패키지는 어차피 `ml/pipelines/`
+가 옆에 있어야 동작하므로(위 "완전히 독립적이지 않다" 절) 사본이 이득이 없다.
+
+`percentile()` 은 **바뀌지 않았다** — M82 는 회귀만 바꿨고 비교군 사다리
+(`m45_m2_amount.build_reference`)는 그대로다. 반환값도 동일하다.
+
+### 입력 필드 — `predict()`
+
+구세대와 달리 **공고문 원문(`evidence_text`)이 필수**다. M82 의 이득이 본문
+안의 "수치와 그 주변 의미"(지원비율 70% · 30개사 선정 · 12개월)에서 나오기
+때문이다. 없으면 `ValueError` 로 즉시 막는다 — 조용히 나빠지는 것보다 낫다.
+
+| 필드 | 필수 | 비고 |
+|---|---|---|
+| `title` | **예** | 사업 제목 |
+| `evidence_text` | **예** | 공고문 원문(또는 API 요약문). proximity·본문 SVD 입력 |
+| `evidence_source` | 권장 | `document` / `scale_text` / `api_summary` |
+| `support_type` | 권장 | 모델 1 출력 19클래스 한글. 비면 결측 처리 |
+| `support_method` `support_unit` `amount_type` `cohort` `category_large` `agency_type` | 권장 | 도메인표(아래)의 **영문 코드값** |
+| `industry` `support_count` `support_ratio` `self_burden_ratio` `project_duration` `year` | 선택 | 없으면 결측 |
+| `row_id` | 선택 | 결과 매칭용 |
+
+없는 필드는 결측으로 채워진다(`preprocessing.to_frame` 이 학습 스키마에
+맞추고, 범주는 학습 레벨 밖이면 NaN, 정수형에 결측이 있으면 float 로 둔다 —
+XGBoost 가 NaN 을 분기로 처리한다).
 
 ### 범주형 필드 값 도메인 (원본 데이터의 코드값 — 한글 라벨이 아니다)
 
@@ -160,71 +231,58 @@ KLUE-BERT 파인튜닝을 CPU로 돌리면 비현실적으로 오래 걸리고, 
 | `support_type` | 모델 1 출력 19클래스 한글 그대로 (`사업화`·`판로`·`융자` 등) |
 | `category_large` | `경영`·`금융`·`기술`·`기타`·`내수`·`소상`·`수출`·`인력`·`창업` |
 
-### 입력 필드 (`m56_m2_canonical.SERVING_FIELDS`) — `predict()`
+### 출력 — `predict()`
 
-| 필드 | 비고 |
+```json
+{"model": "model2_p3", "n": 1, "context_digit_residue": 0,
+ "predictions": [{"row_id": "...", "pred_log10": 7.665, "pred_won": 46233528,
+   "bucket": "Mid", "bucket_proba": {"Low": 0.075, "Mid": 0.8667, "High": 0.0583},
+   "bucket_edges_won": [20000000, 120000000],
+   "proximity": {"prox_support_rate": 70.0, "prox_self_burden_rate": 30.0,
+                 "prox_selected_count": null, "prox_duration_months": 12.0}}]}
+```
+
+| 필드 | 의미 |
 |---|---|
-| `title` | 사업 제목 (TF-IDF+SVD 로 벡터화됨) |
-| `support_type` | 위 도메인표 |
-| `support_method` | 위 도메인표 |
-| `support_unit` | 위 도메인표 |
-| `cohort` | 위 도메인표 |
-| `category_large` | 위 도메인표 |
-| `industry` | 업종(자유 텍스트 — 학습 상위 15종 밖이면 "기타업종"으로 자동 그룹화) |
-| `agency_type` | 위 도메인표 |
-| `amount_type` | 위 도메인표 |
-| `support_count` | 지원건수 |
-| `support_ratio` | 지원비율 |
-| `self_burden_ratio` | 자기부담비율 |
-| `project_duration` | 사업기간 |
-| `year` | 연도 |
+| `pred_log10` / `pred_won` | log10(원) 점추정 · 원 단위 환산 |
+| `bucket` / `bucket_proba` | 금액 구간(Low/Mid/High)과 그 확률. soft 라우팅의 가중치 자체다 |
+| `bucket_edges_won` | 구간 경계(원) — 학습 y 의 P33.3/P66.7 |
+| `proximity` | 본문에서 실제로 뽑힌 수치. **예측 근거를 사람이 확인할 수 있게** 같이 준다 |
+| `context_digit_residue` | 마스킹 감사 — 0 이 아니면 target 누수 위험. 매 호출 확인한다 |
 
-없는 필드는 `NaN`/`"미기재"`로 자동 대체된다(`build_serving_frame`).
+구세대의 `lo_won`/`hi_won`(CQR 구간)은 **없다** — M73/M82 구조는 구간회귀를
+쓰지 않는다. 불확실성이 필요하면 `bucket_proba` 와 `percentile()` 을 쓴다.
 
-### 출력
-
-**`predict()`** (회귀 참고값)
-
-| 컬럼 | 의미 |
-|---|---|
-| `pred_log10` / `lo_log10` / `hi_log10` | log10(원) 점추정 · 구간(CQR 보정) |
-| `pred_won` / `lo_won` / `hi_won` | 원 단위 환산값 |
-
-**`percentile(value_won, support_type, support_method, unit, cohort)`**
-(1차 산출물)
+### 출력 — `percentile()` (1차 산출물, 변경 없음)
 
 | 필드 | 의미 |
 |---|---|
 | `status` | `비교가능` / `비교군_부족` / `비교불가`(사유는 `reason`) |
-| `level` | 실제 매칭된 비교군 사다리 단계(좁은 것부터 성격x방식x단위x출처 → 성격x단위x출처 → 단위x출처) |
+| `level` | 매칭된 비교군 사다리 단계 |
 | `n` | 비교군 표본수 |
 | `distribution` | p1~p99 분위값(원) |
 | `percentile_rank` | 이 금액이 비교군의 몇 % 이하인가 |
-| `spread_x` | p90/p10 배율 — 비교군이 얼마나 넓게 퍼져 있는가 |
-| `statement` | 사람에게 보여줄 문장("유사사업 N건 중 약 X%가 이 값 이하다") |
-| `interval_tier` | 이 최소 패키지에서는 계산하지 않음(OOF 재적합 필요) — 항상 `None` |
-
-### 출력 예시 (스모크 테스트 실측 — `support_type="사업화" support_method="grant"
-`support_unit="company"` `cohort="taxonomy"` 조합)
-
-```text
-   pred_log10  lo_log10  hi_log10     pred_won      lo_won       hi_won
-0    8.333573  7.457255  8.999291  215562560.0  28658594.0  998369792.0
-
-{'status': '비교가능', 'value': 200000000.0, 'level': '성격x방식x단위x출처',
- 'n': 316, 'percentile_rank': 62.5, 'spread_x': 16.7, 'interval_tier': None,
- 'statement': '유사사업 316건 중 약 62%가 이 값 이하다.'}
-```
+| `spread_x` | p90/p10 배율 |
+| `statement` | 사람에게 보여줄 문장 |
+| `interval_tier` | 이 패키지에서는 계산하지 않음 — 항상 `None` |
 
 ### 실행 예시
 
 ```python
 import sys
 sys.path.insert(0, "ml/serving/model2")
-from inference import predict, percentile
+from predict import predict, percentile
 
 records = [{
+    "row_id": "REQ001",
     "title": "2023년 수출유망상품화 사업",
+    "evidence_text": ("□ 지원내용 : 정부지원 비율 70% (자부담 30%)
+"
+                      "□ 지원규모 : 기업당 최대 2억원
+"
+                      "□ 사업기간 : 12개월
+□ 지원방식 : 보조금"),
+    "evidence_source": "document",
     "support_type": "사업화", "support_method": "grant", "support_unit": "company",
     "cohort": "taxonomy", "category_large": "수출", "industry": "제조업",
     "agency_type": "public", "amount_type": "per_company",
@@ -236,23 +294,38 @@ print(percentile(200_000_000, "사업화", "grant", "company", "taxonomy"))
 ```
 
 ```bash
-python ml/serving/model2/inference.py
+python ml/serving/model2/predict.py     # 번들 메타(어떤 실험의 어떤 성능인지) 출력
 ```
+
+### 번들 재생성
+
+```bash
+python ml/serving/model2/build_bundle.py
+```
+
+전체 1,877행으로 변환기·모델을 다시 적합하고 자체검증 6종(211열 · transform
+순서 일치 · 마스킹 잔존 0 · 합성 신규문서 예측 도달 · 예측이 학습 타깃
+1~99 분위 안)을 통과해야만 저장한다.
 
 ### dependency
 
-`pandas`, `numpy`, `scikit-learn`(TfidfVectorizer·TruncatedSVD 언피클용),
-`xgboost`, `joblib` — `ml/serving/requirements.txt`.
+`pandas`, `numpy`, `scikit-learn`, `xgboost`, `joblib` — 구세대와 같다.
+`ml/serving/requirements.txt`.
 
-### smoke test
+### smoke test (API 기준, 2026-09-04)
 
-`python ml/serving/model2/inference.py` 실행 → 위 출력 예시와 동일하게
-`predict()`(1행 DataFrame)·`percentile()`(비교가능, n=316, 62.5%) 모두
-정상 반환 확인(2026-09-01). 최초 시도에서 `support_method`/`support_unit`
-등에 한글 값("보조금"·"기업당")을 썼더니 `predict()`는 조용히 결측
-범주로 처리해 그럴듯한 값을 냈지만 `percentile()`은 "비교군 없음"을
-정확히 반환했다 — 위 도메인표의 영문 코드값으로 바꾸자 둘 다 의도대로
-동작했다.
+문서에 적힌 호출 경로 그대로 실행 — `sys.path.insert("ml/serving/model2")` →
+`from predict import predict, percentile`.
+
+```text
+번들 메타     model2_p3 | M82/P3 | primary MAE 0.3518 | 211열
+predict()     pred_log10 7.665 · pred_won 46,233,528 · bucket Mid(0.867)
+              proximity 70% / 30% / 12개월  ·  context_digit_residue 0
+percentile()  비교가능 · 성격x방식x단위x출처 · n=316 · 62.5% · spread 16.7배
+```
+
+`percentile()` 값이 구세대 스모크(2026-09-01)와 **정확히 같다** — 비교군
+사다리를 바꾸지 않았다는 것이 실측으로 확인된다.
 
 ---
 
@@ -297,7 +370,7 @@ weight가 없는 모델이다 — 매 요청마다 이 비교군 pool 전체를 
 | `top1_axis` | 가장 크게 벗어난 수치축 (설명용) |
 
 **서비스 문구 규율**: "이례적"이지 "잘못됐다"가 아니다. 출력을 사람에게
-보여줄 때는 `m13_m4_anomaly.ALLOWED` 목록(`과거 사업 패턴과 차이가 큼` /
+보여줄 때는 `m13_m3_anomaly.ALLOWED` 목록(`과거 사업 패턴과 차이가 큼` /
 `희귀한 설계 조합` / `동일 유형 대비 비전형적` / `확인 필요`)만 쓰고,
 `부적절함`·`지원규모 과다` 같은 판정형 표현은 쓰지 않는다.
 

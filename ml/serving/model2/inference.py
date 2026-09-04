@@ -1,7 +1,17 @@
-"""Model 2 serving wrapper — 비교군 percentile 위치 + 지원규모 회귀 참고값.
+"""[구세대 — M65] Model 2 serving wrapper.
 
-기존 canonical pipeline(`ml/pipelines/m56_m2_canonical.py`의 `serve()`,
-`ml/pipelines/m45_m2_amount.py`의 `build_reference()`/`compare()`)을 그대로
+    회귀(지원규모 추정)는 **`predict.py` (M82/P3) 로 대체됐다.**
+        M65 0.4117 -> M69 0.3719 -> M73 0.3563 -> M82/P3 0.3518
+    이 파일의 `predict()` 는 M65 단일 XGB 번들을 그대로 읽는다. 백엔드가
+    전환을 마치면 지워도 된다.
+
+    `percentile()` 은 아직 유효하다 — M82 는 회귀만 바꿨고 비교군 사다리
+    (`m45_m2_amount.build_reference`)는 그대로다. `predict.py` 에도 같은
+    함수가 있다.
+
+
+기존 canonical pipeline(`ml/pipelines/model2/m56_m2_canonical.py`의 `serve()`,
+`ml/pipelines/model2/m45_m2_amount.py`의 `build_reference()`/`compare()`)을 그대로
 호출한다. feature 생성·전처리·비교군 사다리 로직은 전부 그 모듈들이 하고,
 여기서는 재구현하지 않는다.
 
@@ -11,7 +21,7 @@ artifact 출처:
         (ml/data/processed/design_features_v2.parquet) 에
         `m45_m2_amount.prepare()` + `build_reference()` 를 그대로 적용해
         만든 비교군 사다리 참조표(85행). 원본 산출 방식은
-        `ml/evaluation/m65_m2_canonical_v2.py` 의 STEP C 와 동일하다.
+        `ml/experiments/model2/core/m65_m2_canonical_v2.py` 의 STEP C 와 동일하다.
     (ml/docs/02_모델_1_2_3_성능_결과서.md 2.5절)
 
 두 함수는 서로 독립이다. `predict()`(회귀)는 joblib 번들만 있으면 되고,
@@ -28,9 +38,14 @@ import pandas as pd
 _SERVING_DIR = os.path.dirname(os.path.abspath(__file__))
 _ML_ROOT = os.path.abspath(os.path.join(_SERVING_DIR, "..", ".."))
 for _d in ("pipelines", "evaluation", "experiments"):
-    _p = os.path.join(_ML_ROOT, _d)
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+    _base = os.path.join(_ML_ROOT, _d)
+    if not os.path.isdir(_base):
+        continue
+    for _dp, _dn, _fn in os.walk(_base):          # 모델별 하위 폴더까지
+        if "__pycache__" in _dp:
+            continue
+        if _dp not in sys.path:
+            sys.path.insert(0, _dp)
 
 import m45_m2_amount as M45  # noqa: E402
 import m56_m2_canonical as M56  # noqa: E402

@@ -1,0 +1,326 @@
+{
+  "purpose": "관측 수 확대의 기대 효과를 수집 없이 추정한다 (지시서 12장 learning curve 의 대체 측정)",
+  "unchanged": {
+    "dataset": "design_features_v2.parquet",
+    "rows": 1877,
+    "split": "GroupKFold(5), group=program_stem",
+    "feature_step": "G",
+    "model": "m2_features.XGB_POINT"
+  },
+  "changed": "학습에 쓰는 행 수만 (그룹 단위 subsample)",
+  "runs": [
+    {
+      "n": 752,
+      "n_groups": 699,
+      "MAE_log10": 0.4422,
+      "within_2x": 0.4668,
+      "within_3x": 0.6489,
+      "baseline_MAE": 0.5402,
+      "stage1_acc": 0.7074,
+      "fold_MAE": [
+        0.4065,
+        0.5009,
+        0.4261,
+        0.4499,
+        0.4275
+      ],
+      "frac": 0.4,
+      "seed": 0,
+      "seconds": 95.9
+    },
+    {
+      "n": 742,
+      "n_groups": 699,
+      "MAE_log10": 0.4438,
+      "within_2x": 0.4757,
+      "within_3x": 0.655,
+      "baseline_MAE": 0.5569,
+      "stage1_acc": 0.6806,
+      "fold_MAE": [
+        0.476,
+        0.5017,
+        0.373,
+        0.3896,
+        0.478
+      ],
+      "frac": 0.4,
+      "seed": 1,
+      "seconds": 96.6
+    },
+    {
+      "n": 1036,
+      "n_groups": 961,
+      "MAE_log10": 0.4094,
+      "within_2x": 0.4817,
+      "within_3x": 0.6834,
+      "baseline_MAE": 0.5261,
+      "stage1_acc": 0.7606,
+      "fold_MAE": [
+        0.3931,
+        0.3982,
+        0.4356,
+        0.4154,
+        0.4047
+      ],
+      "frac": 0.55,
+      "seed": 0,
+      "seconds": 115.7
+    },
+    {
+      "n": 1028,
+      "n_groups": 961,
+      "MAE_log10": 0.4174,
+      "within_2x": 0.4864,
+      "within_3x": 0.6634,
+      "baseline_MAE": 0.5496,
+      "stage1_acc": 0.7403,
+      "fold_MAE": [
+        0.4151,
+        0.4564,
+        0.3875,
+        0.3962,
+        0.4318
+      ],
+      "frac": 0.55,
+      "seed": 1,
+      "seconds": 117.0
+    },
+    {
+      "n": 1323,
+      "n_groups": 1224,
+      "MAE_log10": 0.3973,
+      "within_2x": 0.4958,
+      "within_3x": 0.6969,
+      "baseline_MAE": 0.5333,
+      "stage1_acc": 0.7627,
+      "fold_MAE": [
+        0.4155,
+        0.388,
+        0.3873,
+        0.4049,
+        0.3906
+      ],
+      "frac": 0.7,
+      "seed": 0,
+      "seconds": 135.9
+    },
+    {
+      "n": 1312,
+      "n_groups": 1224,
+      "MAE_log10": 0.3877,
+      "within_2x": 0.5023,
+      "within_3x": 0.7027,
+      "baseline_MAE": 0.5317,
+      "stage1_acc": 0.7569,
+      "fold_MAE": [
+        0.3926,
+        0.4064,
+        0.3933,
+        0.3737,
+        0.3726
+      ],
+      "frac": 0.7,
+      "seed": 1,
+      "seconds": 136.6
+    },
+    {
+      "n": 1596,
+      "n_groups": 1486,
+      "MAE_log10": 0.3794,
+      "within_2x": 0.5169,
+      "within_3x": 0.7137,
+      "baseline_MAE": 0.5322,
+      "stage1_acc": 0.7713,
+      "fold_MAE": [
+        0.3935,
+        0.3806,
+        0.3931,
+        0.3709,
+        0.3589
+      ],
+      "frac": 0.85,
+      "seed": 0,
+      "seconds": 144.2
+    },
+    {
+      "n": 1593,
+      "n_groups": 1486,
+      "MAE_log10": 0.379,
+      "within_2x": 0.5154,
+      "within_3x": 0.72,
+      "baseline_MAE": 0.5265,
+      "stage1_acc": 0.7671,
+      "fold_MAE": [
+        0.3927,
+        0.3608,
+        0.3496,
+        0.396,
+        0.3962
+      ],
+      "frac": 0.85,
+      "seed": 1,
+      "seconds": 168.7
+    },
+    {
+      "n": 1877,
+      "n_groups": 1748,
+      "MAE_log10": 0.3719,
+      "within_2x": 0.5301,
+      "within_3x": 0.723,
+      "baseline_MAE": 0.5223,
+      "stage1_acc": 0.7848,
+      "fold_MAE": [
+        0.3947,
+        0.3499,
+        0.3814,
+        0.3819,
+        0.3517
+      ],
+      "frac": 1.0,
+      "seed": 0,
+      "seconds": 187.4
+    }
+  ],
+  "curve": [
+    {
+      "frac": 0.4,
+      "n": 747,
+      "MAE": 0.44299999999999995,
+      "MAE_sd": 0.0011313708498984889,
+      "acc": 0.694
+    },
+    {
+      "frac": 0.55,
+      "n": 1032,
+      "MAE": 0.4134,
+      "MAE_sd": 0.005656854249492385,
+      "acc": 0.7504500000000001
+    },
+    {
+      "frac": 0.7,
+      "n": 1318,
+      "MAE": 0.39249999999999996,
+      "MAE_sd": 0.006788225099390835,
+      "acc": 0.7598
+    },
+    {
+      "frac": 0.85,
+      "n": 1594,
+      "MAE": 0.3792,
+      "MAE_sd": 0.00028284271247460747,
+      "acc": 0.7692
+    },
+    {
+      "frac": 1.0,
+      "n": 1877,
+      "MAE": 0.3719,
+      "MAE_sd": NaN,
+      "acc": 0.7848
+    }
+  ],
+  "power_fit": {
+    "form": "MAE = c * n^(-a)",
+    "a": 0.1938,
+    "c": 1.5891,
+    "r2": 0.9925
+  },
+  "projection": [
+    {
+      "add_rows": 59,
+      "total_n": 1936,
+      "expected_delta_MAE": 0.00222,
+      "detectable": false,
+      "m73_projected": 0.3542,
+      "collect_docs": 500,
+      "requests": 1000,
+      "hours": 0.4
+    },
+    {
+      "add_rows": 100,
+      "total_n": 1977,
+      "expected_delta_MAE": 0.00372,
+      "detectable": false,
+      "m73_projected": 0.3527,
+      "collect_docs": 847,
+      "requests": 1694,
+      "hours": 0.6
+    },
+    {
+      "add_rows": 200,
+      "total_n": 2077,
+      "expected_delta_MAE": 0.00723,
+      "detectable": true,
+      "m73_projected": 0.3494,
+      "collect_docs": 1695,
+      "requests": 3390,
+      "hours": 1.2
+    },
+    {
+      "add_rows": 300,
+      "total_n": 2177,
+      "expected_delta_MAE": 0.01053,
+      "detectable": true,
+      "m73_projected": 0.3462,
+      "collect_docs": 2542,
+      "requests": 5084,
+      "hours": 1.8
+    },
+    {
+      "add_rows": 600,
+      "total_n": 2477,
+      "expected_delta_MAE": 0.01946,
+      "detectable": true,
+      "m73_projected": 0.3377,
+      "collect_docs": 5085,
+      "requests": 10170,
+      "hours": 3.7
+    },
+    {
+      "add_rows": 1000,
+      "total_n": 2877,
+      "expected_delta_MAE": 0.02954,
+      "detectable": true,
+      "m73_projected": 0.328,
+      "collect_docs": 8475,
+      "requests": 16950,
+      "hours": 6.1
+    },
+    {
+      "add_rows": 2000,
+      "total_n": 3877,
+      "expected_delta_MAE": 0.04877,
+      "detectable": true,
+      "m73_projected": 0.3096,
+      "collect_docs": 16949,
+      "requests": 33898,
+      "hours": 12.2
+    }
+  ],
+  "first_detectable": {
+    "add_rows": 200,
+    "total_n": 2077,
+    "expected_delta_MAE": 0.00723,
+    "detectable": true,
+    "m73_projected": 0.3494,
+    "collect_docs": 1695,
+    "requests": 3390,
+    "hours": 1.2
+  },
+  "reference": {
+    "M69_global": 0.3719,
+    "M73_soft_ordinal": 0.3563,
+    "paired_ci_halfwidth": 0.007,
+    "yield_rows_per_doc": 0.118,
+    "yield_source": "파일럿 500건 실측 (다운로드 475 -> HWP 335 -> 관측 176 -> 학습행 59)"
+  },
+  "seconds": 1200.7,
+  "pilot": {
+    "docs_tried": 500,
+    "downloaded": 475,
+    "hwp": 342,
+    "extracted": 464,
+    "observations_added": 176,
+    "train_rows_added": 59,
+    "train_rows": "1877 -> 1936 (+3.1%)"
+  }
+}
