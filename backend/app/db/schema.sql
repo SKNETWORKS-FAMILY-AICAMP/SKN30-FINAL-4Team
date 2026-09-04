@@ -35,6 +35,7 @@ CREATE TABLE sims.app_user (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     login_id            citext NOT NULL UNIQUE,
     email               citext NOT NULL UNIQUE,
+    display_name        text,
     password_hash       text NOT NULL,
     password_changed_at timestamptz NOT NULL DEFAULT now(),
     is_active           boolean NOT NULL DEFAULT true,
@@ -1306,6 +1307,9 @@ COMMENT ON COLUMN sims.app_user.password_changed_at IS
 'Timestamp of the latest successful password-hash change. Backends must reject '
 'sessions or tokens issued before this value. Initial account creation sets the '
 'baseline timestamp but does not create a password_change_history row.';
+
+COMMENT ON COLUMN sims.app_user.display_name IS
+'화면에 보일 사용자 이름. 비어 있으면 이메일의 @ 앞부분을 대신 쓴다. 회원가입 API 가 없어 계정과 함께 직접 넣는다.';
 
 COMMENT ON TABLE sims.password_change_history IS
 'Successful password-change event timestamps only. Password plaintext and old/new '

@@ -306,6 +306,40 @@ def test_invalid_login_password_is_not_echoed(client: TestClient) -> None:
     assert exposed_password not in response.text
 
 
+def test_me_prefers_the_stored_name_and_falls_back_to_the_email(
+    client: TestClient,
+    engine: Engine,
+    create_user: Callable[..., int],
+) -> None:
+    """이름을 넣은 계정은 이름을, 넣지 않은 계정은 이메일 앞부분을 준다.
+
+    회원가입 API 가 없어 이름 없는 계정이 계속 생긴다. 폴백이 없으면 그런
+    계정은 화면에 표시할 이름을 잃는다.
+    """
+
+    user_id = create_user("named-user")
+    assert client.get(
+        "/api/v1/auth/me",
+        headers=bearer(login(client, "named-user", OLD_PASSWORD)),
+    ).json() == {"name": "named-user"}
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE sims.app_user SET display_name = :name WHERE id = :id"
+            ),
+            {"name": "이동욱", "id": user_id},
+        )
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers=bearer(login(client, "named-user", OLD_PASSWORD)),
+    )
+    assert response.json() == {"name": "이동욱"}
+    # 이름을 넣어도 전체 주소는 여전히 나가지 않는다.
+    assert "@example.com" not in response.text
+
+
 def test_me_rejects_bad_tokens_and_returns_minimal_user(
     client: TestClient,
     create_user: Callable[..., int],

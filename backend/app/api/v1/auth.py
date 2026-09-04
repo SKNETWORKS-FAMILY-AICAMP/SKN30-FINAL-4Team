@@ -128,13 +128,17 @@ def refresh_token(request: Request, user: CurrentUser) -> TokenResponse:
     response_model=MeResponse,
     summary="로그인 사용자 확인",
     description=(
-        "사이드바 사용자를 표시할 때 쓰입니다. 계정 이메일의 `@` 앞부분입니다. "
+        "사이드바 사용자를 표시할 때 쓰입니다. 계정에 이름이 있으면 그 이름이고, "
+        "없으면 계정 이메일의 `@` 앞부분입니다. "
         "새로고침 후 로그인 상태를 확인할 때도 쓰입니다."
     ),
 )
 def me(user: CurrentUser) -> MeResponse:
-    """이메일의 @ 앞부분만 이름으로 준다. 전체 주소는 내보내지 않는다."""
-    return MeResponse(name=user.email.split("@", 1)[0])
+    """이름이 있으면 이름을, 없으면 이메일의 @ 앞부분을 준다.
+
+    어느 쪽이든 전체 주소는 내보내지 않는다.
+    """
+    return MeResponse(name=user.screen_name)
 
 
 @router.post(

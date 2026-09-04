@@ -23,13 +23,20 @@ class PasswordUnchangedError(Exception):
 class AppUser:
     id: int
     email: str
+    display_name: str | None
     password_changed_at: datetime
     is_active: bool
+
+    @property
+    def screen_name(self) -> str:
+        """화면에 보일 이름. 이름을 넣지 않은 계정은 이메일 앞부분을 쓴다."""
+        return self.display_name or self.email.split("@", 1)[0]
 
 
 _USER_COLUMNS = """
     id,
     email::text AS email,
+    display_name,
     password_hash,
     password_changed_at,
     is_active
@@ -167,6 +174,7 @@ def _to_user(row: RowMapping) -> AppUser:
     return AppUser(
         id=row["id"],
         email=row["email"],
+        display_name=row["display_name"],
         password_changed_at=row["password_changed_at"],
         is_active=row["is_active"],
     )
