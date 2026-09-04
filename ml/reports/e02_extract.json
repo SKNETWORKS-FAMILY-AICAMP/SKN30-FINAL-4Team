@@ -1,0 +1,33 @@
+{
+  "files": 6325,
+  "ok": 6057,
+  "fail": 268,
+  "needs_ocr": 107,
+  "with_table": 2030,
+  "success_rate": 0.9576,
+  "table_preserved_rate": 0.3351,
+  "by_ext": {
+    "hwp": 3755,
+    "pdf": 2383,
+    "png": 43,
+    "jpg": 19,
+    "hwpx": 120,
+    "docx": 5
+  },
+  "by_method": {
+    "rhwp": 3751,
+    "pdf_inspector": 2378,
+    "none": 80,
+    "hwpx_xml": 116
+  },
+  "errors": {
+    "unsupported_ext": 67,
+    "ValueError": 13
+  },
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports/e02_documents.jsonl",
+  "tools": {
+    "pdf": "pdf-inspector (firecrawl)",
+    "hwp": "rhwp-python (edwardkim/rhwp)",
+    "hwpx": "zip+xml, rhwp fallback"
+  }
+}

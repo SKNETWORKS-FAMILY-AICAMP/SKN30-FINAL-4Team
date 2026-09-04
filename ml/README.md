@@ -1,4 +1,4 @@
-# ml/ — 구조 안내 (data-collection 브랜치)
+# ml/ — 구조 안내 (feature-engineering 브랜치)
 
 ```text
 ml/
@@ -18,6 +18,20 @@ ml/
 
 | 스크립트 | 산출물 |
 |---|---|
+| `d01_download_api.py` | Open API 공고문 → `data/raw/attachments/api/` |
+| `d02_sample_list.py` | 목록 층화 표본 → `list_sample.parquet` |
+| `d02b_targeted_sample.py` | 지원성격 부족 셀 보강 표본 → `list_sample_targeted.parquet` |
+| `d03_download_list.py` | 표본 공고문 다운로드 → `data/raw/attachments/list/` |
+| `e02_extract_text_v2.py` | 원문 텍스트 추출 (표 구조 보존) → `reports/e01_documents*.jsonl` |
+| `f01_master.py` | `announcement_master.parquet` (97,794건) |
+| `f02_detail.py` | `announcement_detail.parquet` (1,570건) |
+| `f03_taxonomy.py` | `business_taxonomy.parquet` (1,505건) |
+| `f04_merge_documents.py` | `announcement_detail_enriched.parquet` (1,570건) |
+| `amount_parser.py` | 지원규모 파서 (라이브러리) |
+| `common.py` | 원천 경로·분류체계·정규화 (라이브러리) |
+
+> `e01_documents*.jsonl` 은 gitignore 대상이지만 **임시파일이 아니라 F04 이후
+> 전 단계의 입력**이다. 지우면 하류가 재현되지 않는다.
 | `d01_download_api.py` | Open API 공고문 다운로드 → `data/raw/attachments/api/` · `reports/d01_manifest_api.csv` |
 | `d02_sample_list.py` | 목록 층화 표본 **5,000건** (56개 층, seed 42) → `list_sample.parquet` |
 | `d02b_targeted_sample.py` | 지원성격 부족 유형(설비·교육훈련) 겨냥 보강 **2,856건** → `list_sample_targeted.parquet` |
@@ -44,5 +58,5 @@ bootstrap 블록이 들어 있다. 새 스크립트도 같은 블록을 쓴다.
 python ml/tools/smoke_test.py
 ```
 
-수집 표본 2종의 건수를 `reports/d02*.json` 에 적힌 값과 대조한다. 이 브랜치에
-없는 단계는 `[SKIP]` 으로 지나가므로 같은 파일을 모든 브랜치에서 쓴다.
+기준 테이블 4종의 행수를 `reports/f0*.json` 에 적힌 값과 대조한다. 이 브랜치에
+없는 단계(모델 학습 등)는 `[SKIP]` 으로 지나간다.
