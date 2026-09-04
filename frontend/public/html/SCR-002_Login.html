@@ -1,0 +1,225 @@
+<!DOCTYPE html><html lang="ko" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Pre-review Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-container": "#86a0cd",
+                    "tertiary-fixed-dim": "#f2bc82",
+                    "primary-fixed": "#d6e3ff",
+                    "on-background": "#1a1c1e",
+                    "on-surface": "#1a1c1e",
+                    "on-secondary-container": "#586377",
+                    "secondary-container": "#d5e0f7",
+                    "primary-fixed-dim": "#adc7f7",
+                    "on-tertiary-container": "#c6955e",
+                    "tertiary-fixed": "#ffddba",
+                    "on-surface-variant": "#43474e",
+                    "on-tertiary-fixed": "#2b1700",
+                    "surface-container-low": "#f4f3f7",
+                    "primary": "#002045",
+                    "on-secondary-fixed-variant": "#3c475a",
+                    "on-error": "#ffffff",
+                    "primary-container": "#1a365d",
+                    "error": "#ba1a1a",
+                    "surface": "#faf9fd",
+                    "inverse-surface": "#2f3033",
+                    "on-tertiary-fixed-variant": "#633f0f",
+                    "surface-tint": "#455f88",
+                    "surface-container-highest": "#e3e2e6",
+                    "secondary-fixed": "#d8e3fa",
+                    "inverse-primary": "#adc7f7",
+                    "on-primary-fixed-variant": "#2d476f",
+                    "surface-container-high": "#e9e7eb",
+                    "secondary": "#545f72",
+                    "tertiary-container": "#4f2e00",
+                    "on-error-container": "#93000a",
+                    "on-secondary-fixed": "#111c2c",
+                    "surface-container": "#efedf1",
+                    "surface-container-lowest": "#ffffff",
+                    "tertiary": "#321b00",
+                    "on-primary": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "outline": "#74777f",
+                    "background": "#faf9fd",
+                    "surface-dim": "#dad9dd",
+                    "inverse-on-surface": "#f1f0f4",
+                    "surface-variant": "#e3e2e6",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed": "#001b3c",
+                    "secondary-fixed-dim": "#bcc7dd",
+                    "surface-bright": "#faf9fd",
+                    "on-tertiary": "#ffffff",
+                    "outline-variant": "#c4c6cf"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "lg": "24px",
+                    "xs": "4px",
+                    "container-max": "1440px",
+                    "gutter": "20px",
+                    "sm": "8px",
+                    "xl": "40px",
+                    "base": "4px",
+                    "md": "16px"
+            },
+            "fontFamily": {
+                    "label-caps": [
+                            "Nanum Gothic"
+                    ],
+                    "data-mono": [
+                            "Nanum Gothic"
+                    ],
+                    "headline-md": [
+                            "Nanum Gothic"
+                    ],
+                    "display-lg": [
+                            "Nanum Gothic"
+                    ],
+                    "body-sm": [
+                            "Nanum Gothic"
+                    ],
+                    "title-sm": [
+                            "Nanum Gothic"
+                    ],
+                    "body-md": [
+                            "Nanum Gothic"
+                    ]
+            },
+            "fontSize": {
+                    "label-caps": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.05em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "data-mono": [
+                            "13px",
+                            {
+                                    "lineHeight": "18px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "display-lg": [
+                            "30px",
+                            {
+                                    "lineHeight": "38px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-sm": [
+                            "13px",
+                            {
+                                    "lineHeight": "18px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "title-sm": [
+                            "18px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+          }
+        }
+      }
+    </script>
+</head>
+<body class="bg-background min-h-screen flex flex-col font-body-md text-on-background items-center"><header class="fixed top-0 w-full py-md z-50 bg-surface border-b border-outline-variant shadow-sm font-body-md text-body-md"><div class="px-gutter max-w-container-max mx-auto"><a href="/" class="flex items-center gap-xs text-title-sm font-title-sm font-bold text-primary dark:text-primary-fixed cursor-pointer select-none no-underline "><img alt="Pre-review Logo" class="h-[40px] w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVWgs8VLp-LW1wKg8qBczEfXSdlB-7kDyNIr_4dYvQUZPh6FjIodYzMh7M6IOaVEwYhSOEhPnGL1yQvLqoRvGywaHOfnqPobCUHGfkWvpll84WeZr2CMtgaNlcenhQcumeuSOP-RmV4hJ0J08lE_T1TDAmjzz1MRh4iJADYne09LU_yxHV50wCbBLJKD8RdGHL5ME8caHkGltDoWYDir6dvc5nsiSDEmkTpYhL2L1h8g6xw_xtIgzIZYzEU2JOYyUfm1U"></a></div></header>
+<!-- Main Container -->
+<main class="w-full max-w-[400px] px-gutter flex-grow flex flex-col items-center justify-center py-xl mx-auto mt-xl"><div class="bg-surface rounded-lg border border-surface-variant p-xl shadow-sm w-full">
+<h2 class="font-headline-md text-headline-md text-primary-container text-center mb-md">로그인</h2>
+<p class="font-body-sm text-body-sm text-secondary mt-xs text-center mb-xl">
+                서비스 이용을 위해 로그인해 주세요</p>
+<form class="space-y-lg w-full">
+<!-- Email Field -->
+<div class="flex flex-col space-y-sm"><label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="email">이메일 주소</label><div class="relative"><div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="material-symbols-outlined text-outline" data-icon="mail">mail</span></div><input class="block w-full pl-10 pr-3 py-2 border border-surface-variant rounded-DEFAULT text-on-surface bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary-fixed focus:border-primary-container sm:text-sm h-[40px] transition-colors" id="email" name="email" placeholder="이메일을 입력하세요" required="" type="email"></div></div>
+<!-- Password Field -->
+<div class="flex flex-col space-y-sm"><label class="block font-label-caps text-label-caps text-on-surface-variant mb-xs" for="password">비밀번호</label><div class="relative"><div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="material-symbols-outlined text-outline" data-icon="lock">lock</span></div><input class="block w-full pl-10 pr-3 py-2 border border-surface-variant rounded-DEFAULT text-on-surface bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary-fixed focus:border-primary-container sm:text-sm h-[40px] transition-colors" id="password" name="password" placeholder="비밀번호를 입력하세요" required="" type="password"></div></div>
+<!-- Submit Button -->
+<div class="pt-sm"><button class="w-full flex justify-center py-2 px-4 border border-transparent rounded-DEFAULT shadow-sm font-title-sm text-title-sm text-on-primary bg-primary-container hover:bg-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-container transition-colors h-[40px] items-center" type="submit">로그인</button></div>
+</form>
+<!-- Links -->
+<div class="mt-lg flex items-center justify-center gap-md text-body-sm text-on-surface-variant"><a href="#" class="hover:text-primary hover:underline transition-colors">비밀번호 재설정</a></div>
+</div></main>
+
+
+<footer class="w-full bg-surface-container-low border-t border-outline-variant py-lg px-gutter mt-auto"><div class="max-w-container-max mx-auto flex flex-col md:flex-row items-center gap-md justify-center"><div class="text-on-surface-variant font-body-sm text-body-sm text-center">© COPYRIGHT 2014 Pre-review. ALL RIGHTS RESERVED.</div></div></footer>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body></html>

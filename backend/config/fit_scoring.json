@@ -1,0 +1,18 @@
+{
+  "version": "fit-alpha-v0.1",
+  "status_scores": {
+    "FIT": 100,
+    "NEEDS_REVIEW": 50,
+    "CONFLICT": 0,
+    "INSUFFICIENT": null
+  },
+  "weights": {
+    "FIT-1": 1,
+    "FIT-2": 1,
+    "FIT-3": 1,
+    "FIT-4": 1,
+    "FIT-5": 1,
+    "FIT-6": 1,
+    "FIT-7": 1
+  }
+}

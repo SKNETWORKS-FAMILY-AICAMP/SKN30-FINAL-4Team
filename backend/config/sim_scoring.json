@@ -1,0 +1,22 @@
+{
+  "version": "sim-alpha-v0.2",
+  "axis_weights": {
+    "purpose": 0.30,
+    "target": 0.30,
+    "content": 0.30,
+    "delivery": 0.10
+  },
+  "status_scores": {
+    "SIMILAR": 100,
+    "PARTIAL": 50,
+    "DIFFERENT": 0,
+    "INSUFFICIENT": null
+  },
+  "grades": {
+    "focus_review_min": 70,
+    "general_review_min": 40
+  },
+  "retrieval": {
+    "top_k": 5
+  }
+}

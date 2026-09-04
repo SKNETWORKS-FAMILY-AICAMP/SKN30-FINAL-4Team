@@ -1,0 +1,78 @@
+Extract only explicit CPL evidence from the supplied parser fragments.
+Return exactly one item for every requested field. Use only the allowed axis codes
+listed in the input for that field.
+
+Every occurrence must contain only evidence_ref, raw_text, and axis_code.
+raw_text must be a verbatim, non-empty substring of the referenced fragment.
+Never replace source wording with a category label or inferred synonym. Example
+labels in axis descriptions are explanations, not raw_text values: if the source
+says "해외시장 진출", do not quote "수출" unless "수출" is actually present.
+Do not invent normalized values, source roles, source locations, policy judgments,
+or NOT_APPLICABLE decisions.
+
+PURPOSE_GOAL axes:
+- PURPOSE_TARGET_CONDITION: wording that explicitly limits the supported target set.
+  경쟁력 강화, 디지털 전환, 시장진출, and 기술사업화 alone are not target conditions.
+- PURPOSE_PROBLEM_DOMAIN: the source wording that expresses the problem or support
+  domain. Do not convert it to a closed taxonomy label.
+- PURPOSE_SPECIFIC_OBJECTIVE: the concrete objective being pursued, such as source
+  wording about market entry, commercialization, productivity, or financing.
+- PURPOSE_DIRECTION: explicit change or direction wording such as expansion,
+  promotion, strengthening, improvement, advancement, or resolution.
+
+TARGET_AND_CONDITIONS axes:
+- TARGET_GROUP
+- COND_COMPANY_TYPE
+- COND_INDUSTRY
+- COND_REGION
+- COND_BUSINESS_AGE
+- COND_REVENUE
+- COND_HEADCOUNT
+- COND_CERTIFICATION
+- COND_OTHER
+- COND_EXCLUSION
+
+SUPPORT_CONTENT_AND_SCALE axes:
+- SUPPORT_ACTIVITY
+- SUPPORT_INSTRUMENT
+- SUPPORT_ITEM
+- PER_COMPANY_LIMIT
+- COMPANY_COUNT
+- SUBSIDY_RATE
+- SELF_BURDEN_RATE
+- TOTAL_SCALE
+
+DELIVERY_SYSTEM axes:
+- DELIVERY_ORG_NAME
+- DELIVERY_METHOD_TYPE
+- DELIVERY_PROCEDURE_STEP
+- DELIVERY_STEP_ROLE
+
+EXPECTED_EFFECTS_AND_PERFORMANCE axes:
+- EFFECT_SUBJECT
+- EFFECT_CONTENT
+- EFFECT_DIRECTION
+- KPI_NAME
+- KPI_TARGET_VALUE
+- KPI_UNIT
+- KPI_BASE_YEAR
+- KPI_FORMULA
+
+IMPLEMENTATION_PLAN axes:
+- ANNUAL_PLAN_CONTENT
+- PROGRAM_LEVEL
+- PROGRAM_LEVEL_ABSENT
+- SUBPROGRAM_PLAN_CONTENT
+
+NEW_OR_CHANGED_CONTENT axis:
+- CHANGE_CONTENT
+
+BUSINESS_NEED axes:
+- NEED_PROBLEM
+- NEED_CAUSE
+- NEED_RESPONSE
+- NEED_SOURCE
+
+Quote separate occurrences when a fragment contains multiple meanings. The same
+raw_text may be returned more than once only when it supports different axis codes.
+Use NEEDS_CONFIRMATION for ambiguous or conflicting content.

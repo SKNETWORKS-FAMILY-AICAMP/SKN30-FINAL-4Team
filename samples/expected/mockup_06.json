@@ -1,0 +1,28 @@
+{
+  "document": "samples/hwpx/mockup_06_저급사례_해외수출_목적내용불일치.hwpx",
+  "grade": "POOR",
+  "source_annotation": "보완필요(저급) 사례 2 (Poor - 정합도 42% / 목적-내용 정면모순 & 대거누락)",
+  "annotated_defects": [
+    "사업목적은 해외 무역전시회·바이어 발굴 수출 지원인데 지원내용은 공장 바닥 도장과 조명 교체",
+    "사업기간·지원조건·수행기관·파급효과·성과지표 미기재",
+    "연계정책 공란"
+  ],
+  "fit": {
+    "FIT-2": {
+      "status": "CONFLICT",
+      "covered_by_contract": true,
+      "why": "목적의 수출 판로 개척과 지원내용의 시설 개보수가 정면으로 다르다"
+    }
+  },
+  "cpl": {
+    "BUSINESS_PERIOD": "MISSING",
+    "DELIVERY_SYSTEM": "MISSING",
+    "EXPECTED_EFFECTS_AND_PERFORMANCE": "MISSING",
+    "LINKED_POLICY": "MISSING"
+  },
+  "blank_markers": {
+    "BUSINESS_PERIOD": "(미기재)",
+    "DELIVERY_SYSTEM": "(미기재)",
+    "LINKED_POLICY": "(공란)"
+  }
+}

@@ -1,0 +1,104 @@
+Extract explicit CPL evidence from the supplied parser fragments.
+Return exactly one item for every requested field and use only that field's
+allowed axis codes. Every occurrence contains only evidence_ref, raw_text, and
+axis_code. raw_text must be one contiguous, verbatim, non-empty substring of the
+referenced fragment. Never invent normalized values, source roles, locations,
+policy names, absent facts, or NOT_APPLICABLE decisions.
+
+FIELD OWNERSHIP
+Each fragment includes offset scopes proven from document labels. Cite a span
+only when its containing scope lists the requested field. Parent and inner field
+ownership may coexist; this is intentional. The server derives source_role from
+the exact cited span, so never return a role.
+
+Do not cite 공란, 미기재, or 미작성 as evidence. For conditions, 없음, 해당 없음,
+and 별도 조건 없음 are explicit absence markers, not semantic axes.
+
+EXHAUSTIVE AXIS PROCEDURE
+For every requested field:
+1. Inspect every owned scope, not just the first matching fragment.
+2. Check every allowed axis independently.
+3. Emit every distinct explicit fact for that axis.
+4. Before returning, audit the allowed-axis list again and add any supported
+   fact you missed. Do not output the audit itself.
+
+Finding one valid occurrence does not finish a field. A field normally has many
+occurrences and the same source span may support more than one axis; in that case
+return the span once per supported axis. Coverage never licenses invention.
+
+MINIMUM VERBATIM SPANS
+Quote the smallest complete phrase that proves one fact. Do not quote a whole
+paragraph, whole list, or whole KPI row when a shorter contiguous phrase proves
+the axis. Do not stitch non-contiguous text, alter punctuation, or normalize the
+wording. In a comma-separated list, return each independently meaningful item.
+In an arrow-separated procedure, return each named step. If the exact span cannot
+be copied, omit it rather than paraphrasing it.
+
+FIELD-SPECIFIC COVERAGE
+PURPOSE_GOAL:
+- PURPOSE_TARGET_CONDITION: explicit target limitation in the purpose text.
+- PURPOSE_PROBLEM_DOMAIN: verbatim problem or support domain wording.
+- PURPOSE_SPECIFIC_OBJECTIVE: concrete objective being pursued.
+- PURPOSE_DIRECTION: each explicit change direction such as strengthen,
+  improve, expand, advance, resolve, accelerate, or achieve.
+Do not replace source wording with a taxonomy label. Check one purpose sentence
+for all four axes, not just the broad objective.
+
+IMPLEMENTATION_PLAN:
+- ANNUAL_PLAN_CONTENT: emit each explicit year-, phase-, or stage-separated plan.
+- PROGRAM_LEVEL: quote each explicitly named 사업 계층 term.
+- PROGRAM_LEVEL_ABSENT: quote only explicit absence of a level.
+- SUBPROGRAM_PLAN_CONTENT: emit each explicitly named subprogram's plan content.
+A combined annual/subprogram section can support both kinds. A bare 사업기간 is
+not an annual plan.
+
+NEW_OR_CHANGED_CONTENT: CHANGE_CONTENT. Quote the concrete new or changed content,
+not the whole parent container.
+
+BUSINESS_NEED: independently check NEED_PROBLEM, NEED_CAUSE, NEED_RESPONSE, and
+NEED_SOURCE. Separate a paragraph's problem, cause, response, and cited source
+into their own occurrences.
+
+LINKED_POLICY: LINKED_POLICY_IDENTIFIER. Emit every separately named policy,
+plan, strategy, or task identifier. Generic policy wording is not an identifier.
+
+TARGET_AND_CONDITIONS:
+- TARGET_GROUP, COND_COMPANY_TYPE, COND_INDUSTRY, COND_REGION,
+  COND_BUSINESS_AGE, COND_REVENUE, COND_HEADCOUNT, COND_CERTIFICATION,
+  COND_OTHER, and COND_EXCLUSION.
+Treat each labeled condition line as a separate fact. Numbers are part of the
+condition span; the server normalizes them.
+
+SUPPORT_CONTENT_AND_SCALE:
+- SUPPORT_ACTIVITY, SUPPORT_INSTRUMENT, SUPPORT_ITEM, PER_COMPANY_LIMIT,
+  COMPANY_COUNT, SUBSIDY_RATE, SELF_BURDEN_RATE, and TOTAL_SCALE.
+Emit each listed activity and each listed cost/item separately. One phrase may be
+both an activity and an item; return both axes when explicit. Emit each distinct
+amount, count, and rate as its own minimum span, including values in parentheses.
+SUPPORT_INSTRUMENT and DELIVERY_METHOD_TYPE are different concepts.
+
+DELIVERY_SYSTEM:
+- DELIVERY_ORG_NAME: emit each named organization.
+- DELIVERY_METHOD_TYPE: explicit delivery method.
+- DELIVERY_PROCEDURE_STEP: emit every named step separately.
+- DELIVERY_STEP_ROLE: emit every explicit organization-to-step or
+  organization-to-role link separately. Never infer a link from order.
+
+EXPECTED_EFFECTS_AND_PERFORMANCE:
+- Independently emit EFFECT_SUBJECT, each EFFECT_CONTENT, and each
+  EFFECT_DIRECTION.
+- For every KPI row independently emit KPI_NAME, KPI_TARGET_VALUE, KPI_UNIT,
+  KPI_BASE_YEAR, and KPI_FORMULA when explicitly present. A later KPI row does
+  not inherit a year or unit from an earlier row.
+
+STATUS CONTRACT
+- PRESENT when at least one requested axis has explicit evidence.
+- MISSING when none of the requested axes has explicit evidence.
+- NEEDS_CONFIRMATION only for ambiguous or conflicting source content. It must
+  have a non-empty reason_code such as EVIDENCE_AMBIGUOUS or EVIDENCE_CONFLICT.
+- PRESENT and MISSING use reason_code null.
+
+When fit_input_feedback is present, its required axes focus the second look but
+do not narrow the field's allowed axes. Preserve any other explicit field-valid
+axis found during the recheck. Do not invent evidence merely to make FIT
+assessable.

@@ -33,9 +33,9 @@ from common import PROC, REPORTS, save_report
 from amount_parser import parse_support
 
 DETAIL = PROC + "/announcement_detail.parquet"
-# E01(pdf-inspector + rhwp)를 우선 쓰고 없으면 E01로 폴백한다. A02와 같은 규칙.
-DOCS_V2 = REPORTS + "/e01_documents.jsonl"
-DOCS_LEGACY = REPORTS + "/e01_documents_api.jsonl"
+# E02(pdf-inspector + rhwp)를 우선 쓰고 없으면 E01로 폴백한다. A02와 같은 규칙.
+DOCS_V2 = REPORTS + "/e02_documents.jsonl"
+DOCS_LEGACY = REPORTS + "/e01_documents.jsonl"
 OUT = PROC + "/announcement_detail_enriched.parquet"
 
 # PDF 는 표의 여러 행이 한 셀로 뭉쳐 나와 금액이 왜곡된다.
@@ -55,7 +55,7 @@ AMT_COLS = ["support_amount_raw", "support_amount_min", "support_amount_max",
 def load_docs(path, source=None, exclude_ext=EXCLUDE_EXT):
     """공고 1건에 문서가 여러 개면 가장 긴 본문을 대표로 삼는다.
 
-    source 를 주면 해당 출처만 추린다(E01 는 api/list 를 한 파일에 담는다).
+    source 를 주면 해당 출처만 추린다(E02 는 api/list 를 한 파일에 담는다).
     exclude_ext 에 든 확장자는 대표 선정에서 제외한다.
     """
     best = {}
@@ -77,7 +77,7 @@ def load_docs(path, source=None, exclude_ext=EXCLUDE_EXT):
 
 
 def pick_docs():
-    """E01 가 있으면 그것을, 없으면 E01 결과를 쓴다."""
+    """E02 가 있으면 그것을, 없으면 E01 결과를 쓴다."""
     d = load_docs(DOCS_V2, source="api")
     if d:
         return d, "e02"

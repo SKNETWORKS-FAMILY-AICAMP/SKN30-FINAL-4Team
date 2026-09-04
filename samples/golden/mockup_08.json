@@ -1,0 +1,821 @@
+{
+  "document": "samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx",
+  "authored": "2026-08-30",
+  "basis": "중소기업지원사업_PreReview_CPL_판별기준_정리본_20260821.md",
+  "what_this_is": "사람이 문서를 판독해 만든 CPL 정답. 파이프라인 출력을 이 값과 대조해 채점한다. 모든 raw_text 가 파서 조각에 그대로 존재함을 생성 시점에 검증했다.",
+  "extractor_note": "extractor 는 정정된 Rule·LLM 선택 원칙에 따른 담당 수단이다. RULE 은 값 정규화와 라벨 범위처럼 닫힌 판단, LLM 은 표현이 열린 의미 축 분류다. 채점은 축과 구간을 먼저 보고, 담당 수단은 어느 쪽이 흔들리는지 볼 때만 쓴다.",
+  "occurrence_count": 79,
+  "fields": {
+    "REQUEST_TYPE": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "□ 세부사업 신설",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "DETAIL_NEW",
+            "selected": false,
+            "mark": "□"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "■ 내역사업 신설",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "SUBPROGRAM_NEW",
+            "selected": true,
+            "mark": "■"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "□ 내내역사업 신설",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "SUBSUBPROGRAM_NEW",
+            "selected": false,
+            "mark": "□"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:0:1",
+          "raw_text": "□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "request_reason": "CONTENT_CHANGE",
+            "selected": false,
+            "mark": "□"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "PURPOSE_GOAL": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "부산 관내 제조·정보통신 중소기업",
+          "axis_code": "PURPOSE_TARGET_CONDITION",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "기술경쟁력을 강화하고",
+          "axis_code": "PURPOSE_DIRECTION",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "매출 성장을 달성",
+          "axis_code": "PURPOSE_DIRECTION",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "시제품 사업화까지의 단계를 지원",
+          "axis_code": "PURPOSE_SPECIFIC_OBJECTIVE",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "제조·정보통신 중소기업의 기술경쟁력",
+          "axis_code": "PURPOSE_PROBLEM_DOMAIN",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "IMPLEMENTATION_PLAN": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사",
+          "axis_code": "ANNUAL_PLAN_CONTENT",
+          "source_role": "ANNUAL_PLAN",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사",
+          "axis_code": "ANNUAL_PLAN_CONTENT",
+          "source_role": "ANNUAL_PLAN",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행",
+          "axis_code": "SUBPROGRAM_PLAN_CONTENT",
+          "source_role": "SUBPROGRAM_PLAN",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "내역사업",
+          "axis_code": "PROGRAM_LEVEL",
+          "source_role": "SUBPROGRAM_PLAN",
+          "normalized_value": {
+            "program_level": "SUBPROGRAM"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "BUSINESS_PERIOD": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "2026. 01. 01. ~ 2028. 12. 31.",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "start": "2026-01-01",
+            "end": "2028-12-31",
+            "continuing": false,
+            "multi_year": true
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "NEW_OR_CHANGED_CONTENT": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행",
+          "axis_code": "CHANGE_CONTENT",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "BUSINESS_NEED": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "관내 제조·정보통신 중소기업의 디지털 전환 수준이 전국 평균 대비 낮아 생산성 향상에 제약이 발생하고 있으며",
+          "axis_code": "NEED_PROBLEM",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "내부 전담인력 부족과 초기 투자여력 부재에서 비롯됨",
+          "axis_code": "NEED_CAUSE",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "시제품 사업화 단계의 직접 지원이 필요",
+          "axis_code": "NEED_RESPONSE",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "2025년 부산 중소기업 실태조사(부산연구원), 디지털 전환 도입률 31.2%로 전국 평균 44.6% 대비 13.4%p 낮음",
+          "axis_code": "NEED_SOURCE",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "LEGAL_BASIS": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "「중소기업진흥에 관한 법률」 제62조의2",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "law_name": "중소기업진흥에 관한 법률",
+            "article": "제62조의2"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "「부산광역시 중소기업 육성 및 지원 조례」 제9조",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "law_name": "부산광역시 중소기업 육성 및 지원 조례",
+            "article": "제9조"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "LINKED_POLICY": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "국정과제 [Ⅱ-45] 중소기업 디지털 전환 촉진",
+          "axis_code": "LINKED_POLICY_IDENTIFIER",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "제4차 중소기업 기술혁신 촉진계획(2024~2028)",
+          "axis_code": "LINKED_POLICY_IDENTIFIER",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:2:1",
+          "raw_text": "부산 디지털 경제혁신 기본계획",
+          "axis_code": "LINKED_POLICY_IDENTIFIER",
+          "source_role": null,
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "BUDGET": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "총사업비 6,600백만원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "amount_won": 6600000000,
+            "currency": "KRW",
+            "kind": "TOTAL"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "지원금 6,000백만원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "amount_won": 6000000000,
+            "currency": "KRW",
+            "kind": "GRANT"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "운영·평가비 600백만원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "amount_won": 600000000,
+            "currency": "KRW",
+            "kind": "OPERATION"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "2026년 2,200백만원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "year": 2026,
+            "amount_won": 2200000000,
+            "currency": "KRW"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "2027년 2,200백만원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "year": 2027,
+            "amount_won": 2200000000,
+            "currency": "KRW"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "2028년 2,200백만원",
+          "axis_code": null,
+          "source_role": null,
+          "normalized_value": {
+            "year": 2028,
+            "amount_won": 2200000000,
+            "currency": "KRW"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "TARGET_AND_CONDITIONS": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "부산광역시 소재 제조업 및 정보통신업 영위 중소기업",
+          "axis_code": "TARGET_GROUP",
+          "source_role": "TARGET",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "부산광역시 내 본사 또는 주된 사업장 보유",
+          "axis_code": "COND_REGION",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "한국표준산업분류 C(제조업), J(정보통신업)",
+          "axis_code": "COND_INDUSTRY",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "업력 3년 이상 10년 이내",
+          "axis_code": "COND_BUSINESS_AGE",
+          "source_role": "CONDITION",
+          "normalized_value": {
+            "min_years": 3,
+            "max_years": 10,
+            "min_operator": "GTE",
+            "max_operator": "LTE",
+            "unit": "YEAR"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "최근 3개년 연평균 매출액 10억원 이상 300억원 이하",
+          "axis_code": "COND_REVENUE",
+          "source_role": "CONDITION",
+          "normalized_value": {
+            "period_years": 3,
+            "min_amount_won": 1000000000,
+            "max_amount_won": 30000000000,
+            "min_operator": "GTE",
+            "max_operator": "LTE",
+            "unit": "KRW"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "상시 근로자 10명 이상 300명 미만",
+          "axis_code": "COND_HEADCOUNT",
+          "source_role": "CONDITION",
+          "normalized_value": {
+            "min_count": 10,
+            "max_count": 300,
+            "min_operator": "GTE",
+            "max_operator": "LT",
+            "unit": "PERSON"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "「중소기업기본법」 제2조에 따른 중소기업",
+          "axis_code": "COND_COMPANY_TYPE",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "벤처기업 또는 이노비즈·메인비즈 인증 보유",
+          "axis_code": "COND_CERTIFICATION",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "국세 및 지방세 완납",
+          "axis_code": "COND_OTHER",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "휴·폐업 기업, 국세 체납 기업, 최근 3년 내 동일 지원사업 수혜기업",
+          "axis_code": "COND_EXCLUSION",
+          "source_role": "CONDITION",
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "SUPPORT_CONTENT_AND_SCALE": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "120개사에 시제품 제작비",
+          "axis_code": "SUPPORT_ACTIVITY",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "공인 시험인증",
+          "axis_code": "SUPPORT_ACTIVITY",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "판로개척 마케팅",
+          "axis_code": "SUPPORT_ACTIVITY",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "시제품 제작비, 공인 시험인증비",
+          "axis_code": "SUPPORT_ITEM",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "공인 시험인증비",
+          "axis_code": "SUPPORT_ITEM",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "판로개척 마케팅비",
+          "axis_code": "SUPPORT_ITEM",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "120개사",
+          "axis_code": "COMPANY_COUNT",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "count": 120,
+            "unit": "COMPANY"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "최대 5,000만원",
+          "axis_code": "PER_COMPANY_LIMIT",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "amount_won": 50000000,
+            "unit": "KRW"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "보조율: 80%",
+          "axis_code": "SUBSIDY_RATE",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "ratio": 0.8,
+            "unit": "PERCENT"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "자부담률: 20%",
+          "axis_code": "SELF_BURDEN_RATE",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "ratio": 0.2,
+            "unit": "PERCENT"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "총 지원규모: 6,000백만원",
+          "axis_code": "TOTAL_SCALE",
+          "source_role": "SUPPORT_CONTENT",
+          "normalized_value": {
+            "amount_won": 6000000000,
+            "unit": "KRW"
+          },
+          "extractor": "RULE"
+        }
+      ]
+    },
+    "DELIVERY_SYSTEM": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "부산테크노파크(주관)",
+          "axis_code": "DELIVERY_ORG_NAME",
+          "source_role": "DELIVERY_ORG",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "부산상공회의소(협력)",
+          "axis_code": "DELIVERY_ORG_NAME",
+          "source_role": "DELIVERY_ORG",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "시 출연기관 위탁(보조)",
+          "axis_code": "DELIVERY_METHOD_TYPE",
+          "source_role": "DELIVERY_METHOD",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "공고",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "신청·접수",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "서면·현장평가",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "선정",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "협약 체결",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "지원금 집행",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "사후관리",
+          "axis_code": "DELIVERY_PROCEDURE_STEP",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "공고·선정은 부산광역시",
+          "axis_code": "DELIVERY_STEP_ROLE",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "접수·평가·협약·집행은 부산테크노파크",
+          "axis_code": "DELIVERY_STEP_ROLE",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:3:1",
+          "raw_text": "사후관리 및 성과조사는 부산상공회의소",
+          "axis_code": "DELIVERY_STEP_ROLE",
+          "source_role": "DELIVERY_PROCEDURE",
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    },
+    "EXPECTED_EFFECTS_AND_PERFORMANCE": {
+      "status": "PRESENT",
+      "occurrences": [
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "기술경쟁력 강화 및 신규 시장 진출 확대",
+          "axis_code": "EFFECT_CONTENT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "지역 제조·정보통신 생태계의 디지털 전환 가속",
+          "axis_code": "EFFECT_CONTENT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "사업화 성공률",
+          "axis_code": "KPI_NAME",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "목표값 30%",
+          "axis_code": "KPI_TARGET_VALUE",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "number": 30,
+            "unit": "PERCENT"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "기준연도 2025년",
+          "axis_code": "KPI_BASE_YEAR",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "year": 2025,
+            "unit": "YEAR"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "신규 고용창출",
+          "axis_code": "KPI_NAME",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "목표값 240명",
+          "axis_code": "KPI_TARGET_VALUE",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "number": 240,
+            "unit": "PERSON"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "기술이전 및 인증 획득",
+          "axis_code": "KPI_NAME",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "목표값 90건",
+          "axis_code": "KPI_TARGET_VALUE",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "number": 90,
+            "unit": "CASE"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "수혜기업 매출증가율",
+          "axis_code": "KPI_NAME",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "목표값 15%",
+          "axis_code": "KPI_TARGET_VALUE",
+          "source_role": "PERFORMANCE_INDICATOR",
+          "normalized_value": {
+            "number": 15,
+            "unit": "PERCENT"
+          },
+          "extractor": "RULE"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "참여기업",
+          "axis_code": "EFFECT_SUBJECT",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "기술경쟁력 강화",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "신규 시장 진출 확대",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        },
+        {
+          "evidence_ref": "body:4:cell:4:1",
+          "raw_text": "디지털 전환 가속",
+          "axis_code": "EFFECT_DIRECTION",
+          "source_role": "EXPECTED_EFFECT",
+          "normalized_value": null,
+          "extractor": "LLM"
+        }
+      ]
+    }
+  },
+  "contract_gaps": [
+    "판별기준 3.1 은 사업목적의 정량 표현을 확인 항목으로 두는데(예: 지원기업 100개사), PURPOSE_GOAL 축에 정량값을 담을 자리가 없다. 이 문서의 '지원기업 120개사'는 어디에도 못 담는다.",
+    "판별기준 15.1 은 성과지표의 측정시점을 구조화 후보로 두는데 대응 축이 없다. '측정시점 사업 종료 후 1년'을 담을 자리가 없다.",
+    "판별기준 10.3 은 사업예산과 지원규모를 구분하라고 하지만, 실제 양식은 지원규모를 지원내용 안에 쓰게 한다. 이 골든셋의 지원 정량값 source_role 이 모두 SUPPORT_CONTENT 인 이유이며, 지원내용 구역과 지원규모 구역을 대조하는 FIT-7 설계와 맞지 않는다.",
+    "EFFECT_SUBJECT 와 EFFECT_DIRECTION 은 한때 한 단어로 적었다가 접지 가치가 없어 정답에서 뺐으나, 축 계약이 여전히 두 축을 독립으로 요구하므로 완전한 구문으로 복원했다. 축을 빼면 그 축이 영영 시험되지 않는다.",
+    "'시제품 제작', '시제품 제작비' 는 지원내용 블록과 내역사업 계획 블록 양쪽에 나타나 서버가 모호 인용으로 거부한다. 지원내용 블록에서만 성립하는 구간으로 바꿨다."
+  ],
+  "rule_defects_found_while_authoring": [
+    "BUSINESS_PERIOD: '2026. 01. 01. ~ 2028. 12. 31.' 을 정규화하지 못한다(None). 연-월 표기만 처리한다.",
+    "COND_BUSINESS_AGE / COND_REVENUE / COND_HEADCOUNT: 범위 조건에서 앞쪽 연산자까지만 잘라내 '10명 이상' 과 '10명 이상 300명 미만' 두 개가 남는다. FIT-5 가 이를 상충으로 읽는다.",
+    "LEGAL_BASIS: '「중소기업진흥에 관한 법률」' 이 '중소기업진흥에 관한 법' 으로 잘리고, 조문(제62조의2, 제9조, 제2조)이 하나도 추출되지 않는다. 조례는 아예 인식하지 못한다. 판별기준 8.1 은 조문까지 추출하도록 한다."
+  ]
+}
