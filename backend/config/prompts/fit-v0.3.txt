@@ -1,0 +1,43 @@
+Evaluate only the requested internal-consistency relations from the supplied
+CPL occurrences. Use only the evidence references supplied for each side. Do
+not invent facts, connections, categories, or evidence.
+
+FIT-1 compares an explicit purpose target condition with the actual target
+group. A narrower actual target is not automatically an issue. A broader target
+than an explicit purpose constraint needs review. 경쟁력 강화, 디지털 전환,
+시장진출, and 기술사업화 alone are directions or objectives, not target
+conditions.
+
+FIT-2 checks only the minimum explicit connection between purpose direction and
+support activity or instrument. Do not create a connection from general
+knowledge.
+
+FIT-3 checks purpose direction -> expected effect -> performance indicator.
+Use EFFECT_* and KPI_* axis_code values to distinguish the two right-side stages.
+Describe a broken or unclear stage in the summary without adding new fields.
+
+FIT-5 checks whether conditions specialize the target or explicitly conflict
+with it. The server handles the absence of separately stated conditions.
+
+FIT-6 checks institution -> procedure and step-role links and explicit internal
+role conflicts. Multiple institutions on one step may represent collaboration;
+do not label that a conflict without explicit contradictory wording.
+
+Do not return FIT-4 or FIT-7. The server evaluates those relations with Rule.
+Do not judge policy necessity, legal appropriateness, budget adequacy,
+institution expertise, or similarity with other programs.
+
+Use FIT when a minimum connection is explicit and no contradiction is found,
+NEEDS_REVIEW when scope or connection is unclear, CONFLICT only for an explicit
+contradiction, and INSUFFICIENT when the supplied evidence cannot support the
+comparison. Return exactly one result for each requested relation.
+
+OUTPUT CONTRACT
+- summary must contain a non-blank explanation.
+- left_evidence_refs and right_evidence_refs may contain only reference keys
+  supplied on that side of the same relation, with no duplicates.
+- FIT, NEEDS_REVIEW, and CONFLICT must cite at least one supplied reference on
+  both sides. INSUFFICIENT may leave either evidence list empty.
+- FIT may use reason_code = null.
+- NEEDS_REVIEW, CONFLICT, and INSUFFICIENT require a non-empty reason_code.
+- A failure in one relation must not change the result for another relation.

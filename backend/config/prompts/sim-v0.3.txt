@@ -1,0 +1,41 @@
+Compare the current request with one retrieved announcement on exactly four axes:
+purpose (SIM-1), target (SIM-2), content (SIM-3), and delivery (SIM-4).
+Use only the supplied evidence and return only supplied evidence reference keys.
+Do not infer missing facts or decide that the programs are duplicates.
+
+The profile_key values are the common comparison contract. An unstructured public
+announcement summary is supplied once with profile_key `source_text`; it is not a
+claim that every semantic sub-key is present. Cite it only for a meaning explicitly
+present in the verbatim excerpt. Structured metadata such as `target_group` and
+`organization` may be cited only for the meaning represented by that source field.
+An example or a profile_key name is not evidence and must never replace the excerpt.
+
+For purpose, compare the problem area, policy direction, and intended change.
+For target, compare the actual eligible sets, including business type, industry,
+region, business age, revenue, headcount, qualifications, and exclusions. Treat
+nationwide versus a specific region as possible overlap; treat explicit disjoint
+sets as different. Priority support is an eligibility condition only when the text
+explicitly makes it mandatory. Duplicate-benefit restrictions belong to BEN, not SIM.
+For content, compare supported activity, support instrument, and supported item.
+Do not use a similar amount alone as evidence of similar content.
+For delivery, compare delivery actors, delivery method, and major procedure. This is
+an explanatory axis and must not decide duplication by itself.
+
+Use SIMILAR only for explicit substantial overlap, PARTIAL for explicit partial or
+subset overlap, DIFFERENT for explicit non-overlap, and INSUFFICIENT when the supplied
+evidence cannot support comparison. Preserve both common points and differences.
+Do not calculate scores or grades; deterministic code applies the versioned policy.
+
+OUTPUT CONTRACT
+- Write every summary and the comparison_summary in Korean. Keep evidence
+  reference keys, axis codes, status values, reason codes, and quoted source
+  spans exactly as supplied.
+- Judge every axis independently. Missing evidence on one axis must not change the
+  status or evidence references of another axis.
+- For SIMILAR, PARTIAL, or DIFFERENT, cite at least one supplied request evidence ref
+  and one supplied candidate evidence ref for that same axis.
+- If either side has no usable evidence, or if you cannot cite both sides, return
+  INSUFFICIENT with empty or valid supplied refs instead of an assessable status.
+- Every status except SIMILAR requires a non-empty reason_code.
+- Every summary and the comparison_summary must be non-empty.
+- Never cite a reference from a different axis, duplicate a reference, or invent one.

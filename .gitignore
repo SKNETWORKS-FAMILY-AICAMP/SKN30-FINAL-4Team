@@ -7,14 +7,18 @@
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-~$*
 
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *.sublime-workspace
 *.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # ==========================================
 # 2. 보안 파일
@@ -49,12 +53,23 @@ secrets/
 **/.ipynb_checkpoints/
 
 # ==========================================
-# 4. 프론트엔드 (Node.js)
+# 4. 프론트엔드 (Node.js & Vite)
 # ==========================================
 **/node_modules/
 **/dist/
+**/dist-ssr/
 **/.vite/
 **/.npm/
+**/*.local
+
+# 패키지 매니저 및 빌드 로그
+**/logs/
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+**/lerna-debug.log*
 
 # ==========================================
 # 5. Rust (크롤러 관련)
@@ -98,9 +113,21 @@ ml/data/raw/
 # 압축되어 들어가므로 중복 커밋하지 않는다. e02_extract_text_v2.py로 재생성 가능.
 ml/reports/e01_documents*.jsonl
 ml/reports/e02_documents*.jsonl
+**/*.parquet
+**/data/
+**/dataset/
 
 # ==========================================
 # 7. Docker 및 기타
 # ==========================================
 .docker/
 docker-data/
+/backend/storage/
+
+# E2E · 데모 산출물 (PDF, 프론트 전달본)
+output/
+
+
+# 실행 로그·탐색용 중간 산출물
+/tmp/
+/backend/tmp/
