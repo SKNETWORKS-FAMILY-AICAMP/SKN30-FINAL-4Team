@@ -185,7 +185,7 @@ def decode_password_reset_token(token: str, jwt_secret: str) -> dict[str, Any]:
 def build_password_reset_url(base_url: str, token: str) -> str:
     if not base_url or "?" in base_url or "#" in base_url:
         raise ValueError("Password reset URL must not contain query or fragment")
-    return f"{base_url}#token={quote(token, safe='')}"
+    return f"{base_url}?token={quote(token, safe='')}"
 
 
 def issue_password_reset_email(
@@ -289,17 +289,15 @@ def confirm_password_reset(
 
 
 class ResetRateLimiter:
-    """Bounded per-process limiter: request 5/IP+email per 15m, confirm 10/IP."""
+    """Bounded per-process limiter for reset-email requests."""
 
     REQUEST_LIMIT = 5
-    CONFIRM_LIMIT = 10
     WINDOW_SECONDS = 15 * 60
     RETRY_AFTER_SECONDS = WINDOW_SECONDS
     MAX_KEYS = 4096
 
     def __init__(self) -> None:
         self._request_attempts: OrderedDict[str, deque[float]] = OrderedDict()
-        self._confirm_attempts: OrderedDict[str, deque[float]] = OrderedDict()
         import threading
 
         self._lock = threading.RLock()
@@ -357,16 +355,3 @@ class ResetRateLimiter:
             for key, _ in attempts_by_key:
                 self._bounded_put(self._request_attempts, key, now)
         return True
-
-    def allow_confirm(self, client_ip: str) -> bool:
-        key = f"ip:{client_ip}"
-        now = time.monotonic()
-        with self._lock:
-            self._prune_store(self._confirm_attempts, now)
-            attempts = self._confirm_attempts.get(key)
-            if attempts is None:
-                attempts = deque()
-            self._prune(attempts, now)
-            if len(attempts) >= self.CONFIRM_LIMIT:
-                return False
-            return self._bounded_put(self._confirm_attempts, key, now)

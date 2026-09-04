@@ -2311,19 +2311,17 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
     with TestClient(create_app(settings, CplFakeParser(), None, None)) as client:
         token = client.post(
             "/api/v1/auth/login",
-            json={"login_id": login_id, "password": PASSWORD},
-        ).json()["data"]["access_token"]
+            json={"email": f"{login_id}@example.com", "password": PASSWORD},
+        ).json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
         uploaded = client.post(
             "/api/v1/cases",
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
+        # 업로드가 곧 분석 시작이다.
         assert uploaded.status_code == 200
-        case_id = uploaded.json()["data"]["case_id"]
-        assert client.post(
-            f"/api/v1/cases/{case_id}/analyze", headers=headers
-        ).status_code == 202
+        case_id = uploaded.json()["case_id"]
 
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:

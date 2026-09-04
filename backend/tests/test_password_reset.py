@@ -11,21 +11,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
-from app.api.v1.password_reset import (
-    PasswordResetConfirmRequest,
-    PasswordResetRequest,
-)
+from app.api.v1.password_reset import PasswordResetConfirmRequest
 from app.core.config import Settings
-from app.core.security import (
-    create_access_token,
-    hash_password,
-    verify_password,
-)
+from app.core.security import create_access_token, hash_password, verify_password
 from app.services.password_reset import (
     InvalidResetTokenError,
-    RESET_TOKEN_TTL_SECONDS,
     RESET_TOKEN_AUDIENCE,
     RESET_TOKEN_PURPOSE,
+    RESET_TOKEN_TTL_SECONDS,
     ResetRateLimiter,
     confirm_password_reset,
     create_password_reset_token,
@@ -37,6 +30,8 @@ from main import create_app
 JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 OLD_PASSWORD = "old-password-without-digit"
 NEW_PASSWORD = "New-password-1!"
+RESET_REQUEST_PATH = "/api/v1/auth/password/reset/request"
+RESET_CONFIRM_PATH = "/api/v1/auth/password/reset/confirm"
 
 
 @dataclass
@@ -155,24 +150,16 @@ def test_request_has_generic_response_and_sends_only_to_active_registered_email(
 ) -> None:
     create_user("reset-request-user", email="Reset.User@example.com")
 
-    registered = client.post(
-        "/api/v1/auth/password-reset/request",
-        json={"email": "reset.user@example.com"},
-    )
-    unknown = client.post(
-        "/api/v1/auth/password-reset/request",
-        json={"email": "unknown@example.com"},
-    )
+    registered = client.post(RESET_REQUEST_PATH, json={"email": "reset.user@example.com"})
+    unknown = client.post(RESET_REQUEST_PATH, json={"email": "unknown@example.com"})
 
     assert registered.status_code == unknown.status_code == 200
     assert registered.json() == unknown.json()
-    assert registered.json()["code"] == "SUCCESS"
-    assert registered.json()["data"] is None
-    assert registered.json()["errors"] == []
+    assert set(registered.json()) == {"message"}
     assert len(mail_sender.sent) == 1
     to_email, reset_url = mail_sender.sent[0]
     assert to_email == "Reset.User@example.com"
-    assert reset_url.startswith("http://localhost:3000/reset-password#token=")
+    assert reset_url.startswith("http://localhost:3000/reset-password?token=")
 
 
 def test_reset_token_is_domain_separated_expiring_and_fingerprint_bound(
@@ -217,7 +204,7 @@ def test_reset_token_is_domain_separated_expiring_and_fingerprint_bound(
             JWT_SECRET,
         )
 
-    access_token = create_access_token(user_id, JWT_SECRET, 600)
+    access_token = create_access_token(user_id, JWT_SECRET, 600, time.time())
     with pytest.raises(InvalidResetTokenError):
         decode_password_reset_token(access_token, JWT_SECRET)
 
@@ -231,23 +218,23 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
     user_id = create_user("reset-confirm-user", email="confirm@example.com")
     access_response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "reset-confirm-user", "password": OLD_PASSWORD},
+        json={"email": "confirm@example.com", "password": OLD_PASSWORD},
     )
     assert access_response.status_code == 200
-    access_token = access_response.json()["data"]["access_token"]
+    access_token = access_response.json()["access_token"]
     request_response = client.post(
-        "/api/v1/auth/password-reset/request",
+        RESET_REQUEST_PATH,
         json={"email": "confirm@example.com"},
     )
     assert request_response.status_code == 200
-    reset_token = mail_sender.sent[-1][1].split("#token=", 1)[1]
+    reset_token = mail_sender.sent[-1][1].split("?token=", 1)[1]
 
     confirmed = client.post(
-        "/api/v1/auth/password-reset/confirm",
+        RESET_CONFIRM_PATH,
         json={"token": reset_token, "new_password": NEW_PASSWORD},
     )
     assert confirmed.status_code == 200
-    assert confirmed.json()["data"] is None
+    assert set(confirmed.json()) == {"message"}
     assert client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -258,11 +245,11 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
     ).status_code == 401
     assert client.post(
         "/api/v1/auth/login",
-        json={"login_id": "reset-confirm-user", "password": OLD_PASSWORD},
+        json={"email": "confirm@example.com", "password": OLD_PASSWORD},
     ).status_code == 401
     assert client.post(
         "/api/v1/auth/login",
-        json={"login_id": "reset-confirm-user", "password": NEW_PASSWORD},
+        json={"email": "confirm@example.com", "password": NEW_PASSWORD},
     ).status_code == 200
 
     with engine.connect() as connection:
@@ -280,11 +267,11 @@ def test_confirm_updates_hash_history_and_invalidates_old_access_and_reset_token
     assert verify_password(NEW_PASSWORD, row["password_hash"])
     assert row["history_count"] == 1
     reused = client.post(
-        "/api/v1/auth/password-reset/confirm",
+        RESET_CONFIRM_PATH,
         json={"token": reset_token, "new_password": "Another-password-2!"},
     )
     assert reused.status_code == 400
-    assert reused.json()["code"] == "BAD_REQUEST"
+    assert set(reused.json()) == {"message"}
 
 
 def test_reset_token_rejects_email_change_and_inactive_user(
@@ -307,7 +294,7 @@ def test_reset_token_rejects_email_change_and_inactive_user(
             {"email": "after@example.com", "user_id": user_id},
         )
     changed = client.post(
-        "/api/v1/auth/password-reset/confirm",
+        RESET_CONFIRM_PATH,
         json={"token": token, "new_password": NEW_PASSWORD},
     )
     assert changed.status_code == 400
@@ -326,14 +313,14 @@ def test_reset_token_rejects_email_change_and_inactive_user(
             {"user_id": active_id},
         )
     deactivated = client.post(
-        "/api/v1/auth/password-reset/confirm",
+        RESET_CONFIRM_PATH,
         json={"token": active_token, "new_password": NEW_PASSWORD},
     )
     assert deactivated.status_code == 400
 
     create_user("inactive-reset", email="inactive@example.com", is_active=False)
     response = client.post(
-        "/api/v1/auth/password-reset/request",
+        RESET_REQUEST_PATH,
         json={"email": "inactive@example.com"},
     )
     assert response.status_code == 200
@@ -361,20 +348,18 @@ def test_concurrent_reset_with_one_token_has_one_winner(
         return "success"
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(
-            executor.map(reset, ("Concurrent-one-1!", "Concurrent-two-2!"))
-        )
+        results = list(executor.map(reset, ("Concurrent-one-1!", "Concurrent-two-2!")))
     assert sorted(results) == ["InvalidResetTokenError", "success"]
 
 
-def test_request_and_confirm_rate_limits_return_retry_after(
+def test_request_rate_limit_returns_retry_after(
     client: TestClient,
     create_user: Callable[..., int],
 ) -> None:
     create_user("rate-limit-user", email="rate@example.com")
     responses = [
         client.post(
-            "/api/v1/auth/password-reset/request",
+            RESET_REQUEST_PATH,
             json={"email": f"rate-{index}@example.com"},
         )
         for index in range(6)
@@ -382,15 +367,6 @@ def test_request_and_confirm_rate_limits_return_retry_after(
     assert responses[-1].status_code == 429
     assert responses[-1].headers["Retry-After"] == "900"
 
-    responses = [
-        client.post(
-            "/api/v1/auth/password-reset/confirm",
-            json={"token": "bad", "new_password": NEW_PASSWORD},
-        )
-        for _ in range(11)
-    ]
-    assert responses[-1].status_code == 429
-    assert responses[-1].headers["Retry-After"] == "900"
 
 
 def test_rate_limiter_applies_request_limit_to_each_email_across_ips() -> None:
@@ -402,7 +378,7 @@ def test_rate_limiter_applies_request_limit_to_each_email_across_ips() -> None:
     assert not limiter.allow_request("198.51.100.99", "same@example.com")
 
 
-def test_mail_failures_are_hidden_and_missing_configuration_is_503(
+def test_mail_problems_are_hidden_from_the_screen(
     database_url: str,
     create_user: Callable[..., int],
 ) -> None:
@@ -411,23 +387,28 @@ def test_mail_failures_are_hidden_and_missing_configuration_is_503(
         jwt_secret=JWT_SECRET,
         password_reset_url="http://localhost:3000/reset-password",
     )
-    sender = FakeMailSender(fail=True)
     create_user("smtp-failure-user", email="smtp-failure@example.com")
-    with TestClient(create_app(settings, mail_sender=sender)) as client:
-        response = client.post(
-            "/api/v1/auth/password-reset/request",
+
+    with TestClient(create_app(settings, mail_sender=FakeMailSender(fail=True))) as client:
+        failed = client.post(
+            RESET_REQUEST_PATH,
             json={"email": "smtp-failure@example.com"},
         )
-        assert response.status_code == 200
-        assert "smtp-failure@example.com" not in response.text
 
-    with TestClient(create_app(settings)) as client:
-        response = client.post(
-            "/api/v1/auth/password-reset/request",
-            json={"email": "missing@example.com"},
+    unconfigured_settings = Settings(
+        _env_file=None,
+        database_url=database_url,
+        jwt_secret=JWT_SECRET,
+    )
+    with TestClient(create_app(unconfigured_settings)) as client:
+        unconfigured = client.post(
+            RESET_REQUEST_PATH,
+            json={"email": "smtp-failure@example.com"},
         )
-        assert response.status_code == 503
-        assert response.json()["code"] == "SERVICE_UNAVAILABLE"
+
+    assert failed.status_code == unconfigured.status_code == 200
+    assert failed.json() == unconfigured.json()
+    assert "smtp-failure@example.com" not in failed.text
 
 
 def test_same_password_is_rejected_without_history(
@@ -444,10 +425,11 @@ def test_same_password_is_rejected_without_history(
         JWT_SECRET,
     )
     response = client.post(
-        "/api/v1/auth/password-reset/confirm",
+        RESET_CONFIRM_PATH,
         json={"token": token, "new_password": NEW_PASSWORD},
     )
     assert response.status_code == 400
+    assert set(response.json()) == {"message"}
     with engine.connect() as connection:
         assert connection.scalar(
             text("SELECT count(*) FROM sims.password_change_history WHERE user_id = :user_id"),
@@ -458,10 +440,10 @@ def test_same_password_is_rejected_without_history(
 def test_password_reset_validation_does_not_echo_secret(client: TestClient) -> None:
     secret = "sensitive-reset-token-" + ("x" * 4096)
     response = client.post(
-        "/api/v1/auth/password-reset/confirm",
+        RESET_CONFIRM_PATH,
         json={"token": secret, "new_password": NEW_PASSWORD},
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert secret not in response.text
 
 
@@ -489,7 +471,7 @@ def test_smtp_sender_uses_verified_ssl_and_plain_message(monkeypatch: pytest.Mon
 
     SmtpMailSender(
         "smtp.example.com", 465, "mailer", "secret", "from@example.com"
-    ).send_password_reset("to@example.com", "https://front.example/reset#token=abc")
+    ).send_password_reset("to@example.com", "https://front.example/reset?token=abc")
     assert seen["host"] == "smtp.example.com"
     assert seen["port"] == 465
     context = seen["context"]
@@ -499,4 +481,4 @@ def test_smtp_sender_uses_verified_ssl_and_plain_message(monkeypatch: pytest.Mon
     message = seen["message"]
     assert message["From"] == "from@example.com"
     assert message["To"] == "to@example.com"
-    assert "#token=abc" in message.get_content()
+    assert "?token=abc" in message.get_content()

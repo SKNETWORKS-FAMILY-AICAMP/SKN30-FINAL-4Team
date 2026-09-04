@@ -176,38 +176,37 @@ class ReportExcerpt(BaseModel):
     excerpt: str
 
 
-class CheckboxOption(BaseModel):
-    code: str
-    label: str
-    selected: bool
+class CplItemDisplay(BaseModel):
+    """항목 하나의 점검 결과.
 
+    요청 유형 체크박스를 읽어 보여주던 display 는 없앴다. 문서의 체크 표시를
+    정확히 읽지 못해 늘 미선택으로 나왔고, 프론트도 빼기로 했다. 요청 유형도
+    다른 12개 항목과 같이 상태와 근거만 준다.
+    """
 
-class CheckboxGroupDisplay(BaseModel):
-    type: Literal["checkbox_group"] = "checkbox_group"
-    summary: str
-    options: list[CheckboxOption]
-
-
-class ReportSelfCheckItem(BaseModel):
     field_code: str
     status: CplStatus
-    display: CheckboxGroupDisplay | None = None
     evidence: list[ReportExcerpt] = Field(default_factory=list)
 
 
-class ReportSelfCheck(BaseModel):
+class CplDisplay(BaseModel):
+    """화면 이름은 요청자료 완전성·기초구조 점검.
+
+    확인율 퍼센트는 담지 않는다. 화면은 13개 중 몇 개인지만 쓴다.
+    항목별 상태를 그대로 주고 어떻게 묶어 보여줄지는 프론트가 정한다.
+    """
+
     confirmed_count: int
-    total_count: Literal[13] = 13
-    confirmation_rate: float
-    items: list[ReportSelfCheckItem]
+    items: list[CplItemDisplay]
 
 
-class ReportFitAvailability(BaseModel):
+class FitAvailabilityDisplay(BaseModel):
     assessable_count: int = Field(ge=0, le=FIT_TOTAL_RELATIONS)
-    total_count: Literal[7] = FIT_TOTAL_RELATIONS
 
 
-class ReportStructuralRelation(BaseModel):
+class FitRelationDisplay(BaseModel):
+    """관계는 코드로만 준다. 사람이 읽을 이름은 프론트가 갖는다."""
+
     relation_id: FitRelationId
     status: FitStatus
     summary: str
@@ -215,16 +214,12 @@ class ReportStructuralRelation(BaseModel):
     right_evidence: list[ReportExcerpt] = Field(default_factory=list)
 
 
-class ReportStructuralConsistency(BaseModel):
+class FitDisplay(BaseModel):
+    """화면 이름은 내부 정합성 점검. 점수는 담지 않는다."""
+
     module_status: Literal["AVAILABLE", "UNAVAILABLE"]
-    availability: ReportFitAvailability
-    relations: list[ReportStructuralRelation]
-
-
-class ReportReviewIssue(BaseModel):
-    source: Literal["CPL", "FIT", "SIM"]
-    status: ReviewIssueStatus
-    evidence: list[ReportExcerpt] = Field(default_factory=list)
+    availability: FitAvailabilityDisplay
+    relations: list[FitRelationDisplay]
 
 
 class ReportSimAxisDisplay(BaseModel):
@@ -244,25 +239,31 @@ class ReportSimAxesDisplay(BaseModel):
 
 
 class ReportSimCandidateDisplay(BaseModel):
-    rank: int = Field(ge=1)
+    """순위와 유사도 점수는 담지 않는다. 화면이 쓰지 않는다."""
+
     title: str
     source_url: str
-    relevance_score: int = Field(ge=0, le=100)
     comparison_summary: str
     axes: ReportSimAxesDisplay
 
 
 class ReportCaseDisplay(BaseModel):
+    """화면 Header 에 쓰는 검사 건 정보."""
+
     title: str
+    completed_at: datetime
 
 
-class ReportResponse(BaseModel):
+class AnalysisReport(BaseModel):
     """Result-screen projection of the immutable, internal report snapshot."""
 
-    case: ReportCaseDisplay
-    ui_status: Literal["COMPLETED"] = "COMPLETED"
-    self_check: ReportSelfCheck
-    structural_consistency: ReportStructuralConsistency
-    review_issues: list[ReportReviewIssue] = Field(default_factory=list)
+    cpl: CplDisplay
+    fit: FitDisplay
     similar_candidates: list[ReportSimCandidateDisplay] = Field(default_factory=list)
-    report_download_url: str | None = None
+
+
+class CaseReport(BaseModel):
+    """분석 결과 화면과 과거 이력 상세가 함께 쓰는 조각."""
+
+    case: ReportCaseDisplay
+    report: AnalysisReport

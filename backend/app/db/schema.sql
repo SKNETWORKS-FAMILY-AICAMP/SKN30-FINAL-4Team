@@ -1364,6 +1364,113 @@ COMMENT ON TABLE sims.missing_check_run IS
 'existing completed results are not overwritten.';
 
 -- -----------------------------------------------------------------------------
+-- 10.6 테이블 용도
+--
+-- 각 테이블이 무엇을 담는지 한 줄로 적는다. 10.5 의 설계 근거 주석과 겹치는
+-- 4개 테이블(password_change_history, announcement_version, object_delete_outbox,
+-- missing_check_run)은 이미 설명이 있어 여기서 다시 달지 않는다. 한 객체에
+-- COMMENT 는 하나뿐이라 다시 달면 기존 설명이 지워진다.
+-- -----------------------------------------------------------------------------
+
+COMMENT ON TABLE sims.app_user IS
+'로그인 계정. login_id 와 email 이 각각 유일하며 로그인 조회는 email 로 한다. 비밀번호가 바뀌면 password_changed_at 이 갱신되고 그 전에 발급된 토큰은 전부 거부된다.';
+
+COMMENT ON TABLE sims.inspection_case IS
+'검사 1건. 업로드부터 완료까지의 상태 기계이며 파일·추출·검색·보고서·대화가 모두 이 행에 매달린다. 사용자가 보는 분석 이력 1줄이 이 행 하나다.';
+
+COMMENT ON TABLE sims.file_asset IS
+'저장소에 올라간 파일 1개의 메타데이터. asset_scope 가 USER 면 사용자가 올린 요청서라 소유자와 검사 건이 반드시 있고, SHARED 면 공고 첨부나 서식처럼 전체가 공유하는 파일이라 둘 다 비어 있다.';
+
+COMMENT ON TABLE sims.uploaded_document IS
+'검사 건에 붙은 요청서 원본 1개. 검사 건당 정확히 한 행이며 HWP·HWPX·PDF 만 받는다.';
+
+COMMENT ON TABLE sims.document_parse_run IS
+'파일 1개를 파싱한 시도 1회. 재시도는 같은 파일에 attempt_no 를 올려 쌓이므로 실패 이력이 남는다. 추출 텍스트와 구조화 결과가 여기 있다.';
+
+COMMENT ON TABLE sims.chunking_profile IS
+'문서를 조각내는 전략 설정. 이름과 버전으로 유일하며, 전략이 바뀌면 새 버전을 만들어 과거 청크와 섞이지 않게 한다.';
+
+COMMENT ON TABLE sims.document_chunk_set IS
+'파싱 결과 1개를 청킹 프로파일 1개로 자른 묶음. 같은 파싱 결과를 다른 전략으로 여러 번 자를 수 있다.';
+
+COMMENT ON TABLE sims.document_chunk IS
+'잘린 조각 1개. 근거를 인용하는 최소 단위이며 페이지와 위치를 함께 들고 있다. 전문 검색용 GIN 색인이 걸려 있다.';
+
+COMMENT ON TABLE sims.form_schema IS
+'요청서 서식의 버전 1개. 서식이 바뀌면 새 버전을 만들고 과거 검사 결과는 그대로 둔다.';
+
+COMMENT ON TABLE sims.form_field_definition IS
+'서식이 요구하는 항목 1개의 정의. CPL 점검이 무엇을 확인해야 하는지가 여기서 정해진다. required_rule 이 필수 여부 판정 규칙이다.';
+
+COMMENT ON TABLE sims.request_extraction IS
+'요청서에서 항목 값을 뽑아낸 실행 1회. 검사 건당 한 행이며, 어느 서식과 어느 파싱 결과를 썼는지를 함께 남긴다.';
+
+COMMENT ON TABLE sims.request_field_value IS
+'뽑아낸 항목 값 1개. 원문 텍스트와 정규화 값, 그리고 문서 어디에서 나왔는지를 함께 담아 근거 추적을 가능하게 한다.';
+
+COMMENT ON TABLE sims.missing_check_item IS
+'항목 1개의 CPL 점검 결과. 있음·누락·해당없음·확인필요·파싱실패 중 하나이며, 판정 근거가 된 값을 evidence_field_value_id 로 가리킨다. 화면의 CPL 표 한 줄이 이 행이다.';
+
+COMMENT ON TABLE sims.data_source IS
+'외부 자료 출처 정의. is_search_source 가 참인 출처만 유사 공고 검색 대상이 된다.';
+
+COMMENT ON TABLE sims.api_sync_run IS
+'출처 1개의 하루치 동기화 실행. 출처와 날짜로 유일해 하루에 두 번 돌지 않는다. 가져온 건수와 새 버전 건수가 여기 쌓인다.';
+
+COMMENT ON TABLE sims.announcement IS
+'공고의 불변 신원. 기관이 부여한 pblanc_id 하나에 행 하나이며, 내용은 전부 announcement_version 에 있다.';
+
+COMMENT ON TABLE sims.announcement_attachment IS
+'공고 버전에 딸린 파일. attachment_role 이 PRIMARY 면 공고 본문 출력물이고 AUXILIARY 면 서식 등 부속 자료다. 내려받기 전에는 file_asset_id 가 비어 있다.';
+
+COMMENT ON TABLE sims.announcement_subprogram_period IS
+'공고 하나 안에 세부사업별 접수기간이 여러 개일 때 그 기간들. 공고 전체 기간과 별개다.';
+
+COMMENT ON TABLE sims.archive_import_batch IS
+'과거 파일 자료를 1회 적재한 배치. 적재 성공·실패 건수를 남긴다.';
+
+COMMENT ON TABLE sims.archive_bizinfo_listing IS
+'기업마당 과거 목록의 행 1개. 보관 전용이며 검색·임베딩 대상이 아니다.';
+
+COMMENT ON TABLE sims.archive_central_program IS
+'중앙부처 과거 지원사업의 행 1개. 보관 전용이며 검색·임베딩 대상이 아니다.';
+
+COMMENT ON TABLE sims.embedding_model IS
+'임베딩 모델 1개. 차원과 거리 척도를 여기서 고정하며, 벡터를 넣을 때 트리거가 이 차원과 맞는지 검사한다.';
+
+COMMENT ON TABLE sims.embedding_profile IS
+'모델과 전처리 방식과 대상 필드를 묶은 조합. 같은 프로파일로 만든 벡터끼리만 비교가 성립하므로, 벡터 테이블은 모두 이 프로파일을 함께 들고 있다. profile_kind 가 SUMMARY 면 문서 전체를 한 벡터로, CHUNK 면 조각별 벡터를 만든다.';
+
+COMMENT ON TABLE sims.inspection_embedding IS
+'요청서 1건의 벡터. 유사 공고 검색의 질의 쪽이다.';
+
+COMMENT ON TABLE sims.announcement_embedding IS
+'공고 버전 1건의 벡터. 유사 공고 검색의 대상 쪽이다.';
+
+COMMENT ON TABLE sims.chunk_embedding IS
+'문서 조각 1개의 벡터. 근거 문장을 찾을 때 쓴다.';
+
+COMMENT ON TABLE sims.retrieval_run IS
+'유사 공고 검색 실행 1회. corpus_snapshot_at 으로 어느 시점의 공고 집합을 봤는지 고정해, 나중에 공고가 늘어도 과거 결과를 재현할 수 있게 한다.';
+
+COMMENT ON TABLE sims.retrieval_candidate IS
+'검색 결과 후보 1건. 순위와 벡터 거리, 그리고 소관기관 일치 여부나 기간 관계 같은 비교 결과를 담는다. 화면의 유사 공고 카드 하나가 이 행이다.';
+
+COMMENT ON TABLE sims.candidate_evidence IS
+'후보 1건에 대한 근거 조각. evidence_side 로 요청서 쪽인지 공고 쪽인지 비교 자체인지를 구분하고, 인용문과 출처 위치를 담는다.';
+
+COMMENT ON TABLE sims.inspection_report IS
+'완성된 검사 결과 전체를 담은 JSON. 검사 건당 한 행이며, 어느 CPL 실행과 어느 검색 실행을 근거로 만들었는지를 함께 가리킨다. API 가 돌려주는 결과가 이 report_json 이다.';
+
+COMMENT ON TABLE sims.output_artifact IS
+'보고서를 파일로 뽑은 산출물. 보고서 1건에 파일 1개다.';
+
+COMMENT ON TABLE sims.chat_session IS
+'검사 건에 딸린 질의응답 세션. 검사 건당 한 행이다.';
+
+COMMENT ON TABLE sims.chat_message IS
+'대화 메시지 1개. sequence_no 로 순서를 매기고 커서 페이지네이션의 기준이 된다. 모델 이름과 토큰 수도 함께 남긴다.';
+-- -----------------------------------------------------------------------------
 -- 11. Seed the three confirmed sources
 -- -----------------------------------------------------------------------------
 

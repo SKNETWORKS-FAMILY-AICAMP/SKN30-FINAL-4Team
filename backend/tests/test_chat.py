@@ -49,7 +49,10 @@ def engine(database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def users(engine: Engine) -> Iterator[Callable[[str], int]]:
+def users(
+    engine: Engine,
+    global_seed_cleanup: dict[str, list[int]],
+) -> Iterator[Callable[[str], int]]:
     ids: list[int] = []
 
     def create(login_id: str) -> int:
@@ -106,8 +109,11 @@ def ready_case(
     database_url: str,
     owner_user_id: int,
     storage_root: Path,
+    global_seed_cleanup: dict[str, list[int]],
 ) -> int:
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, owner_user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, owner_user_id, cleanup=global_seed_cleanup
+    )
     asyncio.run(
         finalize_report(
             engine,
@@ -129,26 +135,29 @@ def ready_case(
 def bearer(client: TestClient, login_id: str) -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": login_id, "password": PASSWORD},
+        json={"email": f"{login_id}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def test_chat_history_and_answer_are_stored_in_sequence(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     owner_id = users(f"chat-service-{uuid.uuid4().hex[:8]}")
-    case_id = ready_case(engine, database_url, owner_id, tmp_path)
+    case_id = ready_case(
+        engine, database_url, owner_id, tmp_path, global_seed_cleanup
+    )
     llm = FakeChatLLM()
     settings = runtime(database_url, tmp_path)
 
     before = get_chat_history(engine, owner_id, case_id)
-    assert before.chat_session_id is None
     assert before.messages == []
+    assert before.next_cursor is None
 
     turn = asyncio.run(
         answer_chat(
@@ -160,23 +169,27 @@ def test_chat_history_and_answer_are_stored_in_sequence(
             question="왜 검토가 필요한가요?",
         )
     )
-    assert turn.user_message.sequence_no == 1
-    assert turn.assistant_message.sequence_no == 2
+    assert turn.user_message.role == "USER"
     assert turn.assistant_message.role == "ASSISTANT"
-    assert turn.assistant_message.model_name == "gpt-4o-mini"
-    assert turn.assistant_message.evidence_refs == []
+    # 모델명·토큰 수·근거 식별자는 내부 정보라 응답에 담지 않는다.
+    assert set(turn.model_dump()) == {"user_message", "assistant_message"}
+    assert set(turn.user_message.model_dump()) == {
+        "id",
+        "role",
+        "content",
+    }
     assert llm.calls[0]["report_json"]["schema_version"] == "alpha-report-v0.1"
 
     history = get_chat_history(engine, owner_id, case_id)
-    assert history.chat_session_id == turn.chat_session_id
-    assert [item.sequence_no for item in history.messages] == [1, 2]
     assert [item.role for item in history.messages] == ["USER", "ASSISTANT"]
+    assert history.next_cursor is None
 
 
 def test_chat_api_is_owner_scoped_and_rejects_unready_case(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     marker = uuid.uuid4().hex[:8]
@@ -184,7 +197,9 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
     other_login = f"chat-other-{marker}"
     owner_id = users(owner_login)
     other_id = users(other_login)
-    case_id = ready_case(engine, database_url, owner_id, tmp_path)
+    case_id = ready_case(
+        engine, database_url, owner_id, tmp_path, global_seed_cleanup
+    )
     llm = FakeChatLLM()
     settings = runtime(database_url, tmp_path)
 
@@ -192,25 +207,26 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
         owner_headers = bearer(client, owner_login)
         other_headers = bearer(client, other_login)
         assert client.get(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=owner_headers,
         ).status_code == 200
         answer = client.post(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=owner_headers,
             json={"content": "이 결과를 설명해줘"},
         )
         assert answer.status_code == 200
         body = answer.json()
-        assert body["case_id"] == case_id
+        # 응답에는 말풍선 두 개만 담는다.
+        assert set(body) == {"user_message", "assistant_message"}
         assert body["user_message"]["role"] == "USER"
         assert body["assistant_message"]["role"] == "ASSISTANT"
         assert client.get(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=other_headers,
         ).status_code == 404
         assert client.post(
-            f"/api/v1/cases/{case_id}/chat/messages",
+            f"/api/v1/cases/{case_id}/messages",
             headers=other_headers,
             json={"content": "남의 결과"},
         ).status_code == 404
@@ -224,11 +240,11 @@ def test_chat_api_is_owner_scoped_and_rejects_unready_case(
                 {"owner_id": other_id},
             )
         assert client.get(
-            f"/api/v1/cases/{pending_id}/chat/messages",
+            f"/api/v1/cases/{pending_id}/messages",
             headers=other_headers,
         ).status_code == 409
         assert client.post(
-            f"/api/v1/cases/{pending_id}/chat/messages",
+            f"/api/v1/cases/{pending_id}/messages",
             headers=other_headers,
             json={"content": "아직 안 끝났나요?"},
         ).status_code == 409
@@ -238,10 +254,13 @@ def test_chat_provider_failures_do_not_persist_messages(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     owner_id = users(f"chat-error-{uuid.uuid4().hex[:8]}")
-    case_id = ready_case(engine, database_url, owner_id, tmp_path)
+    case_id = ready_case(
+        engine, database_url, owner_id, tmp_path, global_seed_cleanup
+    )
     settings = runtime(database_url, tmp_path)
 
     with pytest.raises(ChatGenerationError) as error:
@@ -264,10 +283,13 @@ def test_chat_unknown_evidence_reference_is_rejected(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     owner_id = users(f"chat-grounding-{uuid.uuid4().hex[:8]}")
-    case_id = ready_case(engine, database_url, owner_id, tmp_path)
+    case_id = ready_case(
+        engine, database_url, owner_id, tmp_path, global_seed_cleanup
+    )
     llm = FakeChatLLM(
         ChatAnswer(answer="근거가 있다고 답합니다.", evidence_refs=["invented:1"])
     )

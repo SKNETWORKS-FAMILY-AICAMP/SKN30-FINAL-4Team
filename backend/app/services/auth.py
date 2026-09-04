@@ -22,21 +22,27 @@ class PasswordUnchangedError(Exception):
 @dataclass(frozen=True, slots=True)
 class AppUser:
     id: int
-    login_id: str
+    email: str
     password_changed_at: datetime
     is_active: bool
 
 
 _USER_COLUMNS = """
     id,
-    login_id::text AS login_id,
+    email::text AS email,
     password_hash,
     password_changed_at,
     is_active
 """
 
 
-def login(engine: Engine, login_id: str, password: str) -> AppUser:
+def login(engine: Engine, email: str, password: str) -> AppUser:
+    """이메일로 계정을 찾는다.
+
+    로그인 식별자와 비밀번호 재설정 대상이 같은 컬럼을 보게 해서, 한쪽으로
+    로그인하고 다른 쪽으로 재설정 메일이 가는 상황을 만들지 않는다.
+    email 은 citext 라 대소문자를 구분하지 않는다.
+    """
     with engine.begin() as connection:
         row = (
             connection.execute(
@@ -44,10 +50,10 @@ def login(engine: Engine, login_id: str, password: str) -> AppUser:
                     f"""
                     SELECT {_USER_COLUMNS}
                     FROM sims.app_user
-                    WHERE login_id = :login_id
+                    WHERE email = :email
                     """
                 ),
-                {"login_id": login_id},
+                {"email": email},
             )
             .mappings()
             .one_or_none()
@@ -101,7 +107,12 @@ def change_password(
     user_id: int,
     current_password: str,
     new_password: str,
-) -> None:
+) -> datetime:
+    """변경에 성공하면 DB 가 찍은 password_changed_at 을 돌려준다.
+
+    호출자가 이 시각을 기준으로 새 토큰을 발급해야 앱·DB 시계 차이 때문에
+    방금 발급한 토큰이 거부되지 않는다.
+    """
     validate_new_password(new_password)
 
     with engine.begin() as connection:
@@ -133,12 +144,13 @@ def change_password(
         if current_password == new_password:
             raise PasswordUnchangedError
 
-        connection.execute(
+        changed_at = connection.scalar(
             text(
                 """
                 UPDATE sims.app_user
                 SET password_hash = :password_hash
                 WHERE id = :user_id
+                RETURNING password_changed_at
                 """
             ),
             {
@@ -146,12 +158,15 @@ def change_password(
                 "user_id": user.id,
             },
         )
+        if changed_at is None:
+            raise InvalidCredentialsError
+        return changed_at
 
 
 def _to_user(row: RowMapping) -> AppUser:
     return AppUser(
         id=row["id"],
-        login_id=row["login_id"],
+        email=row["email"],
         password_changed_at=row["password_changed_at"],
         is_active=row["is_active"],
     )

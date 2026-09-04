@@ -109,11 +109,12 @@ def bearer(token: str) -> dict[str, str]:
 def login(client: TestClient, login_id: str, password: str) -> str:
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": login_id, "password": password},
+        json={"email": f"{login_id}@example.com", "password": password},
     )
     assert response.status_code == 200
-    assert response.json()["data"]["token_type"] == "bearer"
-    return response.json()["data"]["access_token"]
+    # 토큰만 반환한다. token_type 은 값이 고정이라 없앴다.
+    assert set(response.json()) == {"access_token"}
+    return response.json()["access_token"]
 
 
 def test_password_hash_is_argon2id_salted_and_verifiable() -> None:
@@ -128,19 +129,28 @@ def test_password_hash_is_argon2id_salted_and_verifiable() -> None:
 
 
 def test_access_token_contract_and_validation() -> None:
-    token = create_access_token(7, JWT_SECRET, 1800)
+    password_version = 1788356831.5
+    token = create_access_token(7, JWT_SECRET, 1800, password_version)
     claims = decode_access_token(token, JWT_SECRET)
 
     assert claims["sub"] == "7"
     assert isinstance(claims["iat"], float)
     assert claims["exp"] - claims["iat"] == 1800
-    assert set(claims) == {"sub", "iat", "exp"}
+    # 발급 당시의 비밀번호 버전을 그대로 담는다. 인증은 이 값이 DB 의
+    # 현재 값과 같은지만 보므로 앱과 DB 의 시계 차이가 끼어들지 않는다.
+    assert claims["pwd"] == password_version
+    assert set(claims) == {"sub", "iat", "exp", "pwd"}
 
     with pytest.raises(InvalidSignatureError):
         decode_access_token(token, "different-secret-that-is-32-bytes")
 
     expired = jwt.encode(
-        {"sub": "7", "iat": time.time() - 2, "exp": time.time() - 1},
+        {
+            "sub": "7",
+            "iat": time.time() - 2,
+            "exp": time.time() - 1,
+            "pwd": password_version,
+        },
         JWT_SECRET,
         algorithm="HS256",
     )
@@ -148,7 +158,12 @@ def test_access_token_contract_and_validation() -> None:
         decode_access_token(expired, JWT_SECRET)
 
     wrong_algorithm = jwt.encode(
-        {"sub": "7", "iat": time.time(), "exp": time.time() + 60},
+        {
+            "sub": "7",
+            "iat": time.time(),
+            "exp": time.time() + 60,
+            "pwd": password_version,
+        },
         "s" * 64,
         algorithm="HS384",
     )
@@ -252,17 +267,19 @@ def test_login_failures_are_indistinguishable_and_do_not_update_last_login(
 ) -> None:
     active_id = create_user("wrong-password-user")
     inactive_id = create_user("inactive-user", is_active=False)
+    # 이메일 형식은 갖췄지만 인증에 실패하는 네 경우다. 계정이 있는지,
+    # 비활성인지, 아예 없는지를 응답으로 구분할 수 없어야 한다.
     requests = [
-        {"login_id": "wrong-password-user", "password": "wrong-password"},
-        {"login_id": "missing-user", "password": "wrong-password"},
-        {"login_id": "inactive-user", "password": OLD_PASSWORD},
-        {"login_id": "' OR 1=1 --", "password": "wrong-password"},
+        {"email": "wrong-password-user@example.com", "password": "wrong-password"},
+        {"email": "missing-user@example.com", "password": "wrong-password"},
+        {"email": "inactive-user@example.com", "password": OLD_PASSWORD},
+        {"email": "or1=1--@example.com", "password": "wrong-password"},
     ]
 
     responses = [client.post("/api/v1/auth/login", json=body) for body in requests]
     assert {response.status_code for response in responses} == {401}
     assert {response.text for response in responses} == {
-        '{"detail":"Could not validate credentials"}'
+        '{"message":"인증 정보를 확인해 주세요."}'
     }
     with engine.connect() as connection:
         last_logins = connection.execute(
@@ -282,10 +299,10 @@ def test_invalid_login_password_is_not_echoed(client: TestClient) -> None:
     exposed_password = "must-not-appear-" + ("x" * 128)
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "any-user", "password": exposed_password},
+        json={"email": "any-user@example.com", "password": exposed_password},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 401
     assert exposed_password not in response.text
 
 
@@ -293,12 +310,14 @@ def test_me_rejects_bad_tokens_and_returns_minimal_user(
     client: TestClient,
     create_user: Callable[..., int],
 ) -> None:
-    user_id = create_user("me-user")
+    create_user("me-user")
     token = login(client, "me-user", OLD_PASSWORD)
 
     response = client.get("/api/v1/auth/me", headers=bearer(token))
     assert response.status_code == 200
-    assert response.json() == {"id": user_id, "login_id": "me-user"}
+    # 이메일의 @ 앞부분만 나가고 전체 주소는 담기지 않는다.
+    assert response.json() == {"name": "me-user"}
+    assert "@example.com" not in response.text
 
     missing = client.get("/api/v1/auth/me")
     wrong_scheme = client.get(
@@ -311,11 +330,18 @@ def test_me_rejects_bad_tokens_and_returns_minimal_user(
         assert failure.headers["www-authenticate"] == "Bearer"
 
 
-def test_token_timestamp_boundary_uses_fractional_seconds(
+def test_token_is_bound_to_the_password_version_not_to_clock_order(
     client: TestClient,
     engine: Engine,
     create_user: Callable[..., int],
 ) -> None:
+    """토큰은 발급 당시의 비밀번호 버전에 묶인다.
+
+    두 시각의 앞뒤를 비교하지 않는다. password_changed_at 은 DB 시계로,
+    iat 는 앱 시계로 찍히는데 실측에서 DB 가 0.1~0.4초 앞서 있었고, 그 차이를
+    iat 로 메우면 PyJWT 가 미래 토큰(약 0.39초 초과)으로 보고 거부했다.
+    값이 같은지만 보면 시계 차이가 끼어들 여지가 없다.
+    """
     user_id = create_user("time-boundary-user")
     with engine.connect() as connection:
         changed_at = connection.scalar(
@@ -325,21 +351,27 @@ def test_token_timestamp_boundary_uses_fractional_seconds(
             {"user_id": user_id},
         )
     assert changed_at is not None
-    timestamp = changed_at.timestamp()
+    password_version = changed_at.timestamp()
 
-    exact = jwt.encode(
-        {"sub": str(user_id), "iat": timestamp, "exp": time.time() + 60},
-        JWT_SECRET,
-        algorithm="HS256",
-    )
-    older = jwt.encode(
-        {"sub": str(user_id), "iat": timestamp - 0.001, "exp": time.time() + 60},
-        JWT_SECRET,
-        algorithm="HS256",
-    )
+    def token_with(pwd: float) -> str:
+        return jwt.encode(
+            {
+                "sub": str(user_id),
+                "iat": time.time(),
+                "exp": time.time() + 60,
+                "pwd": pwd,
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
 
-    assert client.get("/api/v1/auth/me", headers=bearer(exact)).status_code == 200
-    assert client.get("/api/v1/auth/me", headers=bearer(older)).status_code == 401
+    # 발급 시각은 둘 다 지금이다. 통과 여부를 가르는 것은 비밀번호 버전뿐이다.
+    assert client.get(
+        "/api/v1/auth/me", headers=bearer(token_with(password_version))
+    ).status_code == 200
+    assert client.get(
+        "/api/v1/auth/me", headers=bearer(token_with(password_version - 0.001))
+    ).status_code == 401
 
 
 def test_existing_token_is_rejected_after_user_is_deactivated(
@@ -367,12 +399,18 @@ def test_password_change_is_atomic_and_invalidates_old_token(
     old_token = login(client, "password-change-user", OLD_PASSWORD)
 
     response = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(old_token),
         json={"current_password": OLD_PASSWORD, "new_password": NEW_PASSWORD},
     )
-    assert response.status_code == 204
-    assert response.content == b""
+    # 응답에 실려 온 새 토큰으로는 계속 쓸 수 있고, 기존 토큰은 죽는다.
+    assert response.status_code == 200
+    reissued = response.json()["access_token"]
+    assert reissued != old_token
+    assert client.get(
+        "/api/v1/auth/me",
+        headers=bearer(reissued),
+    ).status_code == 200
     assert client.get(
         "/api/v1/auth/me",
         headers=bearer(old_token),
@@ -396,7 +434,7 @@ def test_password_change_is_atomic_and_invalidates_old_token(
 
     failed_old_login = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "password-change-user", "password": OLD_PASSWORD},
+        json={"email": "password-change-user@example.com", "password": OLD_PASSWORD},
     )
     assert failed_old_login.status_code == 401
     new_token = login(client, "password-change-user", NEW_PASSWORD)
@@ -426,12 +464,12 @@ def test_failed_password_change_leaves_no_history(
     token = login(client, login_id, stored_password)
 
     response = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json={"current_password": current_password, "new_password": new_password},
     )
     assert response.status_code == 400
-    assert response.json() == {"detail": "Password change failed"}
+    assert set(response.json()) == {"message"}
     with engine.connect() as connection:
         assert connection.scalar(
             text(
@@ -454,11 +492,11 @@ def test_invalid_change_password_input_is_not_echoed(
     body[field] = exposed_password
 
     response = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json=body,
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert exposed_password not in response.text
 
 
@@ -473,7 +511,7 @@ def test_unicode_password_can_be_compared_and_changed(
     token = login(client, "unicode-password-user", current_password)
 
     unchanged = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json={
             "current_password": current_password,
@@ -483,11 +521,12 @@ def test_unicode_password_can_be_compared_and_changed(
     assert unchanged.status_code == 400
 
     changed = client.post(
-        "/api/v1/auth/change-password",
+        "/api/v1/auth/password/change",
         headers=bearer(token),
         json={"current_password": current_password, "new_password": new_password},
     )
-    assert changed.status_code == 204
+    assert changed.status_code == 200
+    assert changed.json()["access_token"]
     assert login(client, "unicode-password-user", new_password)
     with engine.connect() as connection:
         assert connection.scalar(
@@ -498,16 +537,19 @@ def test_unicode_password_can_be_compared_and_changed(
         ) == 1
 
 
-def test_logout_is_stateless_client_token_disposal(
+def test_logout_endpoint_does_not_exist(
     client: TestClient,
     create_user: Callable[..., int],
 ) -> None:
+    """로그아웃은 클라이언트가 토큰을 지우는 것으로 끝난다.
+
+    서버가 토큰을 폐기하지 않기로 해서 아무 일도 하지 않는 껍데기였다.
+    발급된 토큰은 만료 시각까지 유효하다.
+    """
     create_user("logout-user")
     token = login(client, "logout-user", OLD_PASSWORD)
 
-    response = client.post("/api/v1/auth/logout", headers=bearer(token))
-    assert response.status_code == 204
-    assert response.content == b""
+    assert client.post("/api/v1/auth/logout", headers=bearer(token)).status_code == 404
     assert client.get("/api/v1/auth/me", headers=bearer(token)).status_code == 200
 
 
@@ -519,7 +561,7 @@ def test_malformed_stored_hash_is_a_generic_login_failure(
 
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": "broken-hash-user", "password": OLD_PASSWORD},
+        json={"email": "broken-hash-user@example.com", "password": OLD_PASSWORD},
     )
     assert response.status_code == 401
-    assert response.json() == {"detail": "Could not validate credentials"}
+    assert response.json() == {"message": "인증 정보를 확인해 주세요."}

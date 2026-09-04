@@ -15,7 +15,12 @@ TEST_JWT_SECRET = "test-secret-that-is-at-least-32-bytes"
 
 
 def settings_for(database_url: str) -> Settings:
-    return Settings(database_url=database_url, jwt_secret=TEST_JWT_SECRET)
+    return Settings(
+        database_url=database_url,
+        jwt_secret=TEST_JWT_SECRET,
+        # DB 가 닿지 않는 앱이라 기동 정리가 연결 타임아웃을 기다리게 된다.
+        sweep_interrupted_analyses_on_startup=False,
+    )
 
 
 def test_live_works_while_database_is_unreachable() -> None:
@@ -63,17 +68,12 @@ def test_invalid_database_connect_timeout_is_rejected(
 
 
 def test_unknown_route_uses_common_error_body() -> None:
-    """없는 경로의 404 도 업무 API 와 같은 4필드로 나간다."""
+    """없는 경로의 404 도 업무 API 와 같은 실패 본문을 쓴다. 문구 하나뿐이다."""
     with TestClient(create_app(settings_for(UNREACHABLE_DATABASE_URL))) as client:
         response = client.get("/not-found")
 
     assert response.status_code == 404
-    assert response.json() == {
-        "code": "NOT_FOUND",
-        "message": "요청한 대상을 찾을 수 없습니다.",
-        "data": None,
-        "errors": [],
-    }
+    assert response.json() == {"message": "요청한 대상을 찾을 수 없습니다."}
 
 
 def test_ready_connects_to_real_postgresql() -> None:

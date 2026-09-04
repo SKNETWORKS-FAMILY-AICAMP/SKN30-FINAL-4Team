@@ -14,9 +14,15 @@ from sqlalchemy import Engine, create_engine, text
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.infrastructure.local_object_storage import LocalObjectStorage
+from app.infrastructure import reportlab_pdf_renderer as renderer_module
 from app.infrastructure.reportlab_pdf_renderer import ReportLabPdfRenderer
 from app.schemas.cpl import CPL_FIELDS, CplItem, CplOccurrence, CplResult, CplStatus
-from app.schemas.report import REPORT_SCHEMA_VERSION, ReportEvidence
+from app.schemas.report import (
+    REPORT_SCHEMA_VERSION,
+    CplItemDisplay,
+    ReportEvidence,
+    ReportExcerpt,
+)
 import app.services.reporting as reporting
 from app.services.reporting import (
     ReportNotReadyError,
@@ -58,7 +64,10 @@ def engine(database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def users(engine: Engine) -> Iterator[Callable[[str], int]]:
+def users(
+    engine: Engine,
+    global_seed_cleanup: dict[str, list[int]],
+) -> Iterator[Callable[[str], int]]:
     ids: list[int] = []
 
     def create(login_id: str) -> int:
@@ -118,6 +127,8 @@ def cpl_result() -> CplResult:
 def seed_reporting_case(
     engine: Engine,
     owner_user_id: int,
+    *,
+    cleanup: dict[str, list[int]] | None = None,
 ) -> tuple[int, int, int]:
     marker = uuid.uuid4().hex
     with engine.begin() as connection:
@@ -249,6 +260,10 @@ def seed_reporting_case(
             ),
             {"case_id": case_id, "embedding_id": embedding_id},
         )
+    if cleanup is not None:
+        cleanup["form_schema_ids"].append(form_id)
+        cleanup["embedding_profile_ids"].append(profile_id)
+        cleanup["embedding_model_ids"].append(model_id)
     assert case_id and missing_id and retrieval_id
     return case_id, missing_id, retrieval_id
 
@@ -256,10 +271,10 @@ def seed_reporting_case(
 def bearer(client: TestClient, login_id: str) -> dict[str, str]:
     response = client.post(
         "/api/v1/auth/login",
-        json={"login_id": login_id, "password": PASSWORD},
+        json={"email": f"{login_id}@example.com", "password": PASSWORD},
     )
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def test_composer_keeps_v01_reserved_fields_and_dynamic_url_outside_snapshot(
@@ -345,40 +360,34 @@ def test_result_screen_projection_hides_internal_evidence_metadata(
         expected_candidate_count=0,
     )
 
-    response = reporting._report_response(report, report_download_url=None).model_dump(
+    detail = reporting._report_response(report).model_dump(
         mode="json",
         exclude_none=True,
     )
+    response = detail["report"]
 
+    assert set(detail) == {"case", "report"}
+    assert set(detail["case"]) == {"title", "completed_at"}
     assert "schema_version" not in response
     assert "warnings" not in response
+    # 검토 쟁점은 AI 질의응답으로 대체해 응답에서 뺐다.
+    assert set(response) == {"cpl", "fit", "similar_candidates"}
+    # 확인율 퍼센트는 담지 않는다. 13개 중 몇 개인지만 준다.
+    assert set(response["cpl"]) == {"confirmed_count", "items"}
     assert "PURPOSE_GOAL" not in {
-        item["field_code"] for item in response["self_check"]["items"]
+        item["field_code"] for item in response["cpl"]["items"]
     }
-    assert all("summary" not in issue for issue in response["review_issues"])
-    item = response["self_check"]["items"][0]
-    assert item == {
+    # 요청 유형도 다른 항목과 같이 상태와 근거만 준다. 체크박스 표시는 없앴다.
+    merged_excerpt = "\n\n".join(
+        ["□ 내역사업 신설", "□ 내내역사업 신설", "□ 사업내용 변경"]
+    )
+    assert response["cpl"]["items"][0] == {
         "field_code": "REQUEST_TYPE",
         "status": "NEEDS_CONFIRMATION",
-        "display": {
-            "type": "checkbox_group",
-            "summary": "선택된 요청 유형이 없습니다.",
-            "options": [
-                {"code": "SUBPROGRAM_NEW", "label": "내역사업 신설", "selected": False},
-                {
-                    "code": "SUBSUBPROGRAM_NEW",
-                    "label": "내내역사업 신설",
-                    "selected": False,
-                },
-                {"code": "CONTENT_CHANGE", "label": "사업내용 변경", "selected": False},
-            ],
-        },
-        "evidence": [
-            {
-                "excerpt": "□ 내역사업 신설\n\n□ 내내역사업 신설\n\n□ 사업내용 변경"
-            }
-        ],
+        "evidence": [{"excerpt": merged_excerpt}],
     }
+    # FIT 은 점수를 담지 않는다.
+    assert set(response["fit"]) == {"module_status", "availability", "relations"}
 
 
 def test_cpl_screen_evidence_keeps_full_source_not_its_fragments() -> None:
@@ -416,15 +425,47 @@ def test_reportlab_renderer_produces_pdf_bytes(
         sim_results=[],
         expected_candidate_count=0,
     )
-    content = asyncio.run(ReportLabPdfRenderer().render(report))
+    # PDF 는 화면과 같은 투영을 그린다. 내부 보고서를 넘기지 않는다.
+    content = asyncio.run(
+        ReportLabPdfRenderer().render(reporting._report_response(report))
+    )
     assert content.startswith(b"%PDF-")
     assert len(content) > 1_000
+
+
+def test_pdf_rows_carry_the_same_labels_and_evidence_as_the_screen() -> None:
+    """화면에 나가는 근거가 PDF 행에도 실려야 한다.
+
+    이전 렌더러는 내부 보고서를 그리면서 근거를 아예 읽지 않았고, 화면에서
+    뺀 확인율과 점수를 대신 찍었다.
+    """
+
+    styles = renderer_module._styles("Helvetica")
+    row = renderer_module._cpl_row(
+        CplItemDisplay(
+            field_code="PURPOSE_GOAL",
+            status=CplStatus.NEEDS_CONFIRMATION,
+            evidence=[ReportExcerpt(excerpt="사업 목적 원문 발췌")],
+        ),
+        styles,
+    )
+    rendered = [cell.text for cell in row]
+    assert rendered[0] == "사업 목적·목표"
+    assert rendered[1] == "확인 필요"
+    assert "사업 목적 원문 발췌" in rendered[2]
+
+    empty = renderer_module._cpl_row(
+        CplItemDisplay(field_code="BUDGET", status=CplStatus.PRESENT),
+        styles,
+    )
+    assert [cell.text for cell in empty] == ["예산", "확인", "-"]
 
 
 def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     marker = uuid.uuid4().hex[:8]
@@ -432,7 +473,9 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     other_login = f"report-other-{marker}"
     owner_id = users(owner_login)
     users(other_login)
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, owner_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, owner_id, cleanup=global_seed_cleanup
+    )
     runtime = settings(database_url, tmp_path)
     storage = LocalObjectStorage(tmp_path)
 
@@ -478,23 +521,24 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     with TestClient(create_app(runtime, pdf_renderer=FakePdfRenderer())) as client:
         owner_headers = bearer(client, owner_login)
         other_headers = bearer(client, other_login)
-        result = client.get(f"/api/v1/cases/{case_id}/report", headers=owner_headers)
+        result = client.get(f"/api/v1/cases/{case_id}", headers=owner_headers)
         assert result.status_code == 200
-        assert result.json()["data"]["report_download_url"].endswith(
-            f"/{case_id}/report.pdf"
-        )
+        # 보고서와 대화를 한 번에 준다. PDF 링크는 경로가 고정이라 담지 않는다.
+        assert set(result.json()) == {"case", "report", "chat"}
+        assert set(result.json()["case"]) == {"title", "completed_at"}
+        assert result.json()["chat"]["messages"] == []
         download = client.get(
-            f"/api/v1/cases/{case_id}/report.pdf",
+            f"/api/v1/cases/{case_id}/report",
             headers=owner_headers,
         )
         assert download.status_code == 200
         assert download.headers["content-type"] == "application/pdf"
         assert download.content.startswith(b"%PDF-")
         assert client.get(
-            f"/api/v1/cases/{case_id}/report", headers=other_headers
+            f"/api/v1/cases/{case_id}", headers=other_headers
         ).status_code == 404
         assert client.get(
-            f"/api/v1/cases/{case_id}/report.pdf", headers=other_headers
+            f"/api/v1/cases/{case_id}/report", headers=other_headers
         ).status_code == 404
 
 
@@ -527,10 +571,13 @@ def test_pdf_failure_marks_case_failed_without_freezing_report(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     user_id = users(f"report-pdf-failed-{uuid.uuid4().hex[:8]}")
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, user_id, cleanup=global_seed_cleanup
+    )
 
     with pytest.raises(ValueError, match="invalid content"):
         asyncio.run(
@@ -575,11 +622,14 @@ def test_composer_failure_marks_case_failed(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = users(f"report-compose-failed-{uuid.uuid4().hex[:8]}")
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, user_id, cleanup=global_seed_cleanup
+    )
 
     def fail_composition(*_args, **_kwargs):
         raise ValueError("invalid report source data")
@@ -618,10 +668,13 @@ def test_non_successful_cpl_run_cannot_be_frozen_into_report(
     database_url: str,
     engine: Engine,
     users: Callable[[str], int],
+    global_seed_cleanup: dict[str, list[int]],
     tmp_path: Path,
 ) -> None:
     user_id = users(f"report-cpl-failed-{uuid.uuid4().hex[:8]}")
-    case_id, missing_id, retrieval_id = seed_reporting_case(engine, user_id)
+    case_id, missing_id, retrieval_id = seed_reporting_case(
+        engine, user_id, cleanup=global_seed_cleanup
+    )
     with engine.begin() as connection:
         connection.execute(
             text(

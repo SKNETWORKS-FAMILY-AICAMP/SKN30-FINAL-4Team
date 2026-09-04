@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from typing import Annotated
 
-from app.api.envelope import EnvelopeRoute
+from fastapi import APIRouter, HTTPException, Query, Request, status
+
 from app.api.deps import CurrentUser
 from app.api.v1.responses import (
-    BAD_GATEWAY,
+    BAD_REQUEST,
+    describe,
     CONFLICT,
     NOT_FOUND,
     SERVICE_UNAVAILABLE,
@@ -23,17 +25,37 @@ from app.services.chat import (
 )
 
 
-router = APIRouter(prefix="/api/v1/cases", tags=["chat"], responses=UNAUTHORIZED, route_class=EnvelopeRoute)
+router = APIRouter(prefix="/api/v1/cases", tags=["분석"], responses=UNAUTHORIZED)
 
 
 @router.get(
-    "/{case_id}/chat/messages",
+    "/{case_id}/messages",
     response_model=ChatMessagesResponse,
-    responses={**NOT_FOUND, **CONFLICT},
+    summary="이전 대화 불러오기",
+    description="이전 대화를 20개씩 조회합니다. `next_cursor`가 있으면 더 이전 대화를 조회할 수 있습니다.",
+    responses=describe({**UNAUTHORIZED, **NOT_FOUND, **CONFLICT}),
 )
-def chat_messages(case_id: int, request: Request, user: CurrentUser) -> ChatMessagesResponse:
+def chat_messages(
+    case_id: int,
+    request: Request,
+    user: CurrentUser,
+    cursor: Annotated[
+        int | None,
+        Query(description="이전 응답의 next_cursor를 그대로 넣습니다."),
+    ] = None,
+) -> ChatMessagesResponse:
+    """이전 대화를 더 불러온다.
+
+    화면을 열 때는 GET /cases/{case_id} 가 최근 대화를 함께 준다. 이 API 는
+    위로 스크롤해 그보다 앞선 대화를 볼 때만 쓴다.
+    """
     try:
-        return get_chat_history(request.app.state.database_engine, user.id, case_id)
+        return get_chat_history(
+            request.app.state.database_engine,
+            user.id,
+            case_id,
+            cursor=cursor,
+        )
     except ChatNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from None
     except ChatNotReadyError as error:
@@ -44,9 +66,16 @@ def chat_messages(case_id: int, request: Request, user: CurrentUser) -> ChatMess
 
 
 @router.post(
-    "/{case_id}/chat/messages",
+    "/{case_id}/messages",
     response_model=ChatTurnResponse,
-    responses={**NOT_FOUND, **CONFLICT, **BAD_GATEWAY, **SERVICE_UNAVAILABLE},
+    summary="AI 에게 질문",
+    description="분석 결과에 대해 질문하고 AI 답변을 받습니다.",
+    responses=describe(
+        {**UNAUTHORIZED, **BAD_REQUEST, **NOT_FOUND, **CONFLICT, **SERVICE_UNAVAILABLE},
+        _400="질문 입력을 확인해 주세요.",
+        _409="아직 분석이 완료되지 않았습니다.",
+        _503="AI 서비스를 사용할 수 없습니다.",
+    ),
 )
 async def send_chat_message(
     case_id: int,
@@ -71,13 +100,8 @@ async def send_chat_message(
             detail=str(error),
         ) from None
     except ChatGenerationError as error:
-        error_status = (
-            status.HTTP_502_BAD_GATEWAY
-            if error.code == "LLM_INVALID_RESPONSE"
-            else status.HTTP_503_SERVICE_UNAVAILABLE
-        )
         raise HTTPException(
-            status_code=error_status,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
                 "code": error.code,
                 "message": str(error),

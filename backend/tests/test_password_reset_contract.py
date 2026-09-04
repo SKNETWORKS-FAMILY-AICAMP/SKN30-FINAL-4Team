@@ -21,23 +21,35 @@ def test_full_limiter_keeps_live_counters_and_releases_expired_ones(monkeypatch)
     now = [1000.0]
     monkeypatch.setattr("app.services.password_reset.time.monotonic", lambda: now[0])
     limiter = ResetRateLimiter()
-    limiter.MAX_KEYS = 1
-    assert all(limiter.allow_confirm("first") for _ in range(10))
-    assert not limiter.allow_confirm("first")
-    assert not limiter.allow_confirm("new")
-    assert not limiter.allow_confirm("first")
+    limiter.MAX_KEYS = 2
+    assert all(limiter.allow_request("first", "first@example.com") for _ in range(5))
+    assert not limiter.allow_request("first", "first@example.com")
+    assert not limiter.allow_request("new", "new@example.com")
     now[0] += 900
-    assert limiter.allow_confirm("new")
+    assert limiter.allow_request("new", "new@example.com")
 
 
 def test_openapi_reset_validation_matches_actual_envelope():
     settings = Settings(_env_file=None, database_url="postgresql+psycopg://test:test@localhost/test", jwt_secret="x" * 32)
     schema = create_app(settings).openapi()
-    for action in ("request", "confirm"):
-        operation = schema["paths"][f"/api/v1/auth/password-reset/{action}"]["post"]
-        # 오류는 모든 업무 API 가 같은 봉투를 쓴다.
-        schema_ref = operation["responses"]["422"]["content"]["application/json"]["schema"]
-        assert schema_ref["$ref"].endswith("/ErrorEnvelope")
-        assert not operation.get("security")
+    operation = schema["paths"]["/api/v1/auth/password/reset/request"]["post"]
+    # 실패 응답은 화면 문구 하나만 담는다.
+    schema_ref = operation["responses"]["400"]["content"]["application/json"]["schema"]
+    assert schema_ref["$ref"].endswith("/PasswordResetResponse")
+    assert schema["components"]["schemas"]["PasswordResetResponse"]["required"] == ["message"]
+    assert not operation.get("security")
+    confirm = schema["paths"]["/api/v1/auth/password/reset/confirm"]["post"]
+    assert confirm["responses"]["400"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/PasswordResetResponse"
+    )
+    assert "422" not in operation["responses"]
+    assert "429" not in confirm["responses"]
     operations = sum(method in {"get", "post", "put", "delete", "patch"} for path in schema["paths"].values() for method in path)
-    assert operations == 16
+    assert operations == 15
+
+
+def test_password_change_uses_the_confirmed_route():
+    settings = Settings(_env_file=None, database_url="postgresql+psycopg://test:test@localhost/test", jwt_secret="x" * 32)
+    schema = create_app(settings).openapi()
+    assert "/api/v1/auth/password/change" in schema["paths"]
+    assert "/api/v1/auth/change-password" not in schema["paths"]
