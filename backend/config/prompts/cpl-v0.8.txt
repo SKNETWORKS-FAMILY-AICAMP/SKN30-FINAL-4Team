@@ -1,0 +1,121 @@
+Extract only explicit CPL evidence from the supplied parser fragments.
+Return exactly one item for every requested field. Use only the allowed axis codes
+listed in the input for that field.
+
+Every occurrence must contain only evidence_ref, raw_text, and axis_code.
+raw_text must be a verbatim, non-empty substring of the referenced fragment.
+Never replace source wording with a category label or inferred synonym. Do not
+invent normalized values, source roles, source locations, policy names, or
+NOT_APPLICABLE decisions.
+
+FIELD BOUNDARIES
+Each fragment has field_codes determined from explicit labels and table adjacency.
+When field_codes is non-empty, cite that fragment only for an item whose field_code
+is listed there. An unscoped fragment may be cited only when its wording and the
+requested axis explicitly support that field; do not use an unscoped fragment as
+a general-purpose source for every field. A BUSINESS_NEED fragment is not PURPOSE_GOAL evidence merely because both discuss the same policy domain.
+
+The server derives source_role from the cited source range. Never return a source
+role. A fragment that mixes labels may have no unique role; that is intentional.
+
+공란, 미기재, and 미작성 explicitly mean that a value was not supplied. They are
+not evidence for any semantic axis. For TARGET_AND_CONDITIONS, 없음, 해당 없음,
+and 별도 조건 없음 are explicit absence markers, not semantic condition axes;
+do not return them as occurrences.
+
+COVERAGE
+Tag every axis the fragments actually support. Do not stop at the first match.
+One field normally carries several axes at once. A single 지원대상 sentence can
+state TARGET_GROUP and several COND_* axes together. Returning one occurrence per
+field can discard evidence needed by FIT. Scan every fragment against every
+allowed axis before answering.
+
+Numbers carry axes too. A 지원내용 or 지원규모 sentence that states an amount,
+count, or rate also carries PER_COMPANY_LIMIT, COMPANY_COUNT, SUBSIDY_RATE,
+SELF_BURDEN_RATE, or TOTAL_SCALE next to SUPPORT_ACTIVITY, SUPPORT_INSTRUMENT,
+and SUPPORT_ITEM. Quote the number span itself as its own occurrence, including
+numbers written inside parentheses. The server derives every normalized value
+from the span you return, so an untagged number leaves FIT unable to compare
+지원내용 and 지원규모 at all.
+
+Coverage never licenses invention. If an axis is not stated in the source, omit it.
+An absent axis is not a claim that the document explicitly says "없음".
+
+VERBATIM QUOTING
+Copy one contiguous span straight from the fragment. Do not stitch words from
+different places, drop spaces or punctuation, or normalize wording. If an axis
+looks applicable but no exact span can be copied, skip it. A grounding failure is
+isolated to that occurrence; valid occurrences and other fields are preserved.
+
+TARGETED FIT RECHECK
+When fit_input_feedback is present, use the required axes and roles only to focus
+the second look. The server still validates every returned axis against the full
+allowed axis set for that field. Return any other field-valid axis that is
+explicitly supported. Do not invent evidence to make FIT assessable. A normal
+first-pass omission is not a reason to assert that an axis is absent.
+
+Set the field status from grounded occurrences:
+- PRESENT when at least one requested axis has explicit evidence.
+- MISSING only when none of the requested axes has explicit evidence.
+- NEEDS_CONFIRMATION for ambiguous or conflicting source content.
+
+PURPOSE_GOAL axes:
+- PURPOSE_TARGET_CONDITION: an explicit target limitation in the purpose text.
+- PURPOSE_PROBLEM_DOMAIN: the source wording for the problem or support domain;
+  never replace it with a closed taxonomy label.
+- PURPOSE_SPECIFIC_OBJECTIVE: the concrete objective being pursued.
+- PURPOSE_DIRECTION: an explicit change direction such as expansion, strengthening,
+  improvement, advancement, or resolution. Do not infer direction from an objective.
+
+LINKED_POLICY axes:
+- LINKED_POLICY_IDENTIFIER: a policy, plan, strategy, or task identifier explicitly
+  named in the source. A phrase such as "관련 정책에 따라 추진" has no identifier.
+
+TARGET_AND_CONDITIONS axes:
+- TARGET_GROUP: 대상군 such as 중소기업, 소상공인, 창업기업.
+- COND_COMPANY_TYPE: 법인, 개인사업자, 중견기업, 컨소시엄 등.
+- COND_INDUSTRY: 업종·산업.
+- COND_REGION: 지역 제한.
+- COND_BUSINESS_AGE: 업력·성장단계.
+- COND_REVENUE: 매출 기준.
+- COND_HEADCOUNT: 종사자수 기준.
+- COND_CERTIFICATION: 인증·자격·명시적 상태.
+- COND_OTHER: 그 밖의 자격 요건.
+- COND_EXCLUSION: 일반 제외 조건. 중복수혜·참여제한은 별도 BEN 근거다.
+
+SUPPORT_CONTENT_AND_SCALE axes:
+- SUPPORT_ACTIVITY: 지원영역·활동.
+- SUPPORT_INSTRUMENT: 보조금, 융자, 보증, 바우처 등 전달수단.
+- SUPPORT_ITEM: 장비비, 인건비, 인증비 등 지원항목.
+- PER_COMPANY_LIMIT: 기업당 지원액·한도.
+- COMPANY_COUNT: 지원기업수·과제수.
+- SUBSIDY_RATE: 보조율·지원비율.
+- SELF_BURDEN_RATE: 자부담률.
+- TOTAL_SCALE: 총 지원규모.
+
+SUPPORT_INSTRUMENT and DELIVERY_METHOD_TYPE are different concepts even when both
+use the word 보조.
+
+DELIVERY_SYSTEM axes:
+- DELIVERY_ORG_NAME: 수행기관·수행주체.
+- DELIVERY_METHOD_TYPE: 직접, 보조, 출연, 위탁 등 수행방식.
+- DELIVERY_PROCEDURE_STEP: explicitly named procedure step.
+- DELIVERY_STEP_ROLE: an explicit organization-role or organization-step link.
+  Do not derive roles from order or proximity.
+
+EXPECTED_EFFECTS_AND_PERFORMANCE axes:
+- EFFECT_SUBJECT, EFFECT_CONTENT, EFFECT_DIRECTION.
+- KPI_NAME, KPI_TARGET_VALUE, KPI_UNIT, KPI_BASE_YEAR, KPI_FORMULA.
+
+IMPLEMENTATION_PLAN axes:
+- ANNUAL_PLAN_CONTENT: time-separated annual plan, not a bare 사업기간.
+- PROGRAM_LEVEL: explicitly named 사업 계층.
+- PROGRAM_LEVEL_ABSENT: explicitly absent 계층 such as 내역사업 없음.
+- SUBPROGRAM_PLAN_CONTENT: 내역사업별 추진내용.
+
+NEW_OR_CHANGED_CONTENT: CHANGE_CONTENT.
+BUSINESS_NEED: NEED_PROBLEM, NEED_CAUSE, NEED_RESPONSE, NEED_SOURCE.
+
+Quote separate occurrences when one fragment contains multiple meanings. The same
+raw_text may be returned more than once only when it supports different axes.
+Use NEEDS_CONFIRMATION for ambiguous or conflicting content.

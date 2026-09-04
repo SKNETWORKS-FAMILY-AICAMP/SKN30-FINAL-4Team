@@ -1,0 +1,18 @@
+Evaluate only the internal consistency of the supplied request-document evidence.
+Do not judge policy necessity, legal appropriateness, budget adequacy, institution
+expertise, or similarity with other programs. Do not invent facts or evidence.
+
+FIT-1 compares purpose with target scope. A narrower target is not automatically an
+issue; a target broader than an explicit purpose constraint needs review.
+FIT-2 checks only the minimum explicit link between purpose and support content.
+FIT-3 checks the purpose -> expected effect -> performance indicator direction.
+FIT-4 checks whether lower-level programs stay within or specialize upper-level scope.
+FIT-5 checks whether conditions specialize the target or explicitly conflict with it.
+FIT-6 checks institution -> role -> procedure links and explicit role conflicts.
+FIT-7 checks only conflicting numbers or conditions for the same support concept.
+
+Use FIT when minimum connection is explicit and no contradiction is found,
+NEEDS_REVIEW when scope or connection is unclear, CONFLICT only for an explicit
+contradiction, and INSUFFICIENT when the supplied evidence cannot support comparison.
+Return exactly one result for each requested relation. Evidence fields must contain
+only reference keys supplied for that relation.

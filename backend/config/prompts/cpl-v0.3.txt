@@ -1,0 +1,115 @@
+Extract only explicit CPL evidence from the supplied parser fragments.
+Return exactly one item for every requested field. Use only the allowed axis codes
+listed in the input for that field.
+
+Every occurrence must contain only evidence_ref, raw_text, and axis_code.
+raw_text must be a verbatim, non-empty substring of the referenced fragment.
+Never replace source wording with a category label or inferred synonym. Example
+labels in axis descriptions are explanations, not raw_text values: if the source
+says "해외시장 진출", do not quote "수출" unless "수출" is actually present.
+Do not invent normalized values, source roles, source locations, policy judgments,
+or NOT_APPLICABLE decisions.
+
+COVERAGE
+Tag every axis the fragments actually support. Do not stop at the first match.
+One field normally carries several axes at once. A single 지원대상 sentence often
+states TARGET_GROUP and two or three COND_* axes together; a 수행체계 sentence
+may state more than one delivery axis. Returning one occurrence per field can
+discard evidence that later comparison stages require.
+Scan every fragment against every allowed axis for that field before answering.
+
+Coverage never licenses invention. If an axis is not stated in the source, omit
+it. An axis with no supporting wording is simply absent — that is a valid and
+expected outcome.
+
+VERBATIM QUOTING OUTRANKS COVERAGE
+Every raw_text is checked as an exact substring of its own fragment. Copy one
+contiguous span straight from the fragment. Do not stitch words from different
+places, do not drop or add spaces or punctuation, do not shorten a phrase to make
+it fit an axis, and do not normalise 「」·() or spacing.
+When an axis looks applicable but you cannot copy an exact span for it, skip that
+axis. A skipped axis costs one axis. A quote that fails the substring check
+discards the entire extraction for every field, which is far worse.
+
+PURPOSE_GOAL axes:
+- PURPOSE_TARGET_CONDITION: 대상 한정 조건. wording that explicitly limits the
+  supported target set. 경쟁력 강화, 디지털 전환, 시장진출, and 기술사업화 alone
+  are not target conditions.
+- PURPOSE_PROBLEM_DOMAIN: 문제·지원 영역. the source wording that expresses the
+  problem or support domain. Do not convert it to a closed taxonomy label.
+- PURPOSE_SPECIFIC_OBJECTIVE: 구체적 목표. the concrete objective being pursued,
+  such as source wording about market entry, commercialization, productivity, or
+  financing.
+- PURPOSE_DIRECTION: 변화 방향. explicit change or direction wording such as
+  expansion, promotion, strengthening, improvement, advancement, or resolution.
+  Tag both objective and direction only when the source explicitly states both.
+  Do not infer a direction from an objective alone.
+
+TARGET_AND_CONDITIONS axes:
+- TARGET_GROUP: 대상군. 중소기업, 소상공인, 창업기업, 예비창업자 등
+- COND_COMPANY_TYPE: 기업유형. 법인, 개인사업자, 중견기업, 컨소시엄 등
+- COND_INDUSTRY: 업종·산업. ICT, 제조, 바이오, 식품 등
+- COND_REGION: 지역. 소재지 제한
+- COND_BUSINESS_AGE: 업력·성장단계. 창업 7년 이내, 도약기 등
+- COND_REVENUE: 매출 기준
+- COND_HEADCOUNT: 종사자수 기준
+- COND_CERTIFICATION: 인증·자격·명시적 상태. 벤처인증, 이노비즈, 법령상 지정상태 등
+- COND_OTHER: 위에 속하지 않는 자격 요건. M&A 이력, 제휴 계획 등
+- COND_EXCLUSION: 제외 조건. 중복수혜 제한, 참여제한 등
+
+A target sentence that names both who is eligible and what they must satisfy
+carries TARGET_GROUP and one or more COND_* axes. Tag each condition separately
+with the axis that matches it.
+
+SUPPORT_CONTENT_AND_SCALE axes:
+- SUPPORT_ACTIVITY: 지원영역·활동. 스마트공장 구축, 해외전시회 참가,
+  기술개발, 시제품 제작, 컨설팅, 교육 등
+- SUPPORT_INSTRUMENT: 지원 전달수단. 보조금, 융자, 보증, 바우처 등
+- SUPPORT_ITEM: 지원항목. 장비비, 인건비, 인증비, 마케팅비 등
+- PER_COMPANY_LIMIT: 기업당 지원액·한도
+- COMPANY_COUNT: 지원기업수·과제수
+- SUBSIDY_RATE: 보조율·지원비율
+- SELF_BURDEN_RATE: 자부담률
+- TOTAL_SCALE: 총 지원규모
+
+SUPPORT_INSTRUMENT (보조금·융자·보증·바우처) and DELIVERY_METHOD_TYPE
+(직접·보조·출연·위탁) are different concepts even though both use the word 보조.
+
+DELIVERY_SYSTEM axes:
+- DELIVERY_ORG_NAME: 수행기관·수행주체. 주무부처, 전문기관, 수행기관 등
+- DELIVERY_METHOD_TYPE: 수행방식. 직접, 보조, 출연, 위탁
+- DELIVERY_PROCEDURE_STEP: 명시된 수행절차 단계. 공고, 신청, 선정, 협약, 지원,
+  사후관리 등. An organization chain or arrow by itself is not a procedure step.
+- DELIVERY_STEP_ROLE: 단계별 담당기관·역할. 어느 기관이 어느 단계를 맡는지.
+  Tag only an organization-role or organization-step link explicitly stated in
+  the source; do not derive roles from order or proximity.
+
+EXPECTED_EFFECTS_AND_PERFORMANCE axes:
+- EFFECT_SUBJECT: 효과 대상. 누구에게 미치는 효과인지
+- EFFECT_CONTENT: 효과 내용
+- EFFECT_DIRECTION: 변화 방향. 증가, 개선, 고도화 등
+- KPI_NAME: 지표명
+- KPI_TARGET_VALUE: 목표값
+- KPI_UNIT: 단위
+- KPI_BASE_YEAR: 기준연도
+- KPI_FORMULA: 산식·측정방법
+
+IMPLEMENTATION_PLAN axes:
+- ANNUAL_PLAN_CONTENT: 연차별 추진내용. 1차년도·2차년도처럼 시간에 따라 나뉜 계획.
+  A bare 사업기간 statement is not an annual plan; it belongs to BUSINESS_PERIOD.
+- PROGRAM_LEVEL: 문서에 명시된 사업 계층 표현. 세부사업, 내역사업, 내내역사업
+- PROGRAM_LEVEL_ABSENT: 계층 부재를 명시한 표현. "내역사업 없음" 등
+- SUBPROGRAM_PLAN_CONTENT: 내역사업별 추진내용
+
+NEW_OR_CHANGED_CONTENT axis:
+- CHANGE_CONTENT: 신설 또는 변경의 주요 내용
+
+BUSINESS_NEED axes:
+- NEED_PROBLEM: 문제 상황
+- NEED_CAUSE: 원인
+- NEED_RESPONSE: 대응 방향
+- NEED_SOURCE: 근거 출처. 통계, 조사, 정책 문서 등
+
+Quote separate occurrences when a fragment contains multiple meanings. The same
+raw_text may be returned more than once only when it supports different axis codes.
+Use NEEDS_CONFIRMATION for ambiguous or conflicting content.

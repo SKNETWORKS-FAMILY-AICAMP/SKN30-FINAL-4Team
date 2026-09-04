@@ -3,15 +3,15 @@
 ```text
 ml/
 ├─ data/
-│   ├─ raw/          원천 첨부파일 (gitignore · 추출 재실행에만 필요)
-│   └─ processed/    기준 테이블
-├─ pipelines/        수집 → 추출 → 기준 테이블 구축 코드
-├─ reports/          측정 리포트
+│   ├─ raw/          원천 첨부파일 (gitignore · 다운로드 산출물)
+│   └─ processed/    수집 표본 2종
+├─ pipelines/        수집 코드
+├─ reports/          수집 실적·manifest
+├─ figures/          수집 진단 그림
 └─ tools/            smoke_test.py — 재현 점검
 ```
 
-> 이 브랜치는 **피처 엔지니어링 단계까지**를 담는다. 모델 학습·평가는
-> `machine-learning` / `deep-learning` 브랜치에 있다. 브랜치 순서는
+> 이 브랜치는 **수집 단계까지**를 담는다. 브랜치 순서는
 > `data-collection → feature-engineering → machine-learning → deep-learning`.
 
 ## pipelines/ — 실행 순서가 곧 의존 순서다
@@ -32,6 +32,14 @@ ml/
 
 > `e01_documents*.jsonl` 은 gitignore 대상이지만 **임시파일이 아니라 F04 이후
 > 전 단계의 입력**이다. 지우면 하류가 재현되지 않는다.
+| `d01_download_api.py` | Open API 공고문 다운로드 → `data/raw/attachments/api/` · `reports/d01_manifest_api.csv` |
+| `d02_sample_list.py` | 목록 층화 표본 **5,000건** (56개 층, seed 42) → `list_sample.parquet` |
+| `d02b_targeted_sample.py` | 지원성격 부족 유형(설비·교육훈련) 겨냥 보강 **2,856건** → `list_sample_targeted.parquet` |
+| `d03_download_list.py` | 표본 공고문 다운로드 → `data/raw/attachments/list/` · `reports/d03_manifest_list.csv` |
+| `common.py` | 원천 경로·분류체계·정규화 (라이브러리) |
+
+> `d02b` 의 `target_support_type` 은 **다운로드 우선순위를 정하려는 겨냥일 뿐
+> 확정 라벨이 아니다.** 실제 라벨은 다운로드 후 원문 기반으로 재분류한다.
 
 ## 두 가지 주의 — 옮기기 전에 읽을 것
 

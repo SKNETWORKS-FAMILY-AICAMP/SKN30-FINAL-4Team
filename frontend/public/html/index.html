@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Pre-review - 프로젝트 화면 목록</title>
+        <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
+        <!-- Tailwind CSS CDN -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+        <style>
+            button:not(:disabled):not([disabled]),
+            [role="button"]:not(:disabled):not([disabled]) {
+                cursor: pointer;
+            }
+            .custom-scrollbar::-webkit-scrollbar {
+                width: 6px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background-color: rgba(67, 71, 78, 0.3);
+                border-radius: 9999px;
+            }
+        </style>
+    </head>
+    <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col items-center justify-center p-6">
+        <!-- 컨텐츠 영역 넓이 확장 및 카드 그리드 배치를 위한 전체 컨테이너 -->
+        <div class="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-slate-200 p-8 flex flex-col max-h-[90vh]">
+            <!-- 헤더 영역 -->
+            <div class="mb-6 pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-blue-600" style="font-size: 32px">folder_open</span>
+                        프로젝트 화면 목록
+                    </h1>
+                    <p class="text-sm text-slate-500 mt-1">Stitch에서 개발된 HTML 화면 리스트</p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <!-- Color Chip -->
+                    <a href="color-chip.html" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors shrink-0">
+                        <span class="material-symbols-outlined text-base">palette</span>
+                        Color Chip
+                    </a>
+
+                    <!-- Stitch 새창열기 링크 버튼 -->
+                    <a href="https://stitch.withgoogle.com/projects/13332842763866194038" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors shrink-0">
+                        <span class="material-symbols-outlined text-base">open_in_new</span>
+                        Stitch
+                    </a>
+                </div>
+            </div>
+
+            <!-- 링크 리스트 영역 (스크롤 적용 및 3단 그리드 배치) -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 auto-rows-max">
+                <!-- SCR-001 -->
+                <a href="SCR-001_Landing.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">description</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-001</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Landing Page</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-002 -->
+                <a href="SCR-002_Login.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">lock</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-002</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Login Page</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-003 -->
+                <a href="SCR-003_ResetPassword.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">key</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-003</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Reset Password</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-003-P1 -->
+                <a href="SCR-003-P1_PasswordChange.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">settings_accessibility</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-003-P1</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Password Change Popup</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-004 -->
+                <a href="SCR-004_Upload.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">cloud_upload</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-004</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">File Upload</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-004 Dim -->
+                <a href="SCR-004_Upload_dim.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">hourglass_top</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-004</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">File Upload (Dim/Loading)</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-005 -->
+                <a href="SCR-005_Result.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">task_alt</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-005</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Result View</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-005 Alpha -->
+                <a href="SCR-005_Result_alpha.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">analytics</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-005</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Result View _Alpha</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-005 AI -->
+                <a href="SCR-005_Result_ai.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">forum</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-005</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Result View _AI 질의응답</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-006 -->
+                <a href="SCR-006_PasswordChange.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">lock_reset</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-006</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Password Change</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- SCR-007-P1 -->
+                <a href="SCR-007-P1_HistoryView.html" class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/30 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-slate-400 group-hover:text-blue-500 group-hover:scale-110 transition-transform shrink-0">history</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">SCR-007-P1</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">History View Popup</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- Alert 1: 확인형 (Alert) -->
+                <a href="COMMON-01_Alert.html" class="flex items-center justify-between p-4 rounded-xl border border-amber-200 bg-amber-50/20 hover:border-amber-500 hover:bg-amber-50/40 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-amber-500 group-hover:scale-110 transition-transform shrink-0">info</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">COMMON</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Alert</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- Alert 2: 컨펌형 (Confirm) -->
+                <a href="COMMON-02_Confirm.html" class="flex items-center justify-between p-4 rounded-xl border border-amber-200 bg-amber-50/20 hover:border-amber-500 hover:bg-amber-50/40 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-amber-500 group-hover:scale-110 transition-transform shrink-0">help</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">COMMON</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Confirm</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+
+                <!-- Sidebar -->
+                <a href="COMMON-03_SideBar.html" class="flex items-center justify-between p-4 rounded-xl border border-amber-200 bg-amber-50/20 hover:border-amber-500 hover:bg-amber-50/40 transition-all group">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="material-symbols-outlined text-amber-500 group-hover:scale-110 transition-transform shrink-0">dock</span>
+                        <div class="truncate">
+                            <span class="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">COMMON</span>
+                            <h2 class="font-medium text-slate-800 mt-1 truncate">Sidebar</h2>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-slate-400 group-hover:translate-x-1 transition-transform shrink-0">chevron_right</span>
+                </a>
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,29 @@
+Compare the current request with one retrieved announcement on exactly four axes:
+purpose (SIM-1), target (SIM-2), content (SIM-3), and delivery (SIM-4).
+Use only the supplied evidence and return only supplied evidence reference keys.
+Do not infer missing facts or decide that the programs are duplicates.
+
+The profile_key values are the common comparison contract. The same source excerpt
+may be offered under several profile keys because a public announcement summary is
+not yet field-level structured. Cite it only for a meaning explicitly present in the
+excerpt. An example or a profile_key name is not evidence and must never replace the
+verbatim excerpt.
+
+For purpose, compare the problem area, policy direction, and intended change.
+For target, compare the actual eligible sets, including business type, industry,
+region, business age, revenue, headcount, qualifications, and exclusions. Treat
+nationwide versus a specific region as possible overlap; treat explicit disjoint
+sets as different. Priority support is an eligibility condition only when the text
+explicitly makes it mandatory. Duplicate-benefit restrictions belong to BEN, not SIM.
+For content, compare supported activity, support instrument, and supported item.
+Do not use a similar amount alone as evidence of similar content.
+For delivery, compare delivery actors, delivery method, and major procedure. This is
+an explanatory axis and must not decide duplication by itself.
+
+Use SIMILAR only for explicit substantial overlap, PARTIAL for explicit partial or
+subset overlap, DIFFERENT for explicit non-overlap, and INSUFFICIENT when the supplied
+evidence cannot support comparison. Preserve both common points and differences.
+Do not calculate scores or grades; deterministic code applies the versioned policy.
+For every status except SIMILAR, return a non-empty reason_code. Every assessable axis
+must cite at least one request evidence ref and one candidate evidence ref. If an axis
+is missing usable evidence on either side, return INSUFFICIENT rather than guessing.
