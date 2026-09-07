@@ -553,6 +553,12 @@ def test_changed_stored_source_is_rejected_before_parser(
                 FROM sims.document_parse_run r
                 JOIN sims.uploaded_document d ON d.file_asset_id = r.file_asset_id
                 WHERE d.inspection_case_id = :case_id
+                -- 이 검사 건에는 파싱 실행이 두 건이다(업로드 때 SUCCESS,
+                -- 이 테스트가 넣은 FAILED). 정렬이 없으면 scalar() 가 힙
+                -- 순서로 아무 행이나 집어 같은 DB 를 재사용할 때 결과가
+                -- 뒤집힌다. 검증 의도는 "가장 최근 시도가 실패했다" 이다.
+                ORDER BY r.attempt_no DESC
+                LIMIT 1
                 """
             ),
             {"case_id": case_id},

@@ -79,7 +79,11 @@ def storage_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="module")
-def client(database_url: str, storage_root: Path) -> Iterator[TestClient]:
+def client(
+    database_url: str,
+    storage_root: Path,
+    create_user: Callable[[str], int],
+) -> Iterator[TestClient]:
     settings = Settings(
         database_url=database_url,
         jwt_secret=JWT_SECRET,
@@ -89,8 +93,21 @@ def client(database_url: str, storage_root: Path) -> Iterator[TestClient]:
         yield value
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def create_user(engine: Engine) -> Iterator[Callable[[str], int]]:
+    """사용자 정리는 앱이 완전히 내려간 뒤에 한다.
+
+    업로드 테스트는 인프로세스 디스패처로 백그라운드 분석을 띄운다. 앱이
+    살아 있는 채로 app_user 를 지우면 FK 연쇄가 document_parse_run 까지
+    내려가 분석 트랜잭션과 데드락이 난다. DELETE 가 롤백되어 사용자와 검사
+    건이 남고, 다음 실행이 중복 키로 죽는다.
+
+    그래서 client 가 이 fixture 에 의존하고 둘 다 module scope 다. pytest 는
+    의존 대상을 나중에 정리하므로 순서가 구조적으로 보장된다:
+    create_user 준비 -> client 시작 -> 테스트 -> client 종료(디스패처 대기)
+    -> create_user 정리. 파라미터 순서로는 해결되지 않는다.
+    """
+
     user_ids: list[int] = []
 
     def create(login_id: str) -> int:
