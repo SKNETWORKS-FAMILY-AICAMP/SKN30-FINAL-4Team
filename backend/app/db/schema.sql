@@ -702,6 +702,64 @@ CREATE TABLE sims.announcement_attachment (
 CREATE INDEX ix_announcement_attachment_fetch
     ON sims.announcement_attachment (fetch_status, announcement_version_id);
 
+-- Slice 4b: parsed announcement source profile, separated from Common IR.
+CREATE TABLE sims.announcement_profile (
+    id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    announcement_version_id bigint NOT NULL
+                            REFERENCES sims.announcement_version(id) ON DELETE CASCADE,
+    source_profile_id   text NOT NULL,
+    profile_schema_version text NOT NULL,
+    producer_version    text NOT NULL,
+    source_sha256_hex   text,
+    model_profile       text,
+    prompt_bundle_version text,
+    status              text NOT NULL,
+    profile_json        jsonb NOT NULL DEFAULT '{}'::jsonb,
+    diagnostics         jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_announcement_profile_generation
+        UNIQUE NULLS NOT DISTINCT (
+            announcement_version_id, source_profile_id, profile_schema_version,
+            source_sha256_hex, producer_version, model_profile,
+            prompt_bundle_version
+        ),
+    CONSTRAINT ck_announcement_profile_status
+        CHECK (status IN ('OK', 'FAILED')),
+    CONSTRAINT ck_announcement_profile_source_id_not_blank
+        CHECK (btrim(source_profile_id) <> ''),
+    CONSTRAINT ck_announcement_profile_schema_version_not_blank
+        CHECK (btrim(profile_schema_version) <> ''),
+    CONSTRAINT ck_announcement_profile_producer_version_not_blank
+        CHECK (btrim(producer_version) <> ''),
+    CONSTRAINT ck_announcement_profile_source_sha256
+        CHECK (source_sha256_hex IS NULL OR source_sha256_hex ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_announcement_profile_model_profile
+        CHECK (model_profile IS NULL OR btrim(model_profile) <> ''),
+    CONSTRAINT ck_announcement_profile_prompt_bundle
+        CHECK (prompt_bundle_version IS NULL OR btrim(prompt_bundle_version) <> ''),
+    CONSTRAINT ck_announcement_profile_generation_metadata
+        CHECK (
+            model_profile IS NOT NULL
+            AND btrim(model_profile) <> ''
+            AND prompt_bundle_version IS NOT NULL
+            AND btrim(prompt_bundle_version) <> ''
+        ),
+    CONSTRAINT ck_announcement_profile_ok_generation_lineage
+        CHECK (
+            status <> 'OK'
+            OR (
+                source_sha256_hex IS NOT NULL
+                AND model_profile IS NOT NULL
+                AND btrim(model_profile) <> ''
+                AND prompt_bundle_version IS NOT NULL
+                AND btrim(prompt_bundle_version) <> ''
+            )
+        )
+);
+
+CREATE INDEX ix_announcement_profile_version_status
+    ON sims.announcement_profile (announcement_version_id, status);
+
 CREATE TABLE sims.announcement_subprogram_period (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     announcement_version_id bigint NOT NULL
@@ -944,6 +1002,8 @@ CREATE TABLE sims.announcement_embedding (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     announcement_version_id bigint NOT NULL
                             REFERENCES sims.announcement_version(id) ON DELETE CASCADE,
+    -- Legacy corpus embeddings keep NULL; 4b profile embeddings set the row id.
+    announcement_profile_id bigint,
     embedding_profile_id bigint NOT NULL
                             REFERENCES sims.embedding_profile(id),
     input_text          text NOT NULL,
@@ -952,6 +1012,9 @@ CREATE TABLE sims.announcement_embedding (
     created_at          timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_announcement_embedding
         UNIQUE (announcement_version_id, embedding_profile_id),
+    CONSTRAINT fk_announcement_embedding_profile_lineage
+        FOREIGN KEY (announcement_profile_id)
+        REFERENCES sims.announcement_profile(id) ON DELETE SET NULL,
     CONSTRAINT ck_announcement_embedding_input_text_not_blank
         CHECK (btrim(input_text) <> ''),
     CONSTRAINT ck_announcement_embedding_sha256
@@ -960,6 +1023,9 @@ CREATE TABLE sims.announcement_embedding (
 
 CREATE INDEX ix_announcement_embedding_profile
     ON sims.announcement_embedding (embedding_profile_id, announcement_version_id);
+
+CREATE INDEX ix_announcement_embedding_profile_lineage
+    ON sims.announcement_embedding (announcement_profile_id, embedding_profile_id);
 
 CREATE TABLE sims.chunk_embedding (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
