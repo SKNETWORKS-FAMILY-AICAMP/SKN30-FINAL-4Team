@@ -89,22 +89,37 @@ def main():
           and meta["project_duration_years"] == 3.0,
           "program=%s · project=%s" % (meta["program_duration_years"],
                                        meta["project_duration_years"]))
-    check("3 project_duration 에 3.0 이 들어간다",
-          f["project_duration"] == 3.0
-          and (meta["duration_evidence"]["project"] or {}).get("basis") == "지원기간",
-          "값 %s · 근거 %s" % (f["project_duration"],
-                             (meta["duration_evidence"]["project"] or {}).get("basis")))
+    # 기본 정책은 학습 규칙(B) — 기존 pool 이 학습 규칙으로 만들어져 있어
+    # 신규 요청만 지원기간으로 바꾸면 같은 축에서 다른 것을 재게 된다.
+    check("3a 기본 정책은 학습 규칙 → project_duration 5.0",
+          f["project_duration"] == 5.0
+          and meta["duration_policy"] == PA.DURATION_POLICY_TRAINING,
+          "값 %s · 근거 %s" % (f["project_duration"], meta["duration_basis"]))
+    alt = PA.adapt(text, base=dict(BASE),
+                   duration_policy=PA.DURATION_POLICY_SUPPORT_FIRST)
+    check("3b 지원기간 우선 정책을 고르면 3.0",
+          alt["features"]["project_duration"] == 3.0
+          and alt["duration_basis"] == "지원기간",
+          "값 %s" % alt["features"]["project_duration"])
+    check("3c 두 의미는 정책과 무관하게 항상 보존된다",
+          meta["duration_evidence"]["training_rule_value"] == 5.0
+          and meta["duration_evidence"]["support_period_value"] == 3.0,
+          "학습규칙 %s · 지원기간 %s"
+          % (meta["duration_evidence"]["training_rule_value"],
+             meta["duration_evidence"]["support_period_value"]))
 
     # sanity guard 는 fixture 에서 발동하지 않는다(백틱 정규화로 28 이 애초에
     # 후보가 아니다). 규칙 자체가 사는지는 합성 입력으로 확인한다.
     syn = PA.adapt("◦(사업기간) 30년\n ㅇ (지원기간) 최대 15년")
     _, _, syn_rej = PA.extract_durations("◦(사업기간) 30년\n ㅇ (지원기간) 최대 15년")
     check("4 10년 초과 기간은 context 등급이어도 채택되지 않는다",
-          syn["project_duration_years"] is None
+          syn["features"]["project_duration"] is None
+          and syn["project_duration_years"] is None
           and syn["program_duration_years"] is None
           and len(syn_rej) == 2
-          and all(r["reason"] == "duration_out_of_range" for r in syn_rej),
-          "반려 %d건" % len(syn_rej))
+          and all(r["reason"] == "duration_out_of_range" for r in syn_rej)
+          and any(r.get("reason") == "duration_out_of_range" for r in syn["review"]),
+          "반려 %d건 · 모델값 None" % len(syn_rej))
 
     print("== 5~6 지원건수 의미")
     vals = [(c["value"], c["semantic"]) for c in meta["support_count_candidates"]]
@@ -154,7 +169,8 @@ def main():
         conf = M3.confidence(v)
         check("10 축 유효성이 의미까지 본다",
               v["project_duration"]["valid"] is True
-              and v["project_duration"].get("note") == "verified_support_period"
+              and v["project_duration"].get("note") == "training_rule_parity"
+              and v["project_duration"].get("semantic") == "지원기간"
               and v["log_support_count"]["valid"] is False
               and v["log_support_count"]["reason"] == "multiple_semantic_candidates"
               and conf["n_valid_axes"] == 2 and conf["confidence"] == "medium",

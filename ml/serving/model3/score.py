@@ -75,7 +75,20 @@ def axis_validity(meta):
             out[axis] = {"valid": False, "reason": reason}
             continue
         if axis == "project_duration":
-            basis = (dur or {}).get("basis")
+            # 무엇을 '유효' 로 볼지는 어댑터가 어느 정책으로 값을 골랐느냐에 달렸다.
+            #
+            #   training_rule        비교군 pool 과 **같은 규칙**으로 뽑은 값이다.
+            #                        의미는 섞여 있지만 pool 도 똑같이 섞여 있어
+            #                        거리 계산에서는 비교 가능하다 — valid.
+            #   support_period_first 의미를 좁힌 값이라, 실제로 지원기간 계열에서
+            #                        나왔을 때만 valid 로 본다.
+            policy = meta.get("duration_policy")
+            basis = meta.get("duration_basis") or (dur or {}).get("basis")
+            if policy == "training_rule":
+                out[axis] = {"valid": True, "basis": basis, "value": val,
+                             "note": "training_rule_parity",
+                             "semantic": (dur or {}).get("basis")}
+                continue
             if basis not in PROJECT_DURATION_BASES:
                 out[axis] = {"valid": False, "reason": "not_a_project_period",
                              "basis": basis, "value": val}

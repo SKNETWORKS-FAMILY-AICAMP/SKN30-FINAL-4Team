@@ -138,6 +138,38 @@ def _pick_duration(cands, role):
     return pool[0]
 
 
+# ------------------------------------------------- project_duration 정책
+# 모델에 들어갈 값을 어느 규칙으로 고를 것인가. 기본은 **학습 규칙**이다.
+#
+#   training_rule         백틱 연도만 고쳐 놓고 학습 때와 같은 규칙으로 뽑는다.
+#                         예시 문서에서 5.0(사업기간).
+#   support_period_first  지원기간 > 과제기간 > 수행기간 > 사업기간 순으로 고른다.
+#                         예시 문서에서 3.0.
+#
+# 왜 training_rule 이 기본인가 — Model 2 학습셋과 Model 3 비교군 pool 이 **이미
+# 학습 규칙으로** 만들어져 있다. 그 pool 의 project_duration 은 사업기간·지원기간·
+# 협약기간·융자기간이 섞인 값이다. 신규 요청만 지원기간으로 바꾸면 같은 축에서
+# 서로 다른 것을 재게 된다 — 거리가 커진 이유가 설계 때문인지 의미 차이 때문인지
+# 구분할 수 없다.
+#
+# support_period_first 가 의미상 더 정확한 것은 맞다. 그건 pool 을 다시 만들고
+# 재평가한 뒤에 기본으로 올릴 일이다(그때는 기간을 축 하나로 섞지 말고
+# 사업기간/지원기간/협약기간/융자기간으로 나누는 편이 낫다).
+DURATION_POLICY_TRAINING = "training_rule"
+DURATION_POLICY_SUPPORT_FIRST = "support_period_first"
+DURATION_POLICIES = (DURATION_POLICY_TRAINING, DURATION_POLICY_SUPPORT_FIRST)
+
+
+def training_rule_duration(text):
+    """학습 때와 같은 규칙. 단 백틱 축약연도만 미리 고쳐서 넣는다.
+
+    백틱 정규화는 의미 변경이 아니라 **오파싱 제거**다. `` `28년 `` 을 기간으로
+    읽는 것은 어느 정책에서도 옳지 않다(실측 28.0). 그 하나만 걷어내고 나머지
+    선택 규칙은 건드리지 않는다.
+    """
+    return AP.parse_duration(normalize_year_marks(text))
+
+
 # ---------------------------------------------------------------- 3 지원건수
 # 공용 COUNT_RE 는 `개` 를 요구해서 `4과제`·`6과제` 를 통째로 놓친다. 반대로
 # `지원과제(4개)` 는 잡는다 — 그래서 예시 문서에서 신규과제 수 자리에 3차년도
@@ -230,12 +262,21 @@ CANONICAL_FIELDS = ["support_type", "support_method", "support_unit", "amount_ty
                     "support_ratio"]
 
 
-def adapt(text, row_id=None, base=None):
+def adapt(text, row_id=None, base=None,
+          duration_policy=DURATION_POLICY_TRAINING):
     """사전협의서 원문 → canonical feature + 근거.
 
     base 로 문서에서 뽑을 수 없는 분류축(support_type 등)을 넘길 수 있다.
     모델 3 은 support_type 이 비면 그 행을 채점하지 않는다(원본 prepare 규칙).
+
+    duration_policy 는 모델에 들어갈 `project_duration` 을 어느 규칙으로 고를지
+    정한다. 기본은 학습 규칙이다 — 위 DURATION_POLICY_* 주석 참조. 의미를 나눈
+    `program_duration_years` / `project_duration_years` 는 정책과 무관하게 항상
+    함께 돌려주므로, 나중에 pool 을 다시 만들 때 그대로 쓸 수 있다.
     """
+    if duration_policy not in DURATION_POLICIES:
+        raise ValueError("알 수 없는 duration_policy: %r (허용: %s)"
+                         % (duration_policy, list(DURATION_POLICIES)))
     norm, dur_cands, dur_rejected = extract_durations(text)
     project = _pick_duration(dur_cands, "project")
     program = _pick_duration(dur_cands, "program")
@@ -261,9 +302,30 @@ def adapt(text, row_id=None, base=None):
                        "candidates": [c["value"] for c in counts
                                       if (c["semantic"] or "").startswith("new_projects")]})
 
+    # 모델에 들어갈 기간. 정책에 따라 고르되 상식 범위는 두 정책 모두에 건다 —
+    # 10년을 넘는 값은 실측상 기간이 아니라 오파싱이었고(28.0), 그것을 그대로
+    # 넣으면 학습 규칙과 맞추는 이득보다 축 하나를 망가뜨리는 손해가 크다.
+    train_value, train_basis = training_rule_duration(text)
+    lo, hi = AP.DURATION_SANE
+    duration_review = None
+    if train_value is not None and not (lo < train_value <= hi):
+        duration_review = {"policy_value": train_value, "basis": train_basis,
+                           "reason": "duration_out_of_range"}
+        train_value = None
+
+    if duration_review is not None:
+        review.append({"field": "project_duration", **duration_review})
+
+    if duration_policy == DURATION_POLICY_TRAINING:
+        model_duration = train_value
+        duration_basis = train_basis
+    else:
+        model_duration = project["value"] if project else None
+        duration_basis = project["label"] if project else None
+
     feats = dict(base or {})
     feats.setdefault("row_id", row_id)
-    feats["project_duration"] = project["value"] if project else None
+    feats["project_duration"] = model_duration
     feats["support_count"] = count_value
     feats["amount_type"] = amount_type
     feats["per_recipient"] = None if per_recip != per_recip else float(per_recip)
@@ -280,12 +342,18 @@ def adapt(text, row_id=None, base=None):
         "features": feats,
         "program_duration_years": program["value"] if program else None,
         "project_duration_years": project["value"] if project else None,
+        "duration_policy": duration_policy,
+        "duration_basis": duration_basis,
         "duration_evidence": {
+            "model_value": model_duration,
+            "training_rule_value": train_value,
+            "support_period_value": project["value"] if project else None,
             "project": project and {"value": project["value"], "basis": project["label"],
                                     "evidence": project["evidence"]},
             "program": program and {"value": program["value"], "basis": program["label"],
                                     "evidence": program["evidence"]},
             "rejected": dur_rejected,
+            "review": duration_review,
         },
         "support_count_candidates": [
             {k: c[k] for k in ("value", "semantic", "evidence", "raw")} for c in counts],
