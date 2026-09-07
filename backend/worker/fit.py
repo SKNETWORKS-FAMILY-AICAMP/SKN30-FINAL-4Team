@@ -18,19 +18,17 @@ CplResult 표시 구조를 다시 해석해서 관계를 만들었고, 그 재�
 
 from __future__ import annotations
 
-import asyncio
-import json
 import re
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from worker.llm_call import generate as shared_generate
 from app.ports.llm_client import (
     LLMClient,
     LLMInvalidResponseError,
     LLMTimeoutError,
     LLMUnavailableError,
-    Message,
 )
 
 from .analysis_inputs import facts_at, field_name_of, field_states_by_name, read_path
@@ -513,39 +511,16 @@ def _generate(
     response_schema: type[BaseModel],
     model_profile: str,
 ) -> BaseModel:
-    """포트 호출 한 번. ponytail: 워커가 동기라 여기서 asyncio.run 으로 끊는다.
+    """공용 래퍼에 위임한다. 오류 격리 계약은 worker/llm_call.py 한 곳에 있다."""
 
-    (profiles.py 의 selector 와 같은 이유·같은 방식이다. 워커를 async 루프
-    안에서 돌리게 되면 그때 두 곳을 함께 스레드로 뺀다.)
-    """
-
-    try:
-        response = asyncio.run(
-            llm_client.generate_structured(
-                task_name=task_name,
-                messages=[
-                    Message(role="system", content=instructions),
-                    Message(role="user", content=json.dumps(payload, ensure_ascii=False)),
-                ],
-                response_schema=response_schema,
-                model_profile=model_profile,
-            )
-        )
-    except tuple(_TRANSPORT_REASONS):
-        # 포트가 약속한 세 예외는 호출부가 관계별로 격리한다.
-        raise
-    except Exception as error:
-        # 포트 계약 밖의 예외다. 원인을 안다고 주장하지 않고 사용 불가로 옮겨
-        # 호출부의 격리 경로를 타게 한다. 여기서 새면 LLM 을 타지 않는
-        # FIT-4·FIT-7 결과까지 함께 사라진다 (초안 §9.4 정상 결과 보존).
-        raise LLMUnavailableError(
-            f"{task_name}: 포트 계약 밖 예외 {type(error).__name__}: {error}"
-        ) from error
-    if not isinstance(response, response_schema):
-        raise LLMInvalidResponseError(
-            f"{task_name} returned {type(response).__name__}, expected {response_schema.__name__}"
-        )
-    return response
+    return shared_generate(
+        llm_client,
+        task_name=task_name,
+        instructions=instructions,
+        payload=payload,
+        response_schema=response_schema,
+        model_profile=model_profile,
+    )
 
 
 def _classify_purpose_axes(
