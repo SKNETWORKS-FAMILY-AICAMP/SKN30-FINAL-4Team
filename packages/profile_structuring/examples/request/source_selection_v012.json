@@ -1,0 +1,467 @@
+{
+  "artifact_kind": "request_source_selection_artifact",
+  "selection_contract": "request_source_selection_v0.1.2",
+  "pipeline_version": "request_profile_v0.1.2_scaffold",
+  "profile_id": "request:PREREVIEW-TEST-2027-03",
+  "candidate_pack_id": "request:PREREVIEW-TEST-2027-03-request-v0.1.2",
+  "server_resolved_context": {
+    "request_type": {
+      "selected_code": "program_content_change",
+      "label": "사업내용 변경"
+    }
+  },
+  "common_ir_identity": {
+    "document_id": "request:PREREVIEW-TEST-2027-03",
+    "source_kind": "markdown_fixture",
+    "source_sha256": "d1cedba70cea55c62a755107d0c7fc5dd32202ecfd85f1bdbb93029293c71f59"
+  },
+  "candidate_pack_lineage": {
+    "candidate_pack_id": "request:PREREVIEW-TEST-2027-03-request-v0.1.2",
+    "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+    "candidate_pack_generator_version": "1",
+    "common_ir_document_id": "request:PREREVIEW-TEST-2027-03",
+    "common_ir_source_sha256": "d1cedba70cea55c62a755107d0c7fc5dd32202ecfd85f1bdbb93029293c71f59"
+  },
+  "selection": {
+    "profile_id": "request:PREREVIEW-TEST-2027-03",
+    "candidate_pack_id": "request:PREREVIEW-TEST-2027-03-request-v0.1.2",
+    "program_hierarchy": [
+      {
+        "program_node_id": "program:detail",
+        "level": "detail_program",
+        "parent_node_id": null,
+        "name_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "anchor_text": "동구 청년 창업지원사업(지원내용 개편)",
+          "value_span_candidate_id": null
+        }
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "fact:purpose",
+        "field_name": "purpose_goal",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "anchor_text": "사업화 실행력을 높임",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:legal_basis",
+        "field_name": "legal_basis",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "anchor_text": "「청년기본법」 제17조, 「중소기업창업 지원법」 제4조",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:linked_policy",
+        "field_name": "linked_policy",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "anchor_text": "동구 청년창업 활성화 기본계획(가상)",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:applicant",
+        "field_name": "applicant_eligibility",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b27",
+          "anchor_text": "동구 내 창업을 희망하는 청년 예비 창업자(19~39세) 본인",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:target",
+        "field_name": "support_target",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b30",
+          "anchor_text": "신청자 명의의 사업자 등록이 없는 청년(19~39세)",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:participation",
+        "field_name": "participation_requirements",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b55",
+          "anchor_text": "2027년 중 사업자등록을 완료하여야 함",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:beneficiary_education",
+        "field_name": "beneficiary",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+          "anchor_text": "교육 참여자(20개팀)",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:education",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:beneficiary_grant",
+        "field_name": "beneficiary",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+          "anchor_text": "창업지원금 지원 대상자로 최종 선정된 자(4개팀)",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:program_period",
+        "field_name": "program_period",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b51",
+          "anchor_text": null,
+          "value_span_candidate_id": "vsc:3939012666f91e34fe33"
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:education_activity",
+        "field_name": "support_activities",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "anchor_text": "창업교육",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:education",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:grant_item",
+        "field_name": "support_items",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b46",
+          "anchor_text": "창업지원금",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:payment_method",
+        "field_name": "support_methods",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "분할 사후 지급",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:mentoring_item",
+        "field_name": "support_methods",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b74",
+          "anchor_text": "멘토링",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:mentoring",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:mentoring_method",
+        "field_name": "support_methods",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "1:1 방식",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:mentoring",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:mentoring_detail",
+        "field_name": "support_content",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "월 2회, 총 8회",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:mentoring",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:education_scale",
+        "field_name": "support_scale",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "anchor_text": "20개팀",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:education",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:grant_selection_scale",
+        "field_name": "support_scale",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "최종 선정 4개팀",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:grant_total_scale",
+        "field_name": "support_scale",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "팀당 400만원",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:grant_stage1_scale",
+        "field_name": "support_scale",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "150만원",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:grant_stage2_scale",
+        "field_name": "support_scale",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "anchor_text": "250만원",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": "component:grant",
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:cost_sharing",
+        "field_name": "cost_sharing",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "anchor_text": "전액 지원",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:budget",
+        "field_name": "total_budget",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b84",
+          "anchor_text": "21,000천원",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:expected_effect",
+        "field_name": "expected_effect",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b94",
+          "anchor_text": "단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:kpi_conversion",
+        "field_name": "performance_indicator",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b96",
+          "anchor_text": "창업 전환율(사업자등록 완료율): 35% 이상",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:kpi_payment",
+        "field_name": "performance_indicator",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b97",
+          "anchor_text": "1·2단계 지급 집행률: 각 단계 90% 이상",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      },
+      {
+        "fact_id": "fact:kpi_mentoring",
+        "field_name": "performance_indicator",
+        "value_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b98",
+          "anchor_text": "멘토링 참여 만족도: 4.5/5.0 이상",
+          "value_span_candidate_id": null
+        },
+        "context_source_block_ids": [],
+        "status": "identified",
+        "primary_component_id": null,
+        "program_node_id": "program:detail"
+      }
+    ],
+    "support_components": [
+      {
+        "support_component_id": "component:education",
+        "component_kind": "support_package",
+        "name_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b37",
+          "anchor_text": "창업교육",
+          "value_span_candidate_id": null
+        },
+        "applies_to_anchor": null
+      },
+      {
+        "support_component_id": "component:grant",
+        "component_kind": "support_package",
+        "name_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b41",
+          "anchor_text": "창업지원금",
+          "value_span_candidate_id": null
+        },
+        "applies_to_anchor": null
+      },
+      {
+        "support_component_id": "component:mentoring",
+        "component_kind": "support_package",
+        "name_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b74",
+          "anchor_text": "멘토링",
+          "value_span_candidate_id": null
+        },
+        "applies_to_anchor": null
+      }
+    ],
+    "delivery_relations": [
+      {
+        "delivery_relation_id": "delivery:center_lead",
+        "actor_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "anchor_text": "가상 동구청년창업지원센터",
+          "value_span_candidate_id": null
+        },
+        "role_anchor": {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "anchor_text": "총괄",
+          "value_span_candidate_id": null
+        },
+        "actions": [],
+        "relation_container": {
+          "kind": "paragraph",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "anchor_text": "○ (수행기관) 가상 동구청년창업지원센터(총괄) + 신규 협력기관(청년창업 멘토풀 운영기관) — 상세는 아래 [첨부] 참조",
+          "common_ir_block_id": null,
+          "row_index": null
+        },
+        "canonical_actor_type": null,
+        "canonical_role": null
+      }
+    ],
+    "delivery_methods": [],
+    "field_states": [
+      {
+        "field_name": "support_period",
+        "status": "mentioned_unresolved",
+        "fact_ids": [],
+        "reason_codes": [
+          "unchanged_by_reference"
+        ]
+      }
+    ]
+  },
+  "usage": [
+    {
+      "attempt": 0,
+      "input_tokens": 37068,
+      "output_tokens": 3201,
+      "total_tokens": 40269,
+      "cached_input_tokens": 0
+    }
+  ],
+  "retry_count": 1,
+  "repair_diagnostics": [
+    {
+      "repair_attempt": 1,
+      "validation_error": "The mentoring component name is a structural label and may reuse the exact mentoring span with one support_methods Fact linked to that same component. Add support_methods 멘토링 linked to component:mentoring; preserve 1:1 방식 and 월 2회, 총 8회 on that component. Do not add any Raw Fact-to-Raw Fact duplicate or alter grant facts."
+    }
+  ],
+  "response_text_stored": false,
+  "processed_at": "2026-08-31T10:32:47.769356+00:00"
+}

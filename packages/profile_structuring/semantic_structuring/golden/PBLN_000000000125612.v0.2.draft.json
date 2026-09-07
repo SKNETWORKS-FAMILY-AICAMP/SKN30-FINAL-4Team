@@ -1,0 +1,133 @@
+{
+  "gold_schema_version": "0.2-draft",
+  "status": "draft_for_human_review",
+  "notice_id": "PBLN_000000000125612",
+  "source_kind": "hwpx",
+  "source_ir": "exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/study/results/runs/common_ir_v1_pair_expansion_20260828/hwp/PBLN_000000000125612_hwpx_common_ir_v1.json",
+  "scope": "v0.2 사업기간, 신청자격, 교육 단계와 최종 지원 단계의 분리, 금액 span 분리의 최소 계약 Gold.",
+  "expected_components": [
+    {"component_id": "stage_education", "component_kind": "stage_support", "name_anchor": {"source_block_id": "hwpx:b45", "anchor_text": "창업교육"}},
+    {"component_id": "stage_final_support", "component_kind": "stage_support", "name_anchor": {"source_block_id": "hwpx:b16", "anchor_text": "최종 선정"}}
+  ],
+  "expected_facts": [
+    {
+      "gold_id": "program-period-01",
+      "field_name": "program_period",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwpx:b10", "anchor_text": "2026년 7월 ~ 11월"}
+    },
+    {
+      "gold_id": "support-target-01",
+      "field_name": "support_target",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwpx:b11", "anchor_text": "동구 내 창업을 희망하는 청년 예비 창업자(19~39세)"}
+    },
+    {
+      "gold_id": "applicant-01",
+      "field_name": "applicant_eligibility",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwpx:b61", "anchor_text": "사업 신청자 본인"}
+    },
+    {
+      "gold_id": "eligibility-condition-01",
+      "field_name": "eligibility_conditions",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwpx:b57", "anchor_text": "공고일 기준 19~39세"}
+    },
+    {
+      "gold_id": "eligibility-condition-02",
+      "field_name": "eligibility_conditions",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwpx:b57", "anchor_text": "신청자 명의의 사업자 등록이 없는 자"}
+    },
+    {
+      "gold_id": "education-capacity-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "stage_education",
+      "source_anchor": {"source_block_id": "hwpx:b44", "anchor_text": "20개팀 내외"},
+      "expected_recipient_gold_ids": ["education-beneficiary-01"],
+      "expected_measure": {"measure_type": "count", "measure_role": "selection_capacity", "lower_value": 20, "upper_value": 20, "unit": "TEAM", "comparator": "approx"}
+    },
+    {
+      "gold_id": "education-beneficiary-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "stage_education",
+      "source_anchor": {"source_block_id": "hwpx:b44", "anchor_text": "교육 참여자"}
+    },
+    {
+      "gold_id": "education-activity-01",
+      "field_name": "support_activities",
+      "scope": "component",
+      "component_id": "stage_education",
+      "source_anchor": {"source_block_id": "hwpx:b45", "anchor_text": "창업기초 및 실무교육"},
+      "expected_facets": {"activities": ["창업교육"], "methods": ["교육"], "items": []}
+    },
+    {
+      "gold_id": "final-capacity-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b49", "anchor_text": "4개팀"},
+      "expected_recipient_gold_ids": ["final-beneficiary-01"],
+      "expected_measure": {"measure_type": "count", "measure_role": "selection_capacity", "lower_value": 4, "upper_value": 4, "unit": "TEAM", "comparator": "eq"}
+    },
+    {
+      "gold_id": "final-beneficiary-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b59", "anchor_text": "창업지원금 지원 대상자로 최종 선정된 자"}
+    },
+    {
+      "gold_id": "final-amount-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b16", "anchor_text": "각 300만원"},
+      "expected_recipient_gold_ids": ["final-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 3000000, "upper_value": 3000000, "unit": "KRW", "comparator": "eq"}
+    },
+    {
+      "gold_id": "final-grant-method-01",
+      "field_name": "support_methods",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b16", "anchor_text": "창업지원금"},
+      "expected_facets": {"activities": [], "methods": ["보조금"], "items": []}
+    },
+    {
+      "gold_id": "final-method-01",
+      "field_name": "support_methods",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b16", "anchor_text": "멘토링 지원"},
+      "expected_recipient_gold_ids": ["final-beneficiary-01"],
+      "expected_facets": {"activities": [], "methods": ["멘토링"], "items": []}
+    },
+    {
+      "gold_id": "final-registration-requirement-01",
+      "field_name": "participation_requirements",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b59", "anchor_text": "2026년 중 사업자등록을 완료하여야 함"}
+    },
+    {
+      "gold_id": "final-payment-term-01",
+      "field_name": "payment_terms",
+      "scope": "component",
+      "component_id": "stage_final_support",
+      "source_anchor": {"source_block_id": "hwpx:b60", "anchor_text": "지원금 신청서 및 지출영수증 등 증빙서류 확인 후 사후 지급함"}
+    }
+  ],
+  "must_not_create": [
+    {"field_name": "support_scale", "reason": "창업기초 및 실무교육 4회 실시는 활동 횟수이며 선정·지원 규모가 아니다."},
+    {"field_name": "delivery_roles", "reason": "기관의 역할이 원문에서 명시적으로 연결되지 않으면 추론하지 않는다."}
+  ],
+  "review_notes": [
+    "20개팀은 1차 교육 참여자, 4개팀은 최종 지원 대상이다. 하나의 selection_capacity로 합치지 않는다.",
+    "신청자(대표)는 개인의 신청·권리·의무 주체이고, 팀은 선발·지원 단위다. Raw Fact를 하나로 합치지 않는다.",
+    "'각 300만원'은 최종 4개 팀 지원 문맥으로 applies_per=TEAM을 부여할 수 있으나, 실제 지급 계좌의 명의자는 원문에 없으므로 생성하지 않는다."
+  ]
+}

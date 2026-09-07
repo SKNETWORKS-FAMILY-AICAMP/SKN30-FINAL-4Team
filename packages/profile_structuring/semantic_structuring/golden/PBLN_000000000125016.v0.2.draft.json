@@ -1,0 +1,168 @@
+{
+  "gold_schema_version": "0.2-draft",
+  "status": "draft_for_human_review",
+  "notice_id": "PBLN_000000000125016",
+  "source_kind": "hwp",
+  "source_ir": "exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/study/results/runs/common_ir_v1_pair_expansion_20260828/hwp/PBLN_000000000125016_hwp_common_ir_v1.json",
+  "scope": "v0.2 신청주체·정책대상·실제 수혜자 분리, 참여유형 2개, 지원기간·비용항목·금액의 최소 계약 Gold. 신청 양식은 제외한다.",
+  "expected_components": [
+    {"component_id": "participation_type_1", "component_kind": "participation_type", "name_anchor": {"source_block_id": "hwp:b21", "anchor_text": "취업형"}},
+    {"component_id": "participation_type_2", "component_kind": "participation_type", "name_anchor": {"source_block_id": "hwp:b21", "anchor_text": "일자리창조형"}},
+    {"component_id": "package_youth_intern", "component_kind": "support_package", "name_anchor": {"source_block_id": "hwp:b25", "anchor_text": "참여청년인턴"}},
+    {"component_id": "package_participating_company", "component_kind": "support_package", "name_anchor": {"source_block_id": "hwp:b26", "anchor_text": "참여기업"}}
+  ],
+  "expected_facts": [
+    {
+      "gold_id": "purpose-01",
+      "field_name": "purpose_goal",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b13", "anchor_text": "청년의 사회연대경제 분야 진출 지원 및 사회연대경제 활성화"}
+    },
+    {
+      "gold_id": "program-period-01",
+      "field_name": "program_period",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b14", "anchor_text": "2026. 6월~12월"}
+    },
+    {
+      "gold_id": "support-target-01",
+      "field_name": "support_target",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b16", "anchor_text": "만 19세 이상 39세 이하의 미취업 청년"}
+    },
+    {
+      "gold_id": "applicant-01",
+      "field_name": "applicant_eligibility",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b18", "anchor_text": "마을기업, 협동조합, 고용 10인 미만 사회연대경제 관련 비영리법인 및 단체"}
+    },
+    {
+      "gold_id": "beneficiary-youth-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "package_youth_intern",
+      "source_anchor": {"source_block_id": "hwp:b25", "anchor_text": "참여청년인턴"}
+    },
+    {
+      "gold_id": "beneficiary-company-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "참여기업"}
+    },
+    {
+      "gold_id": "selection-capacity-01",
+      "field_name": "support_scale",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b36", "anchor_text": "12개사 내외"},
+      "expected_measure": {"measure_type": "count", "measure_role": "selection_capacity", "lower_value": 12, "upper_value": 12, "unit": "COMPANY", "comparator": "approx"}
+    },
+    {
+      "gold_id": "support-activity-01",
+      "field_name": "support_activities",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b20", "anchor_text": "사회연대경제 조직 현장에서 과업을 직접 수행하는 방식으로 청년 일경험 기회 제공"},
+      "expected_facets": {"activities": ["일경험"], "methods": [], "items": []}
+    },
+    {
+      "gold_id": "support-method-01",
+      "field_name": "support_methods",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b20", "anchor_text": "제반 비용 지원"},
+      "expected_facets": {"activities": [], "methods": ["비용지원"], "items": []}
+    },
+    {
+      "gold_id": "support-period-01",
+      "field_name": "support_period",
+      "scope": "component",
+      "component_id": "package_youth_intern",
+      "source_anchor": {"source_block_id": "hwp:b124", "anchor_text": "2026. 8월~12월"},
+      "expected_period": {"start": "2026-08", "end": "2026-12", "precision": "MONTH", "duration_months": 5}
+    },
+    {
+      "gold_id": "support-item-01",
+      "field_name": "support_items",
+      "scope": "component",
+      "component_id": "package_youth_intern",
+      "source_anchor": {"source_block_id": "hwp:b25", "anchor_text": "인건비"},
+      "expected_recipient_gold_ids": ["beneficiary-youth-01"]
+    },
+    {
+      "gold_id": "support-item-02",
+      "field_name": "support_items",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "운영비"},
+      "expected_recipient_gold_ids": ["beneficiary-company-01"]
+    },
+    {
+      "gold_id": "support-item-03",
+      "field_name": "support_items",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "멘토수당"},
+      "expected_recipient_gold_ids": ["beneficiary-company-01"]
+    },
+    {
+      "gold_id": "support-item-04",
+      "field_name": "support_items",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "4대보험 기업부담금"},
+      "expected_recipient_gold_ids": ["beneficiary-company-01"]
+    },
+    {
+      "gold_id": "youth-wage-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_youth_intern",
+      "source_anchor": {"source_block_id": "hwp:b127", "anchor_text": "월급 234만원"},
+      "expected_recipient_gold_ids": ["beneficiary-youth-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 2340000, "upper_value": 2340000, "unit": "KRW", "comparator": "eq", "frequency": "MONTHLY"}
+    },
+    {
+      "gold_id": "company-operation-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "월20만원"},
+      "expected_recipient_gold_ids": ["beneficiary-company-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 200000, "upper_value": 200000, "unit": "KRW", "comparator": "eq", "frequency": "MONTHLY", "applies_per": "PERSON"}
+    },
+    {
+      "gold_id": "company-mentor-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "월15만원"},
+      "expected_recipient_gold_ids": ["beneficiary-company-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 150000, "upper_value": 150000, "unit": "KRW", "comparator": "eq", "frequency": "MONTHLY", "applies_per": "PERSON"}
+    },
+    {
+      "gold_id": "company-insurance-rate-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b130", "anchor_text": "11.47%"},
+      "expected_recipient_gold_ids": ["beneficiary-company-01"],
+      "expected_measure": {"measure_type": "rate", "measure_role": "support_rate", "lower_value": 1147, "upper_value": 1147, "unit": "BPS", "comparator": "eq"}
+    },
+    {
+      "gold_id": "cost-sharing-01",
+      "field_name": "cost_sharing",
+      "scope": "component",
+      "component_id": "package_participating_company",
+      "source_anchor": {"source_block_id": "hwp:b131", "anchor_text": "지원금 지급범위를 초과하는 4대 보험료는 참여기업 자부담"}
+    }
+  ],
+  "must_not_create": [
+    {"field_name": "support_scale", "reason": "참여청년 5개월 인건비에서 '5개월'은 support_period이며 지원규모가 아니다."},
+    {"field_name": "delivery_roles", "reason": "단순 공동진행·기관 언급에서 역할을 추론하지 않는다."},
+    {"field_name": "support_scale", "reason": "직무교육 4회와 같은 활동 횟수는 선정·지원 규모가 아니다."}
+  ],
+  "review_notes": [
+    "신청주체는 참여기업이지만, 참여청년과 참여기업은 각각 임금·운영비/멘토수당의 실제 수혜 맥락을 가진다.",
+    "취업형과 일자리창조형은 신청 시 선택하는 참여유형이므로 분리 컴포넌트로 유지한다. 유형별 상세 직무 내용의 표 관계는 후속 B 표 평가에서 다룬다.",
+    "월급 234만원은 참여청년 임금 지급기준이다. 이를 사업 전체 예산이나 기업당 한도로 정규화하지 않는다."
+  ]
+}

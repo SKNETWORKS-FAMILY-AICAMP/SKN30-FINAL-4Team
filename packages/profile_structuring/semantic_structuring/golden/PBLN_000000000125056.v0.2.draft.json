@@ -1,0 +1,180 @@
+{
+  "gold_schema_version": "0.2-draft",
+  "status": "draft_for_human_review",
+  "notice_id": "PBLN_000000000125056",
+  "source_kind": "hwp",
+  "source_ir": "exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/study/results/runs/common_ir_v1_pair_expansion_20260828/hwp/PBLN_000000000125056_hwp_common_ir_v1.json",
+  "scope": "v0.2 기간·지원규모·수혜자·4개 지원 패키지의 최소 계약 Gold. 양식과 제출서류는 평가 대상에서 제외한다.",
+  "expected_components": [
+    {"component_id": "package_1", "component_kind": "support_package", "name_anchor": {"source_block_id": "hwp:b42", "anchor_text": "① 안전관리 인력 채용장려금 지원"}},
+    {"component_id": "package_2", "component_kind": "support_package", "name_anchor": {"source_block_id": "hwp:b47", "anchor_text": "② 안전관리 업무 추가 수행 지원"}},
+    {"component_id": "package_3", "component_kind": "support_package", "name_anchor": {"source_block_id": "hwp:b51", "anchor_text": "③ 안전관리자 장기근속 지원"}},
+    {"component_id": "package_4", "component_kind": "support_package", "name_anchor": {"source_block_id": "hwp:b56", "anchor_text": "④ 안전관리자 선임 정착 지원"}}
+  ],
+  "expected_variants": [
+    {
+      "variant_id": "package_1_new_hire",
+      "parent_component_id": "package_1",
+      "condition_fact_ids": ["package-1-new-hire-condition-01"],
+      "support_fact_ids": ["package-1-scale-01", "package-1-rate-01", "package-1-period-01"]
+    },
+    {
+      "variant_id": "package_1_existing_hire",
+      "parent_component_id": "package_1",
+      "condition_fact_ids": ["package-1-existing-hire-condition-01"],
+      "support_fact_ids": ["package-1-existing-scale-01", "package-1-existing-rate-01", "package-1-period-01"]
+    }
+  ],
+  "expected_facts": [
+    {
+      "gold_id": "program-period-01",
+      "field_name": "program_period",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b13", "anchor_text": "공고일부터 ~ 12. 31."}
+    },
+    {
+      "gold_id": "applicant-01",
+      "field_name": "applicant_eligibility",
+      "scope": "notice",
+      "source_anchor": {"source_block_id": "hwp:b22", "anchor_text": "상시근로자 5인 이상 500인 이하인 울산 소재 자동차 부품 업종"}
+    },
+    {
+      "gold_id": "package-1-beneficiary-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r1c1p0", "anchor_text": "사업주"}
+    },
+    {
+      "gold_id": "package-1-new-hire-condition-01",
+      "field_name": "eligibility_conditions",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r3c1p0", "anchor_text": "사업협약일(’26.2.27.) 이후 채용자"}
+    },
+    {
+      "gold_id": "package-1-existing-hire-condition-01",
+      "field_name": "eligibility_conditions",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r3c1p0", "anchor_text": "사업협약일 이전 고용보험에 가입되어 재직 중인 자"}
+    },
+    {
+      "gold_id": "package-1-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r2c1p0", "anchor_text": "월 160만원"},
+      "expected_recipient_gold_ids": ["package-1-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 1600000, "upper_value": 1600000, "unit": "KRW", "comparator": "eq", "frequency": "MONTHLY"}
+    },
+    {
+      "gold_id": "package-1-period-01",
+      "field_name": "support_period",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:b43", "anchor_text": "6개월간"},
+      "expected_recipient_gold_ids": ["package-1-beneficiary-01"]
+    },
+    {
+      "gold_id": "package-1-rate-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r2c1p0", "anchor_text": "월급여 80% 이내"},
+      "expected_recipient_gold_ids": ["package-1-beneficiary-01"],
+      "expected_measure": {"measure_type": "rate", "measure_role": "support_rate", "lower_value": null, "upper_value": 8000, "unit": "BPS", "comparator": "lte", "calculation_basis": "WAGE"}
+    },
+    {
+      "gold_id": "package-1-existing-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r2c1p0", "anchor_text": "월 80만원"},
+      "expected_recipient_gold_ids": ["package-1-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 800000, "upper_value": 800000, "unit": "KRW", "comparator": "eq", "frequency": "MONTHLY"}
+    },
+    {
+      "gold_id": "package-1-existing-rate-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:t45#r2c1p0", "anchor_text": "월급여 40% 이내"},
+      "expected_recipient_gold_ids": ["package-1-beneficiary-01"],
+      "expected_measure": {"measure_type": "rate", "measure_role": "support_rate", "lower_value": null, "upper_value": 4000, "unit": "BPS", "comparator": "lte", "calculation_basis": "WAGE"}
+    },
+    {
+      "gold_id": "package-1-limit-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_1",
+      "source_anchor": {"source_block_id": "hwp:b43", "anchor_text": "최대 960만원"},
+      "expected_recipient_gold_ids": ["package-1-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_limit", "lower_value": null, "upper_value": 9600000, "unit": "KRW", "comparator": "lte"}
+    },
+    {
+      "gold_id": "package-2-beneficiary-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "package_2",
+      "source_anchor": {"source_block_id": "hwp:t50#r1c1p0", "anchor_text": "사업주"}
+    },
+    {
+      "gold_id": "package-2-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_2",
+      "source_anchor": {"source_block_id": "hwp:t50#r2c1p0", "anchor_text": "매월 60만원"},
+      "expected_recipient_gold_ids": ["package-2-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 600000, "upper_value": 600000, "unit": "KRW", "comparator": "eq", "frequency": "MONTHLY"}
+    },
+    {
+      "gold_id": "package-2-period-01",
+      "field_name": "support_period",
+      "scope": "component",
+      "component_id": "package_2",
+      "source_anchor": {"source_block_id": "hwp:t50#r2c1p0", "anchor_text": "최대 6개월"},
+      "expected_recipient_gold_ids": ["package-2-beneficiary-01"]
+    },
+    {
+      "gold_id": "package-3-beneficiary-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "package_3",
+      "source_anchor": {"source_block_id": "hwp:t54#r1c1p0", "anchor_text": "근로자"}
+    },
+    {
+      "gold_id": "package-3-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_3",
+      "source_anchor": {"source_block_id": "hwp:t54#r2c1p0", "anchor_text": "100만원"},
+      "expected_recipient_gold_ids": ["package-3-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 1000000, "upper_value": 1000000, "unit": "KRW", "comparator": "eq"}
+    },
+    {
+      "gold_id": "package-4-beneficiary-01",
+      "field_name": "beneficiary",
+      "scope": "component",
+      "component_id": "package_4",
+      "source_anchor": {"source_block_id": "hwp:t59#r1c1p0", "anchor_text": "사업주"}
+    },
+    {
+      "gold_id": "package-4-scale-01",
+      "field_name": "support_scale",
+      "scope": "component",
+      "component_id": "package_4",
+      "source_anchor": {"source_block_id": "hwp:t59#r2c1p0", "anchor_text": "300만원"},
+      "expected_recipient_gold_ids": ["package-4-beneficiary-01"],
+      "expected_measure": {"measure_type": "amount", "measure_role": "support_amount", "lower_value": 3000000, "upper_value": 3000000, "unit": "KRW", "comparator": "eq"}
+    }
+  ],
+  "must_not_create": [
+    {"field_name": "support_scale", "reason": "지원기간만 의미하는 span은 support_period여야 한다."},
+    {"field_name": "program_period", "reason": "신청·접수기간 또는 수혜자 지원기간을 사업기간으로 추론하지 않는다."}
+  ],
+  "review_notes": [
+    "'공고일부터 ~ 12. 31.'은 원문이 '사업기간'으로 명시하므로 program_period로 둔다.",
+    "패키지 1의 신규·기존 인력은 별도 패키지가 아니라 조건부 variant다. 신규·기존 조건과 금액·비율 Fact의 관계를 보존한다."
+  ]
+}

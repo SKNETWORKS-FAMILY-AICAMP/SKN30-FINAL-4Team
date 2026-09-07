@@ -1,0 +1,72 @@
+{
+  "run_id": "example",
+  "status": "ok",
+  "started_at_utc": "2026-08-31T01:20:28.937083+00:00",
+  "ended_at_utc": "2026-08-31T01:20:29.418969+00:00",
+  "notice_id": "PREREVIEW-EXAMPLE",
+  "source_kind": "hwp",
+  "input": {
+    "path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서_예시.hwp",
+    "sha256": "48b1c2909efaca3710642020901071260592fa4c9b763b905ec21c9f905b9228"
+  },
+  "toolchain": {
+    "python": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/.rhwp-local/venv-wheel/bin/python",
+    "rhwp": "0.8.1",
+    "rhwp_core": "0.7.17"
+  },
+  "declared_constraints": {
+    "ocr_called": false,
+    "pdf_processed": false,
+    "gpu_used": false,
+    "network_access": false
+  },
+  "steps": [
+    {
+      "name": "rhwp_parse",
+      "status": "ok",
+      "output": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/example/raw/rhwp_full_ir/PREREVIEW-EXAMPLE.hwp.json",
+      "output_sha256": "0dad574b1cddb7f98aca98262de3cdb9baf54006e0095f8e82084c928fe60233"
+    },
+    {
+      "name": "adapt_rhwp_to_common_ir_v1",
+      "status": "ok",
+      "command": [
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/.rhwp-local/venv-wheel/bin/python",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/study/results/scripts/adapt_rhwp_to_common_ir_v1.py",
+        "--notice-id",
+        "PREREVIEW-EXAMPLE",
+        "--rhwp",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/example/raw/rhwp_full_ir/PREREVIEW-EXAMPLE.hwp.json",
+        "--source-kind",
+        "hwp",
+        "--source-path",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서_예시.hwp",
+        "--source-sha256",
+        "48b1c2909efaca3710642020901071260592fa4c9b763b905ec21c9f905b9228",
+        "--source-location-base",
+        "raw/rhwp_full_ir/PREREVIEW-EXAMPLE.hwp.json",
+        "--output",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/example/common_ir_v1/PREREVIEW-EXAMPLE.hwp.json"
+      ],
+      "started_at_utc": "2026-08-31T01:20:29.178826+00:00",
+      "duration_seconds": 0.240564,
+      "return_code": 0,
+      "summary": {
+        "output": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/example/common_ir_v1/PREREVIEW-EXAMPLE.hwp.json",
+        "blocks": 47,
+        "relations": 1,
+        "skipped_empty_paragraphs": 152,
+        "skipped_pictures": 0,
+        "skipped_other_blocks_by_kind": {},
+        "skipped_furniture_by_kind": {
+          "str": 4
+        },
+        "validation_errors": 0
+      },
+      "stdout": "{\"output\": \"/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/example/common_ir_v1/PREREVIEW-EXAMPLE.hwp.json\", \"blocks\": 47, \"relations\": 1, \"skipped_empty_paragraphs\": 152, \"skipped_pictures\": 0, \"skipped_other_blocks_by_kind\": {}, \"skipped_furniture_by_kind\": {\"str\": 4}, \"validation_errors\": 0}\n",
+      "stderr": "",
+      "output": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/example/common_ir_v1/PREREVIEW-EXAMPLE.hwp.json",
+      "output_sha256": "c6e1e92911b13ddbcc94b29bb0abaa854b810c8338d475ed2324c76bd3893cf7"
+    }
+  ]
+}

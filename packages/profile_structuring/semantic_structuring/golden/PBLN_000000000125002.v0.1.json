@@ -1,0 +1,235 @@
+{
+  "gold_schema_version": "0.1",
+  "status": "frozen",
+  "notice_id": "PBLN_000000000125002",
+  "source_ir": "exploratory_study/results/schema_validation/hangul_ir/PBLN_000000000125002.json",
+  "scope": "A 핵심 비교 프로필과 B 표 카탈로그만 평가한다. C 양식·접수 정보는 fact 미생성을 기대한다.",
+  "notice_identity": {
+    "title_raw": "2026년 한국전력공사 에너지브릿지 오픈이노베이션 참여기업 모집 공고",
+    "title_source_block_ids": ["body[2]"],
+    "notice_issuer": {
+      "organization_name": "전남창조경제혁신센터",
+      "canonical_role": "notice_issuer",
+      "source_block_ids": ["body[0]", "body[7]"]
+    }
+  },
+  "a_facts": [
+    {
+      "gold_id": "a-purpose-01",
+      "kind": "purpose_goal",
+      "field_name": "purpose_goal",
+      "scope": "notice",
+      "semantic_role": "program_goal",
+      "value_raw": "대·중견기업과 협업이 가능한 스타트업을 발굴하고 협업 프로젝트 지원을 통한 동반성장 오픈이노베이션 생태계 활성화",
+      "source_block_ids": ["body[16]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-applicant-01",
+      "kind": "target",
+      "field_name": "applicant_eligibility",
+      "scope": "notice",
+      "semantic_role": "eligible_applicant",
+      "value_raw": "공고일 기준 수요분야 관련 기술 및 솔루션을 보유한 기업 누구나",
+      "source_heading": "모집대상",
+      "source_block_ids": ["body[48]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-beneficiary-01",
+      "kind": "target",
+      "field_name": "beneficiary",
+      "scope": "notice",
+      "semantic_role": "final_selected_startup",
+      "value_raw": "6개사 스타트업",
+      "source_block_ids": ["body[36]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-support-content-01",
+      "kind": "support_content",
+      "field_name": "support_items",
+      "scope": "notice",
+      "semantic_role": "support_content_bundle",
+      "value_raw": "대·중견기업 사업 부서 밋업 연계, 사업화(PoC) 지원금, 전남창조경제혁신센터 직・간접 투자 연계 검토 등",
+      "source_block_ids": ["body[25]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-scale-01",
+      "kind": "support_scale",
+      "field_name": "support_scale",
+      "scope": "notice",
+      "semantic_role": "selection_capacity",
+      "value_raw": "6개사 스타트업 선정",
+      "subject_role": "final_selected_startup",
+      "applies_to_fact_ids": ["a-beneficiary-01"],
+      "normalized_value": {
+        "quantity_type": "selection_capacity",
+        "count": 6,
+        "unit": "company"
+      },
+      "source_block_ids": ["body[36]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-exclusion-01",
+      "kind": "restriction",
+      "field_name": "exclusions",
+      "scope": "notice",
+      "semantic_role": "ineligible_industry",
+      "value_raw": "중소기업창업지원법 시행령 제4조의 창업에서 제외되는 업종에 해당하는 자",
+      "source_heading": "참가자격 제한사항",
+      "source_block_ids": ["body[82]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-exclusion-02",
+      "kind": "restriction",
+      "field_name": "exclusions",
+      "scope": "notice",
+      "semantic_role": "tax_arrears_or_closed_business",
+      "value_raw": "국세 또는 지방세를 체납 중이거나 휴·폐업 중인 자",
+      "source_heading": "참가자격 제한사항",
+      "source_block_ids": ["body[83]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-exclusion-03",
+      "kind": "restriction",
+      "field_name": "exclusions",
+      "scope": "notice",
+      "semantic_role": "participation_restriction",
+      "value_raw": "신청기업 또는 신청기업의 대표자가 참여 제한에 해당될 경우 지원 대상에서 제외됨",
+      "source_heading": "유의사항",
+      "source_block_ids": ["body[88]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-scale-02",
+      "kind": "support_scale",
+      "field_name": "support_scale",
+      "scope": "notice",
+      "semantic_role": "per_beneficiary_amount",
+      "value_raw": "1개社 당 최대 35,000천원 내외",
+      "subject_role": "selected_startup",
+      "normalized_value": {
+        "quantity_type": "per_beneficiary_amount",
+        "amount_krw": 35000000,
+        "unit": "KRW",
+        "bound_type": "maximum_approximate"
+      },
+      "source_block_ids": ["body[27]", "body[37]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-scale-03",
+      "kind": "support_scale",
+      "field_name": "support_scale",
+      "scope": "notice",
+      "semantic_role": "support_period",
+      "value_raw": "협약일로부터 ~ 12월 30일까지",
+      "source_block_ids": ["body[23]"],
+      "status": "identified",
+      "normalization_note": "시작일이 협약일로 가변이므로 날짜 범위 정규화는 요구하지 않는다."
+    },
+    {
+      "gold_id": "a-cost-sharing-01",
+      "kind": "cost_sharing",
+      "field_name": "cost_sharing",
+      "scope": "notice",
+      "semantic_role": "vat_borne_by_company",
+      "value_raw": "부가세는 지원하지 않으므로 기업이 부담",
+      "source_block_ids": ["body[89]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-delivery-role-01",
+      "kind": "delivery_role",
+      "field_name": "delivery_roles",
+      "scope": "notice",
+      "organization_name": "SK에코플랜트",
+      "canonical_role": "participating_partner",
+      "value_raw": "SK에코플랜트",
+      "source_block_ids": ["body[39]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-delivery-role-02",
+      "kind": "delivery_role",
+      "field_name": "delivery_roles",
+      "scope": "notice",
+      "organization_name": "LS일렉트릭",
+      "canonical_role": "participating_partner",
+      "value_raw": "LS일렉트릭",
+      "source_block_ids": ["body[39]"],
+      "status": "identified"
+    },
+    {
+      "gold_id": "a-delivery-role-03",
+      "kind": "delivery_role",
+      "field_name": "delivery_roles",
+      "scope": "notice",
+      "organization_name": "HS효성/효성",
+      "canonical_role": "participating_partner",
+      "value_raw": "HS효성/효성",
+      "source_block_ids": ["body[39]"],
+      "status": "identified"
+    }
+  ],
+  "b_table_catalog": [
+    {
+      "table_ref": "body[32]",
+      "table_class": "process",
+      "tags": ["schedule", "selection_process"],
+      "policy": "search_only",
+      "source_block_ids": ["body[30]", "body[32]"]
+    },
+    {
+      "table_ref": "body[53]",
+      "table_class": "entity_relation",
+      "tags": ["demand_technology", "partner_demand_domain"],
+      "policy": "search_only",
+      "source_block_ids": ["body[50]", "body[53]"]
+    }
+  ],
+  "audit_only": [
+    {
+      "gold_id": "audit-unresolved-01",
+      "value_raw": "선정규모 : 3社 내외",
+      "source_block_ids": ["body[21]"],
+      "status": "unresolved",
+      "reason": "최종 스타트업 6개사와 별도 수치다. body[39]의 파트너 3개사와 연관 후보로는 보되, 이 블록만으로 지원 수혜자 선정 규모로 확정하지 않는다."
+    }
+  ],
+  "c_exclusions": [
+    {
+      "source_region": "body[66]~body[77]",
+      "reason": "신청기간·접수·제출서류"
+    },
+    {
+      "source_region": "body[97] 이후",
+      "reason": "참가신청서 및 이전 연도 템플릿을 포함한 양식"
+    }
+  ],
+  "acceptance_rules": {
+    "required_gold_ids": [
+      "a-purpose-01",
+      "a-applicant-01",
+      "a-beneficiary-01",
+      "a-support-content-01",
+      "a-scale-01",
+      "a-scale-02",
+      "a-scale-03",
+      "a-cost-sharing-01",
+      "a-exclusion-01",
+      "a-exclusion-02",
+      "a-exclusion-03",
+      "a-delivery-role-01",
+      "a-delivery-role-02",
+      "a-delivery-role-03"
+    ],
+    "forbidden_as_current_notice_fact_source_regions": ["body[97] 이후"],
+    "must_not_map": ["body[53]의 파트너·수요분야·수요기술 행 관계를 A fact에 평탄화하지 않는다."]
+  }
+}

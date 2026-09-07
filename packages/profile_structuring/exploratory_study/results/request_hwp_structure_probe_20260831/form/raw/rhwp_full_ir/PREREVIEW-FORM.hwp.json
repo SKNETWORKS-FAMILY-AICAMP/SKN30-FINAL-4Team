@@ -1,0 +1,1649 @@
+{
+  "notice_id": "PREREVIEW-FORM",
+  "source_kind": "hwp",
+  "artifact_role": "production",
+  "method": "rhwp",
+  "version": "0.8.1",
+  "core_version": "0.7.17",
+  "source_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서양식.hwp",
+  "source_sha256": "28c03655a2f82c40240b75549979d14441653b00c895ad28c0940e2e8e8ba90b",
+  "page_count": 1,
+  "paragraph_count": 6,
+  "ir": {
+    "schema_name": "HwpDocument",
+    "schema_version": "1.1",
+    "source": {
+      "uri": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서양식.hwp"
+    },
+    "metadata": {
+      "title": null,
+      "author": null,
+      "creation_time": null,
+      "modification_time": null
+    },
+    "sections": [
+      {
+        "section_idx": 0
+      }
+    ],
+    "body": [
+      {
+        "kind": "paragraph",
+        "text": "",
+        "inlines": [],
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 0,
+          "char_start": 0,
+          "char_end": 0,
+          "page_range": null
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "",
+        "inlines": [],
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 1,
+          "char_start": 0,
+          "char_end": 0,
+          "page_range": null
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "< 기 관 명 >",
+        "inlines": [
+          {
+            "text": "< 기 관 명 >",
+            "bold": false,
+            "italic": false,
+            "underline": false,
+            "strikethrough": false,
+            "href": null,
+            "ruby": null,
+            "raw_style_id": 0
+          }
+        ],
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 2,
+          "char_start": 0,
+          "char_end": 9,
+          "page_range": null
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "",
+        "inlines": [],
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 3,
+          "char_start": 0,
+          "char_end": 0,
+          "page_range": null
+        }
+      },
+      {
+        "kind": "table",
+        "rows": 13,
+        "cols": 8,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 0,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "사전협의 요청사유",
+                "inlines": [
+                  {
+                    "text": "사전협의 요청사유",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 9,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 1,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설",
+                "inlines": [
+                  {
+                    "text": "□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 33,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+                "inlines": [
+                  {
+                    "text": "□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 31,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "row_span": 3,
+            "col_span": 1,
+            "grid_index": 8,
+            "role": "column_header",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "사업명",
+                "inlines": [
+                  {
+                    "text": "사업명",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 3,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 9,
+            "role": "column_header",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "(세부) ",
+                "inlines": [
+                  {
+                    "text": "(세부) ",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 5,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 17,
+            "role": "column_header",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "(내역) 세부사업 신설 시 미기재",
+                "inlines": [
+                  {
+                    "text": "(내역) ",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  },
+                  {
+                    "text": "세부사업 신설 시 미기재",
+                    "bold": false,
+                    "italic": true,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 139
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 18,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 25,
+            "role": "column_header",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "(내내역) 세부사업·내역사업 신설 시 미기재",
+                "inlines": [
+                  {
+                    "text": "(내내역) ",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  },
+                  {
+                    "text": "세부사업·내역사업 신설 시 미기재",
+                    "bold": false,
+                    "italic": true,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 139
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 24,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 32,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "신설·변경 필요성(사유)",
+                "inlines": [
+                  {
+                    "text": "신설·변경 필요성(사유)",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 13,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 33,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "◦",
+                "inlines": [
+                  {
+                    "text": "◦",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 1,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "table",
+                "rows": 1,
+                "cols": 1,
+                "cells": [
+                  {
+                    "row": 0,
+                    "col": 0,
+                    "row_span": 1,
+                    "col_span": 1,
+                    "grid_index": 0,
+                    "role": "data",
+                    "blocks": [
+                      {
+                        "kind": "paragraph",
+                        "text": "◈ (작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술",
+                        "inlines": [
+                          {
+                            "text": "◈ ",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 16
+                          },
+                          {
+                            "text": "(작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 27
+                          }
+                        ],
+                        "prov": {
+                          "section_idx": 0,
+                          "para_idx": 3,
+                          "char_start": 0,
+                          "char_end": 61,
+                          "page_range": null
+                        }
+                      },
+                      {
+                        "kind": "paragraph",
+                        "text": "◈ (필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)",
+                        "inlines": [
+                          {
+                            "text": "◈ ",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 16
+                          },
+                          {
+                            "text": "(필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 27
+                          }
+                        ],
+                        "prov": {
+                          "section_idx": 0,
+                          "para_idx": 3,
+                          "char_start": 0,
+                          "char_end": 54,
+                          "page_range": null
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "html": "<table><tr><td>◈ (작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술 ◈ (필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)</td></tr></table>",
+                "text": "◈ (작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술 ◈ (필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)",
+                "caption": null,
+                "caption_block": null,
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": null,
+                  "char_end": null,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 5,
+            "col": 0,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 40,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "신설·변경 주요내용",
+                "inlines": [
+                  {
+                    "text": "신설·변경 주요내용",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 10,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 5,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 41,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "◦",
+                "inlines": [
+                  {
+                    "text": "◦",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 1,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "◦",
+                "inlines": [
+                  {
+                    "text": "◦",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 1,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "table",
+                "rows": 1,
+                "cols": 1,
+                "cells": [
+                  {
+                    "row": 0,
+                    "col": 0,
+                    "row_span": 1,
+                    "col_span": 1,
+                    "grid_index": 0,
+                    "role": "data",
+                    "blocks": [
+                      {
+                        "kind": "paragraph",
+                        "text": "◈ (작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술",
+                        "inlines": [
+                          {
+                            "text": "◈ ",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 16
+                          },
+                          {
+                            "text": "(작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 27
+                          }
+                        ],
+                        "prov": {
+                          "section_idx": 0,
+                          "para_idx": 3,
+                          "char_start": 0,
+                          "char_end": 77,
+                          "page_range": null
+                        }
+                      },
+                      {
+                        "kind": "paragraph",
+                        "text": "◈ (필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관",
+                        "inlines": [
+                          {
+                            "text": "◈ ",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 16
+                          },
+                          {
+                            "text": "(필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 40
+                          }
+                        ],
+                        "prov": {
+                          "section_idx": 0,
+                          "para_idx": 3,
+                          "char_start": 0,
+                          "char_end": 81,
+                          "page_range": null
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "html": "<table><tr><td>◈ (작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술 ◈ (필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관</td></tr></table>",
+                "text": "◈ (작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술 ◈ (필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관",
+                "caption": null,
+                "caption_block": null,
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 1,
+                  "char_end": 1,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 6,
+            "col": 0,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 48,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "기대효과",
+                "inlines": [
+                  {
+                    "text": "기대효과",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 4,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 6,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 7,
+            "grid_index": 49,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "◦",
+                "inlines": [
+                  {
+                    "text": "◦",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 1,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "◦",
+                "inlines": [
+                  {
+                    "text": "◦",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 1,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "table",
+                "rows": 1,
+                "cols": 1,
+                "cells": [
+                  {
+                    "row": 0,
+                    "col": 0,
+                    "row_span": 1,
+                    "col_span": 1,
+                    "grid_index": 0,
+                    "role": "data",
+                    "blocks": [
+                      {
+                        "kind": "paragraph",
+                        "text": "◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술",
+                        "inlines": [
+                          {
+                            "text": "◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 16
+                          }
+                        ],
+                        "prov": {
+                          "section_idx": 0,
+                          "para_idx": 3,
+                          "char_start": 0,
+                          "char_end": 33,
+                          "page_range": null
+                        }
+                      },
+                      {
+                        "kind": "paragraph",
+                        "text": "◈ (필수 기재항목) 파급효과, 성과지표",
+                        "inlines": [
+                          {
+                            "text": "◈ (필수 기재항목) 파급효과, 성과지표",
+                            "bold": false,
+                            "italic": false,
+                            "underline": false,
+                            "strikethrough": false,
+                            "href": null,
+                            "ruby": null,
+                            "raw_style_id": 16
+                          }
+                        ],
+                        "prov": {
+                          "section_idx": 0,
+                          "para_idx": 3,
+                          "char_start": 0,
+                          "char_end": 22,
+                          "page_range": null
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "html": "<table><tr><td>◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술 ◈ (필수 기재항목) 파급효과, 성과지표</td></tr></table>",
+                "text": "◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술 ◈ (필수 기재항목) 파급효과, 성과지표",
+                "caption": null,
+                "caption_block": null,
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": null,
+                  "char_end": null,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 7,
+            "col": 0,
+            "row_span": 3,
+            "col_span": 1,
+            "grid_index": 56,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "타 제도 협의·심사여부",
+                "inlines": [
+                  {
+                    "text": "타 제도 ",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  },
+                  {
+                    "text": "협의·심사여부",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 41
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 12,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "(해당 시)",
+                "inlines": [
+                  {
+                    "text": "(해당 시)",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 6,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 7,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 57,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "제 도 명",
+                "inlines": [
+                  {
+                    "text": "제 도 명",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 5,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 7,
+            "col": 2,
+            "row_span": 1,
+            "col_span": 6,
+            "grid_index": 58,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 8,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 65,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "협의부처",
+                "inlines": [
+                  {
+                    "text": "협의부처",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 4,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 8,
+            "col": 2,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 66,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 8,
+            "col": 4,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 68,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "협의일시",
+                "inlines": [
+                  {
+                    "text": "협의일시",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 4,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 8,
+            "col": 6,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 70,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 9,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 73,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "협의결과",
+                "inlines": [
+                  {
+                    "text": "협의결과",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 39
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 4,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 9,
+            "col": 2,
+            "row_span": 1,
+            "col_span": 6,
+            "grid_index": 74,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 10,
+            "col": 0,
+            "row_span": 3,
+            "col_span": 1,
+            "grid_index": 80,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "사업담당자",
+                "inlines": [
+                  {
+                    "text": "사업담당자",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 5,
+                  "page_range": null
+                }
+              },
+              {
+                "kind": "paragraph",
+                "text": "(부처, 기관)",
+                "inlines": [
+                  {
+                    "text": "(부처, 기관)",
+                    "bold": true,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 38
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 8,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 10,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 81,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "담당부서",
+                "inlines": [
+                  {
+                    "text": "담당부서",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 4,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 10,
+            "col": 2,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 82,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "직급",
+                "inlines": [
+                  {
+                    "text": "직급",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 2,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 10,
+            "col": 3,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 83,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "성명",
+                "inlines": [
+                  {
+                    "text": "성명",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 2,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 10,
+            "col": 5,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 85,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "연락처",
+                "inlines": [
+                  {
+                    "text": "연락처",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 3,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 10,
+            "col": 7,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 87,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "전자메일",
+                "inlines": [
+                  {
+                    "text": "전자메일",
+                    "bold": false,
+                    "italic": false,
+                    "underline": false,
+                    "strikethrough": false,
+                    "href": null,
+                    "ruby": null,
+                    "raw_style_id": 18
+                  }
+                ],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 4,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 11,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 89,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 11,
+            "col": 2,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 90,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 11,
+            "col": 3,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 91,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 11,
+            "col": 5,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 93,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 11,
+            "col": 7,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 95,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 12,
+            "col": 1,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 97,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 12,
+            "col": 2,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 98,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 12,
+            "col": 3,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 99,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 12,
+            "col": 5,
+            "row_span": 1,
+            "col_span": 2,
+            "grid_index": 101,
+            "role": "layout",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          },
+          {
+            "row": 12,
+            "col": 7,
+            "row_span": 1,
+            "col_span": 1,
+            "grid_index": 103,
+            "role": "data",
+            "blocks": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "inlines": [],
+                "prov": {
+                  "section_idx": 0,
+                  "para_idx": 3,
+                  "char_start": 0,
+                  "char_end": 0,
+                  "page_range": null
+                }
+              }
+            ]
+          }
+        ],
+        "html": "<table><tr><td>사전협의 요청사유</td><td colspan=\"7\">□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설 □ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)</td></tr><tr><th rowspan=\"3\">사업명</th><th colspan=\"7\">(세부) </th></tr><tr><th colspan=\"7\">(내역) 세부사업 신설 시 미기재</th></tr><tr><th colspan=\"7\">(내내역) 세부사업·내역사업 신설 시 미기재</th></tr><tr><td>신설·변경 필요성(사유)</td><td colspan=\"7\">◦</td></tr><tr><td>신설·변경 주요내용</td><td colspan=\"7\">◦ ◦</td></tr><tr><td>기대효과</td><td colspan=\"7\">◦ ◦</td></tr><tr><td rowspan=\"3\">타 제도 협의·심사여부 (해당 시)</td><td>제 도 명</td><td colspan=\"6\"></td></tr><tr><td>협의부처</td><td colspan=\"2\"></td><td colspan=\"2\">협의일시</td><td colspan=\"2\"></td></tr><tr><td>협의결과</td><td colspan=\"6\"></td></tr><tr><td rowspan=\"3\">사업담당자 (부처, 기관)</td><td>담당부서</td><td>직급</td><td colspan=\"2\">성명</td><td colspan=\"2\">연락처</td><td>전자메일</td></tr><tr><td></td><td></td><td colspan=\"2\"></td><td colspan=\"2\"></td><td></td></tr><tr><td></td><td></td><td colspan=\"2\"></td><td colspan=\"2\"></td><td></td></tr></table>",
+        "text": "사전협의 요청사유\t□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설 □ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)\n사업명\t(세부) \n(내역) 세부사업 신설 시 미기재\n(내내역) 세부사업·내역사업 신설 시 미기재\n신설·변경 필요성(사유)\t◦\n신설·변경 주요내용\t◦ ◦\n기대효과\t◦ ◦\n타 제도 협의·심사여부 (해당 시)\t제 도 명\t\n협의부처\t\t협의일시\t\n협의결과\t\n사업담당자 (부처, 기관)\t담당부서\t직급\t성명\t연락처\t전자메일\n\t\t\t\t\n\t\t\t\t",
+        "caption": null,
+        "caption_block": null,
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 3,
+          "char_start": null,
+          "char_end": null,
+          "page_range": null
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "",
+        "inlines": [],
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 4,
+          "char_start": 0,
+          "char_end": 0,
+          "page_range": null
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "",
+        "inlines": [],
+        "prov": {
+          "section_idx": 0,
+          "para_idx": 5,
+          "char_start": 0,
+          "char_end": 0,
+          "page_range": null
+        }
+      }
+    ],
+    "furniture": {
+      "page_headers": [],
+      "page_footers": [],
+      "footnotes": [],
+      "endnotes": []
+    }
+  }
+}

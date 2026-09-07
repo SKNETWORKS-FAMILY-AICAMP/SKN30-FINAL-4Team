@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "common_ir_v0_1.schema.json",
+  "title": "공통 IR v0.1",
+  "description": "출처 중립 공통 IR v0.1. HWP/HWPX와 PDF는 각각 production 또는 검증 gold_reference 역할로 사용할 수 있다. native/OCR 관측은 분리하며 관계·셀은 명시 evidence가 있을 때만 보관한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document",
+    "blocks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "common_ir_v0_1"
+    },
+    "document": {
+      "$ref": "#/$defs/document"
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conflict"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relation"
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "page",
+        "bbox",
+        "coordinate_space",
+        "source_location"
+      ],
+      "properties": {
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "description": "생산 방법 id. 라우팅 결정이 아니다."
+        },
+        "page": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "bbox": {
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "number"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coordinate_space": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "예: pdf_user_space, rendered_page_px, rhwp_native, ocr_image_px. bbox가 null일 때만 null."
+        },
+        "source_location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "불변 raw 산출물을 가리키는 포인터."
+        }
+      },
+      "dependentSchemas": {
+        "bbox": {
+          "if": {
+            "properties": {
+              "bbox": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "coordinate_space": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "coordinate_space": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "source_kind",
+        "artifact_role",
+        "provenance"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "hwp",
+            "hwpx",
+            "pdf"
+          ]
+        },
+        "artifact_role": {
+          "type": "string",
+          "enum": [
+            "gold_reference",
+            "production"
+          ]
+        },
+        "page_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw_artifact_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "kind",
+        "structure_status",
+        "occurrences",
+        "provenance"
+      ],
+      "properties": {
+        "block_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "paragraph",
+            "table",
+            "table_candidate",
+            "diagram_candidate",
+            "image"
+          ]
+        },
+        "structure_status": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "occurrences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/occurrence"
+          }
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source_block_label": {
+          "type": "string"
+        }
+      }
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "occurrence_id",
+        "role",
+        "provenance"
+      ],
+      "properties": {
+        "occurrence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "rhwp_cell",
+            "native_text",
+            "ocr_text",
+            "layout_region",
+            "rhwp_text"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "producer_score": {
+          "type": "number",
+          "description": "처리 경로이 내는 불투명 점수. 평가 지표가 아니다. 다른 관측을 덮어쓸 권한이 아니다."
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell_id",
+        "evidence_ids",
+        "provenance"
+      ],
+      "properties": {
+        "cell_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "명시적 증거만. id가 하나라도 없으면 셀을 내지 않는다."
+        },
+        "row_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "col_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "row_span": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "col_span": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_occurrence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation_id",
+        "kind",
+        "from_id",
+        "to_id",
+        "evidence_ids",
+        "inferred",
+        "provenance"
+      ],
+      "properties": {
+        "relation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "order",
+            "parent_child",
+            "diagram_edge"
+          ]
+        },
+        "from_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "inferred": {
+          "const": false,
+          "description": "v0은 추론 관계를 금지한다. 다이어그램 간선은 추론하지 않는다."
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "observed_arrow": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "diagram_edge"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "inferred": {
+                "const": false
+              },
+              "evidence_ids": {
+                "type": "array",
+                "minItems": 1
+              }
+            },
+            "required": [
+              "inferred",
+              "evidence_ids"
+            ]
+          }
+        }
+      ]
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conflict_id",
+        "kind",
+        "occurrence_ids"
+      ],
+      "properties": {
+        "conflict_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "native_ocr"
+        },
+        "occurrence_ids": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

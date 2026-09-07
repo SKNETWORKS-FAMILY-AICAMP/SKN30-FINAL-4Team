@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "common-ir-pipeline"
+version = "1.0.0"
+description = "Portable Common IR v1 generation and validation pipeline"
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4.23,<5"]
+
+[project.optional-dependencies]
+hwp = ["rhwp-python"]
+pdf = ["pdf-inspector"]
+# OCR is deliberately optional.  The worker emits geometry-only diagnostic
+# sidecars; neither its dependencies nor model weights are required by the
+# native PDF Common IR path.
+ocr = [
+  "PyMuPDF>=1.24,<2",
+  "numpy>=1.26,<3",
+  # PaddleOCR is a frontend; the CPU PaddlePaddle runtime is required to
+  # load and execute its models.  GPU runtime selection remains a deployment
+  # concern and is intentionally not bundled by this portable package.
+  "paddlepaddle>=3.0,<4",
+  "paddleocr>=2.9,<3",
+  "easyocr>=1.7,<2",
+]
+# Surya is a separate GPU-oriented layout/structure diagnostic worker.  It is
+# intentionally not part of the base PDF adapter: model weights and CUDA/Torch
+# selection belong to the deployment environment, and Surya output stays
+# textless when projected into Common IR.
+surya = [
+  "PyMuPDF>=1.24,<2",
+  "Pillow>=10,<12",
+  "surya-ocr==0.22.1",
+]
+# Optional endpoint-server environment. Keep it separate from the Surya client
+# because vLLM/CUDA compatibility is host-specific and may conflict with the
+# client environment's OpenCV/Torch selections.
+surya-server = [
+  "vllm==0.20.1",
+  "huggingface-hub>=0.30",
+]
+
+[project.scripts]
+common-ir-rhwp = "common_ir_pipeline.run_rhwp_e2e:main"
+common-ir-markdown-fixture = "common_ir_pipeline.adapters.markdown_fixture:main"
+common-ir-pdf-native = "common_ir_pipeline.adapters.pdf_native:main"
+common-ir-pdf-inspector-capture = "common_ir_pipeline.workers.pdf_inspector_capture:main"
+common-ir-pdf-ocr-layout = "common_ir_pipeline.workers.pdf_ocr_layout:main"
+common-ir-pdf-surya-layout = "common_ir_pipeline.workers.pdf_surya_layout:main"
+common-ir-pdf-render = "common_ir_pipeline.workers.pdf_render:main"
+common-ir-pdf-surya-diagram-evidence = "common_ir_pipeline.workers.pdf_surya_diagram_evidence:main"
+common-ir-pdf-promote-explicit-diagram-edges = "common_ir_pipeline.workers.promote_pdf_only_explicit_diagram_edges:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Surya's client pins OpenCV 4.11 while the standalone vLLM endpoint server
+# requires OpenCV >=4.13.  They are deliberately installed in separate venvs
+# by the lifecycle scripts, never as one resolved environment.
+[tool.uv]
+conflicts = [
+  [
+    { extra = "surya" },
+    { extra = "surya-server" },
+  ],
+]

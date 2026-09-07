@@ -1,0 +1,2941 @@
+{
+  "artifact_kind": "request_source_selection_dry_run",
+  "selection_contract": "request_source_selection_v0.1.2",
+  "remote_model_called": false,
+  "instructions": "You select source anchors from one Korean pre-review request CandidatePack. Return only the RequestSourceSelectionV012 JSON schema. Do not write value_raw, summaries, offsets, evidence, normalized numbers, derived projections, or any server-derived keys outside the schema. field_states is the one optional exception: emit it only for source-visible mentioned_unresolved, extraction_failed, not_applicable, or partial states. For partial, fact_ids are optional hints only; the server derives final field IDs from the Raw Facts it actually materializes. If you nevertheless emit a field_state beside selected values, the server keeps the values and normalizes the final state to partial with diagnostics. Every selected legacy anchor_text must be copied exactly and be one contiguous source span. If literal anchor_text repeats within one source block, do not choose an occurrence or calculate an offset: select the supplied value_span_candidate_id instead. With value_span_candidate_id you may include only its matching source_block_id as a provenance hint; never include anchor_text. This repeated-anchor rule applies identically to every anchor-bearing selection: comparison/request-context Facts, support component name/applies-to, program hierarchy name, and delivery actor, role, action, and method. Extract requested/proposed values in this request, not a baseline value mentioned only for before-after comparison. Never put before-after comparison narration (such as →, 변경 전/후, 기존 대비, 시범사업 대비) into purpose_goal or support_content. For purpose_goal, select only the requested policy-purpose expression itself; do not select a sentence that narrates a retained prior purpose, a before/after comparison, or maintain-and-expand wording (for example '기존 목적을 유지하되 ... 확대'). When a purpose sentence mixes an intervention/change mechanism (for example '지급 구조를 단계별로 나누고' or '멘토링을 ... 구체화하여') with a separately contiguous policy outcome, select only the exact outcome span (for example '사업화 실행력을 높임'). Never summarize, trim, or join disconnected spans; if no standalone exact outcome exists, omit purpose_goal. For every Raw Fact, remove proposal/year/change label prefixes such as '2027년 요청안(변경 후):' and select only the content after the colon. Select only the requested programme's final applied value. A value noted as 변경 없음 may still be selected when the actual final value is independently explicit (for example a stated amount/period). If the source says only 동일(변경 없음) or another reference without an independently explicit final value, do not copy a Raw Fact: emit field_states with status mentioned_unresolved and, when apt, reason_codes containing unchanged_by_reference. Do not use any Gold, expected result, score, fixture label, or comparison outcome; none is source evidence. Use only the 16 comparison fields and six request_context fields permitted by the schema. Do not infer absent facts, business entities, relationships, or canonical vocabulary. applicant_eligibility, support_target, eligibility_conditions, and exclusions describe who may apply or be supported, which positive conditions narrow that set, or who is not allowed. A selection/review priority is not any of those fields: when the source says an applicant may still apply but is ranked higher/lower at screening or selection, do not create one of those four Facts; omit it rather than treating a priority as ineligibility or exclusion. request_type is server-resolved read-only context from the form checkbox. Do not output, modify, or infer request_type; it is outside RequestSourceSelectionV012. Keep program_period (official whole-program operation) distinct from support_period (selected recipient agreement/execution). For every program_period Fact, you must select a CandidatePack value_span_candidate_id whose candidate_kind is program_period_date_range; legacy anchor_text is not allowed for this field. Select only that candidate's literal date-range span (for example '2027년 1월~12월' or the explicit official open interval '공고일~2027.12.31'). Do not include '(12개월)', a label, or before/after change narration in that Raw Fact. Do not infer an unstated start/end date; only the listed candidate is eligible. do not treat application/receipt periods as either. support_scale contains only selected/support count, actual amount, rate, or limit: never duration or activity/session counts. In a 변경 후, 요청안, or 확산사업 context, if an amount, rate, or selected/supported count is independently written as an exact span, you must select each as support_scale even when '(변경 없음)' or '단가 자체는 유지' is adjacent. Only a reference with no value of its own, such as '동일(변경 없음)', becomes mentioned_unresolved. Education 4회 or another activity/session count remains outside support_scale. support_content is a narrow escape hatch only for material support content that cannot safely be assigned to support_activities, support_methods, or support_items. If an exact span is selected in any of those three fields, never select that same span in support_content; do not duplicate it as a fallback. support_components identify named packages, stages, or menus; they do not replace a Raw support_items Fact when the source separately states a concrete thing the recipient receives. For example, a grant/support fund is an item, whereas the act of paying it is not a recipient activity. When the component heading and an independently stated body occurrence are different exact spans, keep the heading as the component name and select the body occurrence as support_items. support_activities means what the recipient is enabled to do (for example training, commercialization, demonstration, or employment), not the provider's payment/disbursement action. A named recipient service such as mentoring is support_methods, not support_items; its exact format can be a separate method. When a named service is explicitly provided alongside another package and has its own format or cadence, create its own support_package component and link the service, format, and cadence to it; do not attach that format to the unrelated monetary package. Raw Facts must not reuse the same exact span with another Raw Fact. A structural component name may reuse one exact span only with a Raw Fact whose primary_component_id is that same component; do not use this exception across different components or comparison fields. support_methods contains only the method by which support is actually provided or paid (for example '사후 정산 지급'). A one-to-one mentoring format is also a support_method. Frequency, total sessions, payment-stage composition, and other material delivery details that are not safely an activity, method, or item belong in support_content as their shortest final-state exact spans. If one sentence contains a workflow such as selection → recruitment/placement → attendance confirmation → payment, never select the whole workflow. Select an independently exact providing/payment-method span only when it can be separated safely; do not create comparison Raw Facts for selection, recruitment, placement, or attendance confirmation steps. Create support components and primary_component_id only where the source explicitly names the package, type, or stage. Do not create a stage_support merely because one grant is paid in 1st/2nd stages or instalments. A stage is an independent component only when it has its own explicitly stated recipient, eligibility, exclusion, or participation boundary. Otherwise keep payment stages and their amounts under the parent support package as support_content/support_scale. When an explicit support-component heading/section has a local row '실제 수혜자: 사업주' or '실제 수혜자: 근로자', select the beneficiary value alone as an exact span and create a beneficiary Fact whose primary_component_id is that selected component. Do not create either value or component by inference when this explicit heading/row structure is absent. For every support_component you select, if its local section contains an explicit non-empty '실제 수혜자:' row, you must select exactly one such beneficiary Fact linked to that component; do not treat an independent or bare '동일' reference elsewhere as component-local. Create a delivery relation only if actor and role/action are explicitly connected in one paragraph or one explicit table row; never join separate regions. An actor must be an institution, organisation, or operational entity, never a diagram/layout label such as '(정책지정)→설명'. An explicit nested-table organisation chart can use table_column_pair only for actor plus explicit role OR actor plus explicit action cells in the same Common IR table and same column on consecutive non-empty semantic rows; do not coerce an action into role_raw or infer one. For a paragraph relation_container use source_block_id and anchor_text; common_ir_block_id is only required for table_row/table_column_pair. delivery_methods describe programme execution, not beneficiary support methods. If a value is not safely selectable, omit it rather than guessing.",
+  "input": {
+    "profile_id": "request:PREREVIEW-TEST-2027-03",
+    "read_only_context": {
+      "request_type": {
+        "selected_code": "program_content_change",
+        "label": "사업내용 변경"
+      }
+    },
+    "candidate_pack": {
+      "candidate_pack_id": "request:PREREVIEW-TEST-2027-03-request-v0.1.2",
+      "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+      "candidate_pack_generator_version": "1",
+      "common_ir_document_id": "request:PREREVIEW-TEST-2027-03",
+      "common_ir_source_sha256": "d1cedba70cea55c62a755107d0c7fc5dd32202ecfd85f1bdbb93029293c71f59",
+      "text_basis": "common_ir_v1_candidate_pack",
+      "value_span_candidate_generator": "request_candidate_span_v3",
+      "value_span_candidate_generator_version": "3",
+      "value_span_candidates": [
+        {
+          "value_span_candidate_id": "vsc:6e67112b7d5095b73296",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b0",
+          "start_char": 0,
+          "end_char": 1,
+          "value_raw": ">",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:01a82c0e4762e089301d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b0",
+          "start_char": 11,
+          "end_char": 12,
+          "value_raw": ">",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:cc0929ed1073463b8b02",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 4,
+          "end_char": 5,
+          "value_raw": "☐",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7c280e4d20aec66a110e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 14,
+          "end_char": 15,
+          "value_raw": "☐",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2dbaeb2ee54f957d1559",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 24,
+          "end_char": 25,
+          "value_raw": "☐",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4e5b3fb180033209b333",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 11,
+          "end_char": 13,
+          "value_raw": "신설",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6b73fd67b3832ae76836",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 21,
+          "end_char": 23,
+          "value_raw": "신설",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:679ead8b4ceb83c5b91d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 32,
+          "end_char": 34,
+          "value_raw": "신설",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:756bd892117a5f3da2a7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 11,
+          "end_char": 15,
+          "value_raw": "신설 ☐",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:743b01732fc45712b9f9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "start_char": 21,
+          "end_char": 25,
+          "value_raw": "신설 ☐",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0cfb18952268f049fed0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 31,
+          "end_char": 35,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:220b66f55cb5843368c0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 63,
+          "end_char": 67,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4182c4fcb08b7dc8668e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 46,
+          "end_char": 48,
+          "value_raw": "신설",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a089063c86be90d37c8c",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 84,
+          "end_char": 86,
+          "value_raw": "신설",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:fc73c320f15fb8858e7f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 46,
+          "end_char": 50,
+          "value_raw": "신설 시",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:726a8cf187612effdc1e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 84,
+          "end_char": 88,
+          "value_raw": "신설 시",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b33c601ca2e31d2ff4bf",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 46,
+          "end_char": 54,
+          "value_raw": "신설 시 미기재",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6bbd24b11a2f5e9573b2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 84,
+          "end_char": 92,
+          "value_raw": "신설 시 미기재",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d1e59accf6af37cac4e5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 46,
+          "end_char": 56,
+          "value_raw": "신설 시 미기재 —",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6f1c7dfc39e0ee8f35ed",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 84,
+          "end_char": 94,
+          "value_raw": "신설 시 미기재 —",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4dc22addf9da14d93cdd",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 46,
+          "end_char": 59,
+          "value_raw": "신설 시 미기재 — 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b25ec0c89df40a64181a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 84,
+          "end_char": 97,
+          "value_raw": "신설 시 미기재 — 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:decf833e1b61e5d6d55d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 46,
+          "end_char": 62,
+          "value_raw": "신설 시 미기재 — 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6d6600654652c6c126d7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 84,
+          "end_char": 100,
+          "value_raw": "신설 시 미기재 — 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ad7bdc85d9cd9d059e67",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 49,
+          "end_char": 50,
+          "value_raw": "시",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:cbee1b6244b7e071d559",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 87,
+          "end_char": 88,
+          "value_raw": "시",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:fe6bad51791174c621bc",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 49,
+          "end_char": 54,
+          "value_raw": "시 미기재",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:40e9c976e25211e62024",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 87,
+          "end_char": 92,
+          "value_raw": "시 미기재",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7c5c25456cbefa5b7c0f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 49,
+          "end_char": 56,
+          "value_raw": "시 미기재 —",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2b922cded7508a0104f3",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 87,
+          "end_char": 94,
+          "value_raw": "시 미기재 —",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:48f306d29880ee001a65",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 49,
+          "end_char": 59,
+          "value_raw": "시 미기재 — 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:aee7f8241ec396ef4fe5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 87,
+          "end_char": 97,
+          "value_raw": "시 미기재 — 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:96ca1ced9d78bf89e0be",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 49,
+          "end_char": 62,
+          "value_raw": "시 미기재 — 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d992cb00249a616aa555",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 87,
+          "end_char": 100,
+          "value_raw": "시 미기재 — 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:68a0c27e2a11d6f44950",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 51,
+          "end_char": 54,
+          "value_raw": "미기재",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a8b9780c7e783d466aa0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 89,
+          "end_char": 92,
+          "value_raw": "미기재",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8b209fab50c1d1e886c8",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 51,
+          "end_char": 56,
+          "value_raw": "미기재 —",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:313d85b4fd8aa10e4e4d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 89,
+          "end_char": 94,
+          "value_raw": "미기재 —",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:da662ec86b26f65360a1",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 51,
+          "end_char": 59,
+          "value_raw": "미기재 — 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:558c8be4ae1937bce8e3",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 89,
+          "end_char": 97,
+          "value_raw": "미기재 — 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ab6a34718cfb7125dd30",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 51,
+          "end_char": 62,
+          "value_raw": "미기재 — 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8f5f278a8d63a9d10be8",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 89,
+          "end_char": 100,
+          "value_raw": "미기재 — 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0468458cff0557b1e74f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 55,
+          "end_char": 56,
+          "value_raw": "—",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a65f5655ce6748d29f0b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 93,
+          "end_char": 94,
+          "value_raw": "—",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:074ecdd74b6a5fd5e016",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 55,
+          "end_char": 59,
+          "value_raw": "— 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:86aa04a190eb01b7c6c7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 93,
+          "end_char": 97,
+          "value_raw": "— 해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c82af9829c2795066f42",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 55,
+          "end_char": 62,
+          "value_raw": "— 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:592f4a51868a5af83a94",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 93,
+          "end_char": 100,
+          "value_raw": "— 해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3ca6d0a087f0b2d1b6a0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 57,
+          "end_char": 59,
+          "value_raw": "해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:aaacaea6275779fd12df",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 95,
+          "end_char": 97,
+          "value_raw": "해당",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8795f62e3340c323b60e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 57,
+          "end_char": 62,
+          "value_raw": "해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1b5411652f36a44e6eb5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 95,
+          "end_char": 100,
+          "value_raw": "해당 없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1f07c7d6741f944bc892",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 60,
+          "end_char": 62,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:db849ec5d66034bca5f0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 98,
+          "end_char": 100,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8f425b81eb63a6cd5c23",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 32,
+          "end_char": 34,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e3ad0a5e8cc6680d71fa",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "start_char": 64,
+          "end_char": 66,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2a2e755114dff86bf43d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 4,
+          "end_char": 5,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8e3dc7b137838704397e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 109,
+          "end_char": 110,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a2e90816242ea79d004c",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 395,
+          "end_char": 396,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:164385144fa850e3d49b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 448,
+          "end_char": 449,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f55aa007ba73de0ef3d2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 13,
+          "end_char": 15,
+          "value_raw": "최종",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:40d8726ed2b3df01e183",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 187,
+          "end_char": 189,
+          "value_raw": "최종",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2f4b4b337ebc359de65b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 54,
+          "end_char": 56,
+          "value_raw": "지원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2333047eeffec0cc766e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 215,
+          "end_char": 217,
+          "value_raw": "지원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a3543047ca6168a30c49",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 61,
+          "end_char": 65,
+          "value_raw": "포함되어",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0998bc70a8b54f7c1125",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 335,
+          "end_char": 339,
+          "value_raw": "포함되어",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:bd9a0bd45ffcf569b66b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 92,
+          "end_char": 95,
+          "value_raw": "사업화",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:29c48068a1b632d71514",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 290,
+          "end_char": 293,
+          "value_raw": "사업화",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1e086ee73873460b482a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 104,
+          "end_char": 108,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:32d8e5a3c354655f47d8",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 390,
+          "end_char": 394,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:095d425e33c5cc78bdeb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 443,
+          "end_char": 447,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7437667d05a3c27314ec",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 104,
+          "end_char": 110,
+          "value_raw": "<br> ○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:596fd40b85e685879cf0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 390,
+          "end_char": 396,
+          "value_raw": "<br> ○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0d2d942faa40f2dd8fa4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 443,
+          "end_char": 449,
+          "value_raw": "<br> ○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4d90dc946c3d96562c58",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 243,
+          "end_char": 245,
+          "value_raw": "일괄",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f3976664940c1d534685",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 273,
+          "end_char": 275,
+          "value_raw": "일괄",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b19edc9ec285a6dadb25",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 294,
+          "end_char": 296,
+          "value_raw": "실행",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3310b48a815ed7254229",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 366,
+          "end_char": 368,
+          "value_raw": "실행",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:dc29e82d854bde603fad",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 404,
+          "end_char": 407,
+          "value_raw": "(가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:19c1c263c20b366ec13a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 457,
+          "end_char": 460,
+          "value_raw": "(가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:26952d1fb0fa391ace2f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 404,
+          "end_char": 411,
+          "value_raw": "(가상 근거)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c2727906aacdaa89db0d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 457,
+          "end_char": 464,
+          "value_raw": "(가상 근거)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ce3544c912d210fe1ebb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 408,
+          "end_char": 411,
+          "value_raw": "근거)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:235a34211368d371ae66",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 461,
+          "end_char": 464,
+          "value_raw": "근거)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:63d2a534babd831432b4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 34,
+          "end_char": 36,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2a519336ec2271e114f1",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 246,
+          "end_char": 248,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:cde2124c07d79253ecec",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 105,
+          "end_char": 107,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:526824ea06aaa83d2bcb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 391,
+          "end_char": 393,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:346cde8f0e4fe1d18ca9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 444,
+          "end_char": 446,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3d2e34a3981d64617242",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 405,
+          "end_char": 407,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:df2dfce5dcbc0f921f3b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 458,
+          "end_char": 460,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c3dab81448e7d924fdc6",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 482,
+          "end_char": 484,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9b7fe345f5a8ef373b2c",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 408,
+          "end_char": 410,
+          "value_raw": "근거",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1979071747773e986246",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "start_char": 461,
+          "end_char": 463,
+          "value_raw": "근거",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6aad5891801d23635400",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 13,
+          "end_char": 25,
+          "value_raw": "2027년 7월~11월",
+          "candidate_kind": "program_period_date_range"
+        },
+        {
+          "value_span_candidate_id": "vsc:867258b4d5bb6475a911",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 4,
+          "end_char": 5,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:87b7dcee376ab46e3c01",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 46,
+          "end_char": 47,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ce005ac2543390543a05",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 85,
+          "end_char": 86,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2e3e81a9e2dbd9827381",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 130,
+          "end_char": 131,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6ae1545e65e745b556ad",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 246,
+          "end_char": 247,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c506857809a0e24b8551",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 39,
+          "end_char": 41,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0476de0524a7b57019a5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 124,
+          "end_char": 126,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:460c3dd6d00a50128377",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 150,
+          "end_char": 152,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3ee92ab8016dc66ad58c",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 39,
+          "end_char": 45,
+          "value_raw": "변경 없음)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a24151361e0b6fa6660e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 150,
+          "end_char": 156,
+          "value_raw": "변경 없음)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e3828d38cfc3f515584e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 42,
+          "end_char": 45,
+          "value_raw": "없음)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d74bc21fe0a866e28298",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 153,
+          "end_char": 156,
+          "value_raw": "없음)",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5cda02a2bf5cb6a494a4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 122,
+          "end_char": 123,
+          "value_raw": "—",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a7998611794943e6b1cb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 298,
+          "end_char": 299,
+          "value_raw": "—",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3b9ef7f208ebbc60cb27",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 157,
+          "end_char": 158,
+          "value_raw": "+",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0f491464e9aed19b0797",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 273,
+          "end_char": 274,
+          "value_raw": "+",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:71f804be04d73550cbc6",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 42,
+          "end_char": 44,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:003395578840b6f8c4b9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 127,
+          "end_char": 129,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1c3b351f947f93f81ea6",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "start_char": 153,
+          "end_char": 155,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9a964ced59d2f72c7afc",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 4,
+          "end_char": 5,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e9b5a811d429efd27149",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 54,
+          "end_char": 55,
+          "value_raw": "○",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ca31c53320abf7bb17f7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 13,
+          "end_char": 16,
+          "value_raw": "단계별",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:95a58e7593ea435acf22",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 82,
+          "end_char": 85,
+          "value_raw": "단계별",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1e61746e6cdcc012885a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 24,
+          "end_char": 27,
+          "value_raw": "멘토링",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:25ab8bf005a5f42d5396",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 94,
+          "end_char": 97,
+          "value_raw": "멘토링",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:189bcd7c85e6fc763579",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 39,
+          "end_char": 41,
+          "value_raw": "창업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:555233f3de42d4c2e2c7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 63,
+          "end_char": 65,
+          "value_raw": "창업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:56ff5f64bb95d175ede8",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 42,
+          "end_char": 45,
+          "value_raw": "전환율",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:bb72e4d3640c8388ee0a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "start_char": 66,
+          "end_char": 69,
+          "value_raw": "전환율",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:fc2ff91f04d5bdb80386",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 18,
+          "end_char": 22,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9bbf53cf744520e565f9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 58,
+          "end_char": 62,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c9f7b68beadd4a7f0e78",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 29,
+          "end_char": 33,
+          "value_raw": "해당없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ae1dd17bd8fcd149e129",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 53,
+          "end_char": 57,
+          "value_raw": "해당없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1c98e3f325f73b82c7cd",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 69,
+          "end_char": 73,
+          "value_raw": "해당없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1765e754284cdfe323d2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 9,
+          "end_char": 13,
+          "value_raw": "해당없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:69eb4d33d3f37ac4f860",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 19,
+          "end_char": 21,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b06cc984189e7b6d8a96",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 59,
+          "end_char": 61,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7f90693a762cf3e2008d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 35,
+          "end_char": 39,
+          "value_raw": "nbsp",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0618b04f323e08308fb5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "start_char": 41,
+          "end_char": 45,
+          "value_raw": "nbsp",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:eeeaf950ab739cb663bc",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 30,
+          "end_char": 34,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5e29f25987fc68b97944",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 68,
+          "end_char": 72,
+          "value_raw": "<br>",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5f0b2c8d8ad5d3d8b34d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 46,
+          "end_char": 52,
+          "value_raw": "&nbsp;",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8dc0d114abc9829232d6",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 96,
+          "end_char": 102,
+          "value_raw": "&nbsp;",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c7bfe3dbf9f488fdf772",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 10,
+          "end_char": 12,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:301497601580a124abb4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 42,
+          "end_char": 44,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:47e93889bae2423b453f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 61,
+          "end_char": 63,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:fe24e39b9816cc73c7ac",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 92,
+          "end_char": 94,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:03f189f2409c777bc2a9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 136,
+          "end_char": 138,
+          "value_raw": "가상",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9a1f9a33acddc1cb0ca8",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 31,
+          "end_char": 33,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7ff15a53403905a88fbc",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 69,
+          "end_char": 71,
+          "value_raw": "br",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:637869bbef0412348a93",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 47,
+          "end_char": 51,
+          "value_raw": "nbsp",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a8352fc4a3aedf4dbb80",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "start_char": 97,
+          "end_char": 101,
+          "value_raw": "nbsp",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d3bd1d87d7e62571f17b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b20",
+          "start_char": 8,
+          "end_char": 10,
+          "value_raw": "창업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c6b1b69d8716fe71c9d2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b20",
+          "start_char": 146,
+          "end_char": 148,
+          "value_raw": "창업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c3749aef66414792aaf0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b22",
+          "start_char": 57,
+          "end_char": 58,
+          "value_raw": "→",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4eb7bb61ee7fb646f47a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b22",
+          "start_char": 69,
+          "end_char": 70,
+          "value_raw": "→",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8dd3e7e5cdde4ac1d2d8",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b23",
+          "start_char": 21,
+          "end_char": 22,
+          "value_raw": "이",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4dc02b0ad4ce376e409e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b23",
+          "start_char": 56,
+          "end_char": 57,
+          "value_raw": "이",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b52dea34bb834a977385",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b25",
+          "start_char": 8,
+          "end_char": 9,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f9adf2e7f3ae2a1e214a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b25",
+          "start_char": 19,
+          "end_char": 20,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7282246de0b78c20eda5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b28",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c3984fb17da3482b7914",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b28",
+          "start_char": 7,
+          "end_char": 9,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d71a7709bee906bf738d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b31",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e3c45700f24cfd7ff4a4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b31",
+          "start_char": 7,
+          "end_char": 9,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0a2869aa3f405afeb7af",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+          "start_char": 23,
+          "end_char": 28,
+          "value_raw": "창업지원금",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2ce474404cba4975c4f4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+          "start_char": 29,
+          "end_char": 34,
+          "value_raw": "창업지원금",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d7823972f0f5d9f0e1c7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b34",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f7cc4452807cee847c6b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b34",
+          "start_char": 7,
+          "end_char": 9,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4a9b8a44ccfd94f87b95",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b36",
+          "start_char": 8,
+          "end_char": 9,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3ed494026158f40886c3",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b36",
+          "start_char": 15,
+          "end_char": 16,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:61f1e7924f9d6000371b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b38",
+          "start_char": 6,
+          "end_char": 8,
+          "value_raw": "사업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:640643680f1a02489c92",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b38",
+          "start_char": 18,
+          "end_char": 20,
+          "value_raw": "사업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:008a8d13ada95d99e7a7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b39",
+          "start_char": 10,
+          "end_char": 12,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:90ff31bbddd6e3218791",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b39",
+          "start_char": 20,
+          "end_char": 22,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ef021c3061ac42292a7f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b40",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a0ed03c8243e38bcc0f2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b40",
+          "start_char": 7,
+          "end_char": 9,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8cad43a49b313b01631d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b42",
+          "start_char": 6,
+          "end_char": 8,
+          "value_raw": "사업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:252a82067025cfda8717",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b42",
+          "start_char": 18,
+          "end_char": 20,
+          "value_raw": "사업",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:16bd3a66128910ae4499",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 119,
+          "end_char": 121,
+          "value_raw": "확인",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0aac833ebd5dd77e5355",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 131,
+          "end_char": 133,
+          "value_raw": "확인",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a8c2b89d66a1597b3e7a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 10,
+          "end_char": 12,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f24c76a80af75ef57aba",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 27,
+          "end_char": 29,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a03d0b5e9a696fa0d810",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 13,
+          "end_char": 14,
+          "value_raw": "후",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e14373c31cc4d7f2293d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 122,
+          "end_char": 123,
+          "value_raw": "후",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:571e24b42554c6759d5d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 63,
+          "end_char": 65,
+          "value_raw": "완료",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c3379ff26eb7df3592a4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 82,
+          "end_char": 84,
+          "value_raw": "완료",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:dbb033c71f0292eefe2c",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 103,
+          "end_char": 105,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f5c475417c6924872edb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 124,
+          "end_char": 126,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9a8aa8c588f6a38f2373",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 128,
+          "end_char": 130,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:20dd99aaeb7d96303be5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 152,
+          "end_char": 153,
+          "value_raw": "1",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:bf6164c67abc7cb96bdb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "start_char": 154,
+          "end_char": 155,
+          "value_raw": "1",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a2a82120966d2aef1a82",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b44",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:f92b9ebcf21b1556ef8b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b44",
+          "start_char": 7,
+          "end_char": 9,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e3ba62438d8f8c7bb50e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 19,
+          "end_char": 21,
+          "value_raw": "사후",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5fb29cefd89623c4e7c9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 57,
+          "end_char": 59,
+          "value_raw": "사후",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:953478d3174a36850e85",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 5,
+          "end_char": 7,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:998047d26dd1d748806d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 88,
+          "end_char": 90,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:59a8c0d0ee7acb42354f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 22,
+          "end_char": 24,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a7d6f64ac764e248c824",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 60,
+          "end_char": 62,
+          "value_raw": "지급",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d44ce7bc33d17db6d414",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 25,
+          "end_char": 28,
+          "value_raw": "멘토링",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:40b11ed51019785f6f78",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "start_char": 65,
+          "end_char": 68,
+          "value_raw": "멘토링",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:8a540813a577eeebe118",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b47",
+          "start_char": 3,
+          "end_char": 5,
+          "value_raw": "단위",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ac0d25bf6c44f52d78ae",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b47",
+          "start_char": 28,
+          "end_char": 30,
+          "value_raw": "단위",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d4b49e61e085639e3aac",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b50",
+          "start_char": 6,
+          "end_char": 20,
+          "value_raw": "2026년 7월 ~ 11월",
+          "candidate_kind": "program_period_date_range"
+        },
+        {
+          "value_span_candidate_id": "vsc:3939012666f91e34fe33",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b51",
+          "start_char": 6,
+          "end_char": 20,
+          "value_raw": "2027년 7월 ~ 11월",
+          "candidate_kind": "program_period_date_range"
+        },
+        {
+          "value_span_candidate_id": "vsc:c7abf83894f66aa8f4f2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b59",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a155afc0d1ce7d7f8222",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b59",
+          "start_char": 9,
+          "end_char": 11,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2ffc3d4c23305b0c170f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "start_char": 8,
+          "end_char": 9,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:435501abb2038d775444",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "start_char": 13,
+          "end_char": 14,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:648893e67f097f5dad67",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "start_char": 18,
+          "end_char": 19,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:81af0bb60a2ccbd1d5b2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "start_char": 23,
+          "end_char": 24,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:cff854983b2274c8b730",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "start_char": 29,
+          "end_char": 30,
+          "value_raw": "/",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d237a1d2b9e2712bd270",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b64",
+          "start_char": 10,
+          "end_char": 12,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3caced2a935cd6ecc5fd",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b64",
+          "start_char": 22,
+          "end_char": 24,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ad209a6531d7a442faa1",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b66",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "선정",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:872f9f1062f8d1037c2f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b66",
+          "start_char": 15,
+          "end_char": 17,
+          "value_raw": "선정",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d3762478858621db73ba",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b68",
+          "start_char": 10,
+          "end_char": 12,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:26c52224a90bcec86641",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b68",
+          "start_char": 21,
+          "end_char": 23,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5817ebc04006e2429895",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b76",
+          "start_char": 17,
+          "end_char": 18,
+          "value_raw": "1",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:33b66b9c61a5f6a56b1f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b76",
+          "start_char": 19,
+          "end_char": 20,
+          "value_raw": "1",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7d01614df1a9f39d98cf",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "start_char": 10,
+          "end_char": 12,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:19e54781e99442d6aa5d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "start_char": 27,
+          "end_char": 29,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:d0a9a0d2d8bade83e0f2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "start_char": 17,
+          "end_char": 19,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3fe687d09438518915d0",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "start_char": 30,
+          "end_char": 32,
+          "value_raw": "없음",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:25486e55600c44061514",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 0,
+          "end_char": 1,
+          "value_raw": ">",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4ae51095ca08c6ae6903",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 108,
+          "end_char": 109,
+          "value_raw": ">",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ae06a58e01c1aa365918",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 190,
+          "end_char": 191,
+          "value_raw": ">",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:1a94162246d6bde3a9a9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 2,
+          "end_char": 5,
+          "value_raw": "총예산",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:89834e389f3fc0014c50",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 32,
+          "end_char": 35,
+          "value_raw": "총예산",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:e8d8001eb3c352ee5571",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 108,
+          "end_char": 111,
+          "value_raw": "> -",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:ebfe8ae36f108a68de79",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 190,
+          "end_char": 193,
+          "value_raw": "> -",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7e0aff3b9e391c704228",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 108,
+          "end_char": 114,
+          "value_raw": "> - 변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5e452acc2d031099f5dc",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 190,
+          "end_char": 196,
+          "value_raw": "> - 변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4b5f600a7c5c9a63e11d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 110,
+          "end_char": 111,
+          "value_raw": "-",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c5e60e06a5dc6cb4c766",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 192,
+          "end_char": 193,
+          "value_raw": "-",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2a26633f02642b1a360e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 110,
+          "end_char": 114,
+          "value_raw": "- 변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3e3759698eaca039aeb7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 192,
+          "end_char": 196,
+          "value_raw": "- 변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:994432374ad692ea900f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 112,
+          "end_char": 114,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:64f4ab9669da3b15710b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 194,
+          "end_char": 196,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:117d558aaad7c0bb26b7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 220,
+          "end_char": 222,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:6fdff820b0340eaf9f4d",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 118,
+          "end_char": 123,
+          "value_raw": "교육운영비",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2853f65f2ff4f2503d0f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 200,
+          "end_char": 205,
+          "value_raw": "교육운영비",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0ae82048d5fa29be62e7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 138,
+          "end_char": 139,
+          "value_raw": "+",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:3b0eee88b1c40c3476d3",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 227,
+          "end_char": 228,
+          "value_raw": "+",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:05dc98719ebe224682bc",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 255,
+          "end_char": 256,
+          "value_raw": "+",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:5acf0a6486f60f1a50a4",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 138,
+          "end_char": 145,
+          "value_raw": "+ 창업지원금",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:0259dd253f9d1a43e9a5",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 227,
+          "end_char": 234,
+          "value_raw": "+ 창업지원금",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:71fe272dbc0efc4de7a7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 140,
+          "end_char": 145,
+          "value_raw": "창업지원금",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a69579aecf864385a75e",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 229,
+          "end_char": 234,
+          "value_raw": "창업지원금",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b6b30abf957e3f090bfb",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 166,
+          "end_char": 167,
+          "value_raw": "=",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4a20a7fa367e8b49444a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 290,
+          "end_char": 291,
+          "value_raw": "=",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a763fb4d29c2428f3462",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 36,
+          "end_char": 38,
+          "value_raw": "14",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:549dfbeb574c70f9b098",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 168,
+          "end_char": 170,
+          "value_raw": "14",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:49763110fdf2e3af614b",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 124,
+          "end_char": 125,
+          "value_raw": "2",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9fcdc8870e7f36fa7aea",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 206,
+          "end_char": 207,
+          "value_raw": "2",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4840816555ba90e7488f",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 268,
+          "end_char": 269,
+          "value_raw": "2",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:9f9014facd42ed3f9eb9",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 126,
+          "end_char": 131,
+          "value_raw": "400천원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:b4f43d4061f19e8a5f39",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 171,
+          "end_char": 176,
+          "value_raw": "400천원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:cdd56fe42d28873fbe93",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 208,
+          "end_char": 213,
+          "value_raw": "400천원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:576702902d83b0875056",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 132,
+          "end_char": 136,
+          "value_raw": "20개팀",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c5ec3cfd30221ac9c0c2",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 214,
+          "end_char": 218,
+          "value_raw": "20개팀",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:2e26985fc4a2290c2636",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 149,
+          "end_char": 154,
+          "value_raw": "000천원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:a1030b38b6e9a534c6b7",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 238,
+          "end_char": 243,
+          "value_raw": "000천원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:578823972a315f2f5673",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 295,
+          "end_char": 300,
+          "value_raw": "000천원",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:94a2200a16f013151580",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 155,
+          "end_char": 158,
+          "value_raw": "4개팀",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:7243dc4d9b709da81a04",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "start_char": 244,
+          "end_char": 247,
+          "value_raw": "4개팀",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:860b9296ea4aa273f168",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b90",
+          "start_char": 0,
+          "end_char": 2,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:c78cd6c2746c69902a6a",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b90",
+          "start_char": 7,
+          "end_char": 9,
+          "value_raw": "변경",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:4154d6c368827dfe1f01",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b92",
+          "start_char": 4,
+          "end_char": 5,
+          "value_raw": "1",
+          "candidate_kind": "repeated_exact_span"
+        },
+        {
+          "value_span_candidate_id": "vsc:21140e10424b5434ea47",
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b92",
+          "start_char": 6,
+          "end_char": 7,
+          "value_raw": "1",
+          "candidate_kind": "repeated_exact_span"
+        }
+      ],
+      "blocks": [
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b0",
+          "text": "> ⚠️ 가상 문서\n> 본 문서는 가상의 사전협의 요청서이며, 실제 행정기관의 제출·의사결정·사업 추진 내용과 무관합니다.",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b0",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b0"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b1",
+          "text": "중소기업지원사업 사전협의 요청서",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b1",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b1"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b2",
+          "text": "< 가상 동구청년창업지원센터 >",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b2",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b2"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b3",
+          "text": "사전협의 요청사유",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b3",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b3"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "text": "내용: ☐ 세부사업 신설 ☐ 내역사업 신설 ☐ 내내역사업 신설 <br> ☑ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b4"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b5",
+          "text": "사업명",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b5",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b5"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "text": "내용: (세부) 동구 청년 창업지원사업(지원내용 개편) <br> (내역) 세부사업 신설 시 미기재 — 해당 없음 <br> (내내역) 세부사업·내역사업 신설 시 미기재 — 해당 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b6"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b7",
+          "text": "신설·변경 필요성(사유)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b7",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b7"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "text": "내용: ○ (사업목적) 최종 선정팀에게 지급하는 창업지원금의 지급 구조를 단계별로 나누고, 이미 지원 방식에 포함되어 있던 멘토링을 1:1·정기 방식으로 구체화하여 사업화 실행력을 높임 <br> ○ (필요성) 2026년 사업(참조: bizinfo:PBLN_000000000125612)은 창업교육에 20개팀이 참여하고 이 중 4개팀이 최종 선정되어 팀당 300만원의 창업지원금(멘토링 지원 포함, 지출영수증 등 증빙서류 확인 후 사후 일괄 지급)을 받는 구조. 그러나 지원금이 한 시점에 일괄 지급되어 아이디어 검증과 사업화 실행 각 단계에 맞춘 자금 배분이 이루어지지 못하고, 멘토링도 지원방식에 포함되어 있을 뿐 구체적 방식·빈도가 정해져 있지 않아 실행 지도가 형식적으로 그치는 사례가 있음 <br> ○ (지원근거) (가상 근거) 「청년기본법」 제17조, 「중소기업창업 지원법」 제4조 <br> ○ (연계정책) (가상 근거) 동구 청년창업 활성화 기본계획(가상)과 연계",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b8"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b9",
+          "text": "신설·변경 주요내용",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b9",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b9"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "text": "내용: ○ (사업기간) 2027년 7월~11월(5개월, 연도만 갱신, 변경 없음) ○ (사업예산) 14,400천원 → 21,000천원(+6,600천원) ○ (지원대상) 19~39세 예비창업자, 사업자등록 이력 없는 자 — 변경 없음 ○ (지원내용) 창업교육(20개팀, 변경 없음) + 창업지원금 지급을 1단계(아이디어 검증)·2단계(사업화)로 분할하고 팀당 300만원→400만원으로 조정, 기존 멘토링 지원을 1:1·월2회·총8회로 구체화 ○ (수행기관) 가상 동구청년창업지원센터(총괄) + 신규 협력기관(청년창업 멘토풀 운영기관) — 상세는 아래 [첨부] 참조",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b10"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b11",
+          "text": "기대효과",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b11",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b11"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "text": "내용: ○ (파급효과) 단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고 <br> ○ (성과지표) 창업 전환율(사업자등록 완료율), 단계별 지급 집행률, 멘토링 만족도 — 상세 수치는 [첨부] 참조",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b12"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b13",
+          "text": "타 제도 협의·심사여부",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b13",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b13"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "text": "내용: 제도명: 해당없음(가상) <br> 협의부처: 해당없음 &nbsp;&nbsp; 협의일시: 해당없음 <br> 협의결과: 해당없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b14"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b15",
+          "text": "사업담당자(부처, 기관)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b15",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b15"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "text": "내용: 담당부서: 가상 동구청년창업지원센터 창업지원팀 <br> 직급: 팀장(가상) &nbsp; 성명: 박가상(가상 인물) <br> 연락처: 000-0000-0000(가상) &nbsp; 전자메일: test-pm03@example-gov.test(가상)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b16"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b17",
+          "text": "첨부: 1. 제출자료 자체 점검표 1부(생략 — 가상 문서) &nbsp; 2. '27년도 사업계획서(안) 및 참고자료(아래 본문에 포함)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b17",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b17"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b18",
+          "text": "첨부: 사업설명자료",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b18",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b18"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b19",
+          "text": "1. 사업목적",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b19",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b19"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b20",
+          "text": "동구 내 예비 창업 청년을 대상으로 창업교육과 최종 선정팀 대상 창업지원금·멘토링을 제공한다는 기존 목적은 유지하되, 창업지원금의 지급 시점을 사업화 단계에 맞춰 분할하고, 기존에 이미 포함되어 있던 멘토링을 1:1·정기 방식으로 구체화하여 교육 이수 → 실제 창업 전환까지의 실행력을 강화한다.",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b20",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b20"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b21",
+          "text": "2. 사업필요성",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b21",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b21"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b22",
+          "text": "2026년 사업(참조: bizinfo:PBLN_000000000125612)은 창업교육 20개팀 참여 → 최종 4개팀 선정 → 팀당 300만원 창업지원금을 지출영수증 등 증빙서류 확인 후 사후 일괄 지급하는 구조로, 지원금이 한 시점에 몰려 지급되어 아이디어 검증 단계의 초기 자금 소요를 충당하기 어려움",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b22",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b22"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b23",
+          "text": "창업지원금의 지원방식에 \"멘토링 지원\"이 이미 포함되어 있으나, 원문상 빈도·방식(그룹/1:1 여부)이 특정되어 있지 않아 실행 지도가 팀별로 편차 있게 이루어짐",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b23",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b23"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b24",
+          "text": "최종 선정 4개팀은 \"2026년 중 사업자등록을 완료하여야 함\"이라는 참여요건을 충족해야 하는데, 사업화 준비 자금이 일괄 지급 이후에나 확보되어 등록 시점이 지연되는 사례가 있음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b24",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b24"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b25",
+          "text": "3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b25",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b25"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b26",
+          "text": "신청주체",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b26",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b26"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b27",
+          "text": "내용: 동구 내 창업을 희망하는 청년 예비 창업자(19~39세) 본인",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b27",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b27"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b28",
+          "text": "변경 여부: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b28",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b28"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b29",
+          "text": "정책적 지원대상",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b29",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b29"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b30",
+          "text": "내용: 신청자 명의의 사업자 등록이 없는 청년(19~39세)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b30",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b30"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b31",
+          "text": "변경 여부: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b31",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b31"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b32",
+          "text": "실제 수혜자(컴포넌트별)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b32",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b32"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+          "text": "내용: 창업교육=교육 참여자(20개팀), 창업지원금=창업지원금 지원 대상자로 최종 선정된 자(4개팀)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b33"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b34",
+          "text": "변경 여부: 변경 없음(구분 자체 유지)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b34",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b34"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b35",
+          "text": "> 지원대상 연령(19~39세) 및 자격요건(사업자등록 이력 없는 자)은 2026년 사업과 동일하게 유지하며, 본 요청서는 지원대상·자격 변경을 요청하지 않는다.",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b35",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b35"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b36",
+          "text": "4. 지원활동 / 지원방식 / 지원항목 — 변경 상세",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b36",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b36"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b37",
+          "text": "(1) 창업교육",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b37",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b37"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b38",
+          "text": "2026년 사업(변경 전, 기존 사업 기준): 창업기초 및 실무교육, 20개팀 참여, 수혜자=교육 참여자",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b38",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b38"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b39",
+          "text": "2027년 요청안(변경 후): 동일(변경 없음)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b39",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b39"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b40",
+          "text": "변경 구분: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b40",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b40"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b41",
+          "text": "(2) 창업지원금",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b41",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b41"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b42",
+          "text": "2026년 사업(변경 전, 기존 사업 기준): 최종 선정 4개팀에 팀당 300만원, 지원방식: 멘토링 지원 포함(빈도·방식 미특정) + 지출영수증 등 증빙서류 확인 후 일괄 사후 지급",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b42",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b42"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "text": "2027년 요청안(변경 후): 최종 선정 4개팀(변경 없음)에 팀당 400만원, 지원방식: 1단계(아이디어 검증 완료, 150만원)·2단계(사업화 완료 보고, 250만원)로 분할 사후 지급(각 단계 모두 증빙서류 확인 후 지급, 지급 확인 절차 자체는 유지) + 멘토링을 1:1 방식, 월 2회, 총 8회로 구체화",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b43"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b44",
+          "text": "변경 구분: 변경",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b44",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b44"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "text": "지원방식 변경: \"선정 직후 일괄 사후 지급(멘토링 지원 포함, 방식 미특정)\" → \"1·2단계 분할 사후 지급 + 멘토링 1:1·월2회·총8회로 구체화\" (변경)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b45"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b46",
+          "text": "지원항목(금액) 변경: 창업지원금 팀당 300만원 → 400만원(+100만원, +약 33%), 1단계 150만원 + 2단계 250만원으로 구성(합산액이 400만원과 정합)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b46",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b46"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b47",
+          "text": "대상 단위: 교육 20개팀·최종 선정 4개팀 모두 단위(개팀)와 수치가 변경 없이 유지됨 — 인원(명) 단위로 전환하지 않음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b47",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b47"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b48",
+          "text": "5. 사업 전체기간 vs 수혜자 지원 기간",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b48",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b48"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b49",
+          "text": "사업 전체기간",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b49",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b49"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b50",
+          "text": "변경 전: 2026년 7월 ~ 11월(5개월)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b50",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b50"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b51",
+          "text": "변경 후: 2027년 7월 ~ 11월(5개월)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b51",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b51"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b52",
+          "text": "비고: 연도만 2027년으로 갱신, 기간 산정 방식·개월 수는 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b52",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b52"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b53",
+          "text": "최종 선정팀 참여요건 시점",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b53",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b53"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b54",
+          "text": "변경 전: \"2026년 중 사업자등록을 완료하여야 함\"",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b54",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b54"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b55",
+          "text": "변경 후: \"2027년 중 사업자등록을 완료하여야 함\"",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b55",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b55"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b56",
+          "text": "비고: 연도 갱신, target_fiscal_year=2027과 정합",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b56",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b56"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b57",
+          "text": "수혜자 지원기간",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b57",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b57"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b58",
+          "text": "변경 전: 선정~11월(사업 전체기간과 동일 추정)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b58",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b58"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b59",
+          "text": "변경 후: 동일(변경 없음, 연도만 갱신)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b59",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b59"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b60",
+          "text": "비고: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b60",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b60"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "text": "6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b61"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b62",
+          "text": "선정 규모(창업교육)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b62",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b62"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b63",
+          "text": "2026년 사업(변경 전): 20개팀",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b63",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b63"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b64",
+          "text": "2027년 요청안(변경 후): 20개팀(변경 없음)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b64",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b64"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b65",
+          "text": "비고: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b65",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b65"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b66",
+          "text": "선정 규모(창업지원금 최종 선정)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b66",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b66"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b67",
+          "text": "2026년 사업(변경 전): 4개팀",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b67",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b67"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b68",
+          "text": "2027년 요청안(변경 후): 4개팀(변경 없음)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b68",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b68"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b69",
+          "text": "비고: 변경 없음 — 단위·수치 모두 유지",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b69",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b69"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b70",
+          "text": "창업지원금 단가(팀당)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b70",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b70"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b71",
+          "text": "2026년 사업(변경 전): 300만원(일괄 지급)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b71",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b71"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b72",
+          "text": "2027년 요청안(변경 후): 400만원(1단계 150만원 + 2단계 250만원, 분할 지급)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b72",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b72"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b73",
+          "text": "비고: 변경",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b73",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b73"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b74",
+          "text": "멘토링",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b74",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b74"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b75",
+          "text": "2026년 사업(변경 전): 지원방식에 포함(빈도·방식 미특정)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b75",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b75"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b76",
+          "text": "2027년 요청안(변경 후): 1:1 방식, 월 2회, 총 8회로 구체화",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b76",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b76"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b77",
+          "text": "비고: 변경",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b77",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b77"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b78",
+          "text": "자부담",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b78",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b78"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b79",
+          "text": "2026년 사업(변경 전): 원문상 자부담 조건 식별되지 않음(정보부족)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b79",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b79"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "text": "2027년 요청안(변경 후): 없음(전액 지원, 변경 없음)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b80"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b81",
+          "text": "비고: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b81",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b81"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b82",
+          "text": "총예산",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b82",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b82"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b83",
+          "text": "2026년 사업(변경 전): 14,400천원",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b83",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b83"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b84",
+          "text": "2027년 요청안(변경 후): 21,000천원",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b84",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b84"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b85",
+          "text": "비고: 변경 — 산식은 아래 참고",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b85",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b85"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "text": "> 총예산 산식(참고, 가상 산정 예시): 기존 사업에는 총예산 14,400천원이라는 합계값만 제시되어 있고, 항목별 내역 구분은 명시되어 있지 않다. 아래는 합계가 일치하도록 산정한 예시다.\n> - 변경 전: 교육운영비 2,400천원(20개팀) + 창업지원금 12,000천원(4개팀×300만원) = 14,400천원 (원문 총예산과 일치)\n> - 변경 후: 교육운영비 2,400천원(20개팀, 변경 없음) + 창업지원금 16,000천원(4개팀×400만원) + 멘토링 전담 운영비 2,600천원(신규 협력기관 계약비용) = 21,000천원",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b86"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b87",
+          "text": "7. 수행기관 및 역할",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b87",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b87"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b88",
+          "text": "가상 동구청년창업지원센터",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b88",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b88"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b89",
+          "text": "역할: 사업 총괄, 신청 접수·선정, 교육 운영, 창업지원금 단계별 지급 관리",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b89",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b89"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b90",
+          "text": "변경 여부: 변경 없음",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b90",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b90"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b91",
+          "text": "가상 청년창업 멘토풀 운영기관",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b91",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b91"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b92",
+          "text": "역할: 1:1 멘토링 매칭 및 운영",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b92",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b92"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b93",
+          "text": "8. 기대효과 및 성과지표(KPI)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b93",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b93"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b94",
+          "text": "(파급효과) 단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b94",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b94"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b95",
+          "text": "(성과지표, 가상 목표치)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b95",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b95"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b96",
+          "text": "창업 전환율(사업자등록 완료율): 35% 이상(2026년 실적은 원문 미확인으로 비교 불가 — 정보부족)",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b96",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b96"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b97",
+          "text": "1·2단계 지급 집행률: 각 단계 90% 이상",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b97",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b97"
+          ]
+        },
+        {
+          "source_block_id": "markdown:PREREVIEW-TEST-2027-03:b98",
+          "text": "멘토링 참여 만족도: 4.5/5.0 이상",
+          "common_ir_block_id": "markdown:PREREVIEW-TEST-2027-03:b98",
+          "common_ir_occurrence_ids": [
+            "markdown:PREREVIEW-TEST-2027-03:occ:b98"
+          ]
+        }
+      ]
+    }
+  }
+}
