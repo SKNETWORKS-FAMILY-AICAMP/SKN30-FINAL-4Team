@@ -29,7 +29,7 @@ import preconsultation_adapter as PA           # noqa: E402
 FIXTURE = os.path.join(_HERE, "fixtures", "preconsultation_example.txt")
 
 BASE = {"support_method": "grant", "support_unit": "project",
-        "title": "ICT지원사업", "cohort": "연구개발|grant", "year": 2024}
+        "title": "ICT지원사업", "cohort": "taxonomy", "year": 2024}
 
 _fail = []
 
@@ -161,6 +161,21 @@ def main():
           env2["result"]["observed_per_recipient"]["amount"] == 1500000000
           and env2["result"]["predicted_per_recipient"]["amount"]
           != env2["result"]["observed_per_recipient"]["amount"])
+    # cohort 는 비교군 키가 아니라 출처다. 엉뚱한 값을 넘기면 어느 사다리 단계에도
+    # 걸리지 않아 percentile 이 조용히 null 이 된다 — 실측으로 겪은 뒤 넣은 검사다.
+    check("4b2 percentile 이 실제로 계산된다",
+          env2["result"]["cohort_percentile"] is not None
+          and env2["result"]["reference"]["sample_count"] > 0
+          and env2["metadata"]["percentile_unavailable_reason"] is None,
+          "%s백분위 · n=%s · %s" % (env2["result"]["cohort_percentile"],
+                                  env2["result"]["reference"]["sample_count"],
+                                  env2["result"]["reference"]["cohort_level"]))
+    bad_cohort = ORCH.run_model_2("AN-TEST-0001", rec, text=text,
+                                  cohort="연구개발|grant")
+    check("4b3 잘못된 cohort 는 이유를 남긴다",
+          bad_cohort["result"]["cohort_percentile"] is None
+          and bad_cohort["metadata"]["percentile_unavailable_reason"],
+          bad_cohort["metadata"]["percentile_unavailable_reason"])
     env3b = ORCH.run_model_3("AN-TEST-0001", rec, adapter_meta=meta)
     check("4c Model 3 success + 비교군 반환",
           RE.is_ok(env3b) and env3b["result"]["reference"]["sample_count"] > 0
@@ -169,9 +184,17 @@ def main():
                                env3b["result"]["reference"]["sample_count"],
                                env3b["result"]["available_axis_count"])
           if RE.is_ok(env3b) else str(env3b["error"]))
+    # anomaly_level_status 는 result 안에 둔다 — 하류(챗봇)가 result 만 보고도
+    # "수준을 말하면 안 된다" 를 알아야 한다.
     check("4d anomaly_level 문턱은 임의로 정하지 않는다",
           env3b["result"]["anomaly_level"] is None
-          and env3b["metadata"]["anomaly_level_status"] == "threshold_undetermined")
+          and env3b["result"]["anomaly_level_status"] == "threshold_undetermined")
+    # top1_axis 는 '가장 크게 벗어난 축' 이지 원인이 아니다. result 에 있으면
+    # 챗봇이 원인처럼 설명한다 — metadata 로 내려 프롬프트에 실리지 않게 한다.
+    check("4e top1_axis 는 result 가 아니라 metadata 에 있다",
+          "top1_axis" not in env3b["result"]
+          and env3b["metadata"]["top1_axis"],
+          "metadata.top1_axis=%s" % env3b["metadata"]["top1_axis"])
 
     print("== 5 Orchestrator 의존 실패")
     bad_cpl = {"items": [{"field_code": "PURPOSE_GOAL", "status": "MISSING",

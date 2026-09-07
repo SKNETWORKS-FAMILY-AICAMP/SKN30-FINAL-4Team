@@ -55,7 +55,7 @@ FROZEN = {
 # 문서에서 뽑을 수 없는 분류축. 모델 1 의 출력과 수집 메타가 채워야 할 자리다.
 BASE = {"support_type": "연구개발", "support_method": "grant",
         "support_unit": "project", "title": "ICT지원사업",
-        "cohort": "연구개발|grant", "year": 2024}
+        "cohort": "taxonomy", "year": 2024}
 
 _fail = []
 

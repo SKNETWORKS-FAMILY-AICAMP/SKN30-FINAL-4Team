@@ -71,11 +71,21 @@ def _model3():
 
 
 # ------------------------------------------------------------------ Model 2
+# 비교군 참조표의 `cohort` 는 **출처**다. 사다리 세 단계가 전부 출처를 키에
+# 포함하므로, 값이 없거나 엉뚱하면 어느 단계에도 걸리지 않고 조용히 '비교불가'가
+# 된다(실측: "연구개발|grant" 를 넘겼더니 percentile 이 null 로 나왔다).
+COHORTS = ("taxonomy", "bizinfo")
+
+
 def run_model_2(analysis_id, record, text=None, cohort=None):
     """기존 Model 2 서빙 호출 → Result JSON.
 
     record 는 canonical feature dict(어댑터 출력 `features` 와 같은 모양).
     `support_type` 은 Model 1 결과가 이미 채워 넣은 상태여야 한다.
+
+    cohort 는 비교 모집단의 **출처**이며 COHORTS 중 하나다. 비교군 키(성격·방식·
+    단위)와 헷갈리기 쉬운데 그것들은 record 에서 읽는다. 값이 유효하지 않으면
+    회귀 예측은 그대로 내고 percentile 만 비운 뒤 이유를 metadata 에 남긴다.
     """
     try:
         M2 = _model2()
@@ -89,16 +99,23 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
                          code="MODEL2_INFERENCE_FAILED",
                          message="%s: %s" % (type(e).__name__, e))
 
-    # 비교군 percentile 은 회귀와 독립이다. 실패해도 예측은 유지한다.
-    ref = None
-    try:
-        cmp_out = M2.percentile(
-            row["pred_won"], rec.get("support_type"), rec.get("support_method"),
-            rec.get("support_unit"), cohort)
-        if cmp_out.get("status") != "비교불가":
-            ref = cmp_out
-    except Exception:                                       # noqa: BLE001
-        ref = None
+    # 비교군 percentile 은 회귀와 독립이다. 실패해도 예측은 유지하되, 왜 비었는지
+    # 남긴다 — 값이 null 인 것과 이유를 모르는 것은 다르다.
+    ref, pct_reason = None, None
+    if cohort not in COHORTS:
+        pct_reason = ("cohort 가 %r 이다. 출처(%s) 중 하나여야 비교군을 찾는다"
+                      % (cohort, "/".join(COHORTS)))
+    else:
+        try:
+            cmp_out = M2.percentile(
+                row["pred_won"], rec.get("support_type"),
+                rec.get("support_method"), rec.get("support_unit"), cohort)
+            if cmp_out.get("status") == "비교불가":
+                pct_reason = cmp_out.get("reason") or "비교불가"
+            else:
+                ref = cmp_out
+        except Exception as e:                              # noqa: BLE001
+            pct_reason = "%s: %s" % (type(e).__name__, e)
 
     observed = rec.get("per_recipient")
     return RE.success(
@@ -127,7 +144,9 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
             "pred_log10": row["pred_log10"],
             "bucket_proba": row["bucket_proba"],
             "bucket_edges_won": row["bucket_edges_won"],
-            "percentile_status": None if ref is None else ref.get("status"),
+            "percentile_status": ref.get("status") if ref else "비교불가",
+            "percentile_unavailable_reason": pct_reason,
+            "cohort_source": cohort,
             # level 문턱은 모델이 학습에서 정한 bucket 경계다 — 여기서 새로
             # 고르지 않는다.
             "level_source": "model2 bucket_edges_won",
@@ -185,7 +204,11 @@ def run_model_3(analysis_id, record, adapter_meta=None):
         analysis_id, M3_NAME, M3_VERSION, M3_TYPE,
         result={
             "distance_percentile": round(float(row["score"]), 4),
-            "anomaly_level": None,          # 문턱 미확정 — 아래 metadata 참조
+            # 문턱이 확정된 근거가 없다. 임의로 정하면 사용자에게 판정처럼
+            # 보이므로 None 으로 두고, **왜 None 인지를 result 안에** 함께 둔다 —
+            # 하류(챗봇)가 result 만 보고도 "수준을 말하면 안 된다" 를 알아야 한다.
+            "anomaly_level": None,
+            "anomaly_level_status": "threshold_undetermined",
             "used_axes": a["axes_present"],
             "available_axis_count": a["n_axes"],
             "reference": {
@@ -194,15 +217,16 @@ def run_model_3(analysis_id, record, adapter_meta=None):
                 "sample_count": int(row["cohort_n"]),
                 "min_cohort": M3_MIN_COHORT,
             },
-            "top1_axis": row["top1_axis"],
         },
         input={"axes_missing": a["axes_missing"]},
         metadata={
             "distance_metric": "euclidean",
             "minimum_required_axes": M3.MIN_AXES,
-            # anomaly_level 문턱은 아직 확정된 근거가 없다. 임의로 정하면
-            # 사용자에게 판정처럼 보이므로 None 으로 두고 백분위만 넘긴다.
-            "anomaly_level_status": "threshold_undetermined",
+            # top1_axis 는 '가장 크게 벗어난 축' 이지 '이례성의 원인' 이 아니다.
+            # 기여도 분해가 아니라 단일 축의 편차일 뿐인데, result 에 두면 챗봇이
+            # 원인처럼 읽어 설명한다(요청서 14절이 금지하는 바로 그것). 보고서용
+            # 으로는 필요하므로 버리지 않고 metadata 로 내린다.
+            "top1_axis": row["top1_axis"],
             "axis_validity": None if validity is None else validity["axis_validity"],
             "evidence_confidence": None if validity is None else validity["confidence"],
         },
