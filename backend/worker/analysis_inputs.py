@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from app.schemas.cpl import CplFieldCode
@@ -145,6 +146,42 @@ def normalise_fact(entry: dict[str, Any]) -> CplFact:
     )
 
 
+# delivery_relations 항목만 모양이 다르다. 값이 최상위가 아니라 actor·role·
+# actions 안에 있어서, relation 을 한 줄로 누르면 ``value_raw`` 가 None 이 되고
+# 수행기관·역할 원문이 통째로 사라진다. 멤버마다 한 줄로 편다.
+_RELATION_ID_KEY = "delivery_relation_id"
+_RELATION_MEMBERS = ("actor", "role")
+
+
+def _relation_facts(entry: dict[str, Any]) -> list[CplFact]:
+    """relation 한 건을 멤버 단위로 편다.
+
+    멤버에게 없는 ``fact_id`` 를 지어내지 않고 (relation_id, member) 좌표만
+    남긴다. actor 를 대표값으로 올리지도 않는다. 프로파일이 정하지 않은 대표를
+    코드가 만들어내는 셈이기 때문이다 (초안 §6.1 과 같은 이유).
+    """
+
+    container = entry.get("relation_container")
+    actions = entry.get("actions")
+    members: list[tuple[str, Any]] = [(name, entry.get(name)) for name in _RELATION_MEMBERS]
+    members += [("action", row) for row in (actions if isinstance(actions, list) else [])]
+
+    facts = [
+        replace(
+            # relation_container 는 evidence 와 같은 모양이라, 멤버 자신의
+            # 접지가 없을 때 relation 단위 접지가 그대로 남는다.
+            normalise_fact({**node, "relation_container": container}),
+            relation_id=entry.get(_RELATION_ID_KEY),
+            member=member,
+        )
+        for member, node in members
+        if isinstance(node, dict)
+    ]
+    # 멤버가 하나도 없는 relation 은 id 와 접지만 남은 한 줄로 둔다. 조용히
+    # 사라지게 하지 않는다.
+    return facts or [normalise_fact(entry)]
+
+
 def facts_at(profile: dict[str, Any], path: str) -> list[CplFact]:
     """경로가 가리키는 컨테이너를 CplFact 목록으로 편다.
 
@@ -156,7 +193,15 @@ def facts_at(profile: dict[str, Any], path: str) -> list[CplFact]:
     if isinstance(node, dict):
         return [normalise_fact(node)]
     if isinstance(node, list):
-        return [normalise_fact(row) for row in node if isinstance(row, dict)]
+        facts: list[CplFact] = []
+        for row in node:
+            if not isinstance(row, dict):
+                continue
+            if _RELATION_ID_KEY in row:
+                facts.extend(_relation_facts(row))
+            else:
+                facts.append(normalise_fact(row))
+        return facts
     return []
 
 

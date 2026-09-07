@@ -36,6 +36,7 @@ from .contracts.sim_result import (
     REQUEST_EVIDENCE_MISSING,
     SIM_AXIS_IDS,
     SIM_VERDICT_REASON_CODES,
+    STRUCTURING_FAILED,
     STRUCTURING_INCOMPLETE,
     InternalRanking,
     SimAxis,
@@ -101,11 +102,20 @@ def _gate(
     """payload 를 만들기 전 검사. 통과하면 None, 걸리면 reason code 다.
 
     세 사유를 구분한다. 요청서 쪽 부재, 공고 쪽 부재, 그리고 원문은 있는데
-    상위 구조화가 근거 참조를 확정하지 못한 경우다. 공고 v0.2 는
-    ``delivery_relations`` · ``delivery_methods`` 컨테이너 자체가 없으므로
-    SIM-4 가 항상 ``CANDIDATE_EVIDENCE_MISSING`` 으로 걸린다. 이것은 "덜
-    비슷하다" 가 아니라 "볼 근거가 없다" 다.
+    상위 구조화가 끝나지 않은 경우다. 공고 v0.2 는 ``delivery_relations`` ·
+    ``delivery_methods`` 컨테이너 자체가 없으므로 SIM-4 가 항상
+    ``CANDIDATE_EVIDENCE_MISSING`` 으로 걸린다. 이것은 "덜 비슷하다" 가
+    아니라 "볼 근거가 없다" 다.
+
+    **순서가 계약이다.** 컨테이너가 빈 목록이라는 사실은 그 자체로 원천 부재를
+    뜻하지 않는다. 상위 구조화가 실패해도 똑같이 비어 있기 때문이다. 그래서
+    빈 목록을 보기 **전에** 축별 구조화 상태를 먼저 본다 (초안 §7.2 "입력
+    부족과 응답 결함을 구분한다", §9.5).
     """
+
+    for profile in (request, candidate):
+        if profile.structuring_of(axis).status == STRUCTURING_FAILED:
+            return STRUCTURING_INCOMPLETE
 
     request_entries = request.entries(axis)
     candidate_entries = candidate.entries(axis)
@@ -380,6 +390,22 @@ def _compare_axes(
     return results
 
 
+def _profile_diagnostics(
+    profile: SimCommonProfile, axis: SimAxis
+) -> list[StageDiagnostic]:
+    """프로파일 생성 단계가 그 축에 대해 남긴 진단.
+
+    공통 프로파일 쪽 진단은 축 id 를 ``unit`` 으로 쓴다 (sim_inputs 와 같은
+    규약). 그래서 어떤 진단이 어느 비교를 설명하는지 이 한 줄로 이어진다.
+    """
+
+    return [
+        diagnostic
+        for diagnostic in profile.diagnostics
+        if diagnostic.unit == SIM_AXIS_IDS[axis]
+    ]
+
+
 def _insufficient(axis: SimAxis, reason: str) -> SimAxisResult:
     return SimAxisResult(
         axis=axis,
@@ -464,7 +490,11 @@ def compare_candidate(
                     unit=SIM_AXIS_IDS[axis],
                     reason_code=reason,
                     message="비교 입력이 성립하지 않아 LLM 을 호출하지 않았다.",
-                )
+                ),
+                # 왜 성립하지 않았는지는 양쪽 프로파일을 만들 때 이미 기록됐다.
+                # 그 줄을 이 축에 붙여야 읽는 쪽이 부재와 구조화 실패를 구분한다.
+                *_profile_diagnostics(request_common, axis),
+                *_profile_diagnostics(candidate_common, axis),
             ],
         )
 
@@ -484,9 +514,12 @@ def compare_candidate(
     axes = [results[axis] for axis in SimAxis]
     return SimCandidateResult(
         candidate_profile_id=candidate_common.source_profile_id,
+        candidate_notice_id=candidate_common.notice_id,
         axes=axes,
         internal_ranking=_internal_ranking(axes),
-        diagnostics=diagnostics,
+        # 후보 프로파일을 만들 때 남은 진단은 이 후보 비교의 일부다. 여기서
+        # 버리면 "왜 이 후보의 축이 비었는지" 를 결과만 보고 알 수 없다.
+        diagnostics=[*candidate_common.diagnostics, *diagnostics],
     )
 
 

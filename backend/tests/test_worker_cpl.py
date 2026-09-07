@@ -15,7 +15,7 @@ import sys
 import pytest
 
 from app.schemas.cpl import CplFieldCode
-from worker.analysis_inputs import CPL_FIELD_SOURCES
+from worker.analysis_inputs import CPL_FIELD_SOURCES, facts_at
 from worker.contracts.cpl_result import (
     DISPLAY_AGGREGATION_UNDEFINED,
     NO_PROFILE_FIELD,
@@ -319,3 +319,87 @@ def test_unresolved_checkbox_is_not_reported_as_absent():
     profile.pop("request_type")
     absent = _item(build_cpl_result(profile), CplFieldCode.REQUEST_TYPE)
     assert absent.representative_status == "not_found"
+
+
+# ------------------------------------------------------- 전달체계 관계 멤버
+
+
+def _delivery_facts(result):
+    item = _item(result, CplFieldCode.DELIVERY_SYSTEM)
+    return _subfield(item, "delivery_relations").facts
+
+
+def test_delivery_relation_members_keep_their_own_text(result):
+    """수행기관·역할 원문이 relation id 한 줄로 눌려 사라지면 안 된다.
+
+    값은 relation 최상위가 아니라 actor·role 안에 있다. relation 을 한 줄로
+    접으면 ``value_raw`` 가 None 이 되어 프로파일이 들고 있던 원문이 없어진다.
+    """
+
+    by_member = {fact.member: fact for fact in _delivery_facts(result)}
+    assert by_member["actor"].value_raw == "가상 동구청년창업지원센터"
+    assert by_member["role"].value_raw == "총괄"
+    for member, fact in by_member.items():
+        assert fact.relation_id == "delivery:center_lead"
+        assert fact.value_raw is not None, f"{member} 원문이 사라졌다"
+        assert fact.evidence, f"{member} 근거가 비었다"
+        assert fact.source_block_id, f"{member} value_source 좌표가 사라졌다"
+
+
+def test_no_synthetic_fact_id_is_minted_for_a_relation_member(result):
+    """멤버에게 없는 id 를 만들어 붙이지 않는다. 자리는 좌표로 가리킨다."""
+
+    for fact in _delivery_facts(result):
+        assert fact.fact_id is None
+        assert fact.id_source_key is None
+        assert fact.member in {"actor", "role", "action"}
+
+
+def test_every_action_becomes_its_own_member_entry():
+    """``actions`` 는 목록이다. 실제 예시가 비어 있어 직접 만들어 고정한다."""
+
+    container = {
+        "container_type": "paragraph",
+        "source_block_id": "block:multi",
+        "common_ir_document_id": "request:MULTI",
+        "common_ir_block_id": "block:multi",
+        "common_ir_occurrence_ids": ["occ:multi"],
+    }
+    profile = {
+        "comparison_profile": {
+            "delivery_relations": [
+                {
+                    "delivery_relation_id": "delivery:multi",
+                    "actor": {"value_raw": "가상 수행기관"},
+                    "role": {"value_raw": "주관"},
+                    "actions": [
+                        {"value_raw": "접수"},
+                        {"value_raw": "심사"},
+                    ],
+                    "relation_container": container,
+                }
+            ]
+        }
+    }
+    facts = facts_at(profile, "comparison_profile.delivery_relations")
+    assert [fact.member for fact in facts] == ["actor", "role", "action", "action"]
+    assert [fact.value_raw for fact in facts if fact.member == "action"] == [
+        "접수",
+        "심사",
+    ]
+    # 자기 근거가 없는 멤버는 relation 단위 접지를 그대로 쓴다.
+    for fact in facts:
+        assert fact.relation_id == "delivery:multi"
+        assert [row.common_ir_block_id for row in fact.evidence] == ["block:multi"]
+
+
+def test_delivery_system_still_has_two_subfields(result):
+    """Slice 2 계약은 그대로다. 하위 필드가 둘이면 대표 신호등은 미확정이다."""
+
+    item = _item(result, CplFieldCode.DELIVERY_SYSTEM)
+    assert [sub.profile_field_name for sub in item.subfields] == [
+        "delivery_relations",
+        "delivery_methods",
+    ]
+    assert item.representative_status == UNDETERMINED
+    assert item.undetermined_reason == DISPLAY_AGGREGATION_UNDEFINED

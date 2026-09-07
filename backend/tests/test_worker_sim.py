@@ -19,13 +19,18 @@ from pathlib import Path
 
 import pytest
 
+from app.ports.llm_client import LLMTimeoutError, LLMUnavailableError
 from worker.contracts.sim_result import (
     CANDIDATE_EVIDENCE_MISSING,
     DUPLICATE_SPAN_ASSIGNMENT,
     LLM_INVALID_RESPONSE,
+    LLM_TIMEOUT,
     LLM_UNAVAILABLE,
     PURPOSE_KEYS,
     REQUEST_EVIDENCE_MISSING,
+    CLASSIFICATION_PARTIAL,
+    STRUCTURING_COMPLETED,
+    STRUCTURING_FAILED,
     STRUCTURING_INCOMPLETE,
     SimAxis,
     SimAxisResult,
@@ -700,7 +705,246 @@ def test_comparison_result_carries_the_lineage(request_profile, existing_profile
     )
     assert result.request_profile_id == "request:PREREVIEW-TEST-2027-03"
     assert [candidate.candidate_profile_id for candidate in result.candidates] == [
+        "hwp:PBLN_000000000125016"
+    ]
+    assert [candidate.candidate_notice_id for candidate in result.candidates] == [
         "bizinfo:PBLN_000000000125016"
     ]
     assert result.scoring_version == SIM_SCORING_VERSION
     assert result.model_profile == _MODEL_PROFILE
+
+
+# ------------------------------------------- 구조화 실패와 원천 부재의 구분
+
+
+def test_a_dead_classifier_is_structuring_not_absence(request_profile, existing_profile):
+    """분류 LLM 이 죽어서 컨테이너가 빈 것은 "근거가 없다" 가 아니다.
+
+    초안 §7.2 "입력 부족과 응답 결함을 구분한다", §9.5 는 두 문구를 화면에서
+    나눠 보이라고 못박았다. 요청서에는 purpose_goal 원문이 그대로 있다.
+    """
+
+    assert request_profile["comparison_profile"]["purpose_goal"][0]["value_raw"]
+    request, _ = _common(
+        request_profile, classify=LLMTimeoutError("분류 호출이 시간을 넘겼다")
+    )
+    existing, _ = _common(existing_profile)
+    assert request.purpose == {key: [] for key in PURPOSE_KEYS}
+    assert request.structuring_of(SimAxis.PURPOSE).status == STRUCTURING_FAILED
+    assert request.structuring_of(SimAxis.PURPOSE).reason_code == LLM_TIMEOUT
+    assert request.structuring_of(SimAxis.PURPOSE).source
+
+    llm = FakeLLM(comparison=verdict_script("SIMILAR"))
+    result = compare_candidate(request, existing, llm, model_profile=_MODEL_PROFILE)
+    purpose = result.axis(SimAxis.PURPOSE)
+    assert purpose.status is SimStatus.INSUFFICIENT
+    assert purpose.status is not SimStatus.DIFFERENT
+    assert purpose.reason_code == STRUCTURING_INCOMPLETE
+    assert purpose.reason_code != REQUEST_EVIDENCE_MISSING
+    for payload in llm.payloads(_COMPARISON_TASK):
+        assert all(axis["axis"] != "purpose" for axis in payload["axes"])
+
+
+def test_a_finished_classification_with_no_source_text_is_absence(
+    request_profile, existing_profile
+):
+    """분류가 정상으로 끝났는데 원문이 없어서 비었으면 그건 진짜 부재다."""
+
+    request_profile["comparison_profile"]["purpose_goal"] = []
+    request, _ = _common(request_profile)
+    existing, _ = _common(existing_profile)
+    # 같은 호출로 대상 축은 정상 분류됐다. 목적 축만 분류할 원문이 없었다.
+    assert request.structuring_of(SimAxis.TARGET).status == STRUCTURING_COMPLETED
+    assert request.structuring_of(SimAxis.PURPOSE).status != STRUCTURING_FAILED
+
+    result = compare_candidate(
+        request,
+        existing,
+        FakeLLM(comparison=verdict_script("SIMILAR")),
+        model_profile=_MODEL_PROFILE,
+    )
+    purpose = result.axis(SimAxis.PURPOSE)
+    assert purpose.status is SimStatus.INSUFFICIENT
+    assert purpose.reason_code == REQUEST_EVIDENCE_MISSING
+
+
+def test_candidate_side_structuring_failure_reaches_the_result(
+    request_profile, existing_profile
+):
+    """공고 쪽 구조화 실패도 축과 진단으로 결과까지 와야 한다."""
+
+    request, _ = _common(request_profile)
+    existing, _ = _common(
+        existing_profile, classify=LLMUnavailableError("공고 분류 포트가 죽었다")
+    )
+    result = compare_candidate(
+        request,
+        existing,
+        FakeLLM(comparison=verdict_script("SIMILAR")),
+        model_profile=_MODEL_PROFILE,
+    )
+    purpose = result.axis(SimAxis.PURPOSE)
+    assert purpose.status is SimStatus.INSUFFICIENT
+    assert purpose.reason_code == STRUCTURING_INCOMPLETE
+
+    failures = [
+        diagnostic
+        for diagnostic in result.diagnostics
+        if diagnostic.reason_code == LLM_UNAVAILABLE
+    ]
+    assert failures, "공고 프로파일 진단이 결과까지 오지 않았다"
+    # 어느 비교를 설명하는 진단인지 축 id 로 이어진다.
+    assert "SIM-1" in {diagnostic.unit for diagnostic in failures}
+    assert any(diagnostic in purpose.diagnostics for diagnostic in failures)
+
+
+def test_an_absent_delivery_container_stays_absence(request_profile, existing_profile):
+    """공고 v0.2 의 SIM-4 는 구조화 실패가 아니라 원천 부재다. 양방향으로 고정한다."""
+
+    request, _ = _common(request_profile)
+    existing, _ = _common(existing_profile)
+    assert existing.structuring_of(SimAxis.DELIVERY).status == STRUCTURING_COMPLETED
+
+    result = compare_candidate(
+        request,
+        existing,
+        FakeLLM(comparison=verdict_script("SIMILAR")),
+        model_profile=_MODEL_PROFILE,
+    )
+    delivery = result.axis(SimAxis.DELIVERY)
+    assert delivery.reason_code == CANDIDATE_EVIDENCE_MISSING
+    assert delivery.reason_code != STRUCTURING_INCOMPLETE
+
+    # 분류가 죽어도 Rule 만 타는 SIM-4 의 사유는 바뀌지 않는다.
+    dead, _ = _common(existing_profile, classify=LLMUnavailableError("포트가 죽었다"))
+    result = compare_candidate(
+        request,
+        dead,
+        FakeLLM(comparison=verdict_script("SIMILAR")),
+        model_profile=_MODEL_PROFILE,
+    )
+    assert result.axis(SimAxis.DELIVERY).reason_code == CANDIDATE_EVIDENCE_MISSING
+    assert result.axis(SimAxis.PURPOSE).reason_code == STRUCTURING_INCOMPLETE
+
+
+# ------------------------------------------------------------ 프로파일 식별자
+
+
+def test_profile_and_notice_ids_are_separate_fields(request_profile, existing_profile):
+    """공고 프로파일은 출처(hwp:...)와 공고 정체(bizinfo:...)를 둘 다 들고 온다."""
+
+    existing, _ = _common(existing_profile)
+    assert existing.source_profile_id == "hwp:PBLN_000000000125016"
+    assert existing.notice_id == "bizinfo:PBLN_000000000125016"
+
+    request, _ = _common(request_profile)
+    assert request.source_profile_id == "request:PREREVIEW-TEST-2027-03"
+    assert request.notice_id is None
+
+
+def test_two_parses_of_one_notice_do_not_collide(request_profile, existing_profile):
+    """같은 공고를 hwp 와 pdf 로 읽은 두 프로파일이 한 id 로 뭉개지지 않는다."""
+
+    hwp, _ = _common(existing_profile)
+    pdf, _ = _common(
+        {**existing_profile, "source_profile_id": "pdf:PBLN_000000000125016"}
+    )
+    request, _ = _common(request_profile)
+    result = compare_candidates(
+        request,
+        [hwp, pdf],
+        FakeLLM(comparison=verdict_script("SIMILAR")),
+        model_profile=_MODEL_PROFILE,
+    )
+    ids = [candidate.candidate_profile_id for candidate in result.candidates]
+    assert ids == ["hwp:PBLN_000000000125016", "pdf:PBLN_000000000125016"]
+    assert len(set(ids)) == 2
+    assert {candidate.candidate_notice_id for candidate in result.candidates} == {
+        "bizinfo:PBLN_000000000125016"
+    }
+
+
+def _profile_with_three_purpose_facts() -> dict:
+    profile = json.loads(_REQUEST_PATH.read_text(encoding="utf-8"))
+    facts = profile["comparison_profile"]["purpose_goal"]
+    base = facts[0]
+    for index in (2, 3):
+        facts.append(
+            dict(base, fact_id=f"fact:purpose{index}", value_raw=f"목적 원문 {index} 사업화")
+        )
+    return profile
+
+
+class _GroundsOnlyTheFirstFact:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def generate_structured(self, *, task_name, response_schema, **_):
+        self.calls.append(task_name)
+        return response_schema.model_validate(
+            {
+                "assignments": [
+                    {
+                        "fact_id": "fact:purpose",
+                        "common_key": "direction",
+                        "quoted_text": "사업화",
+                    }
+                ]
+            }
+        )
+
+
+class _GroundsEveryFact:
+    async def generate_structured(self, *, response_schema, **_):
+        return response_schema.model_validate(
+            {
+                "assignments": [
+                    {"fact_id": fact_id, "common_key": "direction", "quoted_text": "사업화"}
+                    for fact_id in ("fact:purpose", "fact:purpose2", "fact:purpose3")
+                ]
+            }
+        )
+
+
+def test_partially_grounded_axis_is_not_promoted_to_completed():
+    """제출 원문 3건 중 1건만 접지됐는데 축이 완료로 승격되던 결함이다.
+
+    남은 2건의 의미가 빠진 채 비교하면 거짓 유사·비유사가 나온다.
+    아무것도 못 건진 경우와 구분해 CLASSIFICATION_PARTIAL 로 남긴다.
+    """
+
+    profile = build_common_profile(
+        _profile_with_three_purpose_facts(), _GroundsOnlyTheFirstFact(), model_profile="s"
+    )
+    structuring = profile.structuring_of(SimAxis.PURPOSE)
+    assert structuring.status == STRUCTURING_FAILED
+    assert structuring.reason_code == CLASSIFICATION_PARTIAL
+
+
+def test_fully_grounded_axis_is_completed():
+    """제출 원문이 모두 접지되면 정상 완료다."""
+
+    profile = build_common_profile(
+        _profile_with_three_purpose_facts(), _GroundsEveryFact(), model_profile="s"
+    )
+    structuring = profile.structuring_of(SimAxis.PURPOSE)
+    assert structuring.status == STRUCTURING_COMPLETED
+    assert structuring.reason_code is None
+
+
+def test_partial_axis_is_gated_not_compared():
+    """부분 구조화 축은 비교로 넘어가지 않는다."""
+
+    request = build_common_profile(
+        _profile_with_three_purpose_facts(), _GroundsOnlyTheFirstFact(), model_profile="s"
+    )
+    candidate = build_common_profile(
+        json.loads(_EXISTING_PATH.read_text(encoding="utf-8")),
+        _GroundsEveryFact(),
+        model_profile="s",
+    )
+    llm = _GroundsEveryFact()
+    result = compare_candidate(request, candidate, llm, model_profile="s")
+    purpose = result.axis(SimAxis.PURPOSE)
+    assert purpose.status is SimStatus.INSUFFICIENT
+    assert purpose.reason_code == STRUCTURING_INCOMPLETE

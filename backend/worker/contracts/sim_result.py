@@ -57,7 +57,11 @@ __all__ = [
     "LLM_UNAVAILABLE",
     "SIM_REASON_CODES",
     "SIM_VERDICT_REASON_CODES",
+    "STRUCTURING_COMPLETED",
+    "STRUCTURING_FAILED",
+    "STRUCTURING_NOT_ATTEMPTED",
     "SimCommonEntry",
+    "SimAxisStructuring",
     "SimCommonProfile",
     "SimAxisResult",
     "InternalRanking",
@@ -123,6 +127,17 @@ UNMAPPED_SOURCE_FIELD = "UNMAPPED_SOURCE_FIELD"
 DUPLICATE_SPAN_ASSIGNMENT = "DUPLICATE_SPAN_ASSIGNMENT"
 # 분류를 호출했지만 접지를 통과한 배정이 하나도 없다.
 CLASSIFICATION_UNRESOLVED = "CLASSIFICATION_UNRESOLVED"
+# 제출한 원문 중 일부만 접지됐다. 남은 원문의 의미가 빠진 채 비교하면
+# 거짓 유사·비유사가 나오므로 완료로 승격하지 않는다.
+CLASSIFICATION_PARTIAL = "CLASSIFICATION_PARTIAL"
+
+# 축별 상위 구조화 상태. 컨테이너가 빈 목록이라는 사실 하나로는 "원문에 그
+# 내용이 없다" 와 "구조화가 실패해서 못 담았다" 가 구분되지 않는다. 초안 §7.2
+# 는 "입력 부족과 응답 결함을 구분한다" 로, §9.5 는 사용자 화면에서 두 문구를
+# 나눠 보이라고 못박았다. 그래서 상태를 값으로 들고 다닌다.
+STRUCTURING_COMPLETED = "COMPLETED"
+STRUCTURING_FAILED = "FAILED"
+STRUCTURING_NOT_ATTEMPTED = "NOT_ATTEMPTED"
 # 축 판정 어휘. 모델은 이 두 개 밖의 reason 을 돌려줄 수 없다.
 PARTIAL_OVERLAP = "PARTIAL_OVERLAP"
 NO_MEANING_OVERLAP = "NO_MEANING_OVERLAP"
@@ -174,6 +189,22 @@ class SimCommonEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class SimAxisStructuring:
+    """컨테이너 하나를 채우는 상위 단계(Rule 변환·LLM 분류)가 어떻게 끝났는지.
+
+    ``status`` 는 세 값이다. 정상 완료·실패·시도하지 않음. ``source`` 는 그
+    상태를 정한 단계 이름이라, 나중에 화면이 "근거를 확보하지 못함" 과
+    "응답의 근거를 확인하지 못함" 중 무엇을 보일지 여기서 갈린다 (초안 §9.5).
+    실패 사유는 ``reason_code`` 로 남기고, 자세한 내용은 프로파일 진단의
+    ``unit`` 이 축 id 인 줄에 있다.
+    """
+
+    status: Literal["COMPLETED", "FAILED", "NOT_ATTEMPTED"]
+    source: str
+    reason_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SimCommonProfile:
     """한 문서의 공통 SIM 비교 프로파일.
 
@@ -194,6 +225,12 @@ class SimCommonProfile:
     target: dict[str, list[SimCommonEntry]]
     content: dict[str, list[SimCommonEntry]]
     delivery: dict[str, list[SimCommonEntry]]
+    # 공고 프로파일의 공고 식별자. ``source_profile_id`` 가 프로파일의 출처
+    # (같은 공고를 hwp 로 읽었는지 pdf 로 읽었는지) 라서 둘은 다른 값이다.
+    # 한 필드로 겹쳐 쓰면 같은 공고의 서로 다른 파싱본이 구분되지 않는다.
+    notice_id: str | None = None
+    # 축별 상위 구조화 상태. 게이트가 컨테이너를 보기 **전에** 이것을 본다.
+    structuring: dict[SimAxis, SimAxisStructuring] = field(default_factory=dict)
     benefit_overlap_evidence: list[SimCommonEntry] = field(default_factory=list)
     scale_reference_evidence: list[SimCommonEntry] = field(default_factory=list)
     unmapped_source_fields: list[str] = field(default_factory=list)
@@ -202,6 +239,13 @@ class SimCommonProfile:
     ruleset_version: str = ""
     prompt_version: str | None = None
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
+
+    def structuring_of(self, axis: SimAxis) -> SimAxisStructuring:
+        """기록이 없으면 "시도하지 않음" 이다. 완료했다고 넘겨짚지 않는다."""
+
+        return self.structuring.get(axis) or SimAxisStructuring(
+            status=STRUCTURING_NOT_ATTEMPTED, source="UNRECORDED"
+        )
 
     def container(self, axis: SimAxis) -> dict[str, list[SimCommonEntry]]:
         return getattr(self, axis.value)
@@ -247,9 +291,16 @@ class InternalRanking:
 
 @dataclass(frozen=True, slots=True)
 class SimCandidateResult:
-    """후보 하나의 4축 결과 + 내부 순위."""
+    """후보 하나의 4축 결과 + 내부 순위.
+
+    ``diagnostics`` 에는 이 후보의 공통 프로파일을 만들 때 남은 진단도 함께
+    실린다. 축 단위 진단은 ``unit`` 이 축 id 라서 어느 비교를 설명하는지
+    이어진다 (초안 §9.5).
+    """
 
     candidate_profile_id: str | None
+    # 공고의 정체. ``candidate_profile_id`` 는 그 공고를 어느 파일에서 읽었는지다.
+    candidate_notice_id: str | None
     axes: list[SimAxisResult]
     internal_ranking: InternalRanking
     diagnostics: list[StageDiagnostic] = field(default_factory=list)

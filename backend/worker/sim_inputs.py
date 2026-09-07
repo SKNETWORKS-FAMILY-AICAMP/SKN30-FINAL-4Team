@@ -38,15 +38,21 @@ from app.ports.llm_client import (
 
 from .analysis_inputs import facts_at, read_path
 from .contracts.sim_result import (
+    CLASSIFICATION_PARTIAL,
     CLASSIFICATION_UNRESOLVED,
     COMMON_KEYS,
     DUPLICATE_SPAN_ASSIGNMENT,
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
     LLM_UNAVAILABLE,
+    SIM_AXIS_IDS,
+    STRUCTURING_COMPLETED,
+    STRUCTURING_FAILED,
+    STRUCTURING_NOT_ATTEMPTED,
     UNMAPPED_SOURCE_FIELD,
     CplEvidence,
     SimAxis,
+    SimAxisStructuring,
     SimCommonEntry,
     SimCommonProfile,
     StageDiagnostic,
@@ -270,11 +276,15 @@ def _classify(
     *,
     model_profile: str,
     diagnostics: list[StageDiagnostic],
-) -> list[tuple[SimAxis, SimCommonEntry]]:
+) -> tuple[list[tuple[SimAxis, SimCommonEntry]], dict[SimAxis, SimAxisStructuring]]:
     """열린 의미 필드를 공통 하위 키로 분류한다. **문서당 한 번** (초안 §9.2).
 
     네 축이 이 결과를 나눠 쓰지만 호출은 하나다. 예산은 1이고 같은 입력으로
     재시도하지 않는다.
+
+    배정과 함께 **축별 구조화 상태** 를 돌려준다. 컨테이너가 비었다는 사실만
+    보면 원문이 없어서 빈 것과 이 호출이 실패해서 빈 것이 같아 보인다.
+    게이트가 그 둘을 구분하려면 여기서 남겨야 한다 (초안 §7.2, §9.5).
     """
 
     facts: dict[str, tuple[str, SimAxis, Any]] = {}
@@ -282,8 +292,11 @@ def _classify(
         for fact in facts_at(profile, f"comparison_profile.{field_name}"):
             if fact.fact_id and fact.value_raw:
                 facts[fact.fact_id] = (field_name, axis, fact)
+    # 원문이 있는 축과 없는 축을 여기서 가른다. 원문이 없으면 호출이 실패해도
+    # 그 축은 "구조화 실패" 가 아니라 애초에 시도할 것이 없던 축이다.
+    with_input = {axis for _, axis, _ in facts.values()}
     if not facts:
-        return []
+        return [], _structuring(with_input, set(), None, diagnostics)
 
     payload = {
         "facts": [
@@ -316,17 +329,9 @@ def _classify(
         )
         if recovered is None:
             reason = _TRANSPORT_REASONS[type(error)]
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_CLASSIFY_STAGE,
-                    unit=",".join(_LLM_MAP),
-                    reason_code=reason,
-                    message=str(error)[:2000],
-                    attempt=1,
-                    terminated_because=reason,
-                )
+            return [], _structuring(
+                with_input, set(), reason, diagnostics, detail=str(error)[:2000]
             )
-            return []
         response_rows, broken, dropped = recovered
         for fact_id in broken:
             diagnostics.append(
@@ -398,20 +403,84 @@ def _classify(
             )
         )
 
-    if not accepted:
+    # 축별로 "제출한 원문 fact 가 전부 하나 이상 접지됐는가" 를 본다.
+    # 한 건만 접지돼도 완료로 보면 남은 원문의 의미가 빠진 채 비교가 돈다.
+    submitted: dict[SimAxis, set[str]] = {}
+    for fact_id, (_, axis, _fact) in facts.items():
+        submitted.setdefault(axis, set()).add(fact_id)
+    covered: dict[SimAxis, set[str]] = {}
+    for axis, entry in accepted:
+        covered.setdefault(axis, set()).add(entry.fact_id)
+    filled = {
+        axis
+        for axis, fact_ids in submitted.items()
+        if covered.get(axis, set()) >= fact_ids
+    }
+    partial = {
+        axis
+        for axis, fact_ids in submitted.items()
+        if axis not in filled and covered.get(axis)
+    }
+    return accepted, _structuring(
+        with_input, filled, None, diagnostics, partial=partial
+    )
+
+
+def _structuring(
+    with_input: set[SimAxis],
+    filled: set[SimAxis],
+    failure: str | None,
+    diagnostics: list[StageDiagnostic],
+    *,
+    detail: str | None = None,
+    partial: set[SimAxis] | None = None,
+) -> dict[SimAxis, SimAxisStructuring]:
+    """LLM 분류가 담당하는 축의 상태를 정하고, 실패한 축에 진단을 남긴다.
+
+    진단의 ``unit`` 은 축 id 다 (sim.py 가 쓰는 것과 같은 규약). 그래야 나중에
+    후보 진단을 읽는 쪽이 그것이 어느 비교를 설명하는지 알 수 있다.
+    """
+
+    fields_by_axis: dict[SimAxis, list[str]] = {}
+    for field_name, axis in _LLM_MAP.items():
+        fields_by_axis.setdefault(axis, []).append(field_name)
+
+    statuses: dict[SimAxis, SimAxisStructuring] = {}
+    for axis, field_names in fields_by_axis.items():
+        if axis not in with_input:
+            # 분류할 원문 자체가 없었다. 실패가 아니라 시도할 것이 없던 축이다.
+            statuses[axis] = SimAxisStructuring(
+                status=STRUCTURING_NOT_ATTEMPTED, source=_CLASSIFY_STAGE
+            )
+            continue
+        if axis in filled and failure is None:
+            statuses[axis] = SimAxisStructuring(
+                status=STRUCTURING_COMPLETED, source=_CLASSIFY_STAGE
+            )
+            continue
+        if failure is None and partial and axis in partial:
+            # 일부만 접지됐다. 아무것도 못 건진 것과 구분해 남긴다.
+            reason = CLASSIFICATION_PARTIAL
+        else:
+            reason = failure or CLASSIFICATION_UNRESOLVED
+        statuses[axis] = SimAxisStructuring(
+            status=STRUCTURING_FAILED, source=_CLASSIFY_STAGE, reason_code=reason
+        )
         diagnostics.append(
             StageDiagnostic(
                 stage=_CLASSIFY_STAGE,
-                unit=",".join(_LLM_MAP),
-                reason_code=CLASSIFICATION_UNRESOLVED,
+                unit=SIM_AXIS_IDS[axis],
+                reason_code=reason,
                 message=(
-                    "접지를 통과한 배정이 없어 목적·대상 컨테이너를 LLM 으로 "
-                    "채우지 못했다. 근거 없이 Rule 로 덮지 않는다."
+                    f"{','.join(field_names)} 에 원문이 있는데 분류가 끝나지 "
+                    "않아 이 컨테이너를 채우지 못했다. 근거 없이 Rule 로 "
+                    "덮지 않는다." + (f" {detail}" if detail else "")
                 ),
                 attempt=1,
+                terminated_because=failure,
             )
         )
-    return accepted
+    return statuses
 
 
 # ------------------------------------------------------------------ 진입점
@@ -442,10 +511,19 @@ def build_common_profile(
     for key, entry in delivery:
         containers[SimAxis.DELIVERY][key].append(entry)
 
-    for axis, entry in _classify(
+    classified, structuring = _classify(
         profile, llm_client, model_profile=model_profile, diagnostics=diagnostics
-    ):
+    )
+    for axis, entry in classified:
         containers[axis][entry.common_key].append(entry)
+
+    # Rule 만으로 채워지는 축은 표를 다 돌았으면 그 자리에서 끝난 것이다.
+    # 상태를 정한 주체가 다르므로 source 로 남긴다.
+    for axis in SimAxis:
+        structuring.setdefault(
+            axis,
+            SimAxisStructuring(status=STRUCTURING_COMPLETED, source=_STAGE),
+        )
 
     preserved: dict[str, list[SimCommonEntry]] = {
         name: _rule_entries(profile, field_name, name)
@@ -471,8 +549,18 @@ def build_common_profile(
     metadata = profile.get("processing_metadata") or {}
     documents = profile.get("source_documents") or []
     first_ir = documents[0].get("common_ir", {}) if documents else {}
+    # 공고 프로파일은 ``source_profile_id`` (hwp:... / pdf:...) 와 ``notice_id``
+    # (bizinfo:...) 를 둘 다 들고 온다. 앞의 것이 이 프로파일의 출처고 뒤의
+    # 것은 공고의 정체다. 하나로 겹쳐 쓰면 같은 공고의 hwp 본과 pdf 본이
+    # 구분되지 않아 4b 의 후보 저장·근거 연결이 어긋난다.
     return SimCommonProfile(
-        source_profile_id=profile.get("profile_id") or profile.get("notice_id"),
+        source_profile_id=(
+            profile.get("source_profile_id")
+            or profile.get("profile_id")
+            or profile.get("notice_id")
+        ),
+        notice_id=profile.get("notice_id"),
+        structuring=structuring,
         schema_version=profile.get("schema_version"),
         common_ir_document_id=(
             metadata.get("common_ir_document_id") or first_ir.get("document_id")

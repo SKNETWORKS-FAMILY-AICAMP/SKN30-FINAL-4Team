@@ -63,9 +63,10 @@ class CplFact:
     """프로파일의 값 하나를 표시 계층이 쓰는 모양으로 정규화한 것.
 
     ``fact_id`` 가 optional 인 이유: ``program_hierarchy.nodes``,
-    ``support_components``, ``comparison_profile.delivery_relations`` 항목은
-    ``fact_id`` 가 아니라 각자의 id 키를 쓴다. 어느 키에서 왔는지는
-    ``id_source_key`` 에 남겨 두어 원본 컨테이너를 되짚을 수 있게 한다.
+    ``support_components`` 항목은 ``fact_id`` 가 아니라 각자의 id 키를 쓴다.
+    어느 키에서 왔는지는 ``id_source_key`` 에 남겨 두어 원본 컨테이너를
+    되짚을 수 있게 한다. ``comparison_profile.delivery_relations`` 의 멤버는
+    아예 자기 id 가 없어서 ``relation_id`` · ``member`` 로 자리를 가리킨다.
     """
 
     fact_id: str | None
@@ -79,6 +80,11 @@ class CplFact:
     program_node_id: str | None = None
     primary_component_id: str | None = None
     id_source_key: str | None = None
+    # ``delivery_relations`` 는 actor·role·actions 가 한 relation 안에 중첩돼
+    # 있고 각자의 fact_id 가 없다. 그 자리를 (relation_id, member) 좌표로
+    # 남긴다. 없는 id 를 지어내지 않고, 셋 중 하나를 대표로 고르지도 않는다.
+    relation_id: str | None = None
+    member: str | None = None
     # 요청 유형 체크박스 글리프. 서버가 원본 글리프로 정한 값이라
     # 표시 계층까지 원형으로 끌고 간다 (초안 §6).
     selection_glyph_raw: str | None = None
