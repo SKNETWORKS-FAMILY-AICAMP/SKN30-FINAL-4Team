@@ -895,15 +895,28 @@ class _GroundsOnlyTheFirstFact:
 
 
 class _GroundsEveryFact:
-    async def generate_structured(self, *, response_schema, **_):
-        return response_schema.model_validate(
-            {
-                "assignments": [
-                    {"fact_id": fact_id, "common_key": "direction", "quoted_text": "사업화"}
-                    for fact_id in ("fact:purpose", "fact:purpose2", "fact:purpose3")
-                ]
-            }
-        )
+    """payload 로 받은 fact 를 전부 접지한다.
+
+    고정된 fact_id 목록을 쓰면 다른 프로파일(공고)에는 하나도 맞지 않아
+    그쪽이 조용히 실패한다. 그러면 게이트 테스트가 "요청서의 부분 구조화가
+    막았다" 가 아니라 "양쪽 다 실패했다" 를 증명하게 된다.
+    """
+
+    async def generate_structured(self, *, messages, response_schema, **_):
+        payload = json.loads(messages[1].content)
+        assignments = []
+        for fact in payload["facts"]:
+            value_raw = fact.get("value_raw") or ""
+            if not value_raw:
+                continue
+            assignments.append(
+                {
+                    "fact_id": fact["fact_id"],
+                    "common_key": fact["allowed_common_keys"][0],
+                    "quoted_text": value_raw,
+                }
+            )
+        return response_schema.model_validate({"assignments": assignments})
 
 
 def test_partially_grounded_axis_is_not_promoted_to_completed():
@@ -943,6 +956,10 @@ def test_partial_axis_is_gated_not_compared():
         _GroundsEveryFact(),
         model_profile="s",
     )
+    # 후보 측은 정상 COMPLETED 여야 한다. 그래야 막힌 원인이 요청서의
+    # 부분 구조화 하나로 좁혀진다.
+    assert candidate.structuring_of(SimAxis.PURPOSE).status == STRUCTURING_COMPLETED
+
     llm = _GroundsEveryFact()
     result = compare_candidate(request, candidate, llm, model_profile="s")
     purpose = result.axis(SimAxis.PURPOSE)
