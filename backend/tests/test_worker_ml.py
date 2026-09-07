@@ -10,7 +10,8 @@
 4. 원문이 없으면 모델 2 는 ``INPUT_EVIDENCE_MISSING`` 이다. 구조화 요약문을
    원문 자리에 **대신 넣지 않는다** (초안 §8).
 5. 모델 1 의 ``판단보류`` 는 모델 2·3 입력으로 넘어가지 않는다.
-6. 확률·신뢰도·퍼센타일은 ``internal`` 밖으로 새지 않는다 (초안 §8).
+6. 확률·신뢰도·퍼센타일은 ``internal`` 밖으로 새지 않고, 모델 2의 예측
+   금액만 서버가 조립한 문구로 표시한다 (초안 §8).
 
 여기에 더해 실제로 물렸던 결함 하나를 회귀로 고정한다: model1/2/3 폴더에
 ``inference.py`` 가 각각 있어 이름으로 import 하면 ``sys.modules["inference"]``
@@ -27,6 +28,7 @@ import pytest
 
 from worker.contracts.ml_result import (
     INPUT_EVIDENCE_MISSING,
+    ML_REASON_CODES,
     MODEL_INVALID_RESPONSE,
     MODEL_ARTIFACT_MISSING,
     MODEL_EXECUTION_FAILED,
@@ -36,7 +38,12 @@ from worker.contracts.ml_result import (
 from worker.contracts.profile_snapshot import CommonIrArtifact
 from worker.cpl import build_cpl_result
 from worker.ml_reference import (
+    MODEL_1_CLASSES,
     MODEL_1_FIELDS,
+    MODEL_3_ALLOWED_AXES,
+    MODEL_3_ALLOWED_LEVELS,
+    MODEL_3_AXIS_LABELS,
+    MODEL_3_TYPICAL_LEVEL,
     WITHHELD_STATUS,
     FakeMlModel,
     MlOutputInvalid,
@@ -407,6 +414,25 @@ def test_title_only_input_is_not_blocked():
     assert without[MlModelId.MODEL_1_SUPPORT_TYPE].reason_code == INPUT_EVIDENCE_MISSING
 
 
+def test_team_model_allowlists_are_the_serving_contract():
+    assert MODEL_1_CLASSES == {
+        "SW·솔루션", "경진대회", "고용보조", "교육훈련", "기술·IP평가",
+        "보증", "사업화", "상담", "설비", "성능인증", "수출물류", "수출통관",
+        "연구개발", "융자", "창업보육", "컨설팅", "판로", "해외수주·실증", "해외인증",
+    }
+    assert len(MODEL_1_CLASSES) == 19
+    assert set(MODEL_3_ALLOWED_AXES) == set(MODEL_3_AXIS_LABELS.values())
+    assert MODEL_3_ALLOWED_LEVELS == (
+        "과거 사업 패턴과 차이가 큼", "희귀한 설계 조합", "동일 유형 대비 비전형적", "확인 필요"
+    )
+    assert MODEL_3_TYPICAL_LEVEL == "비교군 범위 내"
+    assert MODEL_3_TYPICAL_LEVEL not in MODEL_3_ALLOWED_LEVELS
+
+
+def test_invalid_response_reason_is_public_and_registered():
+    assert MODEL_INVALID_RESPONSE in ML_REASON_CODES
+
+
 def test_forbidden_model_3_wording_never_reaches_the_user():
     """팀원 FORBIDDEN 어휘는 표면에 못 나가고, fallback 으로 덮지도 않는다."""
 
@@ -419,9 +445,10 @@ def test_forbidden_model_3_wording_never_reaches_the_user():
     "model_id, output, valid",
     [
         # 정상 출력
-        (MlModelId.MODEL_1_SUPPORT_TYPE, {"support_type_pred": "연구개발"}, True),
+        (MlModelId.MODEL_1_SUPPORT_TYPE, {"support_type_pred": "연구개발", "status": "신뢰"}, True),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": 40_000_000}, True),
-        (MlModelId.MODEL_3_ANOMALY, {"level": "확인 필요"}, True),
+        (MlModelId.MODEL_3_ANOMALY, {"level": "확인 필요", "cause_axes": []}, True),
+        (MlModelId.MODEL_3_ANOMALY, {"level": MODEL_3_TYPICAL_LEVEL, "cause_axes": []}, True),
         (
             MlModelId.MODEL_3_ANOMALY,
             {"level": "희귀한 설계 조합", "cause_axes": ["지원비율"]},
@@ -435,12 +462,21 @@ def test_forbidden_model_3_wording_never_reaches_the_user():
         # 임의 라벨 — 19 개 클래스 밖
         (MlModelId.MODEL_1_SUPPORT_TYPE, {"support_type_pred": "아무거나ABC"}, False),
         (MlModelId.MODEL_1_SUPPORT_TYPE, {"support_type_pred": 7}, False),
+        # status 누락·미허용·공백 변형 — downstream carry를 결정하므로 필수
+        (MlModelId.MODEL_1_SUPPORT_TYPE, {"support_type_pred": "판로"}, False),
+        (MlModelId.MODEL_1_SUPPORT_TYPE, {"support_type_pred": "판로", "status": "불명"}, False),
+        (
+            MlModelId.MODEL_1_SUPPORT_TYPE,
+            {"support_type_pred": "판로", "status": " 판단보류 "},
+            False,
+        ),
         # 금액: bool·NaN·inf·0 이하
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": True}, False),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": float("nan")}, False),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": float("inf")}, False),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": float("-inf")}, False),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": 0}, False),
+        (MlModelId.MODEL_2_AMOUNT, {"pred_won": 0.1}, False),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": -1}, False),
         (MlModelId.MODEL_2_AMOUNT, {"pred_won": "많음"}, False),
         # cause_axes 형식
@@ -450,6 +486,7 @@ def test_forbidden_model_3_wording_never_reaches_the_user():
             False,
         ),
         (MlModelId.MODEL_3_ANOMALY, {"level": "확인 필요", "cause_axes": [3]}, False),
+        (MlModelId.MODEL_3_ANOMALY, {"level": "확인 필요"}, False),
         # 미허용 축
         (
             MlModelId.MODEL_3_ANOMALY,
@@ -489,6 +526,100 @@ def test_invalid_output_fails_only_that_model(profile, cpl_result, common_ir):
     # 나머지 둘은 그대로다.
     for other in (MlModelId.MODEL_2_AMOUNT, MlModelId.MODEL_3_ANOMALY):
         assert result.result(other).status == "OK"
+
+
+@pytest.mark.parametrize(
+    "model1_output",
+    [
+        {"support_type_pred": "판로"},
+        {"support_type_pred": "판로", "status": "불명"},
+        {"support_type_pred": "판로", "status": " 판단보류 "},
+    ],
+)
+def test_model1_status_is_required_and_invalid_status_stays_local(
+    profile, cpl_result, common_ir, model1_output
+):
+    result = _run(
+        profile,
+        cpl_result,
+        common_ir,
+        _fakes(
+            **{
+                MlModelId.MODEL_1_SUPPORT_TYPE: FakeMlModel(
+                    MlModelId.MODEL_1_SUPPORT_TYPE, model1_output
+                )
+            }
+        ),
+    )
+
+    first = result.result(MlModelId.MODEL_1_SUPPORT_TYPE)
+    assert (first.status, first.reason_code) == ("FAILED", MODEL_INVALID_RESPONSE)
+    assert first.reference_text is None
+    # status가 검증되지 않은 라벨을 downstream 비교군에 싣지 않는다.
+    for other in (MlModelId.MODEL_2_AMOUNT, MlModelId.MODEL_3_ANOMALY):
+        assert result.result(other).status == "OK"
+
+
+class _ExplodingAmount:
+    def __float__(self):
+        raise OverflowError("amount conversion overflow")
+
+
+def test_amount_normalization_exception_is_invalid_and_local(
+    profile, cpl_result, common_ir
+):
+    broken = FakeMlModel(
+        MlModelId.MODEL_2_AMOUNT,
+        {"pred_won": _ExplodingAmount()},
+    )
+    result = _run(profile, cpl_result, common_ir, _fakes(**{MlModelId.MODEL_2_AMOUNT: broken}))
+
+    second = result.result(MlModelId.MODEL_2_AMOUNT)
+    assert (second.status, second.reason_code) == ("FAILED", MODEL_INVALID_RESPONSE)
+    assert second.reference_text is None
+    assert result.result(MlModelId.MODEL_1_SUPPORT_TYPE).status == "OK"
+    assert result.result(MlModelId.MODEL_3_ANOMALY).status == "OK"
+
+
+def test_validator_exception_is_invalid_and_local(
+    profile, cpl_result, common_ir, monkeypatch
+):
+    import worker.ml_reference as ml_reference
+
+    original = ml_reference._validate_reference
+
+    def broken(model_id, output):
+        if model_id is MlModelId.MODEL_2_AMOUNT:
+            raise RuntimeError("validator exploded")
+        return original(model_id, output)
+
+    monkeypatch.setattr(ml_reference, "_validate_reference", broken)
+    result = _run(profile, cpl_result, common_ir, _fakes())
+
+    assert result.result(MlModelId.MODEL_2_AMOUNT).reason_code == MODEL_INVALID_RESPONSE
+    assert result.result(MlModelId.MODEL_1_SUPPORT_TYPE).status == "OK"
+    assert result.result(MlModelId.MODEL_3_ANOMALY).status == "OK"
+
+
+def test_raw_model3_serving_shape_is_not_treated_as_normalized_text(
+    profile, cpl_result, common_ir
+):
+    """L2가 raw DataFrame 열을 표시 계약으로 변환하기 전에는 거부한다."""
+
+    raw = FakeMlModel(
+        MlModelId.MODEL_3_ANOMALY,
+        {
+            "score": 0.9,
+            "level": "L1 support_type xsupport_method",
+            "cohort_key": "사업화|grant",
+            "cohort_n": 20,
+            "top1_axis": "support_ratio",
+        },
+    )
+    result = _run(profile, cpl_result, common_ir, _fakes(**{MlModelId.MODEL_3_ANOMALY: raw}))
+    third = result.result(MlModelId.MODEL_3_ANOMALY)
+    assert (third.status, third.reason_code) == ("FAILED", MODEL_INVALID_RESPONSE)
+    assert third.reference_text is None
 
 
 def test_missing_fields_reach_the_final_result(profile, cpl_result, common_ir):

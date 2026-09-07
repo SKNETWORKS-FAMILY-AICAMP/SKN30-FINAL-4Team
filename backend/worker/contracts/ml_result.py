@@ -5,9 +5,9 @@
 1. **ML 은 요청서 판정과 별도의 참고정보다.** CPL·FIT·SIM 판정 입력이 아니고,
    검색 필터도 아니다 (초안 §8). 이 계약이 판정 계약(``cpl_result`` ·
    ``fit_result`` · ``sim_result``)과 섞이지 않는 별도 파일인 이유다.
-2. **숫자는 사용자 표면에 없다.** 확률·신뢰도·퍼센타일은 ``internal`` 안에만
-   산다. ``reference_text`` 는 숫자가 없는 문장 하나다. ``sim_result`` 의
-   ``InternalRanking`` 이 점수를 가둔 것과 같은 계약이다 (초안 §7.2, §8).
+2. **확률·점수는 사용자 표면에 없다.** 확률·신뢰도·퍼센타일은 ``internal``
+   안에만 산다. 모델 2의 예측 지원금액은 계약상 사용자에게 표시한다. ``sim_result``
+   의 ``InternalRanking`` 이 점수를 가둔 것과 같은 계약이다 (초안 §7.2, §8).
 3. **실패는 모델 단위로 격리한다.** 세 모델은 서로 독립이고, 하나가 무너져도
    나머지 결과는 그대로 남는다 (초안 §9.4 "ML 실패는 국소 실패다").
 4. **판정을 지어내지 않는다.** 모델이 예측을 보류했으면 임의 유형으로 강행하지
@@ -29,6 +29,7 @@ __all__ = [
     "ML_RUNTIME_MISSING",
     "INPUT_EVIDENCE_MISSING",
     "MODEL_EXECUTION_FAILED",
+    "MODEL_INVALID_RESPONSE",
     "PREDICTION_WITHHELD",
     "ML_REASON_CODES",
     "MlModelResult",
@@ -73,6 +74,7 @@ ML_REASON_CODES = frozenset(
         ML_RUNTIME_MISSING,
         INPUT_EVIDENCE_MISSING,
         MODEL_EXECUTION_FAILED,
+        MODEL_INVALID_RESPONSE,
         PREDICTION_WITHHELD,
     }
 )
@@ -82,10 +84,9 @@ ML_REASON_CODES = frozenset(
 class MlModelResult:
     """모델 하나의 참고 결과.
 
-    ``reference_text`` 는 사용자에게 보이는 한 줄이고 **숫자를 담지 않는다**.
-    확률·신뢰도·퍼센타일은 전부 ``internal`` 이다. 표시 계층이 실수로라도
-    집계할 수 있는 자리를 만들지 않는다 (초안 §8, cpl_result 의 점수 부재와
-    같은 이유).
+    ``reference_text`` 는 서버가 조립한 사용자 표시 문구다. 확률·신뢰도·퍼센타일은
+    전부 ``internal`` 이고, 모델 2의 예측 지원금액만 허용된 숫자다. 표시 계층이
+    모델의 자유 문장을 집계하지 않도록 한다 (초안 §8).
 
     ``input_sources`` 는 이 입력이 어느 fact·필드·원문 블록에서 왔는지다.
     비어 있으면 "근거 없이 돌렸다" 가 아니라 "돌리지 못했다" 여야 한다.

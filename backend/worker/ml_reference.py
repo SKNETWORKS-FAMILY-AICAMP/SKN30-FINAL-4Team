@@ -13,8 +13,8 @@
    돈다. ``run_ml_reference`` 는 예외를 밖으로 던지지 않는다 (초안 §9.4).
 3. 상태 전달. 모델 1 의 결과를 모델 2·3 입력에 쓸 때 상태·버전을 함께 넘기고,
    ``판단보류`` 는 임의 유형으로 승격하지 않는다 (초안 §8).
-4. 숫자 차단. 확률·신뢰도·퍼센타일은 ``internal`` 에만 남고 사용자 표면
-   (``reference_text``)에는 숫자가 실리지 않는다.
+4. 출력 경계. 확률·신뢰도·퍼센타일은 ``internal`` 에만 남기고, 모델 2의
+   예측 지원금액만 서버가 허용된 형식으로 사용자 문구에 넣는다.
 
 실제 모델 어댑터는 L2 다. 여기에는 포트(``MlModel``)와 결정적인 가짜만 있고,
 ``torch`` · ``joblib`` · ``pandas`` 같은 추론 런타임을 import 하지 않는다.
@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import importlib.util
 import math
-import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -142,12 +141,20 @@ class MlModelInput:
             payload=payload,
             sources=[*self.sources, f"{MlModelId.MODEL_1_SUPPORT_TYPE.value}:{status}"],
             reason_code=self.reason_code,
+            metadata=dict(self.metadata),
         )
 
 
 @runtime_checkable
 class MlModel(Protocol):
-    """모델 하나의 포트. 실제 어댑터는 L2 에서 이 모양으로 들어온다."""
+    """모델 하나의 포트.
+
+    ``predict`` 는 팀원 raw serving 응답이 아니라 L1 정규화된 단일 dict 를
+    반환해야 한다. model1은 ``support_type_pred``, model2는 ``pred_won``,
+    model3는 허용 표시 ``level``과 ``cause_axes: list[str]``를 제공한다.
+    model2의 ``predictions[0]`` 래퍼와 model3의 DataFrame 행·축 라벨 변환은
+    L2 어댑터의 책임이며, 이 경계는 그 뒤의 구조값만 검증한다.
+    """
 
     model_id: MlModelId
     artifact_version: str | None
@@ -436,10 +443,15 @@ _INTERNAL_KEYS: dict[MlModelId, tuple[str, ...]] = {
         "bucket_proba",
         "input_completeness",
     ),
-    MlModelId.MODEL_3_ANOMALY: ("anomaly_score", "percentile", "level", "n"),
+    # ``score``/``cohort_*``/``top1_axis`` are the raw serving names used by the
+    # team adapter.  The L2 adapter must map them to the normalized ``level`` /
+    # ``cause_axes`` contract before this boundary is called.
+    MlModelId.MODEL_3_ANOMALY: (
+        "anomaly_score", "score", "percentile", "level", "n", "cohort_key",
+        "cohort_n", "top1_axis", "cause_axes",
+    ),
 }
 
-# 모델이 문장을 주지 않았을 때의 기본 문구. 숫자가 없다.
 # 팀원 input_builder.MODEL1_FIELDS 와 같은 순서·이름이다.
 MODEL_1_FIELDS: tuple[str, ...] = ("title", "purpose", "content", "target_text")
 
@@ -454,9 +466,18 @@ MODEL_1_CLASSES: frozenset[str] = frozenset(
     }
 )
 
-# 팀원 m13_m3_anomaly.AXIS_LABEL 의 4 축.
+# 팀원 m13_m3_anomaly.AXIS_LABEL 의 4 축.  실제 model3 서빙의
+# ``top1_axis`` 영문 키도 이 표를 통해 L1 정규화 어댑터가 변환한다.
+MODEL_3_AXIS_LABELS: dict[str, str] = {
+    "per_recipient": "기업(과제)당 지원한도",
+    "log_per_recipient": "기업(과제)당 지원한도",
+    "support_count": "지원 기업/과제 수",
+    "log_support_count": "지원 기업/과제 수",
+    "support_ratio": "지원비율",
+    "project_duration": "사업기간",
+}
 MODEL_3_ALLOWED_AXES: frozenset[str] = frozenset(
-    {"기업(과제)당 지원한도", "지원 기업/과제 수", "지원비율", "사업기간"}
+    MODEL_3_AXIS_LABELS.values()
 )
 
 # 모델 3 문구는 팀원 m13_m3_anomaly.ALLOWED 밖으로 나가지 않는다.
@@ -467,13 +488,12 @@ MODEL_3_ALLOWED_LEVELS: tuple[str, ...] = (
     "동일 유형 대비 비전형적",
     "확인 필요",
 )
-
-_FALLBACK_TEXT: dict[MlModelId, str] = {
-    MlModelId.MODEL_1_SUPPORT_TYPE: "유사 사업의 지원유형 참고 분류를 함께 본다.",
-    MlModelId.MODEL_2_AMOUNT: "유사 사업들의 지원규모 분포를 참고로 함께 본다.",
-    MlModelId.MODEL_3_ANOMALY: "유사 사업 비교군과 견준 설계 특징을 참고로 함께 본다.",
-}
-
+# m13_m3_anomaly.status_of() 가 ALLOWED 밖에서 반환하는 정상 상태. 정상 사례를
+# 이례 문구인 ``확인 필요``로 올려 말하지 않기 위해 별도 상태로 둔다.
+MODEL_3_TYPICAL_LEVEL = "비교군 범위 내"
+MODEL_3_DISPLAY_LEVELS: frozenset[str] = frozenset(
+    (*MODEL_3_ALLOWED_LEVELS, MODEL_3_TYPICAL_LEVEL)
+)
 
 # 화면에서 감추는 것은 확률·점수·백분위지 숫자 전체가 아니다.
 # 초안 30 행: "ML 은 지원유형·예측 금액·이례성 설명을 제공하고 확률·점수는
@@ -482,16 +502,21 @@ _FALLBACK_TEXT: dict[MlModelId, str] = {
 _WITHHELD_KEYS = frozenset(
     {
         "confidence",
+        "confidence_score",
         "probability",
+        "probability_score",
         "proba",
         "score",
+        "score_value",
         "percentile",
         "percentile_rank",
         "cohort_percentile",
         "anomaly_score",
         "distance",
+        "distance_score",
     }
 )
+MODEL_1_ALLOWED_STATUSES: frozenset[str] = frozenset({"신뢰", "참고용", WITHHELD_STATUS})
 
 def _amount_phrase(pred_won: Any) -> str | None:
     """원 단위 예측 금액을 문구로 만든다.
@@ -505,12 +530,14 @@ def _amount_phrase(pred_won: Any) -> str | None:
         return None
     try:
         value = float(pred_won)
-    except (TypeError, ValueError):
+    except Exception:  # noqa: BLE001 - malformed model values stay model-local
         return None
     # NaN·무한대는 int() 에서 OverflowError/ValueError 로 터진다. 값으로 거른다.
     if not math.isfinite(value) or value <= 0:
         return None
     won = int(round(value))
+    if won <= 0:
+        return None
     if won >= 100_000_000 and won % 100_000_000 == 0:
         return f"{won // 100_000_000}억원"
     if won >= 10_000 and won % 10_000 == 0:
@@ -539,6 +566,14 @@ def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
             raise MlOutputInvalid(
                 f"지원유형이 팀원 19 개 클래스 밖이다: {label!r}"
             )
+        if "status" not in output:
+            raise MlOutputInvalid("모델 1 status 가 누락됐다")
+        status = output["status"]
+        # status 는 downstream carry 여부를 결정하는 raw serving 계약값이다.
+        # 공백 변형을 허용하면 ``판단보류``가 OK 로 승격될 수 있으므로
+        # 팀원 predictor 가 반환하는 정확한 값만 받는다.
+        if not isinstance(status, str) or status not in MODEL_1_ALLOWED_STATUSES:
+            raise MlOutputInvalid(f"모델 1 status 가 허용 값 밖이다: {status!r}")
         return f"유사 사업의 지원유형 참고 분류는 '{label.strip()}' 계열이다."
 
     if model_id is MlModelId.MODEL_2_AMOUNT:
@@ -550,20 +585,26 @@ def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
         return f"비교군 기준 참고 예측 지원액은 {phrase} 수준이다."
 
     level = output.get("level")
-    if not isinstance(level, str) or level.strip() not in MODEL_3_ALLOWED_LEVELS:
-        # FORBIDDEN("지원규모 과다" 등) 을 포함해 허용 어휘 밖은 전부 여기서 막힌다.
-        raise MlOutputInvalid(f"이례성 level 이 허용 어휘 밖이다: {level!r}")
-    raw_axes = output.get("cause_axes")
-    if raw_axes is None:
-        axes: list[str] = []
-    elif isinstance(raw_axes, list) and all(isinstance(a, str) for a in raw_axes):
+    if not isinstance(level, str) or level.strip() not in MODEL_3_DISPLAY_LEVELS:
+        # 실제 팀원 raw serving 의 ``level`` 은 ``L1 ...`` 비교군 단계다. 그
+        # 값은 표시 문구가 아니므로 L2 어댑터가 이 정규화 계약으로 변환해야
+        # 한다. 정상 상태는 ``MODEL_3_TYPICAL_LEVEL`` 로 별도 허용하며,
+        # FORBIDDEN 어휘를 포함한 임의 문구는 여기서 함께 막힌다.
+        raise MlOutputInvalid(f"이례성 표시 level 이 허용 어휘 밖이다: {level!r}")
+    if "cause_axes" not in output:
+        raise MlOutputInvalid("cause_axes 가 누락됐다: list[str] 이 필요하다")
+    raw_axes = output["cause_axes"]
+    if not isinstance(raw_axes, list) or not all(isinstance(a, str) for a in raw_axes):
         # 문자열 하나를 주면 문자 단위로 순회하므로 list[str] 을 강제한다.
-        axes = [a.strip() for a in raw_axes if a.strip()]
-    else:
         raise MlOutputInvalid(f"cause_axes 가 list[str] 이 아니다: {raw_axes!r}")
+    axes = [a.strip() for a in raw_axes]
+    if any(not axis for axis in axes):
+        raise MlOutputInvalid(f"cause_axes 에 빈 축이 있다: {raw_axes!r}")
     unknown = [a for a in axes if a not in MODEL_3_ALLOWED_AXES]
     if unknown:
         raise MlOutputInvalid(f"허용 축 밖이다: {unknown}")
+    if level.strip() == MODEL_3_TYPICAL_LEVEL:
+        return "비교군 범위 내 설계 특징이다."
     if axes:
         return f"비교군 대비 {level.strip()} — 관련 축: {', '.join(axes)}."
     return f"비교군 대비 {level.strip()}."
@@ -581,6 +622,7 @@ def _failed(
         input_sources=list(model_input.sources),
         artifact_version=artifact_version,
         producer_version=ML_BOUNDARY_VERSION,
+        input_metadata=dict(model_input.metadata),
     )
 
 
@@ -588,6 +630,7 @@ def _unavailable(
     model_id: MlModelId,
     reason_code: str,
     *,
+    model_input: MlModelInput | None = None,
     artifact_version: str | None = None,
 ) -> MlModelResult:
     return MlModelResult(
@@ -597,6 +640,30 @@ def _unavailable(
         reference_text=None,
         artifact_version=artifact_version,
         producer_version=ML_BOUNDARY_VERSION,
+        input_sources=[] if model_input is None else list(model_input.sources),
+        input_metadata={} if model_input is None else dict(model_input.metadata),
+    )
+
+
+def _invalid(
+    model_id: MlModelId,
+    model_input: MlModelInput,
+    artifact_version: str | None,
+    *,
+    internal: dict[str, Any] | None = None,
+) -> MlModelResult:
+    """모델 응답 계약 위반을 해당 모델의 실패로만 남긴다."""
+
+    return MlModelResult(
+        model_id=model_id,
+        status="FAILED",
+        reason_code=MODEL_INVALID_RESPONSE,
+        reference_text=None,
+        input_sources=list(model_input.sources),
+        artifact_version=artifact_version,
+        producer_version=ML_BOUNDARY_VERSION,
+        internal={} if internal is None else internal,
+        input_metadata=dict(model_input.metadata),
     )
 
 
@@ -621,6 +688,12 @@ def _normalise(
     }
     metadata = dict(model_input.metadata)
     if model_id is MlModelId.MODEL_1_SUPPORT_TYPE and output.get("status") == WITHHELD_STATUS:
+        # 팀원 predictor 는 보류 시에도 19개 중 예측 라벨을 함께 반환한다.
+        # 보류라는 상태를 이유로 임의 라벨을 내부에 보존하지 않는다.
+        try:
+            _validate_reference(model_id, output)
+        except Exception:
+            return _invalid(model_id, model_input, artifact_version, internal=internal)
         return MlModelResult(
             model_id=model_id,
             status="UNAVAILABLE",
@@ -634,20 +707,10 @@ def _normalise(
         )
     try:
         reference_text = _validate_reference(model_id, output)
-    except Exception as error:
+    except Exception:
         # 검증기 자체가 터져도 이 모델만 실패한다. 잘못된 출력을 정상
         # 참고정보로 위장하지 않는다 (fallback 으로 덮지 않는다).
-        return MlModelResult(
-            model_id=model_id,
-            status="FAILED",
-            reason_code=MODEL_INVALID_RESPONSE,
-            reference_text=None,
-            input_sources=list(model_input.sources),
-            artifact_version=artifact_version,
-            producer_version=ML_BOUNDARY_VERSION,
-            internal=internal,
-            input_metadata=metadata,
-        )
+        return _invalid(model_id, model_input, artifact_version, internal=internal)
     return MlModelResult(
         model_id=model_id,
         status="OK",
@@ -682,7 +745,7 @@ def _run_one(
                 message="어댑터가 주입되지 않았다.",
             )
         )
-        return _unavailable(model_id, ML_RUNTIME_MISSING)
+        return _unavailable(model_id, ML_RUNTIME_MISSING, model_input=model_input)
     if model_input.reason_code is not None:
         diagnostics.append(
             StageDiagnostic(
@@ -692,7 +755,12 @@ def _run_one(
                 message="학습 스키마에 맞출 근거가 없어 호출하지 않았다.",
             )
         )
-        return _unavailable(model_id, model_input.reason_code, artifact_version=artifact_version)
+        return _unavailable(
+            model_id,
+            model_input.reason_code,
+            model_input=model_input,
+            artifact_version=artifact_version,
+        )
     try:
         output = model.predict(model_input.payload)
     except MlUnavailable as error:
@@ -705,7 +773,12 @@ def _run_one(
                 message=error.detail,
             )
         )
-        return _unavailable(model_id, error.reason_code, artifact_version=artifact_version)
+        return _unavailable(
+            model_id,
+            error.reason_code,
+            model_input=model_input,
+            artifact_version=artifact_version,
+        )
     except Exception as error:  # noqa: BLE001 - 국소 실패로 가둔다
         diagnostics.append(
             StageDiagnostic(
@@ -721,12 +794,33 @@ def _run_one(
             StageDiagnostic(
                 stage=_STAGE,
                 unit=model_id.value,
-                reason_code=MODEL_EXECUTION_FAILED,
+                reason_code=MODEL_INVALID_RESPONSE,
                 message=f"출력이 dict 가 아니다: {type(output).__name__}",
             )
         )
-        return _failed(model_id, model_input, artifact_version)
-    return _normalise(model_id, output, model_input, artifact_version)
+        return _invalid(model_id, model_input, artifact_version)
+    try:
+        result = _normalise(model_id, output, model_input, artifact_version)
+    except Exception as error:  # noqa: BLE001 - normalizer failure is model-local
+        diagnostics.append(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=model_id.value,
+                reason_code=MODEL_INVALID_RESPONSE,
+                message=f"정규화 예외: {type(error).__name__}: {error}"[:2000],
+            )
+        )
+        return _invalid(model_id, model_input, artifact_version)
+    if result.reason_code == MODEL_INVALID_RESPONSE:
+        diagnostics.append(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=model_id.value,
+                reason_code=MODEL_INVALID_RESPONSE,
+                message="모델 출력이 결과 계약을 충족하지 않는다.",
+            )
+        )
+    return result
 
 
 def _carry_support_type(
@@ -740,8 +834,13 @@ def _carry_support_type(
 
     if first.status == "OK":
         label = first.internal.get("support_type_pred")
-        if isinstance(label, str) and label:
-            return label, str(first.internal.get("status") or "OK"), first.artifact_version
+        if isinstance(label, str) and label.strip():
+            status = first.internal.get("status")
+            return (
+                label.strip(),
+                status.strip() if isinstance(status, str) and status.strip() else "OK",
+                first.artifact_version,
+            )
     # 진단은 그것이 설명하는 단위에 붙인다 (sim.py 와 같은 규약). 이 줄이
     # 설명하는 것은 모델 1 의 실패가 아니라 **모델 2·3 입력에 지원유형이 없는
     # 이유** 다. 모델 1 쪽 단위에 붙이면 그 모델의 진단과 섞인다.
