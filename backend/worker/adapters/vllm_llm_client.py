@@ -7,6 +7,7 @@ vLLM 은 Responses API 를 구현하지 않는다. 그래서
 
 import asyncio
 from collections.abc import Mapping
+import json
 import logging
 import time
 from typing import Any
@@ -85,11 +86,21 @@ class VllmLLMClient:
         if response_data.get("error") is not None:
             raise LLMUnavailableError("LLM service failed to generate a response")
 
+        # 파싱 실패와 스키마 위반을 구분한다. 배치 응답에서 행 하나가 계약을
+        # 어긴 것과 본문 자체를 못 읽은 것은 격리 범위가 다르다: 전자는 그
+        # 행만, 후자는 호출 범위 전체다. 구분을 잃으면 정상 행의 판정까지
+        # 함께 내려간다.
         try:
             content = _read_message_content(response_data)
-            result = response_schema.model_validate_json(content)
-        except (TypeError, ValueError, ValidationError):
+            raw = json.loads(content)
+        except (TypeError, ValueError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
+        try:
+            result = response_schema.model_validate(raw)
+        except ValidationError:
+            raise LLMInvalidResponseError(
+                "LLM returned an invalid response", raw=raw
+            ) from None
 
         usage = response_data.get("usage", {})
         logger.info(

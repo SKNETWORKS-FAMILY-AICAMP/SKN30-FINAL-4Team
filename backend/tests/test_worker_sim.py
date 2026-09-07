@@ -580,6 +580,36 @@ def test_a_bogus_candidate_fact_id_degrades_only_that_axis(
     assert payloads[1]["axes"][0]["previous_response_error"]
 
 
+def test_an_axis_verdict_that_cites_no_evidence_is_not_accepted(
+    request_profile, existing_profile
+):
+    """판정을 내렸는데 한쪽 근거를 인용하지 않았다면 판정이 아니다 (FIT 와 같은 규칙)."""
+
+    request, _ = _common(request_profile)
+    existing, _ = _common(existing_profile)
+
+    def uncited(payload):
+        rows = verdict_script("DIFFERENT")(payload)["axes"]
+        for row in rows:
+            if row["axis"] == "target":
+                row["request_fact_ids"] = []
+                row["candidate_fact_ids"] = []
+        return {"axes": rows}
+
+    result = compare_candidate(
+        request, existing, FakeLLM(comparison=uncited), model_profile=_MODEL_PROFILE
+    )
+
+    target = result.axis(SimAxis.TARGET)
+    assert target.status is not SimStatus.DIFFERENT
+    assert target.status is SimStatus.INSUFFICIENT
+    assert target.reason_code == LLM_INVALID_RESPONSE
+    # 인용한 축은 쓴 id 를 그대로 보존한다.
+    purpose = result.axis(SimAxis.PURPOSE)
+    assert purpose.status is SimStatus.DIFFERENT
+    assert purpose.request_fact_ids and purpose.candidate_fact_ids
+
+
 def test_out_of_contract_exception_preserves_computed_results(
     request_profile, existing_profile
 ):

@@ -26,9 +26,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from worker.llm_call import generate as shared_generate
+from worker.llm_call import generate as shared_generate, salvage_rows
 from app.ports.llm_client import (
     LLMClient,
     LLMInvalidResponseError,
@@ -234,7 +234,8 @@ class _AssignmentModel(BaseModel):
 
 
 class _ClassificationResponse(BaseModel):
-    assignments: list[_AssignmentModel] = Field(default_factory=list)
+    # 엔벨로프 키는 필수다. 기본값을 주면 ``{}`` 가 "빈 배치" 로 통과한다.
+    assignments: list[_AssignmentModel]
 
 
 # common_key 를 enum 이 아니라 str 로 받는 이유는 fit.py 의 axis_code 와 같다.
@@ -306,23 +307,54 @@ def _classify(
             model_profile=model_profile,
         )
     except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-        reason = _TRANSPORT_REASONS[type(error)]
-        diagnostics.append(
-            StageDiagnostic(
-                stage=_CLASSIFY_STAGE,
-                unit=",".join(_LLM_MAP),
-                reason_code=reason,
-                message=str(error)[:2000],
-                attempt=1,
-                terminated_because=reason,
-            )
+        # 배정 하나가 계약을 어겼다고 나머지 배정을 버리지 않는다.
+        recovered = salvage_rows(
+            error,
+            envelope="assignments",
+            row_model=_AssignmentModel,
+            id_field="fact_id",
         )
-        return []
+        if recovered is None:
+            reason = _TRANSPORT_REASONS[type(error)]
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_CLASSIFY_STAGE,
+                    unit=",".join(_LLM_MAP),
+                    reason_code=reason,
+                    message=str(error)[:2000],
+                    attempt=1,
+                    terminated_because=reason,
+                )
+            )
+            return []
+        response_rows, broken, dropped = recovered
+        for fact_id in broken:
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_CLASSIFY_STAGE,
+                    unit=fact_id,
+                    reason_code=LLM_INVALID_RESPONSE,
+                    message="응답 행이 스키마를 어겨 공통 프로파일에 넣지 않았다.",
+                    attempt=1,
+                )
+            )
+        if dropped:
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_CLASSIFY_STAGE,
+                    unit=None,
+                    reason_code=LLM_INVALID_RESPONSE,
+                    message=f"fact_id 를 알 수 없는 응답 행 {dropped}건을 버렸다.",
+                    attempt=1,
+                )
+            )
+    else:
+        response_rows = list(response.assignments)
 
     accepted: list[tuple[SimAxis, SimCommonEntry]] = []
     # (fact_id, 인용문) → 이미 배정된 하위 키. 같은 span 의 재사용을 막는다.
     spans: dict[tuple[str, str], str] = {}
-    for row in response.assignments:
+    for row in response_rows:
         found = facts.get(row.fact_id)
         if found is None:
             problem = ("제공하지 않은 fact_id", LLM_INVALID_RESPONSE)

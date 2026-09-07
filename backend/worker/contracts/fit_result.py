@@ -142,13 +142,20 @@ class FitSide:
 
 @dataclass(frozen=True, slots=True)
 class FitRelationResult:
-    """관계 하나의 결과. 점수 필드는 없다."""
+    """관계 하나의 결과. 점수 필드는 없다.
+
+    ``used_*_fact_ids`` 는 모델이 판정 근거로 **실제 인용한** id 다. 입력으로
+    준 근거 전체(``left`` · ``right``)와 구분해 둔다. 둘을 섞으면 어떤 근거가
+    판정을 지탱했는지가 사라진다.
+    """
 
     relation_id: FitRelationId
     status: FitStatus
     reason_code: str | None
     left: FitSide = field(default_factory=FitSide)
     right: FitSide = field(default_factory=FitSide)
+    used_left_fact_ids: list[str] = field(default_factory=list)
+    used_right_fact_ids: list[str] = field(default_factory=list)
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
 
 

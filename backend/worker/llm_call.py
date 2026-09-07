@@ -11,7 +11,7 @@ import asyncio
 import json
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.ports.llm_client import (
     LLMInvalidResponseError,
@@ -71,3 +71,48 @@ def generate(
             f"{task_name} returned {type(response).__name__}, expected {response_schema.__name__}"
         )
     return response
+
+
+def salvage_rows(
+    error: Exception,
+    *,
+    envelope: str,
+    row_model: type[BaseModel],
+    id_field: str,
+) -> tuple[list[BaseModel], list[str], int] | None:
+    """스키마를 어긴 배치 응답에서 살아 있는 행만 건져 낸다 (초안 §9.2.1).
+
+    포트가 배치 전체를 한 번에 검증하기 때문에, 행 하나가 계약을 어기면
+    호출부의 항목별 격리가 아예 돌지 못한다. 여기서 그 격리를 되살린다.
+
+    ``None`` 이면 부분 회수를 하지 않는다 = 배치 전체 실패다. 조건은 둘이다.
+    본문이 JSON 이 아니었거나(``raw is None``), 엔벨로프 키가 없거나 목록이
+    아닌 경우다.
+
+    돌려주는 것은 (행 모델 검증을 통과한 행, id 는 알아냈지만 행이 계약을
+    어긴 id 목록, id 조차 알 수 없어 버린 행 수) 다. 호출부는 두 번째를 그
+    단위만의 실패로, 세 번째를 경고로 남긴다.
+
+    **``error.raw`` 는 여기서 값으로만 쓴다.** 요청서 원문이 실릴 수 있으므로
+    메시지·로그로 흘리지 않는다.
+    """
+
+    raw = getattr(error, "raw", None)
+    if not isinstance(raw, dict):
+        return None
+    rows = raw.get(envelope)
+    if not isinstance(rows, list):
+        return None
+
+    parsed: list[BaseModel] = []
+    broken: list[str] = []
+    dropped = 0
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get(id_field), str):
+            dropped += 1
+            continue
+        try:
+            parsed.append(row_model.model_validate(row))
+        except ValidationError:
+            broken.append(row[id_field])
+    return parsed, broken, dropped

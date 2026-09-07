@@ -18,12 +18,14 @@ CplResult 표시 구조를 다시 해석해서 관계를 만들었고, 그 재�
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import re
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from worker.llm_call import generate as shared_generate
+from worker.llm_call import generate as shared_generate, salvage_rows
 from app.ports.llm_client import (
     LLMClient,
     LLMInvalidResponseError,
@@ -320,13 +322,30 @@ def _fit5_reason(states: dict[str, dict[str, Any]], left: FitSide) -> str | None
 
 # --------------------------------------------------------- FIT-7 정량 비교
 
-# 금액 단위. ponytail: "21억5천만원" 같은 복합 단위는 인식하지 않는다.
-# 인식하지 못한 값은 추측하지 않고 COMPARISON_VALUE_INVALID 로 빠진다.
+# 금액 단위. ponytail: 이 정규식들은 단위 하나짜리 값만 읽는다. "1억 5000만원"
+# 처럼 단위가 두 번 붙은 복합 표현은 읽지 못한다 — 그리고 **읽지 못한 것을
+# 부분값으로 만들지 않는다** (아래 숫자 시퀀스 소비 규칙). 복합 단위가 필요해
+# 지면 정규식에 예외를 더하는 대신 금액 파서를 따로 둔다.
 _AMOUNT_SCALES = {"조": 10**12, "억": 10**8, "만": 10**4, "천": 10**3}
 _AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([조억만천])?\s*원")
 _COUNT_RE = re.compile(r"(\d[\d,]*)\s*개?\s*(팀|명|개사|건|개)")
 # 기간 수식어가 붙은 횟수(월 2회)는 총 횟수(총 8회)와 같은 축이 아니다.
 _TIMES_RE = re.compile(r"([월주년일])?\s*(\d[\d,]*)\s*회")
+_DIGITS_RE = re.compile(r"\d+")
+
+
+# 천 단위 쉼표는 세 자리씩만 인정한다. 정규식의 [\d,]* 가 자리수를 보지 않아
+# "1,2,3만원" 이 1,230,000 원으로, "1,,000원" 이 1,000 원으로 조용히 바뀐다.
+# 잘못된 표기에서 유효한 숫자를 만들지 않는다 (숫자 소비 규칙과 같은 취지).
+_GROUPED_NUMBER_RE = re.compile(r"^\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+
+
+def _plain_number(literal: str) -> str | None:
+    """쉼표 문법이 올바르면 쉼표를 뗀 문자열, 아니면 None."""
+
+    if not _GROUPED_NUMBER_RE.match(literal):
+        return None
+    return literal.replace(",", "")
 
 
 def _quantities(value_raw: str | None) -> set[tuple[str, int]]:
@@ -335,18 +354,51 @@ def _quantities(value_raw: str | None) -> set[tuple[str, int]]:
     축을 함께 달아 두는 이유는 금액과 팀수가 절대 같은 자리에서 비교되지
     않게 하기 위해서다. 인식하지 못하면 빈 집합이고, 호출자가 그 사실을
     진단으로 남긴다.
+
+    **숫자 시퀀스 소비 규칙**: 원문의 숫자 하나라도 어떤 매치에도 걸리지
+    않았으면 이 값 전체를 버린다. 문자열 전체를 소비하라는 뜻이 아니라
+    (설명 문구는 무방하다) 숫자 문법을 일부만 읽고 다른 값을 만들지 말라는
+    뜻이다. "10~20개사" 에서 20 만, "1억 5000만원" 에서 5000만원만 읽으면
+    서로 다른 값이 일치로 판정된다.
     """
 
     if not value_raw:
         return set()
     found: set[tuple[str, int]] = set()
-    for digits, scale in _AMOUNT_RE.findall(value_raw):
-        number = float(digits.replace(",", ""))
-        found.add(("AMOUNT_KRW", int(number * _AMOUNT_SCALES.get(scale, 1))))
-    for digits, unit in _COUNT_RE.findall(value_raw):
-        found.add((f"COUNT:{unit}", int(digits.replace(",", ""))))
-    for period, digits in _TIMES_RE.findall(value_raw):
-        found.add((f"TIMES:{period or 'TOTAL'}", int(digits.replace(",", ""))))
+    spans: list[tuple[int, int]] = []
+    for match in _AMOUNT_RE.finditer(value_raw):
+        # float 로 곱하면 0.29억원이 28,999,999 가 되어 2,900만원과 불일치로
+        # 판정된다. 같은 금액을 다르게 만드는 것은 B 와 같은 종류의 오판이라
+        # 10 진 고정소수로 계산한다.
+        literal = _plain_number(match.group(1))
+        if literal is None:
+            return set()
+        number = Decimal(literal)
+        won = number * _AMOUNT_SCALES.get(match.group(2), 1)
+        if won != won.to_integral_value():
+            # 원 단위 정수가 아니면 반올림 방향을 추측하지 않고 값을 버린다.
+            return set()
+        found.add(("AMOUNT_KRW", int(won)))
+        spans.append(match.span())
+    for match in _COUNT_RE.finditer(value_raw):
+        literal = _plain_number(match.group(1))
+        if literal is None:
+            return set()
+        found.add((f"COUNT:{match.group(2)}", int(literal)))
+        spans.append(match.span())
+    for match in _TIMES_RE.finditer(value_raw):
+        period = match.group(1) or "TOTAL"
+        literal = _plain_number(match.group(2))
+        if literal is None:
+            return set()
+        found.add((f"TIMES:{period}", int(literal)))
+        spans.append(match.span())
+
+    for digits in _DIGITS_RE.finditer(value_raw):
+        if not any(
+            start <= digits.start() and digits.end() <= end for start, end in spans
+        ):
+            return set()
     return found
 
 
@@ -436,16 +488,17 @@ def _fit7(profile: dict[str, Any]) -> FitRelationResult:
 
     if mismatch:
         return result(FitStatus.NEEDS_REVIEW, NUMERIC_MISMATCH)
+    if left_invalid or right_invalid:
+        # 인식하지 못해 버린 값이 있으면 남은 축의 일치를 전체 일치로 올리지
+        # 않고, "한쪽에만 있다" 고 말하지도 않는다. 버린 값이 충돌이었을 수
+        # 있고, 그것을 확인할 방법이 없다.
+        return result(FitStatus.INSUFFICIENT, COMPARISON_VALUE_INVALID)
     if single_sided:
         # 충돌이 확인되지 않았다는 사실은 대응했다는 뜻이 아니다.
         return result(FitStatus.INSUFFICIENT, SINGLE_SIDED_NO_CONFLICT)
     if agreed:
         return result(FitStatus.FIT, None)
-    invalid = bool(left_invalid or right_invalid)
-    return result(
-        FitStatus.INSUFFICIENT,
-        COMPARISON_VALUE_INVALID if invalid else COMPARISON_EVIDENCE_MISSING,
-    )
+    return result(FitStatus.INSUFFICIENT, COMPARISON_EVIDENCE_MISSING)
 
 
 # ------------------------------------------------------- 목적 의미 축 보완
@@ -458,7 +511,9 @@ class _PurposeAxisAssignmentModel(BaseModel):
 
 
 class _PurposeAxisResponse(BaseModel):
-    assignments: list[_PurposeAxisAssignmentModel] = Field(default_factory=list)
+    # 엔벨로프 키는 필수다. 기본값을 주면 ``{}`` 가 "빈 배치" 로 조용히
+    # 통과해 최상위 오류가 정상 응답으로 둔갑한다.
+    assignments: list[_PurposeAxisAssignmentModel]
 
 
 # axis_code 를 enum 이 아니라 str 로 받는 이유: 어휘 밖의 값이 오면 스키마
@@ -492,7 +547,8 @@ class _FitVerdictModel(BaseModel):
 
 
 class _FitComparisonResponse(BaseModel):
-    relations: list[_FitVerdictModel] = Field(default_factory=list)
+    # 엔벨로프 키 부재는 최상위 오류다 (_PurposeAxisResponse 와 같은 이유).
+    relations: list[_FitVerdictModel]
 
 
 _TRANSPORT_REASONS = {
@@ -564,27 +620,59 @@ def _classify_purpose_axes(
             model_profile=model_profile,
         )
     except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-        reason = _TRANSPORT_REASONS[type(error)]
-        diagnostics.append(
-            StageDiagnostic(
-                stage=_PURPOSE_STAGE,
-                unit=_PURPOSE_PATH,
-                reason_code=reason,
-                message=str(error)[:2000],
-                attempt=1,
-                terminated_because=reason,
+        # 배정 하나가 계약을 어겼다고 나머지 배정을 버리지 않는다.
+        recovered = salvage_rows(
+            error,
+            envelope="assignments",
+            row_model=_PurposeAxisAssignmentModel,
+            id_field="fact_id",
+        )
+        if recovered is None:
+            reason = _TRANSPORT_REASONS[type(error)]
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_PURPOSE_STAGE,
+                    unit=_PURPOSE_PATH,
+                    reason_code=reason,
+                    message=str(error)[:2000],
+                    attempt=1,
+                    terminated_because=reason,
+                )
             )
-        )
-        return PurposeAxisClassification(
-            attempted=True,
-            reason_code=reason,
-            prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
-        )
+            return PurposeAxisClassification(
+                attempted=True,
+                reason_code=reason,
+                prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
+            )
+        response_rows, broken, dropped_rows = recovered
+        for fact_id in broken:
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_PURPOSE_STAGE,
+                    unit=fact_id,
+                    reason_code=LLM_INVALID_RESPONSE,
+                    message="응답 행이 스키마를 어겨 축 분류에서 제외했다.",
+                    attempt=1,
+                )
+            )
+        if dropped_rows:
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_PURPOSE_STAGE,
+                    unit=None,
+                    reason_code=LLM_INVALID_RESPONSE,
+                    message=f"fact_id 를 알 수 없는 응답 행 {dropped_rows}건을 버렸다.",
+                    attempt=1,
+                )
+            )
+    else:
+        response_rows = list(response.assignments)
+        broken = []
 
     by_id = {fact.fact_id: fact for fact in facts}
     assignments: list[PurposeAxisAssignment] = []
-    dropped: list[str] = []
-    for row in response.assignments:
+    dropped: list[str] = list(broken)
+    for row in response_rows:
         fact = by_id.get(row.fact_id)
         if fact is None:
             problem = "프로파일에 없는 fact_id"
@@ -682,8 +770,12 @@ def _validate_verdict(
     row: _FitVerdictModel,
     left: FitSide,
     right: FitSide,
-) -> tuple[FitStatus, str | None] | str:
-    """응답 한 줄을 검사한다. 통과하면 (상태, reason), 아니면 오류 설명."""
+) -> tuple[FitStatus, str | None, list[str], list[str]] | str:
+    """응답 한 줄을 검사한다.
+
+    통과하면 (상태, reason, 좌측에서 실제로 인용한 id, 우측에서 인용한 id) 고,
+    아니면 오류 설명이다. 인용된 id 는 입력 근거 전체와 구분해 보존한다.
+    """
 
     try:
         status = FitStatus(row.status)
@@ -702,8 +794,14 @@ def _validate_verdict(
     crossed += [fact_id for fact_id in row.right_fact_ids if fact_id not in right_ids]
     if crossed:
         return f"좌우가 뒤바뀐 근거 참조 {crossed}"
+    if status is not FitStatus.INSUFFICIENT and not (
+        row.left_fact_ids and row.right_fact_ids
+    ):
+        # 인용이 허용 범위 안인지만 보고 인용이 있는지를 보지 않으면, 근거를
+        # 하나도 대지 않은 CONFLICT 가 그대로 통과한다.
+        return "판정을 내렸는데 한쪽 근거를 인용하지 않았다"
     reason = row.reason_code if row.reason_code in FIT_REASON_CODES else None
-    return status, reason
+    return status, reason, list(row.left_fact_ids), list(row.right_fact_ids)
 
 
 def _compare_relations(
@@ -713,24 +811,27 @@ def _compare_relations(
     model_profile: str,
     max_repairs: int,
     diagnostics: list[StageDiagnostic],
-) -> dict[FitRelationId, tuple[FitStatus, str | None]]:
+) -> dict[FitRelationId, tuple[FitStatus, str | None, list[str], list[str]]]:
     """게이트를 통과한 관계를 한 번에 비교하고, 결함만 격리한다 (초안 §9.2.1).
 
     - 최상위 응답 자체를 해석할 수 없으면 그 호출 범위(= 남은 관계)만 내린다.
-    - 관계를 식별할 수 있는 누락·중복·허용 밖 근거는 그 관계만 내린다.
-      정상 관계와 그 근거는 그대로 남는다.
+      본문이 JSON 이 아니거나 엔벨로프 키가 없는 경우가 여기다.
+    - 관계를 식별할 수 있는 누락·중복·스키마 위반·허용 밖 근거는 그 관계만
+      내린다. 정상 관계와 그 근거는 그대로 남는다.
     - 통신 오류는 이미 확정된 관계 결과를 지우지 않는다.
 
     ponytail: 전송 재시도는 여기서 하지 않는다. 초안 §9.0 이 통신 재시도를
     의미 보완과 별도 카운터로 두라고 했고, 재시도의 자리는 포트 어댑터다.
     """
 
-    verdicts: dict[FitRelationId, tuple[FitStatus, str | None]] = {}
+    verdicts: dict[FitRelationId, tuple[FitStatus, str | None, list[str], list[str]]] = {}
     errors: dict[FitRelationId, str] = {}
     remaining = dict(pending)
     attempt = 0
     while remaining and attempt <= max_repairs:
         attempt += 1
+        broken: list[str] = []
+        dropped = 0
         try:
             response = _generate(
                 llm_client,
@@ -741,31 +842,60 @@ def _compare_relations(
                 model_profile=model_profile,
             )
         except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-            reason = _TRANSPORT_REASONS[type(error)]
-            for relation_id in remaining:
-                diagnostics.append(
-                    StageDiagnostic(
-                        stage=_STAGE,
-                        unit=relation_id.value,
-                        reason_code=reason,
-                        message=str(error)[:2000],
-                        attempt=attempt,
-                        terminated_because=reason,
+            # 포트는 배치를 한 번에 검증한다. 행 하나의 계약 위반으로 정상
+            # 관계까지 내려가지 않도록, 식별 가능한 행은 여기서 되살린다.
+            recovered = salvage_rows(
+                error,
+                envelope="relations",
+                row_model=_FitVerdictModel,
+                id_field="relation_id",
+            )
+            if recovered is None:
+                reason = _TRANSPORT_REASONS[type(error)]
+                for relation_id in remaining:
+                    diagnostics.append(
+                        StageDiagnostic(
+                            stage=_STAGE,
+                            unit=relation_id.value,
+                            reason_code=reason,
+                            message=str(error)[:2000],
+                            attempt=attempt,
+                            terminated_because=reason,
+                        )
                     )
+                    verdicts[relation_id] = (FitStatus.INSUFFICIENT, reason, [], [])
+                return verdicts
+            response_rows, broken, dropped = recovered
+        else:
+            response_rows = list(response.relations)
+
+        if dropped:
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_STAGE,
+                    unit=None,
+                    reason_code=LLM_INVALID_RESPONSE,
+                    message=f"관계 id 를 알 수 없는 응답 행 {dropped}건을 버렸다.",
+                    attempt=attempt,
                 )
-                verdicts[relation_id] = (FitStatus.INSUFFICIENT, reason)
-            return verdicts
+            )
 
         seen: dict[FitRelationId, int] = {}
         rows: dict[FitRelationId, _FitVerdictModel] = {}
-        for row in response.relations:
+        invalid_rows: set[FitRelationId] = set()
+        # 행이 None 이면 id 는 읽혔지만 그 행이 계약을 어겼다는 뜻이다.
+        identified: list[tuple[str, _FitVerdictModel | None]] = [
+            (row.relation_id, row) for row in response_rows
+        ]
+        identified += [(relation_id_raw, None) for relation_id_raw in broken]
+        for relation_id_raw, row in identified:
             try:
-                relation_id = FitRelationId(row.relation_id)
+                relation_id = FitRelationId(relation_id_raw)
             except ValueError:
                 diagnostics.append(
                     StageDiagnostic(
                         stage=_STAGE,
-                        unit=row.relation_id,
+                        unit=relation_id_raw,
                         reason_code=LLM_INVALID_RESPONSE,
                         message="요청하지 않은 관계 id 라 무시했다. 정상 관계는 그대로 둔다.",
                         attempt=attempt,
@@ -773,11 +903,17 @@ def _compare_relations(
                 )
                 continue
             seen[relation_id] = seen.get(relation_id, 0) + 1
-            rows[relation_id] = row
+            if row is None:
+                invalid_rows.add(relation_id)
+            else:
+                rows[relation_id] = row
 
         errors = {}
         for relation_id, (left, right) in remaining.items():
             row = rows.get(relation_id)
+            if relation_id in invalid_rows:
+                errors[relation_id] = "응답 행이 스키마를 어겼다"
+                continue
             if row is None:
                 errors[relation_id] = "응답에 해당 관계가 없다"
                 continue
@@ -806,7 +942,7 @@ def _compare_relations(
 
     # 예산을 다 쓰고도 남은 관계는 그 관계만 정보 부족으로 남는다.
     for relation_id in remaining:
-        verdicts[relation_id] = (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE)
+        verdicts[relation_id] = (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE, [], [])
     return verdicts
 
 
@@ -930,8 +1066,8 @@ def analyze_fit(
         else {}
     )
     for relation_id, (left, right) in pending.items():
-        status, reason = verdicts.get(
-            relation_id, (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE)
+        status, reason, used_left, used_right = verdicts.get(
+            relation_id, (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE, [], [])
         )
         results[relation_id] = FitRelationResult(
             relation_id=relation_id,
@@ -939,6 +1075,8 @@ def analyze_fit(
             reason_code=reason,
             left=left,
             right=right,
+            used_left_fact_ids=used_left,
+            used_right_fact_ids=used_right,
         )
 
     metadata = profile.get("processing_metadata") or {}

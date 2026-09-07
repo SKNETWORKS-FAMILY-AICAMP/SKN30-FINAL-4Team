@@ -34,7 +34,7 @@ from worker.contracts.fit_result import (
     FitStatus,
     PurposeAxisCode,
 )
-from worker.fit import analyze_fit
+from worker.fit import _quantities, analyze_fit
 
 
 _PROFILE_PATH = (
@@ -369,6 +369,72 @@ def test_fit7_ignores_total_budget_and_cost_sharing(profile):
     assert used == {"support_content", "support_scale"}
 
 
+# --------------------------------------------------- FIT-7 숫자 시퀀스 소비
+
+# 세 갈래로 나눠 고정한다.
+# 1. 지원하는 순수 표현: 매치가 숫자를 전부 소비한다.
+# 2. 부분 해석 위험: 숫자 일부만 소비되면 값 전체를 버린다. 여기서 값을
+#    만들어내는 것이 이 결함의 본체였다 (10~20개사 → 20).
+# 3. 숫자 외 설명이 붙은 표현: **허용** 한다. 규칙은 문자열 전체 소비가
+#    아니라 숫자 시퀀스 소비다.
+
+
+@pytest.mark.parametrize(
+    "value_raw, expected",
+    [
+        ("20개팀", {("COUNT:팀", 20)}),
+        ("최종 선정 4개팀", {("COUNT:팀", 4)}),
+        ("팀당 400만원", {("AMOUNT_KRW", 4_000_000)}),
+        ("150만원", {("AMOUNT_KRW", 1_500_000)}),
+        ("250만원", {("AMOUNT_KRW", 2_500_000)}),
+        ("월 2회, 총 8회", {("TIMES:월", 2), ("TIMES:TOTAL", 8)}),
+        ("21,000천원", {("AMOUNT_KRW", 21_000_000)}),
+        ("1.5억원", {("AMOUNT_KRW", 150_000_000)}),
+    ],
+)
+def test_fit7_reads_supported_quantity_expressions(value_raw, expected):
+    assert _quantities(value_raw) == expected
+
+
+@pytest.mark.parametrize(
+    "value_raw",
+    ["10~20개사", "1억 5000만원", "최대 5천만원", "2027년 중 사업자등록"],
+)
+def test_fit7_discards_values_whose_numbers_are_only_partly_consumed(value_raw):
+    """숫자 문법을 일부만 소비해 다른 값을 만들지 않는다."""
+
+    assert _quantities(value_raw) == set()
+
+
+def test_fit7_allows_prose_around_a_fully_consumed_number():
+    """숫자 외 설명 문구는 무방하다. 문자열 전체를 소비할 필요는 없다."""
+
+    assert _quantities("기업당 400만원 지원") == {("AMOUNT_KRW", 4_000_000)}
+
+
+@pytest.mark.parametrize(
+    "left_raw, right_raw",
+    [("10~20개사", "20개사"), ("1억 5000만원", "5000만원")],
+)
+def test_fit7_partially_read_values_are_never_reported_as_fit(left_raw, right_raw):
+    """부분 해석이 만든 값으로 서로 다른 값을 일치라고 판정하지 않는다."""
+
+    fit7 = _relation(
+        analyze_fit(
+            _quantity_profile(
+                [_fact("f:c", "support_content", left_raw, "component:grant")],
+                [_fact("f:s", "support_scale", right_raw, "component:grant")],
+            ),
+            FakeLLM(),
+            model_profile=_MODEL_PROFILE,
+        ),
+        FitRelationId.FIT_7,
+    )
+    assert fit7.status is not FitStatus.FIT
+    assert fit7.status is FitStatus.INSUFFICIENT
+    assert fit7.reason_code == COMPARISON_VALUE_INVALID
+
+
 # ---------------------------------------------------------- 목적 의미 축 보완
 
 
@@ -589,6 +655,100 @@ def test_timeout_maps_to_llm_timeout_and_keeps_computed_results(profile):
     assert _relation(result, FitRelationId.FIT_7).reason_code == SINGLE_SIDED_NO_CONFLICT
 
 
+# -------------------------------------------------------- 근거 인용 강제
+
+
+def _cite(payload, relation_id: FitRelationId, **overrides):
+    """한 관계의 인용 목록만 바꾼 응답."""
+
+    rows = _agree(payload)
+    for row in rows["relations"]:
+        if row["relation_id"] == relation_id.value:
+            row.update(overrides)
+    return rows
+
+
+def test_a_verdict_that_cites_no_evidence_is_not_accepted(profile):
+    """판정을 내렸는데 근거를 하나도 인용하지 않았다면 판정이 아니다."""
+
+    result = analyze_fit(
+        profile,
+        FakeLLM(
+            purpose=_direction(),
+            comparison=lambda payload: _cite(
+                payload,
+                FitRelationId.FIT_6,
+                status=FitStatus.CONFLICT.value,
+                left_fact_ids=[],
+                right_fact_ids=[],
+            ),
+        ),
+        model_profile=_MODEL_PROFILE,
+    )
+
+    fit6 = _relation(result, FitRelationId.FIT_6)
+    assert fit6.status is not FitStatus.CONFLICT
+    assert fit6.status is FitStatus.INSUFFICIENT
+    assert fit6.reason_code == LLM_INVALID_RESPONSE
+    assert any(
+        row.unit == FitRelationId.FIT_6.value and "근거" in row.message
+        for row in result.diagnostics
+    )
+    # 나머지 관계는 그대로다.
+    assert _relation(result, FitRelationId.FIT_5).status is FitStatus.FIT
+
+
+def test_an_insufficient_verdict_may_cite_nothing(profile):
+    """정보 부족은 인용할 근거가 없다는 뜻이므로 강제 대상이 아니다."""
+
+    fit6 = _relation(
+        analyze_fit(
+            profile,
+            FakeLLM(
+                purpose=_direction(),
+                comparison=lambda payload: _cite(
+                    payload,
+                    FitRelationId.FIT_6,
+                    status=FitStatus.INSUFFICIENT.value,
+                    left_fact_ids=[],
+                    right_fact_ids=[],
+                ),
+            ),
+            model_profile=_MODEL_PROFILE,
+        ),
+        FitRelationId.FIT_6,
+    )
+    assert fit6.status is FitStatus.INSUFFICIENT
+    assert fit6.used_left_fact_ids == []
+
+
+def test_used_fact_ids_are_kept_apart_from_the_input_evidence(profile):
+    """모델이 실제로 쓴 id 를 입력 근거 전체와 구분해 보존한다."""
+
+    fit5 = _relation(
+        analyze_fit(
+            profile,
+            FakeLLM(
+                purpose=_direction(),
+                comparison=lambda payload: _cite(
+                    payload,
+                    FitRelationId.FIT_5,
+                    left_fact_ids=["fact:target"],
+                    right_fact_ids=["fact:participation"],
+                ),
+            ),
+            model_profile=_MODEL_PROFILE,
+        ),
+        FitRelationId.FIT_5,
+    )
+    assert fit5.status is FitStatus.FIT
+    assert fit5.used_left_fact_ids == ["fact:target"]
+    assert fit5.used_right_fact_ids == ["fact:participation"]
+    assert len(fit5.left.facts) > len(fit5.used_left_fact_ids), (
+        "입력 근거 전체와 인용된 id 가 구분되어야 한다"
+    )
+
+
 # ------------------------------------------------------------------ 점수 금지
 
 
@@ -649,3 +809,62 @@ def test_out_of_contract_exception_still_preserves_the_rule_relations(profile):
 
     # 목적 축은 세 관계가 필요해도 문서당 한 번만 시도한다.
     assert client.calls.count("fit_purpose_axis_classification") == 1
+
+
+@pytest.mark.parametrize(
+    "value_raw, expected_won",
+    [
+        ("0.29억원", 29_000_000),
+        ("0.57억원", 57_000_000),
+        ("2.03억원", 203_000_000),
+        ("1.5억원", 150_000_000),
+        ("2,900만원", 29_000_000),
+    ],
+)
+def test_decimal_amounts_do_not_lose_a_won(value_raw, expected_won):
+    """소수 금액을 float 로 계산하면 1 원씩 깎여 같은 금액이 달라진다."""
+
+    assert _quantities(value_raw) == {("AMOUNT_KRW", expected_won)}
+
+
+def test_the_same_amount_written_two_ways_compares_equal():
+    """0.29억원과 2,900만원은 같은 금액이다. 표기 차이가 불일치가 되면 안 된다."""
+
+    assert _quantities("0.29억원") == _quantities("2,900만원")
+
+
+def test_sub_won_amounts_are_discarded_rather_than_rounded():
+    """원 단위로 떨어지지 않으면 반올림 방향을 추측하지 않고 버린다."""
+
+    # 1.005천원 은 정확히 1,005 원이라 버릴 이유가 없다.
+    assert _quantities("1.005천원") == {("AMOUNT_KRW", 1005)}
+    # 1.0005천원 은 1,000.5 원이라 원 단위로 떨어지지 않는다.
+    assert _quantities("1.0005천원") == set()
+
+
+@pytest.mark.parametrize(
+    "value_raw",
+    ["1,2,3만원", "12,34만원", "1,00만원", "1,,000원", "1,2,3개팀"],
+)
+def test_malformed_comma_grouping_is_rejected(value_raw):
+    """쉼표를 그냥 지우면 잘못된 표기가 유효한 숫자가 된다.
+
+    "1,2,3만원" 이 1,230,000 원이 되던 결함이다. 숫자 일부만 소비하는 것과
+    같은 계열이라 값 전체를 버린다.
+    """
+
+    assert _quantities(value_raw) == set()
+
+
+@pytest.mark.parametrize(
+    "value_raw, expected",
+    [
+        ("21,000천원", ("AMOUNT_KRW", 21_000_000)),
+        ("1,000,000원", ("AMOUNT_KRW", 1_000_000)),
+        ("1,500명", ("COUNT:명", 1500)),
+    ],
+)
+def test_well_formed_comma_grouping_survives(value_raw, expected):
+    """세 자리 묶음은 정상이므로 계속 비교 대상이다."""
+
+    assert _quantities(value_raw) == {expected}

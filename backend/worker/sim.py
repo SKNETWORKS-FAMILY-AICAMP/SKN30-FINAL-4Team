@@ -47,6 +47,7 @@ from .contracts.sim_result import (
     SimStatus,
     StageDiagnostic,
 )
+from .llm_call import salvage_rows
 from .sim_inputs import SIM_RULESET_VERSION, generate
 
 __all__ = [
@@ -132,7 +133,8 @@ class _AxisVerdictModel(BaseModel):
 
 
 class _SimComparisonResponse(BaseModel):
-    axes: list[_AxisVerdictModel] = Field(default_factory=list)
+    # 엔벨로프 키는 필수다. 기본값을 주면 ``{}`` 가 "빈 배치" 로 통과한다.
+    axes: list[_AxisVerdictModel]
 
 
 _COMPARISON_INSTRUCTION = (
@@ -243,7 +245,8 @@ def _compare_axes(
     """게이트를 통과한 축을 한 번에 비교하고, 결함만 격리한다 (초안 §9.2.1).
 
     - 최상위 응답 자체를 해석할 수 없으면 그 호출 범위(= 남은 축)만 내린다.
-    - 축을 식별할 수 있는 누락·중복·허용 밖 근거는 그 축만 내린다.
+      본문이 JSON 이 아니거나 엔벨로프 키가 없는 경우가 여기다.
+    - 축을 식별할 수 있는 누락·중복·스키마 위반·허용 밖 근거는 그 축만 내린다.
     - 통신 오류는 이미 확정된 축 결과를 지우지 않는다.
     """
 
@@ -253,6 +256,8 @@ def _compare_axes(
     attempt = 0
     while remaining and attempt <= max_repairs:
         attempt += 1
+        broken: list[str] = []
+        dropped = 0
         try:
             response = generate(
                 llm_client,
@@ -263,31 +268,60 @@ def _compare_axes(
                 model_profile=model_profile,
             )
         except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-            reason = _TRANSPORT_REASONS[type(error)]
-            for axis in remaining:
-                diagnostics.append(
-                    StageDiagnostic(
-                        stage=_STAGE,
-                        unit=SIM_AXIS_IDS[axis],
-                        reason_code=reason,
-                        message=str(error)[:2000],
-                        attempt=attempt,
-                        terminated_because=reason,
+            # 포트는 배치를 한 번에 검증한다. 행 하나의 계약 위반으로 정상
+            # 축까지 내려가지 않도록, 식별 가능한 행은 여기서 되살린다.
+            recovered = salvage_rows(
+                error,
+                envelope="axes",
+                row_model=_AxisVerdictModel,
+                id_field="axis",
+            )
+            if recovered is None:
+                reason = _TRANSPORT_REASONS[type(error)]
+                for axis in remaining:
+                    diagnostics.append(
+                        StageDiagnostic(
+                            stage=_STAGE,
+                            unit=SIM_AXIS_IDS[axis],
+                            reason_code=reason,
+                            message=str(error)[:2000],
+                            attempt=attempt,
+                            terminated_because=reason,
+                        )
                     )
+                    results[axis] = _insufficient(axis, reason)
+                return results
+            response_rows, broken, dropped = recovered
+        else:
+            response_rows = list(response.axes)
+
+        if dropped:
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_STAGE,
+                    unit=None,
+                    reason_code=LLM_INVALID_RESPONSE,
+                    message=f"축 이름을 알 수 없는 응답 행 {dropped}건을 버렸다.",
+                    attempt=attempt,
                 )
-                results[axis] = _insufficient(axis, reason)
-            return results
+            )
 
         seen: dict[SimAxis, int] = {}
         rows: dict[SimAxis, _AxisVerdictModel] = {}
-        for row in response.axes:
+        invalid_rows: set[SimAxis] = set()
+        # 행이 None 이면 축 이름은 읽혔지만 그 행이 계약을 어겼다는 뜻이다.
+        identified: list[tuple[str, _AxisVerdictModel | None]] = [
+            (row.axis, row) for row in response_rows
+        ]
+        identified += [(axis_raw, None) for axis_raw in broken]
+        for axis_raw, row in identified:
             try:
-                axis = SimAxis(row.axis)
+                axis = SimAxis(axis_raw)
             except ValueError:
                 diagnostics.append(
                     StageDiagnostic(
                         stage=_STAGE,
-                        unit=row.axis,
+                        unit=axis_raw,
                         reason_code=LLM_INVALID_RESPONSE,
                         message="요청하지 않은 축 이름이라 무시했다. 정상 축은 그대로 둔다.",
                         attempt=attempt,
@@ -295,11 +329,17 @@ def _compare_axes(
                 )
                 continue
             seen[axis] = seen.get(axis, 0) + 1
-            rows[axis] = row
+            if row is None:
+                invalid_rows.add(axis)
+            else:
+                rows[axis] = row
 
         errors = {}
         for axis in remaining:
             row = rows.get(axis)
+            if axis in invalid_rows:
+                errors[axis] = "응답 행이 스키마를 어겼다"
+                continue
             if row is None:
                 errors[axis] = "응답에 해당 축이 없다"
                 continue
