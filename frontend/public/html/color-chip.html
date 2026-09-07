@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pre-review Design System Color Chips</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --color-primary: #002045;
+            --color-primary-container: #1a365d;
+            --color-primary-fixed: #d6e3ff;
+            --color-primary-fixed-dim: #adc7f7;
+            --color-inverse-primary: #adc7f7;
+            --color-on-primary: #ffffff;
+            --color-on-primary-container: #86a0cd;
+            --color-on-primary-fixed: #001b3c;
+            --color-on-primary-fixed-variant: #2d476f;
+
+            --color-secondary: #545f72;
+            --color-secondary-container: #d5e0f7;
+            --color-secondary-fixed: #d8e3fa;
+            --color-secondary-fixed-dim: #bcc7dd;
+            --color-on-secondary: #ffffff;
+            --color-on-secondary-container: #586377;
+            --color-on-secondary-fixed: #111c2c;
+            --color-on-secondary-fixed-variant: #3c475a;
+
+            --color-tertiary: #321b00;
+            --color-tertiary-container: #4f2e00;
+            --color-tertiary-fixed: #ffddba;
+            --color-tertiary-fixed-dim: #f2bc82;
+            --color-on-tertiary: #ffffff;
+            --color-on-tertiary-container: #c6955e;
+            --color-on-tertiary-fixed: #2b1700;
+            --color-on-tertiary-fixed-variant: #633f0f;
+
+            --color-surface: #faf9fd;
+            --color-surface-bright: #faf9fd;
+            --color-surface-dim: #dad9dd;
+            --color-surface-tint: #455f88;
+            --color-surface-variant: #e3e2e6;
+            --color-surface-container: #efedf1;
+            --color-surface-container-low: #f4f3f7;
+            --color-surface-container-high: #e9e7eb;
+            --color-surface-container-highest: #e3e2e6;
+            --color-surface-container-lowest: #ffffff;
+            --color-inverse-surface: #2f3033;
+            --color-inverse-on-surface: #f1f0f4;
+            --color-on-surface: #1a1c1e;
+            --color-on-surface-variant: #43474e;
+
+            --color-background: #faf9fd;
+            --color-on-background: #1a1c1e;
+
+            --color-error: #ba1a1a;
+            --color-error-container: #ffdad6;
+            --color-on-error: #ffffff;
+            --color-on-error-container: #93000a;
+
+            --color-outline: #74777f;
+            --color-outline-variant: #c4c6cf;
+        }
+
+        .chip-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+        }
+    </style>
+</head>
+<body class="bg-[#faf9fd] text-[#1a1c1e] p-8 font-sans">
+
+    <div class="max-w-7xl mx-auto space-y-10">
+        <div>
+            <h1 class="text-3xl font-extrabold text-[#002045]">Pre-review Design System</h1>
+            <p class="text-[#545f72] mt-1">제공해주신 컬러 토큰(Color Tokens) 기반의 컬러칩 팔레트입니다.</p>
+        </div>
+
+        <!-- Primary Group -->
+        <section class="space-y-4">
+            <h2 class="text-xl font-bold text-[#002045] border-b pb-2">Primary Colors</h2>
+            <div class="chip-grid">
+                <!-- 아이템 반복 -->
+                <script>
+                    const primaryColors = [
+                        { name: '--color-primary', val: '#002045', text: '#fff' },
+                        { name: '--color-primary-container', val: '#1a365d', text: '#fff' },
+                        { name: '--color-primary-fixed', val: '#d6e3ff', text: '#000' },
+                        { name: '--color-primary-fixed-dim', val: '#adc7f7', text: '#000' },
+                        { name: '--color-inverse-primary', val: '#adc7f7', text: '#000' },
+                        { name: '--color-on-primary', val: '#ffffff', text: '#000', border: true },
+                        { name: '--color-on-primary-container', val: '#86a0cd', text: '#fff' },
+                        { name: '--color-on-primary-fixed', val: '#001b3c', text: '#fff' },
+                        { name: '--color-on-primary-fixed-variant', val: '#2d476f', text: '#fff' },
+                    ];
+                    primaryColors.forEach(c => {
+                        document.write(`
+                            <div class="bg-white p-4 rounded-xl border border-[#c4c6cf] shadow-sm flex flex-col justify-between">
+                                <div class="h-16 rounded-lg mb-3 ${c.border ? 'border border-gray-300' : ''}" style="background-color: ${c.val};"></div>
+                                <div>
+                                    <div class="font-bold text-sm text-[#1a1c1e]">${c.name}</div>
+                                    <div class="text-xs text-[#545f72] font-mono mt-0.5">${c.val}</div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </section>
+
+        <!-- Secondary Group -->
+        <section class="space-y-4">
+            <h2 class="text-xl font-bold text-[#002045] border-b pb-2">Secondary Colors</h2>
+            <div class="chip-grid">
+                <script>
+                    const secondaryColors = [
+                        { name: '--color-secondary', val: '#545f72', text: '#fff' },
+                        { name: '--color-secondary-container', val: '#d5e0f7', text: '#000' },
+                        { name: '--color-secondary-fixed', val: '#d8e3fa', text: '#000' },
+                        { name: '--color-secondary-fixed-dim', val: '#bcc7dd', text: '#000' },
+                        { name: '--color-on-secondary', val: '#ffffff', text: '#000', border: true },
+                        { name: '--color-on-secondary-container', val: '#586377', text: '#fff' },
+                        { name: '--color-on-secondary-fixed', val: '#111c2c', text: '#fff' },
+                        { name: '--color-on-secondary-fixed-variant', val: '#3c475a', text: '#fff' },
+                    ];
+                    secondaryColors.forEach(c => {
+                        document.write(`
+                            <div class="bg-white p-4 rounded-xl border border-[#c4c6cf] shadow-sm flex flex-col justify-between">
+                                <div class="h-16 rounded-lg mb-3 ${c.border ? 'border border-gray-300' : ''}" style="background-color: ${c.val};"></div>
+                                <div>
+                                    <div class="font-bold text-sm text-[#1a1c1e]">${c.name}</div>
+                                    <div class="text-xs text-[#545f72] font-mono mt-0.5">${c.val}</div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </section>
+
+        <!-- Surface & Neutral Group -->
+        <section class="space-y-4">
+            <h2 class="text-xl font-bold text-[#002045] border-b pb-2">Surface & Neutral Colors</h2>
+            <div class="chip-grid">
+                <script>
+                    const surfaceColors = [
+                        { name: '--color-surface', val: '#faf9fd', border: true },
+                        { name: '--color-surface-dim', val: '#dad9dd' },
+                        { name: '--color-surface-variant', val: '#e3e2e6' },
+                        { name: '--color-surface-container', val: '#efedf1' },
+                        { name: '--color-surface-container-low', val: '#f4f3f7' },
+                        { name: '--color-surface-container-high', val: '#e9e7eb' },
+                        { name: '--color-inverse-surface', val: '#2f3033' },
+                        { name: '--color-on-surface', val: '#1a1c1e' },
+                        { name: '--color-on-surface-variant', val: '#43474e' },
+                        { name: '--color-outline', val: '#74777f' },
+                        { name: '--color-outline-variant', val: '#c4c6cf' },
+                    ];
+                    surfaceColors.forEach(c => {
+                        document.write(`
+                            <div class="bg-white p-4 rounded-xl border border-[#c4c6cf] shadow-sm flex flex-col justify-between">
+                                <div class="h-16 rounded-lg mb-3 ${c.border ? 'border border-gray-300' : ''}" style="background-color: ${c.val};"></div>
+                                <div>
+                                    <div class="font-bold text-sm text-[#1a1c1e]">${c.name}</div>
+                                    <div class="text-xs text-[#545f72] font-mono mt-0.5">${c.val}</div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </section>
+
+        <!-- Error Group -->
+        <section class="space-y-4">
+            <h2 class="text-xl font-bold text-[#002045] border-b pb-2">Error Colors</h2>
+            <div class="chip-grid">
+                <script>
+                    const errorColors = [
+                        { name: '--color-error', val: '#ba1a1a' },
+                        { name: '--color-error-container', val: '#ffdad6' },
+                        { name: '--color-on-error', val: '#ffffff', border: true },
+                        { name: '--color-on-error-container', val: '#93000a' },
+                    ];
+                    errorColors.forEach(c => {
+                        document.write(`
+                            <div class="bg-white p-4 rounded-xl border border-[#c4c6cf] shadow-sm flex flex-col justify-between">
+                                <div class="h-16 rounded-lg mb-3 ${c.border ? 'border border-gray-300' : ''}" style="background-color: ${c.val};"></div>
+                                <div>
+                                    <div class="font-bold text-sm text-[#1a1c1e]">${c.name}</div>
+                                    <div class="text-xs text-[#545f72] font-mono mt-0.5">${c.val}</div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </section>
+
+    </div>
+
+</body>
+</html>
