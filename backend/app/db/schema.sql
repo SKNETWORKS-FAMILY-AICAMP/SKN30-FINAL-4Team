@@ -31,8 +31,14 @@ $$;
 -- 1. Authentication and inspection ownership
 -- -----------------------------------------------------------------------------
 
+-- external_uuid 는 인증 교체가 아니라 신원 다리다. JWT 와 password_hash 는
+-- 그대로 여기에 남고, 팀원 스키마(auth.users / app.user_profile / workspace.*)
+-- 가 UUID 로만 사용자를 가리키기 때문에 그 쪽에서 쓸 안정된 UUID 하나를 더
+-- 가진다. 실제 Supabase Auth 를 붙이면 auth.users 를 그쪽이 소유하고 이 컬럼은
+-- 그 id 를 담는 자리가 된다. 자세한 규율은 app/db/identity_bridge.py 참고.
 CREATE TABLE sims.app_user (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    external_uuid       uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     login_id            citext NOT NULL UNIQUE,
     email               citext NOT NULL UNIQUE,
     display_name        text,
@@ -88,6 +94,13 @@ CREATE TABLE sims.inspection_case (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     owner_user_id       bigint NOT NULL
                             REFERENCES sims.app_user(id) ON DELETE CASCADE,
+    -- 이 검사 건을 처리 중인 workspace.analysis_run 의 PK. 큐에서 run 을 집은
+    -- 워커가 "어느 케이스를 분석하라는 것인가" 를 되찾는 유일한 경로다.
+    -- 링크를 팀원 테이블이 아니라 우리 테이블에 두는 이유는 두 가지다.
+    -- 팀원 DDL 을 바이트 단위로 보존해야 하고, workspace 스키마가 sims 의
+    -- bigint 케이스 식별자를 알 필요가 없기 때문이다. FK 는 걸지 않는다 —
+    -- 팀원 스키마가 없는 DB 에서도 이 컬럼은 그냥 NULL 로 남아야 한다.
+    analysis_run_id     uuid UNIQUE,
     status              text NOT NULL DEFAULT 'UPLOADED',
     top_k_used          smallint NOT NULL DEFAULT 5,
     failure_code        text,

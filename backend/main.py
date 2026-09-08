@@ -19,7 +19,6 @@ from app.api.router import router
 from app.core.config import Settings
 from app.core.upload_limits import MAX_MULTIPART_BODY_BYTES
 from app.db.session import create_database_engine
-from app.infrastructure.in_process_job_dispatcher import InProcessJobDispatcher
 from app.infrastructure.local_object_storage import LocalObjectStorage
 from app.infrastructure.openai_embedding_client import OpenAIEmbeddingClient
 from app.infrastructure.openai_llm_client import OpenAILLMClient
@@ -34,6 +33,7 @@ from app.infrastructure.smtp_mail_sender import SmtpMailSender
 from app.services.password_reset import ResetRateLimiter
 from app.services.analysis_pipeline import run_analysis_pipeline
 from app.services.document_parsing import fail_interrupted_analyses
+from worker.dispatcher import QueueJobDispatcher
 
 
 logger = logging.getLogger(__name__)
@@ -144,8 +144,8 @@ def create_app(
                 EmbeddingClient | None,
                 embedding_client,
             )
-        dispatcher = InProcessJobDispatcher(
-            lambda case_id: run_analysis_pipeline(
+        async def run_analysis(case_id: int) -> None:
+            await run_analysis_pipeline(
                 engine,
                 object_storage,
                 active_parser,
@@ -155,7 +155,10 @@ def create_app(
                 pdf_renderer=active_pdf_renderer,
                 embedding_client=active_embedding_client,
             )
-        )
+        # 큐는 DB 행이다 (workspace.analysis_run). 여기 넘기는 콜러블은 큐가
+        # 아니라 그 행을 꺼내 돌리는 실행기다. 별도 워커 프로세스를 띄우면
+        # 이 인자를 뺀다.
+        dispatcher = QueueJobDispatcher(engine, run_analysis)
         application.state.object_storage = object_storage
         application.state.document_parser = active_parser
         application.state.llm_client = active_llm_client

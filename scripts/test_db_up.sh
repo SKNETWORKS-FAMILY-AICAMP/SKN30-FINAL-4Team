@@ -20,7 +20,7 @@ PORT="$(docker inspect -f '{{(index (index .NetworkSettings.Ports "5432/tcp") 0)
 DSN="postgresql+psycopg://postgres:simstest@127.0.0.1:$PORT/$DB"
 
 if [ "${1:-}" = "--reset" ]; then
-  echo "[1/3] 기존 $DB 삭제"
+  echo "[1/4] 기존 $DB 삭제"
   docker exec -e PGPASSWORD=simstest "$NAME" \
     psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS $DB;" >/dev/null
 fi
@@ -28,16 +28,28 @@ fi
 if ! docker exec -e PGPASSWORD=simstest "$NAME" \
      psql -U postgres -d postgres -tAc \
      "SELECT 1 FROM pg_database WHERE datname='$DB';" | grep -q 1; then
-  echo "[2/3] $DB 생성"
+  echo "[2/4] $DB 생성"
   docker exec -e PGPASSWORD=simstest "$NAME" \
     psql -U postgres -d postgres -c "CREATE DATABASE $DB;" >/dev/null
-  echo "[3/3] 스키마 적용"
+  echo "[3/4] 스키마 적용"
   docker cp "$ROOT/backend/app/db/schema.sql" "$NAME:/tmp/schema.sql"
   docker exec -e PGPASSWORD=simstest "$NAME" \
     psql -v ON_ERROR_STOP=1 -U postgres -d "$DB" -q -f /tmp/schema.sql
 else
-  echo "[2/3] 기존 $DB 재사용 (초기화하려면 --reset)"
+  echo "[2/4] 기존 $DB 재사용 (초기화하려면 --reset)"
 fi
+
+# 재실행 가능한 마이그레이션은 생성·재사용 양쪽에서 매번 적용한다. 이미
+# 만들어진 DB 도 새 컬럼(sims.app_user.external_uuid 등)을 받아야 한다.
+#
+# 팀원 Supabase 스키마(app/db/migrations/supabase)는 여기 넣지 않는다. 이 DB 는
+# sims 전용이고, 팀원 스키마가 필요한 테스트는 자기 DB 를 따로 만든다
+# (tests/test_worker_jobs.py, tests/test_worker_dispatcher.py).
+echo "[4/4] 마이그레이션 적용"
+docker cp "$ROOT/backend/app/db/migrations/002_identity_bridge.sql" \
+  "$NAME:/tmp/002_identity_bridge.sql" >/dev/null
+docker exec -e PGPASSWORD=simstest "$NAME" \
+  psql -v ON_ERROR_STOP=1 -U postgres -d "$DB" -q -f /tmp/002_identity_bridge.sql
 
 mkdir -p "$ROOT/tmp"
 printf '%s' "$DSN" > "$ROOT/tmp/test_database_url"
