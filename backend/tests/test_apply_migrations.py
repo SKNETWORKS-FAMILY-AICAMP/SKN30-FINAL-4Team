@@ -190,6 +190,7 @@ def test_supabase_mode_skips_what_the_teammate_already_installed() -> None:
         "102_result_api.sql",
         "103_analysis_run_upload.sql",
         "104_analysis_run_outcome.sql",
+        "105_session_api.sql",
         "001_announcement_profile.sql",
         "002_identity_bridge.sql",
     ]
