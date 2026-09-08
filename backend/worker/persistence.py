@@ -88,6 +88,10 @@ class AnalysisResults:
     fit: FitResult | None = None
     sim: SimComparisonResult | None = None
     sim_profiles: Mapping[str, SimCommonProfile] = field(default_factory=dict)
+    # Result 화면 복원을 위한 입력 스냅샷. 값이 구조화 프로필에 없으면
+    # None으로 남기며 파일명·heading에서 추측하지 않는다.
+    program_name: str | None = None
+    original_filename: str | None = None
 
 
 # ------------------------------------------------------------------ SQL
@@ -125,11 +129,11 @@ _INSERT_CANDIDATE = text(
     """
     INSERT INTO result.sim_candidate (
         sim_candidate_pk, analysis_case_pk, existing_profile_version_pk,
-        rank_no, similarity_score, priority_score, status,
+        rank_no, similarity_score, priority_score, status, title, result_summary,
         purpose_result, target_result, support_result, delivery_result
     ) VALUES (
         :sim_candidate_pk, :analysis_case_pk, :existing_profile_version_pk,
-        :rank_no, :similarity_score, :priority_score, :status,
+        :rank_no, :similarity_score, :priority_score, :status, :title, :result_summary,
         CAST(:purpose_result AS jsonb), CAST(:target_result AS jsonb),
         CAST(:support_result AS jsonb), CAST(:delivery_result AS jsonb)
     )
@@ -140,12 +144,12 @@ _INSERT_EVIDENCE = text(
     """
     INSERT INTO result.evidence_snapshot (
         analysis_case_pk, axis_type, axis_result_pk, sim_candidate_pk,
-        side, usage_scope, field_name, raw_value, source_sha256,
+        side, usage_scope, field_name, raw_value, comparison_side, source_sha256,
         candidate_pack_block_id, start_char, end_char,
         common_ir_document_id, common_ir_block_id, common_ir_occurrence_ids
     ) VALUES (
         :analysis_case_pk, :axis_type, :axis_result_pk, :sim_candidate_pk,
-        :side, 'RESULT', :field_name, :raw_value, :source_sha256,
+        :side, 'RESULT', :field_name, :raw_value, :comparison_side, :source_sha256,
         :candidate_pack_block_id, :start_char, :end_char,
         :common_ir_document_id, :common_ir_block_id,
         CAST(:common_ir_occurrence_ids AS text[])
@@ -189,6 +193,99 @@ def _json(value: Any) -> str:
     return json.dumps(_plain(value), ensure_ascii=False)
 
 
+# ------------------------------------------------------------------ 표시 문구
+
+
+_CPL_STATUS_SUMMARY = {
+    "confirmed": "값과 원문 근거를 확인했습니다.",
+    "needs_confirmation": "일부 값이나 원문 확인이 필요합니다.",
+    "no_content": "적용 대상이지만 원문에서 내용을 찾지 못했습니다.",
+    "not_applicable": "이 요청에는 적용되지 않는 항목입니다.",
+}
+_CPL_REASON_SUMMARY = {
+    "NO_PROFILE_FIELD": "대응하는 프로파일 필드가 없습니다.",
+    "PROFILE_FIELD_STATE_MISSING": "프로파일 상태를 확인할 수 없습니다.",
+    "UNMAPPED_PROFILE_FIELD": "프로파일 필드 연결이 확인되지 않았습니다.",
+    "SERVER_RESOLVED_CHECKBOX": "요청유형 체크박스를 서버 규칙으로 확인했습니다.",
+}
+
+
+def _cpl_summary(item: Any) -> str:
+    reason = _CPL_REASON_SUMMARY.get(item.status_reason)
+    if reason:
+        return reason
+    return _CPL_STATUS_SUMMARY.get(
+        item.representative_status,
+        "항목 상태를 확인할 수 없어 추가 확인이 필요합니다.",
+    )
+
+
+_FIT_STATUS_SUMMARY = {
+    "FIT": "두 측면의 연결을 확인했습니다.",
+    "NEEDS_REVIEW": "비교는 가능하지만 추가 검토가 필요합니다.",
+    "CONFLICT": "원문상 충돌이 확인되었습니다.",
+    "INSUFFICIENT": "비교에 필요한 근거가 부족합니다.",
+    "NOT_APPLICABLE": "이 비교축은 적용되지 않는 항목입니다.",
+}
+_FIT_REASON_SUMMARY = {
+    "HIERARCHY_COMPARISON_NOT_AVAILABLE": "계층 비교 기준이 없어 정보가 부족합니다.",
+    "NO_CONDITIONS_SPECIFIED": "조건이 명시되지 않아 비교할 수 없습니다.",
+    "COMPARISON_EVIDENCE_MISSING": "비교할 원문 근거가 부족합니다.",
+    "COMPARISON_VALUE_INVALID": "비교값을 정규화하지 못했습니다.",
+    "NUMERIC_MISMATCH": "정량값이 일치하지 않습니다.",
+    "SINGLE_SIDED_NO_CONFLICT": "한쪽 정보만 있어 비교가 성립하지 않습니다.",
+    "LLM_INVALID_RESPONSE": "비교 응답을 확인할 수 없습니다.",
+    "LLM_TIMEOUT": "비교 응답 시간이 초과되었습니다.",
+    "LLM_UNAVAILABLE": "비교 모델을 사용할 수 없습니다.",
+}
+
+
+def _fit_summary(relation: Any) -> str:
+    reason = _FIT_REASON_SUMMARY.get(relation.reason_code)
+    if reason:
+        return reason
+    return _FIT_STATUS_SUMMARY.get(
+        relation.status.value,
+        "비교 상태를 확인할 수 없어 추가 확인이 필요합니다.",
+    )
+
+
+_SIM_STATUS_SUMMARY = {
+    "similar": "공통점이 확인되었습니다.",
+    "partial": "공통점과 차이점이 함께 확인되었습니다.",
+    "different": "비교한 내용에서 차이점이 확인되었습니다.",
+    "insufficient": "비교에 필요한 정보가 부족합니다.",
+}
+
+
+def _sim_axis_summary(result: SimAxisResult) -> str:
+    """구조화 상태만으로 만드는 화면 한 줄 문구.
+
+    ``common_points``·``differences`` 원문은 JSON 상세에 그대로 보존하되,
+    모델이 만든 자유 문장을 사용자용 요약으로 재사용하지 않는다.
+    """
+
+    status = sim_display_status(result.status)
+    if status == "similar" and not result.common_points:
+        return "비교 결과가 유사하지만 공통 근거가 비어 있습니다."
+    if status == "partial" and not (result.common_points or result.differences):
+        return "비교 결과가 부분적으로 일치하지만 상세 근거가 부족합니다."
+    return _SIM_STATUS_SUMMARY.get(status, "비교 상태를 확인할 수 없습니다.")
+
+
+def _sim_result_summary(axes: Sequence[SimAxisResult]) -> str:
+    statuses = {sim_display_status(axis.status) for axis in axes}
+    if "insufficient" in statuses:
+        return "비교에 필요한 정보가 일부 부족합니다."
+    if "different" in statuses:
+        return "비교한 축에서 차이점이 확인되었습니다."
+    if "partial" in statuses:
+        return "비교한 축에서 공통점과 차이점이 함께 확인되었습니다."
+    if statuses and statuses <= {"similar"}:
+        return "주요 비교 축의 공통점이 확인되었습니다."
+    return "비교 결과가 없습니다."
+
+
 # ------------------------------------------------------------------ 근거
 
 
@@ -199,6 +296,7 @@ def _evidence_rows(
     axis_result_pk: UUID | None = None,
     sim_candidate_pk: UUID | None = None,
     side: str,
+    comparison_side: str | None = None,
     field_name: str | None,
     raw_value: str | None,
     evidence: Sequence[CplEvidence],
@@ -223,6 +321,7 @@ def _evidence_rows(
         "axis_result_pk": axis_result_pk,
         "sim_candidate_pk": sim_candidate_pk,
         "side": side,
+        "comparison_side": comparison_side,
         "field_name": field_name,
         "raw_value": raw_value,
         "source_sha256": source_sha256,
@@ -272,8 +371,7 @@ def _cpl_rows(
                 # 표시 어휘 그대로다. 하위 필드의 프로파일 상태 원본은
                 # result_data 안 subfields[] 에 남는다.
                 "status": item.representative_status,
-                # ponytail: 표시 문구 계약이 아직 없다. 지어내는 대신 비워 둔다.
-                "summary_text": None,
+                "summary_text": _cpl_summary(item),
                 "result_data": _json(item),
                 "ordinal": _CPL_ORDINALS[item.field_code],
             }
@@ -312,14 +410,17 @@ def _fit_rows(
                 # 프론트 계약이 ``FIT-07`` 로 받는다. 내부 id 는 ``FIT-7`` 그대로다.
                 "axis_code": fit_axis_code(relation.relation_id),
                 "status": relation.status.value,
-                "summary_text": None,
+                "summary_text": _fit_summary(relation),
                 "result_data": _json(relation),
                 "ordinal": _FIT_ORDINALS[relation.relation_id],
             }
         )
         # FIT 은 좌우 근거를 **요청서 프로파일에서** 만든다 (초안 §7.1).
         # 그래서 양쪽 모두 side='REQUEST' 다. 공고 쪽 근거가 아니다.
-        for side_input in (relation.left, relation.right):
+        for comparison_side, side_input in (
+            ("LEFT", relation.left),
+            ("RIGHT", relation.right),
+        ):
             for ref in side_input.facts:
                 evidence.extend(
                     _evidence_rows(
@@ -327,6 +428,7 @@ def _fit_rows(
                         axis_type="FIT",
                         axis_result_pk=axis_result_pk,
                         side="REQUEST",
+                        comparison_side=comparison_side,
                         field_name=ref.field_name,
                         raw_value=ref.value_raw,
                         evidence=ref.evidence,
@@ -345,6 +447,7 @@ def _sim_axis_json(result: SimAxisResult) -> str:
 
     row = _plain(result)
     row["status"] = sim_display_status(result.status)
+    row["summary"] = _sim_axis_summary(result)
     return json.dumps(row, ensure_ascii=False)
 
 
@@ -424,6 +527,8 @@ def _sim_rows(
                 # ponytail: 우선순위 점수는 아직 계약에 없다. NULL 로 둔다.
                 "priority_score": None,
                 "status": _plain(ranking.review_grade),
+                "title": candidate.title,
+                "result_summary": _sim_result_summary(candidate.axes),
                 **{
                     column: (_sim_axis_json(axes[axis]) if axis in axes else None)
                     for axis, column in _SIM_AXIS_COLUMNS.items()

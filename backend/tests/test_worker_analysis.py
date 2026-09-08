@@ -142,6 +142,7 @@ def test_run_analysis_assembles_existing_stages(monkeypatch):
     assert len(result.fit.relations) == 7
     assert result.sim is not None
     assert [row.candidate_profile_id for row in result.sim.candidates] == [_CANDIDATE_ID]
+    assert result.sim.candidates[0].title == "테스트 공고"
     assert result.sim_profiles
 
 
@@ -645,6 +646,9 @@ def test_analyse_case는_업로드_원본에서_결과를_조립한다(
     assert seen["source_kind"] == "hwpx"
     assert result.cpl is not None and len(result.cpl.items) == 13
     assert result.fit is not None and len(result.fit.relations) == 7
+    # 프로필의 identity.title_raw가 비어 있으므로 파일명·계층명으로 보완하지 않는다.
+    assert result.program_name is None
+    assert result.original_filename == "요청서.hwpx"
 
 
 def test_analyse_case_uses_cpl_profile_for_request_selection(

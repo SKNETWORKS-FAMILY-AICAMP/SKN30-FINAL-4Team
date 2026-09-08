@@ -327,6 +327,9 @@ class SimCandidateResult:
     axes: list[SimAxisResult]
     internal_ranking: InternalRanking
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
+    # 검색 결과의 원문 공고명. ``KbCandidate.pblanc_nm`` 에서만 채운다.
+    # 비교 결과만 단독으로 만들어진 경우에는 임의로 복원하지 않는다.
+    title: str | None = None
 
     def axis(self, axis: SimAxis) -> SimAxisResult:
         return next(result for result in self.axes if result.axis is axis)

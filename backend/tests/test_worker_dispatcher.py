@@ -338,7 +338,11 @@ def test_디스패처는_큐_경로에서_레거시를_부르지_않고_조립_�
 
     async def worker(_case_id: int) -> AnalysisResults:
         calls.append("worker")
-        return AnalysisResults(cpl=_valid_cpl_result())
+        return AnalysisResults(
+            cpl=_valid_cpl_result(),
+            program_name="프로필 사업명",
+            original_filename="요청서.hwpx",
+        )
 
     async def legacy(_case_id: int) -> None:
         calls.append("legacy")
@@ -362,6 +366,19 @@ def test_디스패처는_큐_경로에서_레거시를_부르지_않고_조립_�
     assert len(result_rows) == 1
     assert result_rows[0]["case_status"] == "ready"
     with engine.connect() as connection:
+        snapshot = connection.execute(
+            text(
+                "SELECT program_name, original_filename, report_status "
+                "FROM result.analysis_case "
+                "WHERE source_analysis_run_id = :run_id"
+            ),
+            {"run_id": job_id},
+        ).mappings().one()
+        assert dict(snapshot) == {
+            "program_name": "프로필 사업명",
+            "original_filename": "요청서.hwpx",
+            "report_status": "generating",
+        }
         analysis_case_pk = connection.scalar(
             text(
                 "SELECT analysis_case_pk FROM result.analysis_case "
@@ -377,6 +394,16 @@ def test_디스패처는_큐_경로에서_레거시를_부르지_않고_조립_�
             ),
             {"analysis_case_pk": analysis_case_pk},
         ) == 13
+        session = connection.execute(
+            text(
+                "SELECT status, expires_at > now() + interval '29 minutes' AS fresh "
+                "FROM result.analysis_session "
+                "WHERE analysis_case_pk = :analysis_case_pk"
+            ),
+            {"analysis_case_pk": analysis_case_pk},
+        ).mappings().one()
+        assert session["status"] == "active"
+        assert session["fresh"] is True
     # AnalysisResults 경로는 레거시 sims 상태를 결과 성공의 전제조건으로
     # 사용하지 않는다. fixture가 만든 PARSING 상태 그대로 남아 있어야 한다.
     with engine.connect() as connection:
@@ -412,6 +439,15 @@ def test_디스패처는_엄격한_큐_경로의_빈_조립_결과를_실패로_
 
     assert [row["status"] for row in _runs(engine, case_id)] == ["failed"]
     assert _results(engine, UUID(job_id)) == []
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT count(*) FROM result.analysis_session s "
+                "JOIN result.analysis_case c ON c.analysis_case_pk = s.analysis_case_pk "
+                "WHERE c.source_analysis_run_id = :run_id"
+            ),
+            {"run_id": job_id},
+        ) == 0
 
 
 def test_디스패처_조립_콜백_실패는_큐를_failed로_남기고_결과를_만들지_않는다(

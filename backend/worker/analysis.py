@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import tempfile
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -274,6 +275,24 @@ def _resolve_model_profiles(
     )
 
 
+def _request_program_name(profile: Mapping[str, Any]) -> str | None:
+    """읽을 수 있는 프로필 식별자만 결과 스냅샷으로 옮긴다.
+
+    Request Profile v0.1.2의 ``identity.title_raw``가 사업명 후보 위치다.
+    현재 생산기는 이 값을 ``None``으로 두므로, 계층 노드·첫 heading·파일명으로
+    보완하지 않는다. 사업명 추출은 별도 파서/프로필 계약의 후속 범위다.
+    """
+
+    identity = profile.get("identity")
+    if not isinstance(identity, Mapping):
+        return None
+    title = identity.get("title_raw")
+    if not isinstance(title, str):
+        return None
+    title = title.strip()
+    return title or None
+
+
 def run_analysis(
     request_profile: dict[str, Any],
     common_ir: CommonIrArtifact | Mapping[str, Any] | None,
@@ -480,11 +499,14 @@ def run_analysis(
                 ],
                 announcement_profile_id=candidate.announcement_profile_id,
             )
-        sim_candidates.append(
+        result = (
             comparison.result
             if comparison.result is not None
             else _failed_candidate(comparison, candidate)
         )
+        # 검색 행의 원문 공고명만 신뢰한다. 비교 결과나 프로파일에서 제목을
+        # 역추론하지 않는다.
+        sim_candidates.append(replace(result, title=candidate.pblanc_nm))
 
     # compare_kb_candidates가 검색 목록에 없는 행을 돌려주는 경우에도 그
     # 응답을 버리지 않는다. 다만 순위는 검색 결과 순서가 기준이므로 뒤에 둔다.
@@ -519,7 +541,7 @@ def run_analysis(
 # 업로드된 원본 하나. 케이스 → 업로드 문서 → 파일 자산은 1:1 이다.
 _CASE_SOURCE = text(
     """
-    SELECT f.storage_key, f.extension
+    SELECT f.storage_key, f.extension, f.original_filename
       FROM sims.inspection_case c
       JOIN sims.uploaded_document d ON d.inspection_case_id = c.id
       JOIN sims.file_asset f ON f.id = d.file_asset_id
@@ -646,7 +668,7 @@ def analyse_case(
             )
         )
 
-    return run_analysis(
+    results = run_analysis(
         snapshot.profile,
         artifact,
         engine,
@@ -663,4 +685,9 @@ def analyse_case(
         sim_model_profile=sim_model_profile,
         top_k=top_k,
         max_repairs=max_repairs,
+    )
+    return replace(
+        results,
+        program_name=_request_program_name(snapshot.profile),
+        original_filename=source["original_filename"],
     )

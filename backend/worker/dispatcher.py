@@ -101,16 +101,29 @@ _LINKED_CASE = text(
 _WRITE_RESULT = text(
     """
     INSERT INTO result.analysis_case (
-        source_analysis_run_id, user_id, case_status, analysis_completed_at
+        source_analysis_run_id, user_id, case_status, analysis_completed_at,
+        program_name, original_filename, report_status
     )
     SELECT :run_id, :user_id,
            CASE WHEN c.status = 'COMPLETED' THEN 'ready' ELSE 'failed' END,
-           CASE WHEN c.status = 'COMPLETED' THEN now() END
+           CASE WHEN c.status = 'COMPLETED' THEN now() END,
+           NULL,
+           (
+               SELECT f.original_filename
+                 FROM sims.uploaded_document d
+                 JOIN sims.file_asset f ON f.id = d.file_asset_id
+                WHERE d.inspection_case_id = c.id
+                LIMIT 1
+           ),
+           CASE WHEN c.status = 'COMPLETED' THEN 'ready' ELSE 'failed' END
       FROM sims.inspection_case c
      WHERE c.id = :case_id
     ON CONFLICT (source_analysis_run_id) DO UPDATE
        SET case_status           = EXCLUDED.case_status,
            analysis_completed_at = EXCLUDED.analysis_completed_at,
+           program_name          = EXCLUDED.program_name,
+           original_filename     = EXCLUDED.original_filename,
+           report_status         = EXCLUDED.report_status,
            updated_at            = now()
     RETURNING analysis_case_pk
     """
@@ -119,13 +132,38 @@ _WRITE_RESULT = text(
 _WRITE_READY_RESULT = text(
     """
     INSERT INTO result.analysis_case (
-        source_analysis_run_id, user_id, case_status, analysis_completed_at
-    ) VALUES (:run_id, :user_id, 'ready', now())
+        source_analysis_run_id, user_id, case_status, analysis_completed_at,
+        program_name, original_filename, report_status
+    ) VALUES (
+        :run_id, :user_id, 'ready', now(), :program_name, :original_filename,
+        'generating'
+    )
     ON CONFLICT (source_analysis_run_id) DO UPDATE
        SET case_status           = EXCLUDED.case_status,
            analysis_completed_at = EXCLUDED.analysis_completed_at,
+           program_name          = EXCLUDED.program_name,
+           original_filename     = EXCLUDED.original_filename,
+           report_status         = EXCLUDED.report_status,
            updated_at            = now()
     RETURNING analysis_case_pk
+    """
+)
+
+_WRITE_ANALYSIS_SESSION = text(
+    """
+    INSERT INTO result.analysis_session (
+        analysis_case_pk, status, started_at, last_activity_at,
+        expires_at, closed_at, updated_at
+    ) VALUES (
+        :analysis_case_pk, 'active', now(), now(),
+        now() + interval '30 minutes', NULL, now()
+    )
+    ON CONFLICT (analysis_case_pk) DO UPDATE
+       SET status           = 'active',
+           last_activity_at = now(),
+           expires_at       = now() + interval '30 minutes',
+           closed_at        = NULL,
+           updated_at       = now()
     """
 )
 
@@ -182,6 +220,8 @@ async def run_once(
 
     try:
         outcome = await run_analysis(linked["case_id"])
+        if isinstance(outcome, AnalysisResults) and outcome.cpl is None:
+            raise TypeError("queued worker must return AnalysisResults with CPL")
         if require_analysis_results and (
             not isinstance(outcome, AnalysisResults) or outcome.cpl is None
         ):
@@ -213,6 +253,16 @@ async def run_once(
                     "run_id": claim.analysis_run_pk,
                     "user_id": linked["user_id"],
                     "case_id": linked["case_id"],
+                    "program_name": (
+                        outcome.program_name
+                        if isinstance(outcome, AnalysisResults)
+                        else None
+                    ),
+                    "original_filename": (
+                        outcome.original_filename
+                        if isinstance(outcome, AnalysisResults)
+                        else None
+                    ),
                 },
             )
             if isinstance(outcome, AnalysisResults) and analysis_case_pk is not None:
@@ -223,6 +273,10 @@ async def run_once(
                     fit=outcome.fit,
                     sim=outcome.sim,
                     sim_profiles=outcome.sim_profiles,
+                )
+                connection.execute(
+                    _WRITE_ANALYSIS_SESSION,
+                    {"analysis_case_pk": analysis_case_pk},
                 )
             if not complete(
                 connection,

@@ -26,6 +26,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 
 from app.db.identity_bridge import ensure_identity, teammate_schema_installed
 from app.ports.llm_client import LLMUnavailableError
@@ -282,6 +283,18 @@ def fit(request_profile):
             for fact in facts
         ],
     )
+    right = FitSide(
+        field_names=["support_target"],
+        facts=[
+            FitEvidenceRef(
+                fact_id=fact.fact_id or "fact:unknown",
+                field_name="support_target",
+                value_raw=fact.value_raw,
+                evidence=list(fact.evidence),
+            )
+            for fact in facts
+        ],
+    )
     return FitResult(
         relations=[
             FitRelationResult(
@@ -289,7 +302,7 @@ def fit(request_profile):
                 status=FitStatus.FIT if index else FitStatus.INSUFFICIENT,
                 reason_code=None if index else "COMPARISON_EVIDENCE_MISSING",
                 left=left,
-                right=FitSide(),
+                right=right,
             )
             for index, relation_id in enumerate(FitRelationId)
         ],
@@ -341,6 +354,7 @@ def sim_parts(request_profile, existing_profile):
                     axis_weights={"SIM-1": 0.4},
                     scoring_version="sim/test",
                 ),
+                title="테스트 공고",
             )
         ],
         model_profile="test-profile",
@@ -400,6 +414,7 @@ def _candidates(engine: Engine, analysis_case_pk: UUID) -> list[dict]:
     return _rows(
         engine,
         "SELECT rank_no, status, similarity_score, priority_score,"
+        "       title, result_summary,"
         "       purpose_result, target_result, support_result, delivery_result,"
         "       existing_profile_version_pk"
         "  FROM result.sim_candidate WHERE analysis_case_pk = :pk ORDER BY rank_no",
@@ -411,6 +426,7 @@ def _evidence(engine: Engine, analysis_case_pk: UUID) -> list[dict]:
     return _rows(
         engine,
         "SELECT axis_type, side, usage_scope, field_name, raw_value, source_sha256,"
+        "       comparison_side,"
         "       candidate_pack_block_id, start_char, end_char,"
         "       common_ir_document_id, common_ir_block_id, common_ir_occurrence_ids,"
         "       axis_result_pk, sim_candidate_pk,"
@@ -448,6 +464,192 @@ def _complete_case(engine: Engine, case_id: int) -> None:
 # --------------------------------------------------------------------- CPL·FIT
 
 
+def test_결과계약_스냅샷_컬럼과_check가_설치된다(engine):
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT table_name, column_name, is_nullable "
+                "FROM information_schema.columns "
+                "WHERE table_schema = 'result' "
+                "AND table_name IN ('analysis_case', 'sim_candidate', 'evidence_snapshot') "
+                "AND column_name IN ('program_name', 'original_filename', 'report_status', "
+                "'title', 'result_summary', 'comparison_side')"
+            )
+        ).mappings()
+        columns: dict[str, dict[str, str]] = {}
+        for row in rows:
+            columns.setdefault(row["table_name"], {})[row["column_name"]] = row[
+                "is_nullable"
+            ]
+        checks = {
+            row["conname"]
+            for row in connection.execute(
+                text(
+                    "SELECT conname FROM pg_constraint "
+                    "WHERE conname IN ("
+                    "'ck_result_analysis_case_report_status', "
+                    "'ck_result_evidence_snapshot_comparison_side'"
+                    ")"
+                )
+            ).mappings()
+        }
+
+    assert columns["analysis_case"].keys() >= {
+        "program_name",
+        "original_filename",
+        "report_status",
+    }
+    assert columns["analysis_case"]["report_status"] == "NO"
+    assert columns["sim_candidate"].keys() >= {"title", "result_summary"}
+    assert columns["evidence_snapshot"].keys() >= {"comparison_side"}
+    assert checks == {
+        "ck_result_analysis_case_report_status",
+        "ck_result_evidence_snapshot_comparison_side",
+    }
+
+
+def test_기존_결과의_report_status를_보고서_존재에_맞춰_backfill한다(engine, case):
+    """101 재적용으로 ready 보고서가 failed로 오염되지 않는지 본다."""
+
+    _, user_id = case
+    with engine.begin() as connection:
+        external_user_id = ensure_identity(connection, user_id)
+        connection.execute(
+            text(
+                "ALTER TABLE result.analysis_case "
+                "ALTER COLUMN report_status DROP NOT NULL"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE result.analysis_case "
+                "ALTER COLUMN report_status DROP DEFAULT"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE result.analysis_case "
+                "DROP CONSTRAINT ck_result_analysis_case_report_status"
+            )
+        )
+        failed_pk = connection.scalar(
+            text(
+                "INSERT INTO result.analysis_case "
+                "(source_analysis_run_id, user_id, case_status, report_status) "
+                "VALUES (:run_id, :user_id, 'failed', NULL) RETURNING analysis_case_pk"
+            ),
+            {"run_id": uuid4(), "user_id": external_user_id},
+        )
+        ready_pk = connection.scalar(
+            text(
+                "INSERT INTO result.analysis_case "
+                "(source_analysis_run_id, user_id, case_status, report_status) "
+                "VALUES (:run_id, :user_id, 'ready', NULL) RETURNING analysis_case_pk"
+            ),
+            {"run_id": uuid4(), "user_id": external_user_id},
+        )
+        generating_pk = connection.scalar(
+            text(
+                "INSERT INTO result.analysis_case "
+                "(source_analysis_run_id, user_id, case_status, report_status) "
+                "VALUES (:run_id, :user_id, 'ready', NULL) RETURNING analysis_case_pk"
+            ),
+            {"run_id": uuid4(), "user_id": external_user_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO result.report_artifact "
+                "(analysis_case_pk, report_type, storage_bucket, storage_object_key, "
+                "content_sha256, expires_at) "
+                "VALUES (:case_pk, 'pdf', 'reports', :object_key, :sha, now())"
+            ),
+            {
+                "case_pk": ready_pk,
+                "object_key": f"result-contract/{ready_pk}.pdf",
+                "sha": "ab" * 32,
+            },
+        )
+
+    migration = (
+        _MIGRATIONS / "supabase" / "101_result_contract_snapshots.sql"
+    ).read_text(encoding="utf-8")
+    with engine.connect() as connection:
+        connection.connection.driver_connection.execute(migration)
+
+    with engine.connect() as connection:
+        rows = dict(
+            connection.execute(
+                text(
+                    "SELECT analysis_case_pk, report_status "
+                    "FROM result.analysis_case "
+                    "WHERE analysis_case_pk IN (:pk1, :pk2, :pk3)"
+                ),
+                {"pk1": failed_pk, "pk2": ready_pk, "pk3": generating_pk},
+            ).all()
+        )
+    assert rows == {
+        failed_pk: "failed",
+        ready_pk: "ready",
+        generating_pk: "generating",
+    }
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "DELETE FROM result.analysis_case "
+                "WHERE analysis_case_pk IN (:pk1, :pk2, :pk3)"
+            ),
+            {"pk1": failed_pk, "pk2": ready_pk, "pk3": generating_pk},
+        )
+
+
+@pytest.mark.parametrize("check_name", ["report_status", "comparison_side"])
+def test_결과계약_CHECK가_잘못된_값을_거부하고_롤백한다(
+    engine, analysis_case_pk, results, check_name
+):
+    if check_name == "report_status":
+        target_pk = analysis_case_pk
+        statement = text(
+            "UPDATE result.analysis_case "
+            "SET report_status = 'not-a-report-status' "
+            "WHERE analysis_case_pk = :pk"
+        )
+        expected = "failed"
+        select_statement = text(
+            "SELECT report_status FROM result.analysis_case "
+            "WHERE analysis_case_pk = :pk"
+        )
+    else:
+        _persist(engine, analysis_case_pk, results)
+        with engine.connect() as connection:
+            target_pk = connection.scalar(
+                text(
+                    "SELECT evidence_snapshot_pk FROM result.evidence_snapshot "
+                    "WHERE analysis_case_pk = :pk AND axis_type = 'FIT' "
+                    "AND comparison_side = 'LEFT' LIMIT 1"
+                ),
+                {"pk": analysis_case_pk},
+            )
+        assert target_pk is not None
+        statement = text(
+            "UPDATE result.evidence_snapshot "
+            "SET comparison_side = 'CENTER' "
+            "WHERE evidence_snapshot_pk = :pk"
+        )
+        expected = "LEFT"
+        select_statement = text(
+            "SELECT comparison_side FROM result.evidence_snapshot "
+            "WHERE evidence_snapshot_pk = :pk"
+        )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(statement, {"pk": target_pk})
+
+    with engine.connect() as connection:
+        assert connection.scalar(select_statement, {"pk": target_pk}) == expected
+
+
 def test_CPL_13항목이_선언_순서로_axis_result_에_남는다(
     engine, analysis_case_pk, results, profile_version_pk
 ):
@@ -462,6 +664,7 @@ def test_CPL_13항목이_선언_순서로_axis_result_에_남는다(
     # 이 컬럼은 프론트 RPC 가 읽는 자리다. 표시 어휘 넷 밖의 값은 나가지 않는다.
     assert {row["status"] for row in rows} <= CPL_DISPLAY_STATUSES
     assert "UNDETERMINED" not in {row["status"] for row in rows}
+    assert all(row["summary_text"] for row in rows)
     # 하위 필드의 프로파일 상태 원본은 result_data 안에 그대로 남는다.
     subfield_statuses = {
         sub["status"]
@@ -485,6 +688,12 @@ def test_FIT_7관계가_FIT_코드로_남는다(
     ]
     assert rows[0]["status"] == FitStatus.INSUFFICIENT.value
     assert {row["status"] for row in rows} <= FIT_DISPLAY_STATUSES
+    assert all(row["summary_text"] for row in rows)
+    assert rows[0]["summary_text"] == "비교할 원문 근거가 부족합니다."
+    assert all(
+        row["summary_text"] == "두 측면의 연결을 확인했습니다."
+        for row in rows[1:]
+    )
 
 
 # ------------------------------------------------------------------------ SIM
@@ -503,6 +712,8 @@ def test_SIM_은_후보_행에만_남고_axis_result_에는_들어가지_않는�
     row = candidates[0]
     assert row["rank_no"] == 1
     assert row["existing_profile_version_pk"] == profile_version_pk
+    assert row["title"] == "테스트 공고"
+    assert row["result_summary"] == "비교에 필요한 정보가 일부 부족합니다."
     # 4축은 네 jsonb 컬럼이 자리다.
     assert row["purpose_result"]["axis_id"] == "SIM-1"
     assert row["target_result"]["axis_id"] == "SIM-2"
@@ -573,6 +784,15 @@ def test_근거는_실제_블록과_오프셋을_들고_요청서_공고를_구�
 
     assert rows and all(row["usage_scope"] == "RESULT" for row in rows)
     assert {row["side"] for row in rows} == {"REQUEST", "EXISTING"}
+    assert {row["comparison_side"] for row in rows if row["axis_type"] == "FIT"} == {
+        "LEFT",
+        "RIGHT",
+    }
+    assert all(
+        row["comparison_side"] is None
+        for row in rows
+        if row["axis_type"] != "FIT"
+    )
     # 공고 근거는 후보 행에 붙고, 요청서 근거는 붙지 않는다.
     assert all(
         row["sim_candidate_pk"] is not None
@@ -699,6 +919,16 @@ def test_run_once_는_한_트랜잭션에서_케이스와_결과를_함께_쓴�
     )
     assert len(_candidates(engine, analysis_case_pk)) == 1
     assert _evidence(engine, analysis_case_pk)
+    with engine.connect() as connection:
+        session = connection.execute(
+            text(
+                "SELECT status, expires_at > now() + interval '29 minutes' AS fresh "
+                "FROM result.analysis_session WHERE analysis_case_pk = :pk"
+            ),
+            {"pk": analysis_case_pk},
+        ).mappings().one()
+    assert session["status"] == "active"
+    assert session["fresh"] is True
 
 
 def test_임대를_뺏긴_워커는_축_후보_근거_어느_것도_남기지_못한다(
@@ -737,5 +967,6 @@ def test_임대를_뺏긴_워커는_축_후보_근거_어느_것도_남기지_�
             "result.axis_result",
             "result.sim_candidate",
             "result.evidence_snapshot",
+            "result.analysis_session",
         ):
             assert connection.scalar(text(f"SELECT count(*) FROM {table}")) == 0
