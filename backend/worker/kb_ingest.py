@@ -35,9 +35,11 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Any, Callable, Literal
+from uuid import UUID
 
 import httpx
 from sqlalchemy import Engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.infrastructure.local_object_storage import LocalObjectStorage
 from app.ports.embedding_client import EmbeddingClient
@@ -58,6 +60,7 @@ from .announcement_profiles import (
 )
 from .contracts.sim_result import SimCandidateResult, SimCommonProfile
 from .embedding_call import embed as embed_texts
+from .kb_store import ProfileStorageError, store_existing_profile
 from .profiles import StageError, _subprocess_env, parse_to_common_ir
 from .sim import compare_candidate
 from .sim_inputs import build_common_profile
@@ -71,6 +74,7 @@ __all__ = [
     "CANDIDATE_PROFILE_FAILED",
     "CANDIDATE_PROFILE_MISSING",
     "FETCH_FAILED",
+    "KB_STORE_FAILED",
     "PROFILE_INVALID",
     "UNSUPPORTED_FORMAT",
     "CandidateComparison",
@@ -101,6 +105,7 @@ UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT"
 PROFILE_INVALID = "PROFILE_INVALID"
 CANDIDATE_PROFILE_MISSING = "CANDIDATE_PROFILE_MISSING"
 CANDIDATE_PROFILE_FAILED = "CANDIDATE_PROFILE_FAILED"
+KB_STORE_FAILED = "KB_STORE_FAILED"
 
 # 이 슬라이스가 다루는 형식. zip·png·jpg 는 애초에 뽑지 않는다.
 SUPPORTED_EXTENSIONS = ("hwp", "hwpx", "pdf")
@@ -424,6 +429,7 @@ class IngestResult:
     status: Literal["OK", "FAILED"]
     reason_code: str | None = None
     profile_row_id: int | None = None
+    kb_profile_version_pk: UUID | None = None
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
 
 
@@ -503,13 +509,15 @@ def _reusable_ok_profile(
     producer_version: str,
     model_profile: str,
     prompt_bundle_version: str,
+    common_ir: dict[str, Any] | None = None,
+    storage: LocalObjectStorage | None = None,
 ) -> IngestResult | None:
     """Find an exact-generation OK row before any structure/LLM work."""
 
     rows = _read(
         engine,
         """
-        SELECT id, source_profile_id
+        SELECT id, source_profile_id, profile_json
           FROM sims.announcement_profile
          WHERE announcement_version_id = :announcement_version_id
            AND source_profile_id = ANY(:source_profile_ids)
@@ -534,6 +542,22 @@ def _reusable_ok_profile(
     )
     if not rows:
         return None
+    if storage is not None and isinstance(rows[0]["profile_json"], dict):
+        return _store_profile(
+            engine,
+            announcement_version_id=announcement_version_id,
+            source_profile_id=rows[0]["source_profile_id"],
+            status="OK",
+            reason_code=None,
+            profile=rows[0]["profile_json"],
+            producer_version=producer_version,
+            source_sha256_hex=source_sha256_hex,
+            model_profile=model_profile,
+            prompt_bundle_version=prompt_bundle_version,
+            diagnostics=[],
+            common_ir=common_ir,
+            storage=storage,
+        )
     return IngestResult(
         announcement_version_id=announcement_version_id,
         source_profile_id=rows[0]["source_profile_id"],
@@ -548,6 +572,7 @@ def ingest_announcement(
     announcement_version_id: int,
     source_profile_id: str,
     document: dict[str, Any],
+    storage: LocalObjectStorage | None = None,
     structure: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     llm_client: LLMClient | None = None,
     model_profile: str | None = None,
@@ -590,6 +615,8 @@ def ingest_announcement(
             model_profile=model_lineage,
             prompt_bundle_version=prompt_lineage,
             diagnostics=diagnostics,
+            common_ir=document,
+            storage=storage,
         )
 
     errors = validation_errors(document)
@@ -614,6 +641,8 @@ def ingest_announcement(
         producer_version=producer_version,
         model_profile=model_lineage,
         prompt_bundle_version=prompt_lineage,
+        common_ir=document,
+        storage=storage,
     )
     if reusable is not None:
         return reusable
@@ -668,6 +697,8 @@ def ingest_announcement(
         model_profile=model_lineage,
         prompt_bundle_version=prompt_lineage,
         diagnostics=diagnostics,
+        common_ir=document,
+        storage=storage,
     )
 
 
@@ -748,6 +779,7 @@ def ingest_attachment(
         announcement_version_id=version_id,
         source_profile_id=source_profile_id,
         document=document,
+        storage=storage,
         structure=structure,
         llm_client=llm_client,
         model_profile=model_profile,
@@ -779,6 +811,8 @@ def _store_profile(
     model_profile: str,
     prompt_bundle_version: str,
     diagnostics: list[StageDiagnostic],
+    common_ir: dict[str, Any] | None = None,
+    storage: LocalObjectStorage | None = None,
 ) -> IngestResult:
     """프로파일 행 하나를 쓴다. **실패가 성공을 덮지 않는다.**
 
@@ -856,12 +890,83 @@ def _store_profile(
             payload,
         )
         row_id = existing[0]["id"] if existing else None
+    kb_profile_version_pk: UUID | None = None
+    result_status = "OK" if status == "OK" else "FAILED"
+    result_reason = reason_code
+
+    def mark_legacy_profile_failed() -> None:
+        """Do not leave a non-canonical OK row searchable after KB failure."""
+
+        if row_id is None:
+            return
+        _write(
+            engine,
+            """
+            UPDATE sims.announcement_profile
+               SET status = 'FAILED',
+                   diagnostics = CAST(:diagnostics AS jsonb),
+                   created_at = now()
+             WHERE id = :id
+            """,
+            {
+                "id": row_id,
+                "diagnostics": json.dumps(
+                    [
+                        {
+                            "stage": row.stage,
+                            "unit": row.unit,
+                            "reason_code": row.reason_code,
+                            "message": row.message,
+                        }
+                        for row in diagnostics
+                    ],
+                    ensure_ascii=False,
+                ),
+            },
+        )
+
+    if status == "OK" and profile is not None and common_ir is not None and storage is not None:
+        try:
+            with engine.begin() as connection:
+                stored = store_existing_profile(
+                    connection,
+                    profile=profile,
+                    common_ir=common_ir,
+                    source_sha256=source_sha256_hex,
+                    processing_run_pk=None,
+                    storage=storage,
+                    diagnostics=diagnostics,
+                )
+            # 부분 적재는 실패가 아니다 — 남은 fact 는 그대로 쓸 수 있다.
+            # 다만 무엇을 버렸는지가 결과 진단에 남아야 완전한 적재와
+            # 구분된다. ``diagnostics`` 는 같은 목록이라 이미 실려 있다.
+            kb_profile_version_pk = stored.profile_version_pk
+        except ProfileStorageError as error:
+            diagnostics.extend(
+                note for note in error.diagnostics if note not in diagnostics
+            )
+            result_status = "FAILED"
+            result_reason = KB_STORE_FAILED
+            mark_legacy_profile_failed()
+        except Exception as error:  # noqa: BLE001 - KB failure is per announcement
+            diagnostics.append(
+                StageDiagnostic(
+                    stage="store_existing_profile",
+                    unit=source_profile_id,
+                    reason_code=KB_STORE_FAILED,
+                    message=f"{type(error).__name__}: {error}"[:2000],
+                )
+            )
+            result_status = "FAILED"
+            result_reason = KB_STORE_FAILED
+            mark_legacy_profile_failed()
     return IngestResult(
         announcement_version_id=announcement_version_id,
         source_profile_id=source_profile_id,
-        status="OK" if status == "OK" else "FAILED",
-        reason_code=reason_code,
+        status=result_status,
+        reason_code=result_reason,
         profile_row_id=int(row_id) if row_id is not None else None,
+        kb_profile_version_pk=kb_profile_version_pk,
         diagnostics=diagnostics,
     )
 
@@ -1078,6 +1183,7 @@ class KbCandidate:
     # Legacy callers may construct candidates positionally without lineage;
     # the 4b search path always fills this with the exact profile row id.
     announcement_profile_id: int | None = None
+    kb_profile_version_pk: UUID | None = None
 
 
 def search_candidates(
@@ -1104,9 +1210,31 @@ def search_candidates(
         expected_model_name=model_name,
     )
     query_vector = vector_literal(query_batch.vectors[0])
-    rows = _read(
-        engine,
+    search_sql = """
+        SELECT av.id AS announcement_version_id, av.pblanc_nm,
+               ap.id AS announcement_profile_id, ap.source_profile_id,
+               pv.profile_version_pk AS kb_profile_version_pk,
+               ae.embedding <=> CAST(:query AS vector) AS distance
+          FROM sims.announcement_embedding ae
+          JOIN sims.announcement_version av ON av.id = ae.announcement_version_id
+          JOIN sims.announcement_profile ap
+            ON ap.id = ae.announcement_profile_id
+           AND ap.announcement_version_id = av.id
+           AND ap.status = 'OK'
+          JOIN kb.source_profile sp
+            ON sp.source_profile_id = ap.source_profile_id
+          JOIN kb.source_version sv
+            ON sv.source_profile_pk = sp.source_profile_pk
+           AND sv.is_current
+          JOIN kb.profile_version pv
+            ON pv.source_version_pk = sv.source_version_pk
+           AND pv.is_current
+         WHERE ae.embedding_profile_id = :profile_id
+         ORDER BY ae.embedding <=> CAST(:query AS vector), av.id, ap.id
+         LIMIT :top_k
         """
+    if not _kb_schema_available(engine):
+        search_sql = """
         SELECT av.id AS announcement_version_id, av.pblanc_nm,
                ap.id AS announcement_profile_id, ap.source_profile_id,
                ae.embedding <=> CAST(:query AS vector) AS distance
@@ -1119,7 +1247,10 @@ def search_candidates(
          WHERE ae.embedding_profile_id = :profile_id
          ORDER BY ae.embedding <=> CAST(:query AS vector), av.id, ap.id
          LIMIT :top_k
-        """,
+        """
+    rows = _read(
+        engine,
+        search_sql,
         {
             "query": query_vector,
             "profile_id": embedding_profile_id,
@@ -1133,6 +1264,7 @@ def search_candidates(
             pblanc_nm=row["pblanc_nm"],
             source_profile_id=row["source_profile_id"],
             distance=float(row["distance"]),
+            kb_profile_version_pk=row.get("kb_profile_version_pk"),
         )
         for row in rows
     ]
@@ -1151,6 +1283,116 @@ class CandidateComparison:
     reason_code: str | None = None
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
     announcement_profile_id: int | None = None
+    # 성공 비교가 실제로 소비한 Existing 공통 프로파일. 결과 저장 시
+    # ``result.evidence_snapshot``의 EXISTING 근거를 잃지 않도록 전달한다.
+    candidate_common: SimCommonProfile | None = None
+
+
+def _load_kb_profile(engine: Engine, profile_version_pk: UUID) -> dict[str, Any] | None:
+    """Rebuild the SIM input from the durable ``kb.*`` facts."""
+
+    rows = _read(
+        engine,
+        """
+        SELECT pv.profile_version_pk, pv.schema_version,
+               sp.source_profile_id, n.notice_id
+          FROM kb.profile_version pv
+          JOIN kb.source_version sv ON sv.source_version_pk = pv.source_version_pk
+          JOIN kb.source_profile sp ON sp.source_profile_pk = sv.source_profile_pk
+          JOIN kb.notice n ON n.notice_pk = sp.notice_pk
+         WHERE pv.profile_version_pk = :profile_version_pk
+           AND pv.is_current
+        """,
+        {"profile_version_pk": profile_version_pk},
+    )
+    if not rows:
+        return None
+    fact_rows = _read(
+        engine,
+        """
+        SELECT f.fact_id, f.field_name, f.value_raw, f.status, f.scope,
+               f.source_block_id, f.start_char, f.end_char, f.text_basis,
+               e.source_block_id AS evidence_source_block_id, e.section_id,
+               e.common_ir_document_id, e.common_ir_block_id,
+               e.common_ir_cell_id, e.common_ir_occurrence_ids, e.ordinal AS evidence_ordinal
+          FROM kb.fact_occurrence f
+          LEFT JOIN kb.fact_evidence e ON e.fact_pk = f.fact_pk
+         WHERE f.profile_version_pk = :profile_version_pk
+         ORDER BY f.ordinal, e.ordinal
+        """,
+        {"profile_version_pk": profile_version_pk},
+    )
+    profile: dict[str, Any] = {
+        "notice_id": rows[0]["notice_id"],
+        "source_profile_id": rows[0]["source_profile_id"],
+        "schema_version": rows[0]["schema_version"],
+        "comparison_profile": {},
+    }
+    by_fact: dict[str, dict[str, Any]] = {}
+    for row in fact_rows:
+        fact_id = row["fact_id"]
+        fact = by_fact.get(fact_id)
+        if fact is None:
+            fact = {
+                "fact_id": fact_id,
+                "value_raw": row["value_raw"],
+                "status": row["status"],
+                "scope": row["scope"],
+                "value_source": {
+                    "source_block_id": row["source_block_id"],
+                    "start_char": row["start_char"],
+                    "end_char": row["end_char"],
+                    "text_basis": row["text_basis"],
+                },
+                "evidence": [],
+            }
+            by_fact[fact_id] = fact
+            profile["comparison_profile"].setdefault(row["field_name"], []).append(fact)
+        if row["evidence_source_block_id"] is not None:
+            fact["evidence"].append(
+                {
+                    "source_block_id": row["evidence_source_block_id"],
+                    "section_id": row["section_id"],
+                    "common_ir_document_id": row["common_ir_document_id"],
+                    "common_ir_block_id": row["common_ir_block_id"],
+                    "common_ir_cell_id": row["common_ir_cell_id"],
+                    "common_ir_occurrence_ids": list(row["common_ir_occurrence_ids"] or []),
+                }
+            )
+    return profile
+
+
+def _kb_profile_pk_for_candidate(
+    engine: Engine, *, version_id: int, announcement_profile_id: int | None
+) -> UUID | None:
+    if not _kb_schema_available(engine):
+        return None
+    if announcement_profile_id is not None:
+        clause = "ap.id = :announcement_profile_id AND ap.announcement_version_id = :version_id"
+        params = {
+            "announcement_profile_id": announcement_profile_id,
+            "version_id": version_id,
+        }
+    else:
+        clause = "ap.announcement_version_id = :version_id"
+        params = {"version_id": version_id}
+    rows = _read(
+        engine,
+        f"""
+        SELECT pv.profile_version_pk
+          FROM sims.announcement_profile ap
+          JOIN kb.source_profile sp ON sp.source_profile_id = ap.source_profile_id
+          JOIN kb.source_version sv ON sv.source_profile_pk = sp.source_profile_pk
+           AND sv.is_current
+          JOIN kb.profile_version pv ON pv.source_version_pk = sv.source_version_pk
+           AND pv.is_current
+         WHERE {clause} AND ap.status = 'OK'
+         ORDER BY ap.id DESC
+         LIMIT 1
+        """,
+        params,
+    )
+    return rows[0]["profile_version_pk"] if rows else None
 
 
 def compare_kb_candidates(
@@ -1169,6 +1411,7 @@ def compare_kb_candidates(
     """
 
     comparisons: list[CandidateComparison] = []
+    kb_schema_available = _kb_schema_available(engine)
     for candidate_or_version in announcement_version_ids:
         candidate_profile_id = (
             candidate_or_version.announcement_profile_id
@@ -1180,6 +1423,61 @@ def compare_kb_candidates(
             if isinstance(candidate_or_version, KbCandidate)
             else int(candidate_or_version)
         )
+        kb_profile_pk = (
+            candidate_or_version.kb_profile_version_pk
+            if isinstance(candidate_or_version, KbCandidate)
+            else None
+        ) or _kb_profile_pk_for_candidate(
+            engine,
+            version_id=version_id,
+            announcement_profile_id=candidate_profile_id,
+        )
+        if kb_profile_pk is not None:
+            kb_profile = _load_kb_profile(engine, kb_profile_pk)
+            if kb_profile is not None:
+                candidate_common = build_common_profile(
+                    kb_profile, llm_client, model_profile=model_profile
+                )
+                comparisons.append(
+                    CandidateComparison(
+                        announcement_version_id=version_id,
+                        source_profile_id=kb_profile["source_profile_id"],
+                        announcement_profile_id=candidate_profile_id,
+                        candidate_common=candidate_common,
+                        result=compare_candidate(
+                            request_common,
+                            candidate_common,
+                            llm_client,
+                            model_profile=model_profile,
+                        ),
+                    )
+                )
+                continue
+        if kb_schema_available:
+            # Once the KB schema is present, a legacy JSONB profile is not a
+            # second SIM source of truth.  A profile that did not materialize
+            # into kb.* remains an explicitly unviewable candidate.
+            comparisons.append(
+                CandidateComparison(
+                    announcement_version_id=version_id,
+                    source_profile_id=(
+                        candidate_or_version.source_profile_id
+                        if isinstance(candidate_or_version, KbCandidate)
+                        else None
+                    ),
+                    announcement_profile_id=candidate_profile_id,
+                    reason_code=CANDIDATE_PROFILE_MISSING,
+                    diagnostics=[
+                        StageDiagnostic(
+                            stage=_INGEST_STAGE,
+                            unit=str(version_id),
+                            reason_code=CANDIDATE_PROFILE_MISSING,
+                            message="kb.*에 현재 ExistingProfile이 없어 SIM을 수행하지 않았다.",
+                        )
+                    ],
+                )
+            )
+            continue
         if candidate_profile_id is None:
             profile_filter = "announcement_version_id = :version_id"
             profile_parameters = {"version_id": version_id}
@@ -1258,6 +1556,7 @@ def compare_kb_candidates(
                 announcement_version_id=version_id,
                 source_profile_id=row["source_profile_id"],
                 announcement_profile_id=int(row["id"]),
+                candidate_common=candidate_common,
                 result=compare_candidate(
                     request_common,
                     candidate_common,
@@ -1276,6 +1575,14 @@ def _read(engine: Engine, statement: str, parameters: dict[str, Any]) -> list[di
     with engine.connect() as connection:
         rows = connection.execute(text(statement), parameters).mappings().all()
     return [dict(row) for row in rows]
+
+
+def _kb_schema_available(engine: Engine) -> bool:
+    try:
+        with engine.connect() as connection:
+            return connection.scalar(text("SELECT to_regclass('kb.profile_version')")) is not None
+    except SQLAlchemyError:
+        return False
 
 
 def _write(engine: Engine, statement: str, parameters: dict[str, Any]) -> Any:

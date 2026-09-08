@@ -53,6 +53,7 @@ from semantic_structuring.notice_preparation import (  # noqa: E402
     SectionScopeDecision,
     SectionScopeDiscovery,
 )
+from semantic_structuring.request_profile_v012 import candidate_pack_artifact  # noqa: E402
 from semantic_structuring.run_block_candidate_discovery_test import (  # noqa: E402
     BlockCandidateDiscovery,
     CandidateRoute,
@@ -842,6 +843,11 @@ def _select_and_assemble(
         "prompt_bundle_version": PROMPT_BUNDLE_VERSION,
         "source_sha256_hex": common_ir_source_sha256,
     }
+    # The KB store needs the exact routed pack that produced this profile, not
+    # the whole Common IR document under a misleading artifact type.
+    profile["processing_metadata"]["candidate_pack_artifact"] = candidate_pack_artifact(
+        pack, document
+    )
     return profile
 
 

@@ -1127,8 +1127,14 @@ def test_candidate_without_a_profile_keeps_the_other_results(
 def test_end_to_end_search_then_compare_produces_axis_results(
     engine, kb_cleanup, common_ir, existing_profile, request_profile
 ):
-    """적재 → 검색 → 비교 한 줄이 실제로 축 결과까지 간다."""
+    """적재 → 검색 → 비교 한 줄이 실제로 축 결과까지 간다.
 
+    이 DB 에는 팀원 kb 스키마가 없다. 후보 적재는 ``sims.announcement_profile``
+    한 곳에만 남고, 후보 로딩도 그 legacy 경로로 되돌아간다 — kb 로 옮긴 뒤에도
+    전환기 DB 가 오류 없이 같은 결과를 내는지가 여기서 고정된다.
+    """
+
+    assert not kb_ingest._kb_schema_available(engine)
     version_id = seed_announcement(engine, kb_cleanup, pblanc_id="KB-TEST-E2E")
     ingest_announcement(
         engine,
