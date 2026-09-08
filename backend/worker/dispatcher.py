@@ -116,6 +116,19 @@ _WRITE_RESULT = text(
     """
 )
 
+_WRITE_READY_RESULT = text(
+    """
+    INSERT INTO result.analysis_case (
+        source_analysis_run_id, user_id, case_status, analysis_completed_at
+    ) VALUES (:run_id, :user_id, 'ready', now())
+    ON CONFLICT (source_analysis_run_id) DO UPDATE
+       SET case_status           = EXCLUDED.case_status,
+           analysis_completed_at = EXCLUDED.analysis_completed_at,
+           updated_at            = now()
+    RETURNING analysis_case_pk
+    """
+)
+
 
 class _Fenced(Exception):
     """임대를 뺏긴 워커가 결과 쓰기를 되돌리게 하는 내부 신호."""
@@ -146,6 +159,7 @@ async def run_once(
     *,
     worker_id: str,
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
+    require_analysis_results: bool = False,
 ) -> UUID | None:
     """한 건 집어 돌리고 끝낸다. 집을 것이 없으면 ``None``."""
     with engine.begin() as connection:
@@ -168,6 +182,10 @@ async def run_once(
 
     try:
         outcome = await run_analysis(linked["case_id"])
+        if require_analysis_results and (
+            not isinstance(outcome, AnalysisResults) or outcome.cpl is None
+        ):
+            raise TypeError("queued worker must return AnalysisResults with CPL")
     except Exception as error:  # noqa: BLE001 - 실패 사유를 행에 남기고 삼킨다
         logger.warning(
             "Queued analysis failed for run %s: %s",
@@ -184,8 +202,13 @@ async def run_once(
     # 케이스 행은 사라지고 결과 행만 남는 상태가 생긴다.
     try:
         with engine.begin() as connection:
+            result_statement = (
+                _WRITE_READY_RESULT
+                if isinstance(outcome, AnalysisResults)
+                else _WRITE_RESULT
+            )
             analysis_case_pk = connection.scalar(
-                _WRITE_RESULT,
+                result_statement,
                 {
                     "run_id": claim.analysis_run_pk,
                     "user_id": linked["user_id"],
@@ -214,6 +237,15 @@ async def run_once(
             claim.analysis_run_pk,
             worker_id,
         )
+    except Exception as error:  # noqa: BLE001 - 결과 저장 실패도 큐 실패로 남긴다
+        # 결과 행·축·근거는 위 트랜잭션에서 이미 롤백됐다. 별도 트랜잭션으로
+        # 큐 행만 실패 처리해, 영속화 오류가 running 작업으로 고립되지 않게 한다.
+        logger.warning(
+            "Queued result persistence failed for run %s: %s",
+            claim.analysis_run_pk,
+            type(error).__name__,
+        )
+        _finish_failed(engine, claim, f"{type(error).__name__}: {error}")
     return claim.analysis_run_pk
 
 
@@ -263,6 +295,12 @@ class QueueJobDispatcher:
         # 갈래가 같은 것을 쓴다 — 기존 호출자의 모양이다.
         legacy = legacy_run_analysis or run_analysis
         self._legacy = InProcessJobDispatcher(legacy) if legacy is not None else None
+        # An explicitly supplied legacy callback marks the first callback as the
+        # new result-producing worker. The one-argument form remains the legacy
+        # compatibility shape used by existing callers.
+        self._require_analysis_results = (
+            run_analysis is not None and legacy_run_analysis is not None
+        )
 
     def _queue_available(self) -> bool:
         if self._queue_installed is None:
@@ -288,6 +326,7 @@ class QueueJobDispatcher:
                     self._engine,
                     self._run_analysis,
                     worker_id=self._worker_id,
+                    require_analysis_results=self._require_analysis_results,
                 ),
                 name=f"analysis-run-{run_id}",
             )

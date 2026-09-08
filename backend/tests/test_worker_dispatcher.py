@@ -22,8 +22,11 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 
 from app.db.identity_bridge import ensure_identity, teammate_schema_installed
+from app.schemas.cpl import CplFieldCode
+from worker.contracts.cpl_result import CplItem, CplResult
 from worker.dispatcher import QueueJobDispatcher, enqueue, run_once, submission_key
 from worker.jobs import claim_next
+from worker.persistence import AnalysisResults
 
 _DISPATCHER_DATABASE = "sims_dispatcher_test"
 _BACKEND = pathlib.Path(__file__).resolve().parents[1]
@@ -31,6 +34,27 @@ _SCHEMA = _BACKEND / "app/db/schema.sql"
 _MIGRATIONS = _BACKEND / "app/db/migrations"
 # 이미 만료된 임대. 다음 트랜잭션의 now() 를 기다리지 않고 결정적으로 만료시킨다.
 _EXPIRED = -1
+
+
+def _valid_cpl_result() -> CplResult:
+    return CplResult(
+        items=[
+            CplItem(
+                field_code=field_code,
+                representative_status="needs_confirmation",
+                status_reason=None,
+            )
+            for field_code in CplFieldCode
+        ],
+        profile_id="test-profile",
+        common_ir_document_id=None,
+        common_ir_source_sha256=None,
+        candidate_pack_id=None,
+        pipeline_version="test",
+        structured_schema_version="test",
+        model_id="test",
+        prompt_version="test",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -306,6 +330,123 @@ def test_디스패처는_넣은_직후_같은_프로세스에서_한_건을_끝�
     assert _results(engine, UUID(job_id))[0]["case_status"] == "ready"
 
 
+def test_디스패처는_큐_경로에서_레거시를_부르지_않고_조립_결과를_ready로_쓴다(
+    engine: Engine, case
+):
+    case_id, _ = case
+    calls: list[str] = []
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        calls.append("worker")
+        return AnalysisResults(cpl=_valid_cpl_result())
+
+    async def legacy(_case_id: int) -> None:
+        calls.append("legacy")
+
+    async def submit() -> str:
+        dispatcher = QueueJobDispatcher(
+            engine,
+            worker,
+            legacy_run_analysis=legacy,
+            worker_id="main-worker",
+        )
+        job_id = await dispatcher.enqueue_analysis(case_id)
+        await dispatcher.shutdown()
+        return job_id
+
+    job_id = asyncio.run(submit())
+
+    assert calls == ["worker"]
+    assert [row["status"] for row in _runs(engine, case_id)] == ["succeeded"]
+    result_rows = _results(engine, UUID(job_id))
+    assert len(result_rows) == 1
+    assert result_rows[0]["case_status"] == "ready"
+    with engine.connect() as connection:
+        analysis_case_pk = connection.scalar(
+            text(
+                "SELECT analysis_case_pk FROM result.analysis_case "
+                "WHERE source_analysis_run_id = :run_id"
+            ),
+            {"run_id": job_id},
+        )
+        assert connection.scalar(
+            text(
+                "SELECT count(*) FROM result.axis_result "
+                "WHERE analysis_case_pk = :analysis_case_pk "
+                "AND axis_type = 'CPL'"
+            ),
+            {"analysis_case_pk": analysis_case_pk},
+        ) == 13
+    # AnalysisResults 경로는 레거시 sims 상태를 결과 성공의 전제조건으로
+    # 사용하지 않는다. fixture가 만든 PARSING 상태 그대로 남아 있어야 한다.
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text("SELECT status FROM sims.inspection_case WHERE id = :case_id"),
+            {"case_id": case_id},
+        ) == "PARSING"
+
+
+def test_디스패처는_엄격한_큐_경로의_빈_조립_결과를_실패로_처리한다(
+    engine: Engine, case
+):
+    case_id, _ = case
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        return AnalysisResults()
+
+    async def legacy(_case_id: int) -> None:
+        raise AssertionError("legacy callback must not run")
+
+    async def submit() -> str:
+        dispatcher = QueueJobDispatcher(
+            engine,
+            worker,
+            legacy_run_analysis=legacy,
+            worker_id="main-worker",
+        )
+        job_id = await dispatcher.enqueue_analysis(case_id)
+        await dispatcher.shutdown()
+        return job_id
+
+    job_id = asyncio.run(submit())
+
+    assert [row["status"] for row in _runs(engine, case_id)] == ["failed"]
+    assert _results(engine, UUID(job_id)) == []
+
+
+def test_디스패처_조립_콜백_실패는_큐를_failed로_남기고_결과를_만들지_않는다(
+    engine: Engine, case
+):
+    case_id, _ = case
+    calls: list[str] = []
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        calls.append("worker")
+        raise RuntimeError("profile assembly failed")
+
+    async def legacy(_case_id: int) -> None:
+        calls.append("legacy")
+
+    async def submit() -> str:
+        dispatcher = QueueJobDispatcher(
+            engine,
+            worker,
+            legacy_run_analysis=legacy,
+            worker_id="main-worker",
+        )
+        job_id = await dispatcher.enqueue_analysis(case_id)
+        await dispatcher.shutdown()
+        return job_id
+
+    job_id = asyncio.run(submit())
+
+    assert calls == ["worker"]
+    rows = _runs(engine, case_id)
+    assert [row["status"] for row in rows] == ["failed"]
+    assert "profile assembly failed" in rows[0]["last_error"]
+    assert _results(engine, UUID(job_id)) == []
+
+
 def test_신원_다리는_팀원_스키마가_없는_DB_에서_아무_일도_하지_않는다():
     """전환기에는 두 모양이 공존한다. sims 만 있는 DB 에서 오류가 아니어야 한다.
 
@@ -340,5 +481,44 @@ def test_신원_다리는_팀원_스키마가_없는_DB_에서_아무_일도_하
                 text("DELETE FROM sims.app_user WHERE id = :user_id"),
                 {"user_id": user_id},
             )
+    finally:
+        sims_only.dispose()
+
+
+def test_디스패처는_팀원_스키마가_없으면_레거시_fallback만_한번_호출한다():
+    database_url = os.getenv("TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL is required for legacy fallback test")
+
+    sims_only = create_engine(database_url)
+    try:
+        with sims_only.connect() as connection:
+            if teammate_schema_installed(connection):
+                pytest.skip("fallback is only observable on a sims-only database")
+
+        case_id = 77
+        calls: list[tuple[str, int]] = []
+
+        async def worker(_case_id: int) -> None:
+            calls.append(("worker", _case_id))
+
+        async def legacy(_case_id: int) -> None:
+            calls.append(("legacy", _case_id))
+
+        async def submit() -> str:
+            dispatcher = QueueJobDispatcher(
+                sims_only,
+                worker,
+                legacy_run_analysis=legacy,
+                worker_id="legacy-fallback",
+            )
+            job_id = await dispatcher.enqueue_analysis(case_id)
+            await dispatcher.shutdown()
+            return job_id
+
+        job_id = asyncio.run(submit())
+
+        assert job_id
+        assert calls == [("legacy", case_id)]
     finally:
         sims_only.dispose()

@@ -145,7 +145,7 @@ def create_app(
                 EmbeddingClient | None,
                 embedding_client,
             )
-        async def run_analysis(case_id: int) -> None:
+        async def legacy_run_analysis(case_id: int) -> None:
             await run_analysis_pipeline(
                 engine,
                 object_storage,
@@ -156,40 +156,24 @@ def create_app(
                 pdf_renderer=active_pdf_renderer,
                 embedding_client=active_embedding_client,
             )
-        # 큐 갈래는 레거시 파이프라인으로 케이스 상태·sims 결과·보고서를 그대로
-        # 만든 뒤, 워커 조립기의 ``AnalysisResults`` 를 돌려준다. 그 결과가
-        # 디스패처의 펜싱 트랜잭션 안에서 ``result.*`` 로 저장된다.
-        #
-        # 조립 실패는 이 건의 실패가 아니다. 레거시가 이미 만든 결과를 지우지
-        # 않고 결과 행만 비운다 (초안 §9.4 부분 결과 보존).
-        #
-        # ponytail: 레거시가 살아 있는 동안 원본을 두 번 읽는다 — 레거시 파서와
-        # Common IR 파서. 레거시 경로를 걷어낼 때 앞단을 한 번만 돌린다.
-        async def run_queued_analysis(case_id: int) -> object | None:
-            await run_analysis(case_id)
-            try:
-                return await asyncio.to_thread(
-                    analyse_case,
-                    engine,
-                    object_storage,
-                    active_llm_client,
-                    case_id,
-                    embedding_client=active_embedding_client,
-                    model_profile=runtime_settings.cpl_model_profile,
-                )
-            except Exception as error:
-                logger.warning(
-                    "워커 결과 조립을 건너뜁니다 (case %s): %s",
-                    case_id,
-                    type(error).__name__,
-                )
-                return None
+        async def run_queued_analysis(case_id: int) -> object:
+            return await asyncio.to_thread(
+                analyse_case,
+                engine,
+                object_storage,
+                active_llm_client,
+                case_id,
+                embedding_client=active_embedding_client,
+                cpl_model_profile=runtime_settings.cpl_model_profile,
+                fit_model_profile=runtime_settings.fit_model_profile,
+                sim_model_profile=runtime_settings.sim_model_profile,
+            )
 
         # 큐는 DB 행이다 (workspace.analysis_run). 여기 넘기는 콜러블은 큐가
         # 아니라 그 행을 꺼내 돌리는 실행기다. 별도 워커 프로세스를 띄우면
         # 이 인자를 뺀다.
         dispatcher = QueueJobDispatcher(
-            engine, run_queued_analysis, legacy_run_analysis=run_analysis
+            engine, run_queued_analysis, legacy_run_analysis=legacy_run_analysis
         )
         application.state.object_storage = object_storage
         application.state.document_parser = active_parser

@@ -258,6 +258,22 @@ def _failure_reason(error: BaseException) -> tuple[str, str]:
     return _RETRIEVAL_FAILED, "검색 단계에서 오류가 발생해 SIM을 부분 결과로 남겼다."
 
 
+def _resolve_model_profiles(
+    model_profile: str | None,
+    *,
+    cpl_model_profile: str | None,
+    fit_model_profile: str | None,
+    sim_model_profile: str | None,
+) -> tuple[str, str, str, str]:
+    base = model_profile or "analysis"
+    return (
+        base,
+        cpl_model_profile or base,
+        fit_model_profile or base,
+        sim_model_profile or base,
+    )
+
+
 def run_analysis(
     request_profile: dict[str, Any],
     common_ir: CommonIrArtifact | Mapping[str, Any] | None,
@@ -269,6 +285,9 @@ def run_analysis(
     model_profile: str = "analysis",
     top_k: int = 5,
     max_repairs: int = 1,
+    cpl_model_profile: str | None = None,
+    fit_model_profile: str | None = None,
+    sim_model_profile: str | None = None,
 ) -> AnalysisResults:
     """한 검사의 분석 결과를 조립한다.
 
@@ -286,7 +305,12 @@ def run_analysis(
 
     profile = _profile_with_lineage(request_profile, common_ir)
     active_llm: LLMClient = llm_client or _UnavailableLLM()
-    model_profile = model_profile or "analysis"
+    model_profile, _, fit_model_profile, sim_model_profile = _resolve_model_profiles(
+        model_profile,
+        cpl_model_profile=cpl_model_profile,
+        fit_model_profile=fit_model_profile,
+        sim_model_profile=sim_model_profile,
+    )
     diagnostics: list[StageDiagnostic] = []
 
     # 이 단계는 결정적이고, 입력 프로파일이 이미 검증됐다는 전제에서 예외를
@@ -297,7 +321,7 @@ def run_analysis(
         fit = analyze_fit(
             profile,
             active_llm,
-            model_profile=model_profile,
+            model_profile=fit_model_profile,
             max_repairs=max_repairs,
         )
     except Exception as error:  # noqa: BLE001 - CPL을 보존하는 국소 실패
@@ -317,7 +341,7 @@ def run_analysis(
         request_common = build_common_profile(
             profile,
             active_llm,
-            model_profile=model_profile,
+            model_profile=sim_model_profile,
         )
     except Exception as error:  # noqa: BLE001 - SIM 입력 단계 국소 실패
         diagnostics.append(
@@ -332,7 +356,7 @@ def run_analysis(
         )
         sim = _empty_sim(
             request_profile_id=request_profile_id,
-            model_profile=model_profile,
+            model_profile=sim_model_profile,
             diagnostics=diagnostics,
         )
         return AnalysisResults(cpl=cpl, fit=fit, sim=sim)
@@ -351,7 +375,7 @@ def run_analysis(
         )
         sim = _empty_sim(
             request_profile_id=request_common.source_profile_id,
-            model_profile=model_profile,
+            model_profile=sim_model_profile,
             diagnostics=[*request_common.diagnostics, *diagnostics],
         )
         return AnalysisResults(cpl=cpl, fit=fit, sim=sim, sim_profiles=sim_profiles)
@@ -367,7 +391,7 @@ def run_analysis(
         )
         sim = _empty_sim(
             request_profile_id=request_common.source_profile_id,
-            model_profile=model_profile,
+            model_profile=sim_model_profile,
             diagnostics=[*request_common.diagnostics, *diagnostics],
         )
         return AnalysisResults(cpl=cpl, fit=fit, sim=sim, sim_profiles=sim_profiles)
@@ -387,7 +411,7 @@ def run_analysis(
         )
         sim = _empty_sim(
             request_profile_id=request_common.source_profile_id,
-            model_profile=model_profile,
+            model_profile=sim_model_profile,
             diagnostics=[*request_common.diagnostics, *diagnostics],
         )
         return AnalysisResults(cpl=cpl, fit=fit, sim=sim, sim_profiles=sim_profiles)
@@ -398,7 +422,7 @@ def run_analysis(
             request_common,
             list(candidates),
             active_llm,
-            model_profile=model_profile,
+            model_profile=sim_model_profile,
         )
     except Exception as error:  # noqa: BLE001 - 후보 비교는 국소 실패
         diagnostics.append(
@@ -476,7 +500,7 @@ def run_analysis(
     sim = SimComparisonResult(
         request_profile_id=request_common.source_profile_id,
         candidates=sim_candidates,
-        model_profile=model_profile,
+        model_profile=sim_model_profile,
         ruleset_version=SIM_RULESET_VERSION,
         prompt_version=SIM_COMPARISON_PROMPT_VERSION,
         scoring_version=SIM_SCORING_VERSION,
@@ -532,6 +556,9 @@ def analyse_case(
     model_profile: str = "analysis",
     top_k: int = 5,
     max_repairs: int = 1,
+    cpl_model_profile: str | None = None,
+    fit_model_profile: str | None = None,
+    sim_model_profile: str | None = None,
 ) -> AnalysisResults:
     """업로드된 요청서 한 건을 원본 → Common IR → 프로파일 → 결과로 잇는다.
 
@@ -553,6 +580,15 @@ def analyse_case(
                 message="LLM 클라이언트가 없어 요청서 구조화를 시작하지 않았다.",
             )
         )
+
+    model_profile, cpl_model_profile, fit_model_profile, sim_model_profile = (
+        _resolve_model_profiles(
+            model_profile,
+            cpl_model_profile=cpl_model_profile,
+            fit_model_profile=fit_model_profile,
+            sim_model_profile=sim_model_profile,
+        )
+    )
 
     with engine.connect() as connection:
         source = (
@@ -588,12 +624,12 @@ def analyse_case(
             profile_id=profile_id,
             selector=make_vllm_selector(
                 llm_client,
-                model_profile=model_profile,
+                model_profile=cpl_model_profile,
                 pack=pack,
                 document=artifact.document,
                 profile_id=profile_id,
             ),
-            model_id=model_profile,
+            model_id=cpl_model_profile,
             max_repairs=max_repairs,
             common_ir=artifact,
         )
@@ -622,6 +658,9 @@ def analyse_case(
             else _active_embedding_profile_id(engine)
         ),
         model_profile=model_profile,
+        cpl_model_profile=cpl_model_profile,
+        fit_model_profile=fit_model_profile,
+        sim_model_profile=sim_model_profile,
         top_k=top_k,
         max_repairs=max_repairs,
     )

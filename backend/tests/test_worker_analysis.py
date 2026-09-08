@@ -28,6 +28,7 @@ from worker.contracts.sim_result import (
 from worker.dispatcher import enqueue, run_once
 from worker.jobs import claim_next
 from worker.kb_ingest import CandidateComparison, KbCandidate
+from worker.persistence import AnalysisResults
 from worker.profiles import StageError
 from worker.sim_inputs import build_common_profile
 
@@ -199,6 +200,60 @@ def test_run_analysis_keeps_candidate_failure_local(monkeypatch):
         for axis in result.sim.candidates[0].axes
     )
     assert result.sim.candidates[0].axes[0].reason_code == "CANDIDATE_PROFILE_MISSING"
+
+
+def test_run_analysis_routes_fit_and_sim_model_profiles(monkeypatch):
+    """분석 조립기의 단일 model_profile 호환성과 분리 프로필 배선을 고정한다."""
+
+    seen: dict[str, str] = {}
+    original_fit = analysis.analyze_fit
+    original_build = analysis.build_common_profile
+
+    def fit_with_profile(*args, **kwargs):
+        seen["fit"] = kwargs["model_profile"]
+        return original_fit(*args, **kwargs)
+
+    def build_with_profile(*args, **kwargs):
+        seen["build"] = kwargs["model_profile"]
+        return original_build(*args, **kwargs)
+
+    candidate = KbCandidate(
+        announcement_version_id=9,
+        pblanc_nm="프로필 배선 공고",
+        source_profile_id=_CANDIDATE_ID,
+        distance=0.1,
+    )
+
+    def compare_with_profile(*args, **kwargs):
+        seen["compare"] = kwargs["model_profile"]
+        return []
+
+    monkeypatch.setattr(analysis, "analyze_fit", fit_with_profile)
+    monkeypatch.setattr(analysis, "build_common_profile", build_with_profile)
+    monkeypatch.setattr(
+        analysis, "search_candidates", lambda *args, **kwargs: [candidate]
+    )
+    monkeypatch.setattr(analysis, "compare_kb_candidates", compare_with_profile)
+
+    result = analysis.run_analysis(
+        _request_profile(),
+        None,
+        cast(Engine, object()),
+        _OfflineLLM(),
+        embedding_profile_id=11,
+        model_profile="legacy-profile",
+        cpl_model_profile="cpl-profile",
+        fit_model_profile="fit-profile",
+        sim_model_profile="sim-profile",
+    )
+
+    assert seen == {
+        "fit": "fit-profile",
+        "build": "sim-profile",
+        "compare": "sim-profile",
+    }
+    assert result.sim is not None
+    assert result.sim.model_profile == "sim-profile"
 
 
 @pytest.fixture(scope="module")
@@ -590,6 +645,64 @@ def test_analyse_case는_업로드_원본에서_결과를_조립한다(
     assert seen["source_kind"] == "hwpx"
     assert result.cpl is not None and len(result.cpl.items) == 13
     assert result.fit is not None and len(result.fit.relations) == 7
+
+
+def test_analyse_case_uses_cpl_profile_for_request_selection(
+    pg_engine: Engine, uploaded_case, monkeypatch
+):
+    case_id, storage = uploaded_case
+    artifact = _common_ir_artifact()
+    _stub_profile_chain(monkeypatch, artifact, "OK")
+    seen: dict[str, str] = {}
+
+    def selector(*args, **kwargs):
+        seen["selector"] = kwargs["model_profile"]
+        return object()
+
+    def structure(**kwargs):
+        seen["structure"] = kwargs["model_id"]
+        return ProfileSnapshot(
+            profile_id=kwargs["profile_id"],
+            status="OK",
+            profile=_request_profile(),
+            candidate_pack_id="pack",
+            common_ir=artifact,
+            model_id=kwargs["model_id"],
+            prompt_version="test",
+            profile_contract_version="test",
+            selection_attempts=1,
+        )
+
+    def assemble(*args, **kwargs):
+        seen["base"] = kwargs["model_profile"]
+        seen["fit"] = kwargs["fit_model_profile"]
+        seen["sim"] = kwargs["sim_model_profile"]
+        return AnalysisResults(cpl=analysis.build_cpl_result(_request_profile()))
+
+    monkeypatch.setattr(analysis, "make_vllm_selector", selector)
+    monkeypatch.setattr(analysis, "structure_request_profile", structure)
+    monkeypatch.setattr(analysis, "run_analysis", assemble)
+
+    result = analysis.analyse_case(
+        pg_engine,
+        storage,
+        _OfflineLLM(),
+        case_id,
+        embedding_profile_id=11,
+        model_profile="legacy-profile",
+        cpl_model_profile="cpl-profile",
+        fit_model_profile="fit-profile",
+        sim_model_profile="sim-profile",
+    )
+
+    assert isinstance(result, AnalysisResults)
+    assert seen == {
+        "selector": "cpl-profile",
+        "structure": "cpl-profile",
+        "base": "legacy-profile",
+        "fit": "fit-profile",
+        "sim": "sim-profile",
+    }
 
 
 def test_요청서_프로파일이_실패하면_반쪽_결과를_만들지_않는다(
