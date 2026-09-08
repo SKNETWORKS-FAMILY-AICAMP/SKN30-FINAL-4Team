@@ -147,18 +147,20 @@ def predict_document(text, base=None, path=None):
     return out
 
 
-def percentile(value_won, support_type, support_method, unit, cohort):
+def percentile(value_won, support_type, support_method, unit, cohort,
+               ladder=None):
     """모델 2 의 1차 산출물 — 비교군 안에서 이 금액이 어디쯤인가.
 
-    회귀(`predict`)와 독립이다. 참조표는 M65 세대와 같은
-    `m45_m2_amount.build_reference()` 결과를 그대로 쓴다 — M82 는 회귀만
-    바꿨고 비교군 사다리는 바꾸지 않았다.
+    회귀(`predict`)와 독립이다. 백분위 산식은 그대로이고 **비교군을 고르는
+    순서만** 확장했다(`cohort.py`). 기존 사다리는 support_type 을 너무 빨리
+    버려서, 실제 42개 조합 중 19개가 지원성격을 반영하지 않은 백분위를 냈다.
+
+    반환에 `uses_support_type`·`uses_support_unit` 이 함께 온다 — 숫자만으로는
+    어떤 비교군에서 나왔는지 알 수 없기 때문이다.
     """
-    import m45_m2_amount as M45
-    if not os.path.exists(COHORT_REF):
-        raise FileNotFoundError("cohort_reference.parquet 이 없다: %s" % COHORT_REF)
-    ref = pd.read_parquet(COHORT_REF)
-    return M45.compare(ref, value_won, support_type, support_method, unit, cohort)
+    import cohort as CH
+    return CH.compare(value_won, support_type, support_method, unit, cohort,
+                      ladder=ladder or CH.DEFAULT_LADDER)
 
 
 def info(path=None):

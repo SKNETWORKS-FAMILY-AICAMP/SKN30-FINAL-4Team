@@ -76,6 +76,40 @@ def _model3():
 # 된다(실측: "연구개발|grant" 를 넘겼더니 percentile 이 null 로 나왔다).
 COHORTS = ("taxonomy", "bizinfo")
 
+# ------------------------------------------------- support_type 호환성
+# Model 1 은 19종을 내놓는데 Model 2 는 23종으로 학습했고, 그 둘이 포함관계가
+# 아니다 — `상담` 하나가 Model 1 에만 있다. 이 값이 들어오면 Model 2 에서
+# **미학습 범주라 조용히 결측 처리**된다. 예측은 나오고 겉으로는 정상이다.
+#
+# 게다가 같은 값이 비교군 참조표에도 없어서 percentile 조회까지 함께 무너진다
+# (실측: cohort_reference 에 `상담` 없음). 두 증상이 한 원인에서 나오므로
+# 아래에서 함께 묶어 남긴다.
+#
+# 값을 코드에 적지 않고 학습 artifact 에서 읽는다 — 재학습으로 레벨이 바뀌면
+# 손으로 적은 목록은 조용히 어긋난다.
+UNSEEN_WARNING = "Model 2 학습 시 존재하지 않았던 support_type 입니다."
+_ST_LEVELS = None
+
+
+def model2_support_type_levels(path=None):
+    """Model 2 가 학습한 support_type 레벨. 번들에서 읽고 캐시한다."""
+    global _ST_LEVELS
+    if _ST_LEVELS is None:
+        bundle = _model2().load(path)
+        levels = (bundle.get("features") or {}).get("cat_levels", {})
+        _ST_LEVELS = tuple(levels.get("support_type") or ())
+    return _ST_LEVELS
+
+
+def check_support_type(support_type, path=None):
+    """(호환성, 미학습값). 레벨을 못 읽으면 판정하지 않는다(unknown)."""
+    levels = model2_support_type_levels(path)
+    if not levels or support_type is None:
+        return "unknown", None
+    if support_type in levels:
+        return "known", None
+    return "unseen_by_model2", support_type
+
 
 def run_model_2(analysis_id, record, text=None, cohort=None):
     """기존 Model 2 서빙 호출 → Result JSON.
@@ -99,6 +133,8 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
                          code="MODEL2_INFERENCE_FAILED",
                          message="%s: %s" % (type(e).__name__, e))
 
+    compat, unseen_st = check_support_type(rec.get("support_type"))
+
     # 비교군 percentile 은 회귀와 독립이다. 실패해도 예측은 유지하되, 왜 비었는지
     # 남긴다 — 값이 null 인 것과 이유를 모르는 것은 다르다.
     ref, pct_reason = None, None
@@ -116,6 +152,23 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
                 ref = cmp_out
         except Exception as e:                              # noqa: BLE001
             pct_reason = "%s: %s" % (type(e).__name__, e)
+
+    # 미학습 support_type 이면 percentile 이 **null 이 되지 않는다.** 사다리
+    # 마지막 단계(`단위x출처`)가 support_type 을 키에 쓰지 않아서 거기 걸린다.
+    # 실측: 상담 -> 비교가능 · 단위x출처 · n=38 · 76.7백분위.
+    #
+    # 값이 비는 것보다 이쪽이 더 위험하다. 숫자가 정상으로 보이는데 실제로는
+    # **지원성격을 전혀 반영하지 않은 비교**다. 그래서 어느 단계에서 나온
+    # 값인지, 그 단계가 support_type 을 썼는지를 함께 남긴다.
+    # 그리고 이건 미학습 label 만의 문제가 아니다. 비교군이 얇으면(MIN_COHORT=30)
+    # known label 도 같은 단계로 물러난다 — 실측: 연구개발|grant|project|taxonomy
+    # 는 15건뿐이라 `단위x출처` 로 떨어진다. 그래서 조건을 unseen 에 걸지 않고
+    # **실제로 어느 단계에서 나왔는지**에 건다.
+    pct_level = ref.get("level") if ref else None
+    pct_uses_st = bool(pct_level) and pct_level.startswith("성격")
+    pct_cause = None
+    if ref is not None and not pct_uses_st:
+        pct_cause = "fell_back_to_cohort_without_support_type"
 
     observed = rec.get("per_recipient")
     return RE.success(
@@ -146,7 +199,20 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
             "bucket_edges_won": row["bucket_edges_won"],
             "percentile_status": ref.get("status") if ref else "비교불가",
             "percentile_unavailable_reason": pct_reason,
+            "percentile_cohort_level": pct_level,
+            # 이 단계가 support_type 을 비교 키로 썼는가. False 면 지원성격을
+            # 반영하지 않은 백분위다 — 문구로 옮길 때 "같은 성격 사업 중에서"
+            # 라고 말하면 안 된다.
+            "percentile_uses_support_type": pct_uses_st,
+            "percentile_caveat": pct_cause,
             "cohort_source": cohort,
+            # 예측은 그대로 낸다(나머지 210열로 계산된다). 다만 이 값이 학습
+            # 범위 밖이라는 사실을 결과에 남겨 둔다 — 조용히 넘어가면 안 된다.
+            "support_type_compatibility": compat,
+            "unseen_support_type": unseen_st,
+            "prediction_scope_warning": (UNSEEN_WARNING
+                                         if compat == "unseen_by_model2"
+                                         else None),
             # level 문턱은 모델이 학습에서 정한 bucket 경계다 — 여기서 새로
             # 고르지 않는다.
             "level_source": "model2 bucket_edges_won",

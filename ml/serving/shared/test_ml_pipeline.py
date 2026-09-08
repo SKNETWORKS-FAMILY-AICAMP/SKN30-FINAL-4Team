@@ -147,6 +147,7 @@ def main():
           and env3["result"] is None,
           env3["error"]["message"])
 
+    import predict as M2
     print("== 4 Model 2 / Model 3 정상 경로")
     rec = dict(record); rec["support_type"] = "연구개발"
     env2 = ORCH.run_model_2("AN-TEST-0001", rec, text=text, cohort=BASE["cohort"])
@@ -176,6 +177,53 @@ def main():
           bad_cohort["result"]["cohort_percentile"] is None
           and bad_cohort["metadata"]["percentile_unavailable_reason"],
           bad_cohort["metadata"]["percentile_unavailable_reason"])
+    # Model 1 은 19종, Model 2 는 23종으로 학습했고 포함관계가 아니다.
+    # `상담` 이 Model 1 에만 있어 Model 2 에서 미학습 범주가 된다.
+    levels = ORCH.model2_support_type_levels()
+    check("4c1 학습 레벨을 artifact 에서 읽는다 (하드코딩 아님)",
+          len(levels) == 23 and "연구개발" in levels and "상담" not in levels,
+          "%d개" % len(levels))
+    check("4c2 known label 은 known 으로 표시",
+          env2["metadata"]["support_type_compatibility"] == "known"
+          and env2["metadata"]["unseen_support_type"] is None
+          and env2["metadata"]["prediction_scope_warning"] is None)
+
+    unseen_rec = dict(rec); unseen_rec["support_type"] = "상담"
+    env2u = ORCH.run_model_2("AN-TEST-0001", unseen_rec, text=text,
+                             cohort=BASE["cohort"])
+    check("4c3 미학습 label 이어도 예측은 그대로 낸다 (status=success)",
+          RE.is_ok(env2u)
+          and env2u["result"]["predicted_per_recipient"]["amount"] > 0,
+          "%s원" % (env2u["result"]["predicted_per_recipient"]["amount"]
+                   if RE.is_ok(env2u) else "-"))
+    check("4c4 미학습 사실을 metadata 에 드러낸다",
+          env2u["metadata"]["support_type_compatibility"] == "unseen_by_model2"
+          and env2u["metadata"]["unseen_support_type"] == "상담"
+          and env2u["metadata"]["prediction_scope_warning"],
+          env2u["metadata"]["prediction_scope_warning"])
+    # 미학습이어도 percentile 은 null 이 되지 않는다 — 사다리 마지막 단계
+    # (단위x출처)가 support_type 을 키에 안 써서 거기 걸린다. 숫자가 정상으로
+    # 보이는데 지원성격을 반영하지 않은 비교라, 그 사실을 남겨야 한다.
+    check("4c5 미학습이면 성격 없는 단계로 폴백되고 그 사실을 남긴다",
+          env2u["result"]["cohort_percentile"] is not None
+          and env2u["metadata"]["percentile_uses_support_type"] is False
+          and env2u["metadata"]["percentile_caveat"]
+          == "fell_back_to_cohort_without_support_type",
+          "%s백분위 · %s" % (env2u["result"]["cohort_percentile"],
+                           env2u["metadata"]["percentile_cohort_level"]))
+    # caveat 은 unseen 전용이 아니다. 비교군이 얇으면 known label 도 같은 단계로
+    # 물러난다 — 이 fixture 의 연구개발|grant|project|taxonomy 가 15건뿐이라
+    # 실제로 그렇게 된다. 플래그는 label 이 아니라 **나온 단계**를 따른다.
+    check("4c6 얇은 비교군이면 known label 도 같은 caveat 을 받는다",
+          env2["metadata"]["percentile_uses_support_type"]
+          == str(env2["metadata"]["percentile_cohort_level"]).startswith("성격")
+          and (env2["metadata"]["percentile_caveat"] is None)
+          == bool(env2["metadata"]["percentile_uses_support_type"]),
+          "%s · uses_support_type=%s · caveat=%s"
+          % (env2["metadata"]["percentile_cohort_level"],
+             env2["metadata"]["percentile_uses_support_type"],
+             env2["metadata"]["percentile_caveat"]))
+
     env3b = ORCH.run_model_3("AN-TEST-0001", rec, adapter_meta=meta)
     check("4c Model 3 success + 비교군 반환",
           RE.is_ok(env3b) and env3b["result"]["reference"]["sample_count"] > 0
@@ -236,6 +284,93 @@ def main():
               str(full["summary"]["counts"]))
     else:
         skip("6 Model 1 실제 추론", "--with-model1 로 함께 돌린다 (가중치 442MB)")
+
+    print("== 7 비교군 사다리 확장 (percentile 전용)")
+    import pandas as pd
+    import cohort as CH
+    import preprocessing as PP
+    import m45_m2_amount as M45
+
+    key = ["level", "support_type", "support_method", "support_unit", "cohort"]
+
+    def _same(a, b):
+        try:
+            pd.testing.assert_frame_equal(
+                a.sort_values(key).reset_index(drop=True),
+                b.sort_values(key).reset_index(drop=True), check_dtype=False)
+            return True
+        except AssertionError:
+            return False
+
+    frame, _src = PP.training_frame()
+    ship = CH.load_reference()          # 배포 artifact (내용을 unit_safe 로 교체함)
+    legacy = CH.build_reference(frame, "legacy")
+
+    # 배포본을 학습 데이터에서 그대로 다시 구울 수 있어야 한다. 못 구우면
+    # 그 표가 어디서 왔는지 아무도 모르게 된다.
+    check("7a 배포 참조표를 학습 데이터에서 재현할 수 있다",
+          _same(CH.build_reference(frame, CH.DEFAULT_LADDER), ship),
+          "%d행 · 사다리 %s" % (len(ship), CH.DEFAULT_LADDER))
+
+    # 파일을 덮어썼으므로 **기존 값이 바뀌지 않았는지**가 핵심이다.
+    # 공통 3단계는 legacy 와 한 행도 달라지면 안 된다 — 추가만 있어야 한다.
+    shared = ship[ship["level"].isin(legacy["level"].unique())]
+    check("7b 교체가 기존 3단계 값을 바꾸지 않았다 (추가만)",
+          _same(shared, legacy) and len(ship) > len(legacy),
+          "기존 %d행 유지 + 신규 %d행" % (len(legacy), len(ship) - len(legacy)))
+
+    combos = legacy[legacy["level"] == "성격x방식x단위x출처"][
+        ["support_type", "support_method", "support_unit", "cohort"]].drop_duplicates()
+
+    def resolve(ref, ladder):
+        out = []
+        for _i, c in combos.iterrows():
+            row, lvl, _w = CH.lookup(ref, c.support_type, c.support_method,
+                                     c.support_unit, c.cohort, ladder=ladder)
+            out.append((lvl, int(row["n"]) if row is not None else None))
+        return out
+
+    old = resolve(legacy, "legacy")
+    new = resolve(ship, CH.DEFAULT_LADDER)
+    old_rate = sum(CH.uses_support_type(l) for l, _n in old) / len(old)
+    new_rate = sum(CH.uses_support_type(l) for l, _n in new) / len(new)
+    check("7c support_type 유지율이 오른다",
+          new_rate > old_rate, "%.0f%% → %.0f%% (%d개 조합)"
+          % (old_rate * 100, new_rate * 100, len(new)))
+    # 단위를 섞으면 기업당 금액을 과제당 분포와 견주게 된다. 유지율만 올리고
+    # 단위를 버리면 이름만 정확해진다 — 그래서 0 이어야 한다.
+    check("7d 단위가 섞인 비교군은 없다",
+          all(CH.uses_support_unit(l) for l, _n in new),
+          "unit_safe 사다리")
+    thin = [n for _l, n in new if n is not None and n < M45.MIN_COHORT]
+    check("7e 표본이 더 얇아지지 않는다",
+          len(thin) == len([n for _l, n in old
+                            if n is not None and n < M45.MIN_COHORT]),
+          "MIN_COHORT 미달 %d건 (기존과 동일)" % len(thin))
+
+    # 연구개발 사례 — 기존에는 성격을 버리고 단위x출처로 갔다.
+    r_old = M45.compare(legacy, 526390144, "연구개발", "grant", "project", "taxonomy")
+    r_new = M2.percentile(526390144, "연구개발", "grant", "project", "taxonomy")
+    check("7f 연구개발이 성격을 유지한 단계로 매칭된다",
+          r_new["uses_support_type"] and not r_old["level"].startswith("성격"),
+          "%s n=%s %.1f → %s n=%s %.1f"
+          % (r_old["level"], r_old["n"], r_old["percentile_rank"],
+             r_new["level"], r_new["n"], r_new["percentile_rank"]))
+    check("7g uses_support_type 이 실제 cohort key 와 일치",
+          r_new["uses_support_type"] == r_new["level"].startswith("성격"))
+
+    # unseen 은 참조표에 아예 없으므로 여전히 성격 단계에 못 간다.
+    r_unseen = M2.percentile(526390144, "상담", "grant", "project", "taxonomy")
+    check("7h unseen 상담 은 여전히 성격 없는 단계",
+          not r_unseen["uses_support_type"],
+          "%s n=%s" % (r_unseen["level"], r_unseen["n"]))
+
+    # 사다리는 percentile 전용이다. 회귀 예측은 손대지 않았다.
+    check("7i 예측 금액과 level 은 변하지 않는다",
+          env2["result"]["predicted_per_recipient"]["amount"] == 526390144
+          and env2["result"]["level"] == "high",
+          "%s원 · %s" % (env2["result"]["predicted_per_recipient"]["amount"],
+                        env2["result"]["level"]))
 
     print()
     if _fail:
