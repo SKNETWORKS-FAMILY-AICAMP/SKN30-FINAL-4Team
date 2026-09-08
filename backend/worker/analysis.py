@@ -11,12 +11,15 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 import tempfile
+from datetime import datetime, timezone
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, text
+
+from worker.execution_log import record_profile_run
 
 from app.ports.embedding_client import (
     EmbeddingClient,
@@ -567,6 +570,13 @@ def _active_embedding_profile_id(engine: Engine) -> int | None:
     return int(rows[0]) if len(rows) == 1 else None
 
 
+_CASE_ANALYSIS_RUN = text(
+    """
+    SELECT analysis_run_id FROM sims.inspection_case WHERE id = :case_id
+    """
+)
+
+
 def analyse_case(
     engine: Engine,
     storage: ObjectStorage,
@@ -640,6 +650,7 @@ def analyse_case(
             run_dir=Path(work_dir) / "run",
         )
         pack = build_pack(artifact.document)
+        started_at = datetime.now(timezone.utc)
         snapshot = structure_request_profile(
             document=artifact.document,
             pack=pack,
@@ -654,6 +665,21 @@ def analyse_case(
             model_id=cpl_model_profile,
             max_repairs=max_repairs,
             common_ir=artifact,
+        )
+        finished_at = datetime.now(timezone.utc)
+
+    # 성공하든 실패하든 남긴다. 성공 경로에서 진단을 버리면 "보완이 몇 번
+    # 돌았고 무엇이 걸렸나" 가 사라지고, 재료화 실패를 묶음 단위로 격리할 때
+    # "무엇을 덜어냈는지" 를 적을 자리도 없어진다 (초안 §9.5).
+    with engine.begin() as connection:
+        record_profile_run(
+            connection,
+            snapshot,
+            source_analysis_run_id=connection.scalar(
+                _CASE_ANALYSIS_RUN, {"case_id": case_id}
+            ),
+            started_at=started_at,
+            finished_at=finished_at,
         )
 
     if snapshot.status != "OK" or snapshot.profile is None:
