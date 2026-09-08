@@ -28,6 +28,7 @@ from worker.contracts.sim_result import (
     LLM_UNAVAILABLE,
     PURPOSE_KEYS,
     REQUEST_EVIDENCE_MISSING,
+    SIM_DISPLAY_STATUSES,
     CLASSIFICATION_PARTIAL,
     STRUCTURING_COMPLETED,
     STRUCTURING_FAILED,
@@ -36,6 +37,7 @@ from worker.contracts.sim_result import (
     SimAxisResult,
     SimReviewGrade,
     SimStatus,
+    sim_display_status,
 )
 from worker.sim import (
     SIM_SCORING_VERSION,
@@ -965,3 +967,27 @@ def test_partial_axis_is_gated_not_compared():
     purpose = result.axis(SimAxis.PURPOSE)
     assert purpose.status is SimStatus.INSUFFICIENT
     assert purpose.reason_code == STRUCTURING_INCOMPLETE
+
+
+# ------------------------------------------------------------- 출력 어휘
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        (SimStatus.SIMILAR, "similar"),
+        (SimStatus.PARTIAL, "partial"),
+        (SimStatus.DIFFERENT, "different"),
+        (SimStatus.INSUFFICIENT, "insufficient"),
+    ],
+)
+def test_axis_status_goes_out_lowercase(status, expected):
+    """프론트 계약의 축 상태는 소문자 넷이다. 내부 어휘는 대문자 그대로다."""
+
+    assert sim_display_status(status) == expected
+    assert expected in SIM_DISPLAY_STATUSES
+    assert status.value.isupper()
+
+
+def test_every_axis_status_is_renderable():
+    assert {sim_display_status(status) for status in SimStatus} == SIM_DISPLAY_STATUSES

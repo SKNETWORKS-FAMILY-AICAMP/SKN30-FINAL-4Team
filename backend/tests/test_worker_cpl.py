@@ -17,12 +17,18 @@ import pytest
 from app.schemas.cpl import CplFieldCode
 from worker.analysis_inputs import CPL_FIELD_SOURCES, facts_at
 from worker.contracts.cpl_result import (
-    DISPLAY_AGGREGATION_UNDEFINED,
+    cpl_axis_code,
+    CONFIRMED,
+    CPL_DISPLAY_STATUSES,
+    NEEDS_CONFIRMATION,
+    NO_CONTENT,
     NO_PROFILE_FIELD,
+    NOT_APPLICABLE,
     PROFILE_FIELD_STATE_MISSING,
     SERVER_RESOLVED_CHECKBOX,
-    UNDETERMINED,
     UNMAPPED_PROFILE_FIELD,
+    aggregate_display,
+    display_status,
 )
 from worker.cpl import build_cpl_result
 
@@ -130,10 +136,18 @@ def test_absent_conditions_stay_absent(result):
 
 
 def test_new_or_changed_content_has_no_profile_field(result):
+    """대응 필드가 없는 항목은 `확인 필요` 다. `내용 없음` 이 아니다.
+
+    `내용 없음` 은 "적용 대상인데 문서에서 내용을 찾지 못했다" 는 문서에 대한
+    판정이다 (프론트 계약의 뜻풀이). 이 항목은 프로파일에 대응 필드가 아예
+    없어서 문서를 그 항목으로 읽어본 적이 없다. 확인할 근거를 확보하지 못한
+    것을 문서가 비었다는 판정으로 바꾸면 사용자가 문서를 고치러 간다.
+    """
+
     item = _item(result, CplFieldCode.NEW_OR_CHANGED_CONTENT)
     assert item.subfields == []
-    assert item.representative_status == UNDETERMINED
-    assert item.undetermined_reason == NO_PROFILE_FIELD
+    assert item.representative_status == NEEDS_CONFIRMATION
+    assert item.status_reason == NO_PROFILE_FIELD
     assert any(
         diagnostic.reason_code == NO_PROFILE_FIELD
         and diagnostic.unit == CplFieldCode.NEW_OR_CHANGED_CONTENT.value
@@ -141,29 +155,53 @@ def test_new_or_changed_content_has_no_profile_field(result):
     )
 
 
-def test_multi_subfield_items_are_undetermined(result):
+def test_every_item_carries_a_display_status(result):
+    """프론트가 그릴 수 있는 값은 넷뿐이다. 제5의 값을 내보내지 않는다."""
+
     for item in result.items:
-        if len(item.subfields) > 1:
-            assert item.representative_status == UNDETERMINED
-            assert item.undetermined_reason == DISPLAY_AGGREGATION_UNDEFINED
+        assert item.representative_status in CPL_DISPLAY_STATUSES, item.field_code
 
 
 @pytest.mark.parametrize(
     "code,expected",
     [
-        (CplFieldCode.PURPOSE_GOAL, "identified"),
-        (CplFieldCode.BUSINESS_NEED, "not_found"),
-        (CplFieldCode.BUSINESS_PERIOD, "identified"),
-        (CplFieldCode.BUDGET, "identified"),
-        (CplFieldCode.LEGAL_BASIS, "identified"),
-        (CplFieldCode.LINKED_POLICY, "identified"),
+        # implementation_plan(not_found) + nodes(상태 없음) + support_components
+        (CplFieldCode.IMPLEMENTATION_PLAN, NO_CONTENT),
+        # 여섯 중 eligibility_conditions·exclusions 가 not_found 다.
+        (CplFieldCode.TARGET_AND_CONDITIONS, NO_CONTENT),
+        # 여섯 하위 필드가 모두 identified 다.
+        (CplFieldCode.SUPPORT_CONTENT_AND_SCALE, CONFIRMED),
+        # delivery_relations 는 확인, delivery_methods 는 not_found 다.
+        (CplFieldCode.DELIVERY_SYSTEM, NO_CONTENT),
+        (CplFieldCode.EXPECTED_EFFECTS_AND_PERFORMANCE, CONFIRMED),
     ],
 )
-def test_single_source_items_carry_profile_status_verbatim(result, code, expected):
+def test_multi_subfield_items_are_aggregated(result, code, expected):
     item = _item(result, code)
-    assert len(item.subfields) == 1
+    assert len(item.subfields) > 1
     assert item.representative_status == expected
-    assert item.undetermined_reason is None
+    assert item.status_reason is None
+
+
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        (CplFieldCode.PURPOSE_GOAL, CONFIRMED),
+        (CplFieldCode.BUSINESS_NEED, NO_CONTENT),
+        (CplFieldCode.BUSINESS_PERIOD, CONFIRMED),
+        (CplFieldCode.BUDGET, CONFIRMED),
+        (CplFieldCode.LEGAL_BASIS, CONFIRMED),
+        (CplFieldCode.LINKED_POLICY, CONFIRMED),
+    ],
+)
+def test_single_source_items_map_profile_status_to_display(result, code, expected):
+    """대표값만 표시 어휘다. 하위 필드에는 프로파일 문자열이 그대로 남는다."""
+
+    item = _item(result, code)
+    (subfield,) = item.subfields
+    assert subfield.status in {"identified", "not_found"}
+    assert item.representative_status == expected
+    assert item.status_reason is None
 
 
 def test_business_period_maps_program_period_only(result):
@@ -276,8 +314,9 @@ def test_missing_field_state_yields_none_status(profile):
     assert sub.status is None
     assert sub.reason_codes == [PROFILE_FIELD_STATE_MISSING]
     assert sub.facts == []
-    assert item.representative_status is None
-    assert item.undetermined_reason is None
+    # 상태를 모르는 것은 확인됨이 아니다.
+    assert item.representative_status == NEEDS_CONFIRMATION
+    assert item.status_reason is None
 
 
 def _fresh_profile() -> dict:
@@ -304,8 +343,8 @@ def test_request_type_status_comes_from_the_checkbox_not_field_states():
     assert subfield.status == "identified"
     assert subfield.reason_codes == [SERVER_RESOLVED_CHECKBOX]
     assert PROFILE_FIELD_STATE_MISSING not in subfield.reason_codes
-    assert item.representative_status == "identified"
-    assert item.undetermined_reason is None
+    assert item.representative_status == CONFIRMED
+    assert item.status_reason is None
 
 
 def test_unresolved_checkbox_is_not_reported_as_absent():
@@ -314,11 +353,13 @@ def test_unresolved_checkbox_is_not_reported_as_absent():
     profile = _fresh_profile()
     profile["request_type"] = dict(profile["request_type"], selected_code=None)
     unresolved = _item(build_cpl_result(profile), CplFieldCode.REQUEST_TYPE)
-    assert unresolved.representative_status == "mentioned_unresolved"
+    assert unresolved.subfields[0].status == "mentioned_unresolved"
+    assert unresolved.representative_status == NEEDS_CONFIRMATION
 
     profile.pop("request_type")
     absent = _item(build_cpl_result(profile), CplFieldCode.REQUEST_TYPE)
-    assert absent.representative_status == "not_found"
+    assert absent.subfields[0].status == "not_found"
+    assert absent.representative_status == NO_CONTENT
 
 
 # ------------------------------------------------------- 전달체계 관계 멤버
@@ -394,12 +435,82 @@ def test_every_action_becomes_its_own_member_entry():
 
 
 def test_delivery_system_still_has_two_subfields(result):
-    """Slice 2 계약은 그대로다. 하위 필드가 둘이면 대표 신호등은 미확정이다."""
+    """하위 필드 둘은 그대로 남고, 대표값만 집계된다."""
 
     item = _item(result, CplFieldCode.DELIVERY_SYSTEM)
     assert [sub.profile_field_name for sub in item.subfields] == [
         "delivery_relations",
         "delivery_methods",
     ]
-    assert item.representative_status == UNDETERMINED
-    assert item.undetermined_reason == DISPLAY_AGGREGATION_UNDEFINED
+    assert [sub.status for sub in item.subfields] == ["identified", "not_found"]
+    assert item.representative_status == NO_CONTENT
+
+
+# ------------------------------------------------------- 표시 어휘 매핑
+
+
+@pytest.mark.parametrize(
+    "profile_status,expected",
+    [
+        ("identified", CONFIRMED),
+        ("not_found", NO_CONTENT),
+        ("not_applicable", NOT_APPLICABLE),
+        ("partial", NEEDS_CONFIRMATION),
+        ("mentioned_unresolved", NEEDS_CONFIRMATION),
+        # 구조화 실패를 단순 `내용 없음` 으로 바꾸지 않는다 (초안 §6.1).
+        ("extraction_failed", NEEDS_CONFIRMATION),
+        # 어휘가 늘거나 field_states 에 항목이 없는 경우. 확인됨으로 올리지 않는다.
+        ("어휘에_없는_상태", NEEDS_CONFIRMATION),
+        (None, NEEDS_CONFIRMATION),
+    ],
+)
+def test_profile_status_maps_to_display_value(profile_status, expected):
+    assert display_status(profile_status) == expected
+
+
+@pytest.mark.parametrize(
+    "statuses,expected",
+    [
+        ([NO_CONTENT, CONFIRMED], NO_CONTENT),
+        ([NEEDS_CONFIRMATION, CONFIRMED], NEEDS_CONFIRMATION),
+        # 해당 없음은 집계에서 부재로 다룬다: 확인 + 해당 없음이면 확인됨이다.
+        ([NOT_APPLICABLE, CONFIRMED], CONFIRMED),
+        ([NOT_APPLICABLE, NOT_APPLICABLE], NOT_APPLICABLE),
+        ([CONFIRMED, CONFIRMED], CONFIRMED),
+        # 내용 없음이 확인 필요보다 앞선다 (AGENTS.md 집계 순서).
+        ([NO_CONTENT, NEEDS_CONFIRMATION, NOT_APPLICABLE], NO_CONTENT),
+    ],
+)
+def test_aggregate_display_follows_the_agents_order(statuses, expected):
+    assert aggregate_display(statuses) == expected
+
+
+def test_aggregate_display_refuses_an_empty_list():
+    """빈 목록이 조용히 확인됨으로 떨어지면 근거 없는 항목이 초록으로 보인다."""
+
+    with pytest.raises(ValueError):
+        aggregate_display([])
+
+
+def test_no_undetermined_vocabulary_survives(result):
+    """옛 미확정 어휘가 결과 어디에도 남아 있지 않은지 직렬화 전체를 훑는다."""
+
+    dumped = json.dumps(_to_plain(result), ensure_ascii=False, default=str)
+    assert "UNDETERMINED" not in dumped
+    assert "DISPLAY_AGGREGATION_UNDEFINED" not in dumped
+
+
+def test_cpl_axis_code_is_the_declaration_ordinal():
+    """프론트 표시 코드는 CplFieldCode 선언 순번이다.
+
+    프론트 명세 예시 두 개가 이 순서와 맞는다 — CPL-01 이 요청유형,
+    CPL-11 이 지원내용·지원규모다. 17 항목짜리 POC 표는 분해가 달라
+    기준으로 쓰지 않는다.
+    """
+
+    assert cpl_axis_code(CplFieldCode.REQUEST_TYPE) == "CPL-01"
+    assert cpl_axis_code(CplFieldCode.SUPPORT_CONTENT_AND_SCALE) == "CPL-11"
+    assert cpl_axis_code(CplFieldCode.EXPECTED_EFFECTS_AND_PERFORMANCE) == "CPL-13"
+    codes = [cpl_axis_code(code) for code in CplFieldCode]
+    assert codes == [f"CPL-{n:02d}" for n in range(1, 14)]
+    assert len(set(codes)) == 13

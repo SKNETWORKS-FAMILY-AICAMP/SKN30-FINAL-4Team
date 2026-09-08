@@ -38,6 +38,8 @@ __all__ = [
     "CplEvidence",
     "StageDiagnostic",
     "SIM_AXIS_IDS",
+    "SIM_DISPLAY_STATUSES",
+    "sim_display_status",
     "COMMON_KEYS",
     "PURPOSE_KEYS",
     "TARGET_KEYS",
@@ -69,6 +71,25 @@ __all__ = [
     "SimCandidateResult",
     "SimComparisonResult",
 ]
+
+
+# ------------------------------------------------------------- 표시 어휘
+
+# 프론트 계약(`3.FRONTEND_SUPABASE_HANDOFF.md` "SIM 및 보고서")은 축 상태를
+# 소문자 넷으로 받는다. 내부 ``SimStatus`` 는 대문자 그대로 두고 출력 경계에서만
+# 낮춘다 — 옛 API 표면(app.schemas.sim)이 같은 enum 을 쓰기 때문이다.
+SIM_DISPLAY_STATUSES = frozenset({"similar", "partial", "different", "insufficient"})
+
+# 내부 어휘가 늘면 화면이 못 그리는 값이 조용히 나간다. import 시점에 터뜨린다.
+assert SIM_DISPLAY_STATUSES == {status.value.lower() for status in SimStatus}, (
+    "SimStatus 가 프론트 계약의 축 상태 네 개와 어긋났다"
+)
+
+
+def sim_display_status(status: SimStatus) -> str:
+    """``SimStatus.SIMILAR`` → ``"similar"``. 값 자체를 바꾸지 않는다."""
+
+    return status.value.lower()
 
 
 # 축 id 는 app.schemas.sim 의 선언 순서 그대로다. 여기서 다시 정하지 않는다.

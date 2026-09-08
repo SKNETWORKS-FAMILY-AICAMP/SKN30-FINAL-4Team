@@ -40,8 +40,11 @@ from worker.contracts.fit_result import (
     FitSide,
     PurposeAxisClassification,
 )
+from worker.contracts.cpl_result import CPL_DISPLAY_STATUSES
+from worker.contracts.fit_result import FIT_DISPLAY_STATUSES
 from worker.contracts.sim_result import (
     SIM_AXIS_IDS,
+    SIM_DISPLAY_STATUSES,
     InternalRanking,
     SimAxisResult,
     SimCandidateResult,
@@ -451,11 +454,22 @@ def test_CPL_13항목이_선언_순서로_axis_result_에_남는다(
     _persist(engine, analysis_case_pk, results)
 
     rows = _axes(engine, analysis_case_pk, "CPL")
-    assert [row["axis_code"] for row in rows] == [code.value for code in CplFieldCode]
+    # 프론트 표시 코드는 선언 순번이다. 내부 어휘 이름은 result_data 에 남는다.
+    assert [row["axis_code"] for row in rows] == [
+        f"CPL-{n:02d}" for n in range(1, len(list(CplFieldCode)) + 1)
+    ]
     assert [row["ordinal"] for row in rows] == list(range(len(CplFieldCode)))
-    # 상태는 결과 계약의 문자열 그대로다. 여기서 다른 어휘로 번역하지 않는다.
-    assert all(row["status"] for row in rows)
-    assert any(row["status"] == "UNDETERMINED" for row in rows)
+    # 이 컬럼은 프론트 RPC 가 읽는 자리다. 표시 어휘 넷 밖의 값은 나가지 않는다.
+    assert {row["status"] for row in rows} <= CPL_DISPLAY_STATUSES
+    assert "UNDETERMINED" not in {row["status"] for row in rows}
+    # 하위 필드의 프로파일 상태 원본은 result_data 안에 그대로 남는다.
+    subfield_statuses = {
+        sub["status"]
+        for row in rows
+        for sub in row["result_data"]["subfields"]
+        if sub["status"]
+    }
+    assert "identified" in subfield_statuses
 
 
 def test_FIT_7관계가_FIT_코드로_남는다(
@@ -464,11 +478,13 @@ def test_FIT_7관계가_FIT_코드로_남는다(
     _persist(engine, analysis_case_pk, results)
 
     rows = _axes(engine, analysis_case_pk, "FIT")
-    assert [row["axis_code"] for row in rows] == [
-        relation.value for relation in FitRelationId
+    # 프론트 계약은 ``FIT-07`` 로 받는다. 내부 id 는 ``FIT-7`` 그대로다.
+    assert [row["axis_code"] for row in rows] == [f"FIT-{n:02d}" for n in range(1, 8)]
+    assert [relation.value for relation in FitRelationId] == [
+        f"FIT-{n}" for n in range(1, 8)
     ]
-    assert [row["axis_code"] for row in rows] == [f"FIT-{n}" for n in range(1, 8)]
     assert rows[0]["status"] == FitStatus.INSUFFICIENT.value
+    assert {row["status"] for row in rows} <= FIT_DISPLAY_STATUSES
 
 
 # ------------------------------------------------------------------------ SIM
@@ -492,7 +508,20 @@ def test_SIM_은_후보_행에만_남고_axis_result_에는_들어가지_않는�
     assert row["target_result"]["axis_id"] == "SIM-2"
     assert row["support_result"]["axis_id"] == "SIM-3"
     assert row["delivery_result"]["axis_id"] == "SIM-4"
-    assert row["delivery_result"]["status"] == SimStatus.INSUFFICIENT.value
+    # 축 상태는 소문자로 나간다. 내부 SimStatus 는 대문자 그대로다.
+    assert row["delivery_result"]["status"] == "insufficient"
+    assert SimStatus.INSUFFICIENT.value == "INSUFFICIENT"
+    assert {
+        row[column]["status"]
+        for column in (
+            "purpose_result",
+            "target_result",
+            "support_result",
+            "delivery_result",
+        )
+    } <= SIM_DISPLAY_STATUSES
+    # 축 jsonb 안의 내부 상세는 그대로 남는다.
+    assert "reason_code" in row["delivery_result"]
 
 
 def test_핵심축이_불충분한_후보는_점수가_없고_등급은_보류다(

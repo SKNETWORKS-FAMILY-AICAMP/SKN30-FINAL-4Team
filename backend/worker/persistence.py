@@ -15,12 +15,17 @@
 - 근거 → ``evidence_snapshot``. 요청서는 ``side='REQUEST'``, 공고는
   ``'EXISTING'``. 결과 스냅샷이므로 ``usage_scope='RESULT'`` 다.
 
-두 가지를 지킨다.
+아래를 지킨다.
 
 1. **점수는 사용자 문구로 새지 않는다** (초안 §6.1, §7.2). ``summary_text``
    에는 아무 숫자도 넣지 않는다. 내부 점수는 ``result_data`` jsonb 와
    ``sim_candidate`` 의 순위 컬럼 안에만 산다.
-2. **좌표를 지어내지 않는다** (초안 §10). ``common_ir_block_id`` ·
+2. **표시 어휘로 나간다.** ``axis_result.status`` 와 ``sim_candidate`` 의 네
+   ``*_result`` 컬럼은 프론트 RPC 가 그대로 읽는 자리다 (프론트 계약
+   "상태 → 화면 표시 매핑"). 내부 상세 — 하위 필드의 프로파일 상태 원본,
+   reason code, 인용한 fact id — 는 같은 행의 ``result_data`` 와 축 jsonb 안에
+   그대로 남는다. 화면 어휘로 옮기는 일이 정보를 지우지는 않는다.
+3. **좌표를 지어내지 않는다** (초안 §10). ``common_ir_block_id`` ·
    ``start_char`` · ``end_char`` · ``source_sha256`` 는 결과 계약이 실제로
    들고 온 값이고, 없으면 NULL 이다. 형제 근거에서 빌려오지 않는다.
 
@@ -43,9 +48,14 @@ from app.schemas.cpl import CplFieldCode
 from app.schemas.fit import FitRelationId
 from app.schemas.sim import SimAxis
 
-from .contracts.cpl_result import UNDETERMINED, CplEvidence, CplResult
-from .contracts.fit_result import FitResult
-from .contracts.sim_result import SimCommonProfile, SimComparisonResult
+from .contracts.cpl_result import CplEvidence, CplResult, cpl_axis_code
+from .contracts.fit_result import FitResult, fit_axis_code
+from .contracts.sim_result import (
+    SimAxisResult,
+    SimCommonProfile,
+    SimComparisonResult,
+    sim_display_status,
+)
 
 __all__ = ["AnalysisResults", "persist_results"]
 
@@ -257,10 +267,11 @@ def _cpl_rows(
                 "axis_result_pk": axis_result_pk,
                 "analysis_case_pk": analysis_case_pk,
                 "axis_type": "CPL",
-                "axis_code": item.field_code.value,
-                # 대표 상태가 미확정이면 미확정 그대로 싣는다. 화면 집계 규칙이
-                # 아직 없으므로 여기서 대표값을 고르지 않는다 (초안 §6.1).
-                "status": item.representative_status or UNDETERMINED,
+                # 프론트 표시 코드다. 내부 어휘 이름은 result_data 에 남긴다.
+                "axis_code": cpl_axis_code(item.field_code),
+                # 표시 어휘 그대로다. 하위 필드의 프로파일 상태 원본은
+                # result_data 안 subfields[] 에 남는다.
+                "status": item.representative_status,
                 # ponytail: 표시 문구 계약이 아직 없다. 지어내는 대신 비워 둔다.
                 "summary_text": None,
                 "result_data": _json(item),
@@ -298,7 +309,8 @@ def _fit_rows(
                 "axis_result_pk": axis_result_pk,
                 "analysis_case_pk": analysis_case_pk,
                 "axis_type": "FIT",
-                "axis_code": relation.relation_id.value,
+                # 프론트 계약이 ``FIT-07`` 로 받는다. 내부 id 는 ``FIT-7`` 그대로다.
+                "axis_code": fit_axis_code(relation.relation_id),
                 "status": relation.status.value,
                 "summary_text": None,
                 "result_data": _json(relation),
@@ -321,6 +333,19 @@ def _fit_rows(
                     )
                 )
     return axes, evidence
+
+
+def _sim_axis_json(result: SimAxisResult) -> str:
+    """축 결과 한 칸. ``status`` 만 표시 어휘로 낮추고 나머지는 그대로다.
+
+    이 네 컬럼이 프론트가 읽는 자리라 대문자 ``SIMILAR`` 를 그대로 실으면
+    화면이 라벨·색을 찾지 못한다. reason code · fact id · 공통점 · 차이점 같은
+    내부 상세는 같은 jsonb 안에 남는다.
+    """
+
+    row = _plain(result)
+    row["status"] = sim_display_status(result.status)
+    return json.dumps(row, ensure_ascii=False)
 
 
 def _profile_versions(
@@ -400,7 +425,7 @@ def _sim_rows(
                 "priority_score": None,
                 "status": _plain(ranking.review_grade),
                 **{
-                    column: (_json(axes[axis]) if axis in axes else None)
+                    column: (_sim_axis_json(axes[axis]) if axis in axes else None)
                     for axis, column in _SIM_AXIS_COLUMNS.items()
                 },
             }

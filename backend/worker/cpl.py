@@ -22,17 +22,18 @@ from .analysis_inputs import (
     unmapped_profile_fields,
 )
 from .contracts.cpl_result import (
-    DISPLAY_AGGREGATION_UNDEFINED,
+    NEEDS_CONFIRMATION,
     NO_PROFILE_FIELD,
     PROFILE_FIELD_STATE_MISSING,
     SERVER_RESOLVED_CHECKBOX,
-    UNDETERMINED,
     UNMAPPED_PROFILE_FIELD,
     CplFieldCode,
     CplItem,
     CplResult,
     CplSubfield,
     StageDiagnostic,
+    aggregate_display,
+    display_status,
 )
 
 _STAGE = "build_cpl_result"
@@ -101,18 +102,23 @@ def _request_type_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
     )
 
 
-def _representative(subfields: list[CplSubfield]) -> tuple[str | None, str | None]:
-    """대표 신호등 상태와 그 사유 (초안 §6.1).
+def _representative(subfields: list[CplSubfield]) -> tuple[str, str | None]:
+    """대표 신호등 표시값과 그 사유.
 
-    하위 필드가 둘 이상이면 미확정이다. 최악값·최선값·우선순위 중 어느 것도
-    초안이 정하지 않았으므로 여기서 지어내지 않는다.
+    하위 필드가 여럿이면 AGENTS.md ``IMPLEMENTATION_PLAN`` 절의 집계 규칙을
+    일반화해 하나로 접는다. 그 항목에만 걸린 규칙(세부사업만 명시되면 내역사업
+    존재를 추론하지 않는다 등)은 그 항목의 것이므로 여기로 옮기지 않는다.
+
+    대응 필드가 아예 없는 항목(``NEW_OR_CHANGED_CONTENT``, 초안 §6)은
+    ``needs_confirmation`` 이다. ``no_content`` 는 "적용 대상인데 문서에서
+    내용을 찾지 못했다" 는 문서에 대한 판정인데, 여기서는 문서를 그 항목으로
+    읽어본 적이 없다. 확인할 근거를 확보하지 못했다는 사실을 문서가 비었다는
+    판정으로 바꾸지 않는다 (초안 §6.1 과 같은 이유).
     """
 
     if not subfields:
-        return UNDETERMINED, NO_PROFILE_FIELD
-    if len(subfields) > 1:
-        return UNDETERMINED, DISPLAY_AGGREGATION_UNDEFINED
-    return subfields[0].status, None
+        return NEEDS_CONFIRMATION, NO_PROFILE_FIELD
+    return aggregate_display(display_status(sub.status) for sub in subfields), None
 
 
 def build_cpl_result(profile: dict[str, Any]) -> CplResult:
@@ -132,7 +138,7 @@ def build_cpl_result(profile: dict[str, Any]) -> CplResult:
             CplItem(
                 field_code=code,
                 representative_status=status,
-                undetermined_reason=reason,
+                status_reason=reason,
                 subfields=subfields,
             )
         )

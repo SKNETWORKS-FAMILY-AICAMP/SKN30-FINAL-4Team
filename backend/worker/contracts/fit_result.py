@@ -35,6 +35,9 @@ __all__ = [
     "StageDiagnostic",
     "PurposeAxisCode",
     "PURPOSE_AXIS_CODES",
+    "FIT_NOT_APPLICABLE",
+    "FIT_DISPLAY_STATUSES",
+    "fit_axis_code",
     "COMPARISON_EVIDENCE_MISSING",
     "COMPARISON_VALUE_INVALID",
     "EVIDENCE_REF_UNRESOLVED",
@@ -73,6 +76,35 @@ class PurposeAxisCode(StrEnum):
 
 
 PURPOSE_AXIS_CODES = frozenset(code.value for code in PurposeAxisCode)
+
+
+# ------------------------------------------------------------- 표시 어휘
+
+# 프론트 계약은 FIT 상태를 다섯 개로 받는다. ``app.schemas.fit.FitStatus`` 에는
+# 넷뿐이고 그 enum 은 옛 FastAPI 표면이 함께 쓰고 있어 건드리지 않는다.
+# 다섯째 값은 출력 경계에서만 존재한다.
+#
+# 뜻은 "비교축 자체가 이 문서에 적용되지 않음" 이다. 근거를 못 구한
+# ``INSUFFICIENT`` 와 다르다. FIT-4 는 계층 비교 기준 표본을 확보하기 전까지
+# 항상 ``INSUFFICIENT / HIERARCHY_COMPARISON_NOT_AVAILABLE`` (AGENTS.md) 인데
+# 그것은 기준 미확보이지 미적용이 아니므로 여기로 옮기지 않는다. 그래서 지금
+# 이 값을 만들어내는 판정 경로는 없다 — 어휘만 열어 둔다.
+FIT_NOT_APPLICABLE = "NOT_APPLICABLE"
+
+FIT_DISPLAY_STATUSES = frozenset(
+    {status.value for status in FitStatus} | {FIT_NOT_APPLICABLE}
+)
+
+
+def fit_axis_code(relation_id: FitRelationId) -> str:
+    """``FIT-1`` → ``FIT-07``. 내부 id 는 한 자리 그대로 두고 출력만 채운다.
+
+    프론트 계약(`1.FRONTEND_SCREEN_API_SPEC.md` RESULT-01)이 ``FIT-07`` 로
+    받는다. 내부 id 까지 바꾸면 ``FitRelationId`` 를 참조하는 옛 API 계약과
+    프롬프트 응답 파서가 함께 움직여야 한다.
+    """
+
+    return f"FIT-{int(relation_id.value.removeprefix('FIT-')):02d}"
 
 
 # reason code. 값 자체가 API·로그에 그대로 실려 나가므로 StrEnum 대신

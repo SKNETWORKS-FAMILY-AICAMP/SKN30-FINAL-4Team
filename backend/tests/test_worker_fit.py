@@ -21,6 +21,8 @@ from app.ports.llm_client import (
 )
 from worker.contracts.fit_result import (
     COMPARISON_EVIDENCE_MISSING,
+    FIT_DISPLAY_STATUSES,
+    FIT_NOT_APPLICABLE,
     COMPARISON_VALUE_INVALID,
     HIERARCHY_COMPARISON_NOT_AVAILABLE,
     LLM_INVALID_RESPONSE,
@@ -33,6 +35,7 @@ from worker.contracts.fit_result import (
     FitRelationId,
     FitStatus,
     PurposeAxisCode,
+    fit_axis_code,
 )
 from worker.fit import _quantities, analyze_fit
 
@@ -868,3 +871,47 @@ def test_well_formed_comma_grouping_survives(value_raw, expected):
     """세 자리 묶음은 정상이므로 계속 비교 대상이다."""
 
     assert _quantities(value_raw) == {expected}
+
+
+# ------------------------------------------------------------- 출력 어휘
+
+
+def test_relation_ids_are_zero_padded_on_output():
+    """프론트 계약은 ``FIT-07`` 로 받는다. 내부 id 는 한 자리 그대로다."""
+
+    assert [fit_axis_code(relation) for relation in FitRelationId] == [
+        f"FIT-{n:02d}" for n in range(1, 8)
+    ]
+    assert fit_axis_code(FitRelationId.FIT_7) == "FIT-07"
+    assert FitRelationId.FIT_7.value == "FIT-7"
+
+
+def test_display_status_vocabulary_is_the_five_the_front_end_renders():
+    assert FIT_DISPLAY_STATUSES == {
+        "FIT",
+        "NEEDS_REVIEW",
+        "CONFLICT",
+        "INSUFFICIENT",
+        FIT_NOT_APPLICABLE,
+    }
+    # 다섯째 값은 출력 경계에만 있다. 옛 API 표면의 enum 은 그대로 넷이다.
+    assert FIT_NOT_APPLICABLE not in {status.value for status in FitStatus}
+
+
+def test_every_relation_status_is_renderable_and_none_is_not_applicable(profile):
+    """지금 ``NOT_APPLICABLE`` 을 만들어내는 판정 경로는 없다.
+
+    FIT-4 는 항상 ``INSUFFICIENT / HIERARCHY_COMPARISON_NOT_AVAILABLE`` 인데
+    그것은 기준 미확보이지 비교축 미적용이 아니다 (AGENTS.md). 조용히
+    ``해당 없음`` 으로 바꾸면 "표본을 아직 못 구했다" 가 "이 문서엔 이 축이
+    없다" 로 둔갑한다.
+    """
+
+    result = analyze_fit(
+        profile,
+        FakeLLM(purpose=_direction(), comparison=_agree),
+        model_profile=_MODEL_PROFILE,
+    )
+    statuses = {relation.status.value for relation in result.relations}
+    assert statuses <= FIT_DISPLAY_STATUSES
+    assert FIT_NOT_APPLICABLE not in statuses
