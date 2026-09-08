@@ -1,64 +1,44 @@
-import { apiClient } from './apiClient'
+import { supabase } from './supabase'
 
 export interface LoginRequest {
     email: string
     password: string
 }
 
-export interface PasswordResetRequestDto {
-    email: string
-}
-
-export interface PasswordResetConfirmDto {
-    token: string
-    new_password: string
-}
-
-export interface ChangePasswordDto {
-    current_password: string
-    new_password: string
-}
-
 export const authService = {
-    // 1. 로그인 (`POST /api/v1/auth/login`)
-    login: async (credentials: LoginRequest) => {
-        const response = await apiClient.post('/api/v1/auth/login', credentials)
-        return response.data
+    // AUTH-01 · 로그인
+    login: async ({ email, password }: LoginRequest) => {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) throw error
+        return data
     },
 
-    // 2. 내 정보 조회 (`GET /api/v1/auth/me`)
-    getMe: async () => {
-        const response = await apiClient.get('/api/v1/auth/me')
-        return response.data
+    // AUTH-02 · 비밀번호 재설정 요청
+    requestPasswordReset: async (email: string) => {
+        const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/auth/reset-password`,
+        })
+        if (error) throw error
+        return data
     },
 
-    // 3. 비밀번호 변경 (`POST /api/v1/auth/change-password`)
-    changePassword: async (data: ChangePasswordDto) => {
-        const response = await apiClient.post('/api/v1/auth/change-password', data)
-        return response.data
+    // AUTH-02 · 새 비밀번호 저장 (recovery session)
+    updatePassword: async (password: string) => {
+        const { data, error } = await supabase.auth.updateUser({ password })
+        if (error) throw error
+        return data
     },
 
-    // 4. 로그아웃 (`POST /api/v1/auth/logout`)
+    // AUTH-03 · 로그아웃
     logout: async () => {
-        const response = await apiClient.post('/api/v1/auth/logout')
-        return response.data
+        const { error } = await supabase.auth.signOut()
+        if (error) throw error
     },
 
-    // 5. 세션 연장 (`POST /api/v1/auth/refresh`)
-    refreshToken: async () => {
-        const response = await apiClient.post('/api/v1/auth/refresh')
-        return response.data
-    },
-
-    // 6. 비밀번호 재설정 요청 (`POST /api/v1/auth/password-reset/request`)
-    requestPasswordReset: async (data: PasswordResetRequestDto) => {
-        const response = await apiClient.post('/api/v1/auth/password-reset/request', data)
-        return response.data
-    },
-
-    // 7. 비밀번호 재설정 확인 (`POST /api/v1/auth/password-reset/confirm`)
-    confirmPasswordReset: async (data: PasswordResetConfirmDto) => {
-        const response = await apiClient.post('/api/v1/auth/password-reset/confirm', data)
-        return response.data
+    // AUTH-03 · 1시간 세션 연장
+    extendSession: async () => {
+        const { data, error } = await supabase.auth.refreshSession()
+        if (error) throw error
+        return data
     },
 }

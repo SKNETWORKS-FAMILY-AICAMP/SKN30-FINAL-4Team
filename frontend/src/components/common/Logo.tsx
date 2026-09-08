@@ -12,11 +12,11 @@ export default function Logo({ href = '/', size = 'md', className = '' }: LogoPr
     }
 
     return (
-        <a href={href} className={`flex items-center gap-xs text-title-sm font-title-sm font-bold text-primary dark:text-primary-fixed select-none no-underline ${className}`}
+        <a href={href} className={`no-underline ${className}`}
         >
             <img
                 src="/images/pre-review.png"
-                className={`${sizeClasses[size]} w-auto object-contain`}
+                className={`${sizeClasses[size]} w-auto m-auto`}
                 alt="Pre-review Logo"
             />
         </a>

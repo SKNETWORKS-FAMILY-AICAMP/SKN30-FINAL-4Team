@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
 import UploadView from './UploadView'
-import { caseService } from '../../services/caseService'
+import { analysisService } from '../../services/analysisService'
 
 interface UploadProps {
-    onAnalysisComplete: (caseId: string | number, reportData: any) => void
+    onAnalysisComplete: (caseId: string) => void
 }
 
 export default function Upload({ onAnalysisComplete }: UploadProps) {
@@ -15,64 +15,41 @@ export default function Upload({ onAnalysisComplete }: UploadProps) {
         setIsUploading(true)
 
         try {
-            const formData = new FormData()
-            formData.append('file', file)
+            // 1. 작업 생성, Storage 업로드, 큐 등록 통합 실행 (RUN-01 ~ 03)[cite: 18, 19]
+            const run = await analysisService.uploadAndAnalyze(file)
+            const runId = run?.analysis_run_pk || run?.analysis_run_id
 
-            // 1. 파일 업로드 API 호출 (/api/v1/cases)[cite: 3]
-            const uploadData = await caseService.uploadCase(formData)
-            const caseId = uploadData?.case_id || uploadData?.data?.case_id || uploadData?.id
+            // 2. Realtime을 통한 상태 수신 구독 (RUN-04)[cite: 18, 19]
+            await new Promise<any>((resolve, reject) => {
+                const channel = analysisService.subscribeRun(runId, (row) => {
+                    const currentStatus = String(row?.status || '').trim()
+                    console.log(`[Realtime 상태 수신]`, currentStatus)
 
+                    if (currentStatus === 'succeeded') {
+                        channel.unsubscribe()
+                        resolve(row)
+                    } else if (currentStatus === 'failed' || currentStatus === 'cancelled') {
+                        channel.unsubscribe()
+                        reject(new Error(row?.error_message || '서버에서 분석 작업이 실패했습니다.'))
+                    }
+                })
+            })
+
+            // 3. 분석 성공 시 caseId만 추출하여 상위 컴포넌트로 전달
+            const caseId = run?.analysis_case_pk || run?.analysis_case_id
             if (!caseId) {
-                throw new Error('케이스 ID를 받아오지 못했습니다.')
+                throw new Error('분석 케이스 ID를 찾을 수 없습니다.')
             }
 
-            // 2. 분석 시작 API 호출 (/api/v1/cases/{case_id}/analyze)[cite: 3]
-            await caseService.analyzeCase(caseId)
+            onAnalysisComplete(caseId)
 
-            // 3. 🔄 폴링 루프 (한글 상태값 대응 버전)
-            const maxAttempts = 30;    
-            const intervalTime = 3000; 
-            let attempts = 0;
-            let isCompleted = false;
-
-            while (attempts < maxAttempts) {
-                attempts++;
-
-                const statusData = await caseService.getStatus(caseId);
-
-                // data 객체 안의 status 추출 (한글이므로 toUpperCase는 빼고 공백만 trim 처리)
-                const rawStatus = statusData?.status || statusData?.data?.status || '';
-                const currentStatus = String(rawStatus).trim();
-
-                console.log(`[폴링 ${attempts}차] 서버 응답 원본:`, currentStatus);
-
-                // 백엔드가 내려주는 한글 상태값에 대응 ("분석 완료", "COMPLETED", "SUCCESS" 등 모두 방어)
-                if (currentStatus === '분석 완료' || currentStatus === 'COMPLETED' || currentStatus === 'SUCCESS' || currentStatus === 'DONE') {
-                    isCompleted = true;
-                    break;
-                } else if (currentStatus === '분석 실패' || currentStatus === 'FAILED' || currentStatus === 'ERROR') {
-                    throw new Error('서버에서 분석 작업이 실패했습니다.');
-                }
-
-                if (attempts < maxAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, intervalTime));
-                }
-            }
-
-            if (!isCompleted) {
-                throw new Error('분석 작업 시간이 초과되었습니다.');
-            }
-
-            // 4. 완료 떨어지면 리포트 조회 API 호출
-            // Upload.tsx 내부의 완료 지점
-            const reportData = await caseService.getReport(caseId)
-
-            // 부모의 handleAnalysisComplete 함수에 데이터를 실어 보냄
-            onAnalysisComplete(caseId, reportData)
         } catch (error: any) {
             console.error('파일 업로드 및 분석 프로세스 실패:', error)
-            const errorMsg = error.response?.data?.message || error.message || '처리 중 오류가 발생했습니다.'
+            const errorMsg = error.message || '처리 중 오류가 발생했습니다'
             alert(errorMsg)
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ''
+            }
         } finally {
             setIsUploading(false)
         }

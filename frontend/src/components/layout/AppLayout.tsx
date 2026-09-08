@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
-import Sidebar from './shared/Sidebar'
-import HistoryDetailLayer from '../../features/history/HistoryDetailLayer'
-import AlertModal from '../../components/common/AlertModal'
+import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/authService'
+import AppLayoutView from './AppLayoutView'
 
 export default function AppLayout() {
     const navigate = useNavigate()
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
+    // 세션 만료 시간 관리 (기본 1시간)
     const [expireTime, setExpireTime] = useState<number>(() => {
         const saved = sessionStorage.getItem('expire_time')
         if (saved) return Number(saved)
@@ -20,12 +19,10 @@ export default function AppLayout() {
     const [remainingMinutes, setRemainingMinutes] = useState<number>(5)
     const [showImminentAlert, setShowImminentAlert] = useState(false)
 
+    // 세션 연장 함수 (이미 구현된 authService 활용)
     const handleRefreshSession = async () => {
         try {
-            const response = await authService.refreshToken()
-            if (response && response.access_token) {
-                sessionStorage.setItem('access_token', response.access_token)
-            }
+            await authService.extendSession()
             
             const newExpire = Date.now() + 60 * 60 * 1000
             sessionStorage.setItem('expire_time', String(newExpire))
@@ -36,10 +33,16 @@ export default function AppLayout() {
         }
     }
 
-    const handleLogout = () => {
-        sessionStorage.removeItem('access_token')
-        sessionStorage.removeItem('expire_time')
-        navigate('/')
+    // 로그아웃 함수 (이미 구현된 authService 활용)
+    const handleLogout = async () => {
+        try {
+            await authService.logout()
+        } catch (e) {
+            // 에러가 나도 로컬 세션 정보는 정리 후 이동
+        } finally {
+            sessionStorage.removeItem('expire_time')
+            navigate('/')
+        }
     }
 
     const handleNewAnalysis = () => {
@@ -61,36 +64,18 @@ export default function AppLayout() {
     }
 
     return (
-        <div className="min-h-screen flex bg-background text-on-background overflow-hidden relative">
-            <Sidebar
-                onNewAnalysis={handleNewAnalysis}
-                onHistoryClick={handleHistoryClick}
-                onLogout={handleLogout}
-                onRefreshSession={handleRefreshSession}
-                expireTime={expireTime}
-                onImminent={handleImminent}
-            />
-
-            <main className="ml-[320px] min-h-screen flex flex-col flex-1">
-                <Outlet />
-            </main>
-
-            <HistoryDetailLayer 
-                historyId={selectedHistoryId} 
-                onClose={handleCloseHistory} 
-            />
-
-            {showImminentAlert && (
-                <AlertModal
-                    title="로그인 유효시간 만료 임박"
-                    description={`로그인 유효시간이 ${remainingMinutes}분 남았습니다<br>연장하시겠습니까?`}
-                    type="confirm"
-                    confirmText="연장하기"
-                    cancelText="나중에 하기"
-                    onConfirm={handleRefreshSession}
-                    onClose={() => setShowImminentAlert(false)}
-                />
-            )}
-        </div>
+        <AppLayoutView
+            selectedHistoryId={selectedHistoryId}
+            expireTime={expireTime}
+            showImminentAlert={showImminentAlert}
+            remainingMinutes={remainingMinutes}
+            onNewAnalysis={handleNewAnalysis}
+            onHistoryClick={handleHistoryClick}
+            onLogout={handleLogout}
+            onRefreshSession={handleRefreshSession}
+            onCloseHistory={handleCloseHistory}
+            onImminent={handleImminent}
+            onCloseImminentAlert={() => setShowImminentAlert(false)}
+        />
     )
 }

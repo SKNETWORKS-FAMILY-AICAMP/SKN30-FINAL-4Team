@@ -1,39 +1,83 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import HistoryListView from './HistoryListView'
+import { historyService } from '../../services/historyService'
 
 interface HistoryListProps {
     onHistoryClick: (id: string) => void
 }
 
+const formatDate = (isoString?: string) => {
+    if (!isoString) return ''
+    const date = new Date(isoString)
+    if (isNaN(date.getTime())) return isoString
+
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+
+    return `${year}.${month}.${day} ${hours}:${minutes}`
+}
+
 export default function HistoryList({ onHistoryClick }: HistoryListProps) {
-    // 전체 더미 데이터 (추후 API 연동 시 페이징 처리)
-    const allHistories = [
-        { id: '1', title: '정부 지원사업 사전검토를 위한 기획안 및 기술 명세서 상세 분석 리포트_2023_최종', date: '2023.10.24 14:30' },
-        { id: '2', title: 'AI 의료 진단 도구', date: '2023.10.22 09:15' },
-        { id: '3', title: '스마트 팜 IoT 확장', date: '2023.10.20 16:45' },
-        { id: '4', title: '차세대 배터리 제조', date: '2023.10.18 11:20' },
-        { id: '5', title: '탄소중립 기술 검토', date: '2023.10.15 10:00' },
-        { id: '6', title: '신재생 에너지 최적화', date: '2023.10.12 13:20' },
-        { id: '7', title: '스마트 시티 인프라', date: '2023.10.10 15:45' },
-        { id: '8', title: '자율주행 제어 시스템', date: '2023.10.08 09:30' },
-        { id: '9', title: '바이오 헬스 케어 플랫폼', date: '2023.10.05 11:15' },
-        { id: '10', title: '디지털 트윈 공정 관리', date: '2023.10.03 14:00' },
-    ]
+    const [histories, setHistories] = useState<any[]>([])
+    const [page, setPage] = useState<number>(0)
+    const [hasMore, setHasMore] = useState<boolean>(false)
+    const [totalCount, setTotalCount] = useState<number>(0)
+    const [isLoading, setIsLoading] = useState(true)
+    const [isFetchingMore, setIsFetchingMore] = useState(false)
 
-    // 예시로 5개씩 끊어서 보여주기 위한 상태 관리
-    const [visibleCount, setVisibleCount] = useState(5)
+    const fetchHistories = async (targetPage: number, isAppend = false) => {
+        try {
+            const limit = 5
+            const { data, count } = await historyService.listHistory(targetPage, limit)
+            const rawList = data || []
+            const total = count || 0
 
-    const displayedHistories = allHistories.slice(0, visibleCount)
-    const hasMore = visibleCount < allHistories.length
-    const totalCount = 10
+            const mappedList = rawList.map((item: any) => ({
+                id: String(item.analysis_case_id || item.id),
+                title: item.title || item.case_name || '제목 없음',
+                date: formatDate(item.completed_at || item.created_at),
+            }))
+
+            if (isAppend) {
+                setHistories((prev) => [...prev, ...mappedList])
+            } else {
+                setHistories(mappedList)
+            }
+
+            setTotalCount(total)
+            // 현재까지 불러온 개수가 전체 개수보다 적으면 더보기 가능
+            setHasMore((isAppend ? histories.length + mappedList.length : mappedList.length) < total)
+        } catch (error) {
+            if (!isAppend) setHistories([])
+        } finally {
+            setIsLoading(false)
+            setIsFetchingMore(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchHistories(0, false)
+    }, [])
 
     const handleLoadMore = () => {
-        setVisibleCount((prev) => Math.min(prev + 5, allHistories.length))
+        if (!hasMore || isFetchingMore) return
+        setIsFetchingMore(true)
+        const nextPage = page + 1
+        setPage(nextPage)
+        fetchHistories(nextPage, true)
+    }
+
+    // 이력이 없거나 로딩 중이면 타이틀을 포함해 통째로 숨김
+    if (isLoading || histories.length === 0) {
+        return null
     }
 
     return (
         <HistoryListView 
-            histories={displayedHistories} 
+            histories={histories} 
             hasMore={hasMore}
             totalCount={totalCount}
             onHistoryClick={onHistoryClick} 
