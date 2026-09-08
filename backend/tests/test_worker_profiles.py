@@ -54,6 +54,19 @@ def _stored_selection() -> tuple[dict, RequestSourceSelectionV012]:
     )
 
 
+def _chat_response(content: str) -> dict:
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                }
+            }
+        ]
+    }
+
+
 def test_real_hwpx_parses_and_request_type_comes_from_the_checkbox(tmp_path):
     pytest.importorskip("rhwp", reason="rhwp-python 런타임이 없으면 파싱 단계를 건너뛴다")
     if not _SAMPLE.is_file():
@@ -225,6 +238,202 @@ def test_vllm_selector_adapts_the_port_and_verifies_the_pack_ids():
     assert repair_payload["server_validation_errors"] == [
         "anchor_text not found in source block"
     ]
+
+
+def test_vllm_selector_normalizes_redundant_locator_without_a_second_call():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    invalid = _stored_selection_payload()
+    invalid["facts"][8]["value_anchor"]["anchor_text"] = "redundant legacy locator"
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=_chat_response(json.dumps(invalid)))
+
+    selector = make_vllm_selector(
+        VllmLLMClient(
+            api_key="test-key",
+            base_url="https://vllm.invalid/v1",
+            model_profiles={"structuring": "served-gemma"},
+            timeout_seconds=5,
+            transport=httpx.MockTransport(handler),
+        ),
+        model_profile="structuring",
+        pack=pack,
+        document=document,
+        profile_id=selection.profile_id,
+    )
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=selection.profile_id,
+        selector=selector,
+        model_id="served-gemma",
+        max_repairs=1,
+    )
+
+    assert snapshot.status == "OK"
+    assert len(sent) == 1
+    assert "prior_selection" not in json.loads(sent[0]["messages"][1]["content"])
+
+
+def test_vllm_selector_repairs_missing_legacy_anchor_once():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    invalid = _stored_selection_payload()
+    invalid["facts"][0]["value_anchor"]["anchor_text"] = None
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        content = json.dumps(invalid) if len(sent) == 1 else selection.model_dump_json()
+        return httpx.Response(200, json=_chat_response(content))
+
+    selector = make_vllm_selector(
+        VllmLLMClient(
+            api_key="test-key",
+            base_url="https://vllm.invalid/v1",
+            model_profiles={"structuring": "served-gemma"},
+            timeout_seconds=5,
+            transport=httpx.MockTransport(handler),
+        ),
+        model_profile="structuring",
+        pack=pack,
+        document=document,
+        profile_id=selection.profile_id,
+    )
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=selection.profile_id,
+        selector=selector,
+        model_id="served-gemma",
+        max_repairs=1,
+    )
+
+    assert snapshot.status == "OK"
+    assert len(sent) == 2
+    repair_payload = json.loads(sent[1]["messages"][1]["content"])
+    assert repair_payload["prior_selection"]["facts"][0]["value_anchor"]["anchor_text"] is None
+    assert repair_payload["server_validation_errors"]
+    assert "raw" not in json.dumps(repair_payload["server_validation_errors"])
+
+
+def test_vllm_selector_second_schema_invalid_response_fails_without_a_third_call():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    invalid = _stored_selection_payload()
+    invalid["facts"][0]["value_anchor"]["anchor_text"] = None
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=_chat_response(json.dumps(invalid)))
+
+    selector = make_vllm_selector(
+        VllmLLMClient(
+            api_key="test-key",
+            base_url="https://vllm.invalid/v1",
+            model_profiles={"structuring": "served-gemma"},
+            timeout_seconds=5,
+            transport=httpx.MockTransport(handler),
+        ),
+        model_profile="structuring",
+        pack=pack,
+        document=document,
+        profile_id=selection.profile_id,
+    )
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=selection.profile_id,
+        selector=selector,
+        model_id="served-gemma",
+        max_repairs=1,
+    )
+
+    assert snapshot.status == "FAILED"
+    assert len(sent) == 2
+    assert all("raw" not in diagnostic.message for diagnostic in snapshot.diagnostics)
+    assert all("anchor_text" not in diagnostic.message for diagnostic in snapshot.diagnostics)
+
+
+def test_vllm_selector_json_failure_does_not_trigger_schema_repair():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, text="not-json")
+
+    selector = make_vllm_selector(
+        VllmLLMClient(
+            api_key="test-key",
+            base_url="https://vllm.invalid/v1",
+            model_profiles={"structuring": "served-gemma"},
+            timeout_seconds=5,
+            transport=httpx.MockTransport(handler),
+        ),
+        model_profile="structuring",
+        pack=pack,
+        document=document,
+        profile_id=selection.profile_id,
+    )
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=selection.profile_id,
+        selector=selector,
+        model_id="served-gemma",
+        max_repairs=1,
+    )
+
+    assert snapshot.status == "FAILED"
+    assert calls == 1
+
+
+def test_vllm_selector_timeout_does_not_trigger_schema_repair():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    selector = make_vllm_selector(
+        VllmLLMClient(
+            api_key="test-key",
+            base_url="https://vllm.invalid/v1",
+            model_profiles={"structuring": "served-gemma"},
+            timeout_seconds=5,
+            transport=httpx.MockTransport(handler),
+        ),
+        model_profile="structuring",
+        pack=pack,
+        document=document,
+        profile_id=selection.profile_id,
+    )
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=selection.profile_id,
+        selector=selector,
+        model_id="served-gemma",
+        max_repairs=1,
+    )
+
+    assert snapshot.status == "FAILED"
+    assert calls == 1
 
 
 def test_pack_id_mismatch_is_isolated_into_a_failed_snapshot():

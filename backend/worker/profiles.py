@@ -51,6 +51,7 @@ from semantic_structuring.run_request_profile_v012 import (  # noqa: E402
     REQUEST_SELECTION_PROMPT_VERSION,
     RequestMaterializationError,
     RequestSourceSelectionParseError,
+    _normalize_remote_selection_payload,
     request_selection_instructions,
     select_and_materialize_with_repairs,
     selection_request_payload,
@@ -216,6 +217,35 @@ _REPAIR_INSTRUCTION = (
 )
 
 
+def _selection_validation_messages(
+    error: ValidationError, raw: dict[str, Any]
+) -> list[str]:
+    """Keep Pydantic repair hints useful without echoing model input."""
+
+    raw_strings: set[str] = set()
+
+    def collect(value: Any) -> None:
+        if isinstance(value, str):
+            raw_strings.add(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+
+    collect(raw)
+    messages: list[str] = []
+    for issue in error.errors(include_input=False, include_context=False):
+        location = ".".join(str(part) for part in issue.get("loc", ()))
+        message = str(issue.get("msg", "validation failed"))
+        for value in sorted(raw_strings, key=len, reverse=True):
+            if value:
+                message = message.replace(value, "[redacted]")
+        messages.append(f"{location}: {message}" if location else message)
+    return messages
+
+
 def make_vllm_selector(
     llm_client,
     *,
@@ -245,20 +275,48 @@ def make_vllm_selector(
             payload["prior_selection"] = prior_selection.model_dump(mode="json")
             payload["server_validation_errors"] = server_validation_errors or []
 
-        selection = asyncio.run(
-            llm_client.generate_structured(
-                task_name="request_source_selection_v012",
-                messages=[
-                    Message(role="system", content=instructions),
-                    Message(
-                        role="user",
-                        content=json.dumps(payload, ensure_ascii=False),
-                    ),
-                ],
-                response_schema=RequestSourceSelectionV012,
-                model_profile=model_profile,
+        def call(
+            call_instructions: str, call_payload: dict[str, Any]
+        ) -> RequestSourceSelectionV012:
+            return asyncio.run(
+                llm_client.generate_structured(
+                    task_name="request_source_selection_v012",
+                    messages=[
+                        Message(role="system", content=call_instructions),
+                        Message(
+                            role="user",
+                            content=json.dumps(call_payload, ensure_ascii=False),
+                        ),
+                    ],
+                    response_schema=RequestSourceSelectionV012,
+                    model_profile=model_profile,
+                )
             )
-        )
+
+        try:
+            selection = call(instructions, payload)
+        except LLMInvalidResponseError as error:
+            # The adapter keeps parsed schema-invalid JSON in ``raw``.  Reuse
+            # the vendored remote compatibility rule before spending a call:
+            # value_span_candidate_id is authoritative and redundant
+            # anchor_text is removed, but missing anchors are never invented.
+            if not isinstance(error.raw, dict):
+                raise
+            normalized = _normalize_remote_selection_payload(error.raw)
+            try:
+                selection = RequestSourceSelectionV012.model_validate(normalized)
+            except ValidationError as validation_error:
+                if repair:
+                    raise error from None
+                repair_payload = selection_request_payload(pack, document, profile_id)
+                repair_payload["prior_selection"] = normalized
+                repair_payload["server_validation_errors"] = _selection_validation_messages(
+                    validation_error, normalized
+                )
+                selection = call(
+                    instructions + _REPAIR_INSTRUCTION,
+                    repair_payload,
+                )
         # 패키지 오케스트레이터는 selector 예외 중 RequestSourceSelectionParseError
         # 만 잡는다. ValueError 로 던지면 아무도 잡지 않아 FAILED 스냅샷이 아니라
         # raw 예외로 새어 나간다. 포트 예외로 던져 LLM_INVALID_RESPONSE 로 격리한다.

@@ -91,8 +91,13 @@ class VllmLLMClient:
         # 행만, 후자는 호출 범위 전체다. 구분을 잃으면 정상 행의 판정까지
         # 함께 내려간다.
         try:
+            finish_reason = _read_finish_reason(response_data)
+            if finish_reason is not None and finish_reason != "stop":
+                raise LLMInvalidResponseError("LLM returned an incomplete response")
             content = _read_message_content(response_data)
             raw = json.loads(content)
+        except LLMInvalidResponseError:
+            raise
         except (TypeError, ValueError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
         try:
@@ -182,3 +187,16 @@ def _read_message_content(response_data: dict[str, Any]) -> str:
     if not isinstance(content, str) or not content.strip():
         raise ValueError("response content is missing")
     return content
+
+
+def _read_finish_reason(response_data: dict[str, Any]) -> str | None:
+    choices = response_data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("response choices are missing")
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise ValueError("response choice is missing")
+    finish_reason = choice.get("finish_reason")
+    if finish_reason is not None and not isinstance(finish_reason, str):
+        raise ValueError("response finish_reason is invalid")
+    return finish_reason

@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Mapping
+import json
 import logging
 import time
 from typing import Any
@@ -89,9 +90,15 @@ class OpenAILLMClient:
 
         try:
             output_text = _read_output_text(response_data)
-            result = response_schema.model_validate_json(output_text)
-        except (TypeError, ValueError, ValidationError):
+            raw = json.loads(output_text)
+        except (TypeError, ValueError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
+        try:
+            result = response_schema.model_validate(raw)
+        except ValidationError:
+            raise LLMInvalidResponseError(
+                "LLM returned an invalid response", raw=raw
+            ) from None
         usage = response_data.get("usage", {})
         logger.info(
             "LLM request completed task=%s model=%s input_tokens=%s "

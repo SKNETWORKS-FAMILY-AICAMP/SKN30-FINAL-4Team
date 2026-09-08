@@ -2162,6 +2162,47 @@ def test_openai_adapter_uses_responses_structured_output_contract() -> None:
     assert captured["text"]["format"]["strict"] is True
 
 
+def test_openai_adapter_keeps_parsed_schema_violation_raw_without_leaking_it() -> None:
+    invalid = {"items": "raw-schema-value"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {
+                        "content": [
+                            {"type": "output_text", "text": json.dumps(invalid)}
+                        ]
+                    }
+                ],
+            },
+        )
+
+    client = OpenAILLMClient(
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+        model_profiles={"gpt-4o-mini": "gpt-4o-mini"},
+        timeout_seconds=1,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(LLMInvalidResponseError) as caught:
+        asyncio.run(
+            client.generate_structured(
+                task_name="cpl_semantic_evidence",
+                messages=[Message(role="user", content="fixture")],
+                response_schema=CplSemanticResponse,
+                model_profile="gpt-4o-mini",
+            )
+        )
+
+    assert caught.value.raw == invalid
+    assert "raw-schema-value" not in str(caught.value)
+    assert "raw-schema-value" not in repr(caught.value)
+
+
 @pytest.mark.parametrize(
     ("error", "reason_code"),
     [

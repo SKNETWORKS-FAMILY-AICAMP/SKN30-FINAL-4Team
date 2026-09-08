@@ -117,8 +117,27 @@ def test_llm_schema_violating_content_maps_to_invalid_response():
             200, json=_chat_body(json.dumps({"verdict": "ok", "score": "삼"}))
         )
 
-    with pytest.raises(LLMInvalidResponseError):
+    with pytest.raises(LLMInvalidResponseError) as caught:
         _generate(_llm(handler))
+
+    assert caught.value.raw == {"verdict": "ok", "score": "삼"}
+    assert "삼" not in str(caught.value)
+    assert "삼" not in repr(caught.value)
+
+
+def test_llm_non_stop_finish_reason_is_incomplete_not_schema_invalid():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = _chat_body(json.dumps({"verdict": "ok", "score": 3}))
+        body["choices"][0]["finish_reason"] = "length"
+        return httpx.Response(
+            200,
+            json=body,
+        )
+
+    with pytest.raises(LLMInvalidResponseError, match="incomplete") as caught:
+        _generate(_llm(handler))
+
+    assert caught.value.raw is None
 
 
 def test_list_models_returns_served_ids():
