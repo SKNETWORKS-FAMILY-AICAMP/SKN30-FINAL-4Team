@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import re
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -55,6 +56,7 @@ from worker.cpl import build_cpl_result
 from worker.dispatcher import enqueue, run_once
 from worker.jobs import claim_next
 from worker.persistence import AnalysisResults, persist_results
+from worker.report_pdf import compose_queued_case_report
 from worker.sim_inputs import build_common_profile
 
 
@@ -733,6 +735,49 @@ def test_SIM_은_후보_행에만_남고_axis_result_에는_들어가지_않는�
     } <= SIM_DISPLAY_STATUSES
     # 축 jsonb 안의 내부 상세는 그대로 남는다.
     assert "reason_code" in row["delivery_result"]
+
+
+def test_RPC_저장_summary와_PDF_projection_summary가_같다(
+    engine, analysis_case_pk, results, profile_version_pk
+):
+    _persist(engine, analysis_case_pk, results)
+    report = compose_queued_case_report(
+        case_id=1,
+        title="분석 요청서",
+        completed_at=datetime.now(timezone.utc),
+        results=results,
+    )
+
+    with engine.connect() as connection:
+        stored_fit = connection.execute(
+            text(
+                "SELECT axis_code, summary_text FROM result.axis_result "
+                "WHERE analysis_case_pk = :pk AND axis_type = 'FIT'"
+            ),
+            {"pk": analysis_case_pk},
+        ).mappings().all()
+        stored_sim = _candidates(engine, analysis_case_pk)[0]
+
+    display_fit = {
+        relation.relation_id.value: relation
+        for relation in report.report.fit.relations
+    }
+    assert {
+        row["axis_code"]: row["summary_text"] for row in stored_fit
+    } == {
+        f"FIT-{list(FitRelationId).index(relation_id) + 1:02d}": relation.summary
+        for relation_id, relation in display_fit.items()
+    }
+
+    display_sim = report.report.similar_candidates[0]
+    assert stored_sim["result_summary"] == display_sim.comparison_summary
+    for column, axis_name in (
+        ("purpose_result", "purpose"),
+        ("target_result", "target"),
+        ("support_result", "content"),
+        ("delivery_result", "delivery"),
+    ):
+        assert stored_sim[column]["summary"] == getattr(display_sim.axes, axis_name).summary
 
 
 def test_핵심축이_불충분한_후보는_점수가_없고_등급은_보류다(

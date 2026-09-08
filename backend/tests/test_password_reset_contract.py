@@ -45,7 +45,9 @@ def test_openapi_reset_validation_matches_actual_envelope():
     assert "422" not in operation["responses"]
     assert "429" not in confirm["responses"]
     operations = sum(method in {"get", "post", "put", "delete", "patch"} for path in schema["paths"].values() for method in path)
-    assert operations == 15
+    # Edge 업로드 두 건(RUN-01/RUN-03)이 15 -> 17,
+    # 보고서 다운로드 발급·수령 두 건이 17 -> 19 로 만들었다.
+    assert operations == 19
 
 
 def test_password_change_uses_the_confirmed_route():

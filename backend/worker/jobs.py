@@ -29,6 +29,8 @@ from uuid import UUID
 
 from sqlalchemy import Connection, text
 
+from worker.outcome import DEFAULT_ERROR_CODE, USER_ERROR_MESSAGES
+
 __all__ = [
     "DEFAULT_HEARTBEAT_SECONDS",
     "DEFAULT_LEASE_SECONDS",
@@ -99,6 +101,8 @@ _HEARTBEAT = text(
 )
 
 # 종료 쓰기는 반드시 토큰을 함께 건다. 임대를 뺏긴 워커는 여기서 0행을 갱신한다.
+# analysis_case_pk 는 RUN-04 Realtime 이 읽는다 (104). 재시도해서 성공한
+# run 은 이전 시도의 오류 표시를 지운다 — 화면이 성공과 오류를 함께 본다.
 _COMPLETE = text(
     """
     UPDATE workspace.analysis_run
@@ -107,6 +111,9 @@ _COMPLETE = text(
            claim_token      = NULL,
            lease_expires_at = NULL,
            last_error       = NULL,
+           error_code       = NULL,
+           error_message    = NULL,
+           analysis_case_pk = :analysis_case_pk,
            updated_at       = now()
      WHERE analysis_run_pk = :run_id
        AND claim_token     = :claim_token
@@ -121,6 +128,8 @@ _FAIL = text(
            claim_token      = NULL,
            lease_expires_at = NULL,
            last_error       = :last_error,
+           error_code       = :error_code,
+           error_message    = :error_message,
            updated_at       = now()
      WHERE analysis_run_pk = :run_id
        AND claim_token     = :claim_token
@@ -164,7 +173,11 @@ def heartbeat(
 
 
 def complete(
-    connection: Connection, *, run_id: UUID, claim_token: UUID
+    connection: Connection,
+    *,
+    run_id: UUID,
+    claim_token: UUID,
+    analysis_case_pk: UUID | None = None,
 ) -> bool:
     """성공으로 종료한다. ``False`` 면 펜싱된 것이니 결과를 조용히 버린다.
 
@@ -172,15 +185,42 @@ def complete(
     오류가 아니며, 이미 다른 워커가 쓴 결과를 덮지 않는 것이 요점이다.
     """
     return connection.execute(
-        _COMPLETE, {"run_id": run_id, "claim_token": claim_token}
+        _COMPLETE,
+        {
+            "run_id": run_id,
+            "claim_token": claim_token,
+            "analysis_case_pk": analysis_case_pk,
+        },
     ).rowcount == 1
 
 
 def fail(
-    connection: Connection, *, run_id: UUID, claim_token: UUID, last_error: str
+    connection: Connection,
+    *,
+    run_id: UUID,
+    claim_token: UUID,
+    last_error: str,
+    error_code: str = DEFAULT_ERROR_CODE,
+    error_message: str | None = None,
 ) -> bool:
-    """실패로 종료한다. ``complete`` 와 같은 펜싱 규율을 따른다."""
+    """실패로 종료한다. ``complete`` 와 같은 펜싱 규율을 따른다.
+
+    ``last_error`` 는 운영용이고 화면에 나가지 않는다. 화면에 나가는 것은
+    ``error_code``·``error_message`` 뿐이며, 문구는 ``worker.outcome`` 의
+    고정표에서만 온다. 호출자가 문구를 직접 지어 넣지 못하도록 기본값도
+    그 표에서 가져온다.
+    """
     return connection.execute(
         _FAIL,
-        {"run_id": run_id, "claim_token": claim_token, "last_error": last_error},
+        {
+            "run_id": run_id,
+            "claim_token": claim_token,
+            "last_error": last_error,
+            "error_code": error_code,
+            "error_message": (
+                error_message
+                if error_message is not None
+                else USER_ERROR_MESSAGES[DEFAULT_ERROR_CODE]
+            ),
+        },
     ).rowcount == 1

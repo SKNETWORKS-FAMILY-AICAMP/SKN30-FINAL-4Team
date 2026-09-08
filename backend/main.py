@@ -173,7 +173,11 @@ def create_app(
         # 아니라 그 행을 꺼내 돌리는 실행기다. 별도 워커 프로세스를 띄우면
         # 이 인자를 뺀다.
         dispatcher = QueueJobDispatcher(
-            engine, run_queued_analysis, legacy_run_analysis=legacy_run_analysis
+            engine,
+            run_queued_analysis,
+            legacy_run_analysis=legacy_run_analysis,
+            object_storage=object_storage,
+            pdf_renderer=active_pdf_renderer,
         )
         application.state.object_storage = object_storage
         application.state.document_parser = active_parser

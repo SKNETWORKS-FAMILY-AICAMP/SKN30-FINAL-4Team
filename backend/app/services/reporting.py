@@ -4,12 +4,14 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import BinaryIO
-from uuid import uuid4
+from pathlib import PurePosixPath
+from uuid import UUID, uuid4
 
 from sqlalchemy import Engine, text
 
 from app.core.config import Settings
-from app.ports.object_storage import ObjectStorage
+from app.db.identity_bridge import ensure_identity
+from app.ports.object_storage import ObjectStorage, storage_key
 from app.ports.pdf_renderer import PdfRenderer
 from app.schemas.cpl import CplItem, CplOccurrence, CplResult, CplStatus
 from app.schemas.fit import FitResult, FitStatus
@@ -777,3 +779,99 @@ def _candidate_evidence(candidate: ReportSimCandidate) -> list[ReportEvidence]:
 
 def _unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
+
+
+# ---------------------------------------------------------- 보고서 다운로드
+
+# **이 조건은 api.rpc_get_analysis_result 의 `report.can_download` 와 같아야
+# 한다** (102_result_api.sql). 화면은 can_download 를 보고 버튼을 켠 뒤 여기로
+# 온다. 둘이 어긋나면 켜진 버튼이 409 를 받거나, 받을 수 있는 보고서를 못 받는다.
+#
+#     ac.report_status = 'ready'
+#     AND EXISTS (SELECT 1 FROM result.report_artifact ra
+#                  WHERE ra.analysis_case_pk = ac.analysis_case_pk
+#                    AND ra.expires_at > now())
+_DOWNLOADABLE_REPORT = text(
+    """
+    SELECT ra.storage_bucket, ra.storage_object_key, ac.original_filename
+      FROM result.analysis_case ac
+      JOIN result.report_artifact ra
+        ON ra.analysis_case_pk = ac.analysis_case_pk
+     WHERE ac.analysis_case_pk = :analysis_case_id
+       AND ac.report_status = 'ready'
+       AND ra.expires_at > now()
+       -- 캐스트가 필요하다. NULL 을 그대로 넘기면 드라이버가 타입을
+       -- 정하지 못한다 (AmbiguousParameter).
+       AND (CAST(:user_uuid AS uuid) IS NULL
+            OR ac.user_id = CAST(:user_uuid AS uuid))
+     ORDER BY ra.created_at DESC
+     LIMIT 1
+    """
+)
+
+# 케이스 존재 여부와 다운로드 가능 여부를 구분하기 위한 소유권 확인.
+_OWNED_CASE = text(
+    """
+    SELECT 1 FROM result.analysis_case
+     WHERE analysis_case_pk = :analysis_case_id AND user_id = :user_uuid
+    """
+)
+
+
+def authorize_report_download(
+    engine: Engine, owner_user_id: int, analysis_case_id: UUID
+) -> None:
+    """내려받을 수 있는 상태인지 확인한다. 아니면 예외.
+
+    소유권을 **여기서** 본다. 뒤이어 발급되는 토큰에는 사용자가 담기지 않고
+    URL 자체가 자격증명이 되므로, 확인할 곳은 이 지점 하나뿐이다.
+    """
+    with engine.begin() as connection:
+        user_uuid = ensure_identity(connection, owner_user_id)
+        owned = connection.scalar(
+            _OWNED_CASE,
+            {"analysis_case_id": analysis_case_id, "user_uuid": user_uuid},
+        )
+        if owned is None:
+            # 남의 케이스는 없는 케이스와 구분되지 않는다.
+            raise ReportNotFoundError
+        row = connection.execute(
+            _DOWNLOADABLE_REPORT,
+            {"analysis_case_id": analysis_case_id, "user_uuid": user_uuid},
+        ).one_or_none()
+    if row is None:
+        raise ReportNotReadyError
+
+
+async def open_report_artifact(
+    engine: Engine, storage: ObjectStorage, analysis_case_id: UUID
+) -> ReportFile:
+    """서명 토큰으로 들어온 요청이 파일을 연다.
+
+    소유권은 발급 때 확인했으므로 다시 보지 않는다 (토큰이 그 증거다). 다만
+    상태와 만료는 **다시** 본다 — 발급 후 보고서가 만료되거나 다시 생성 중이
+    될 수 있다.
+    """
+    with engine.connect() as connection:
+        row = (
+            connection.execute(
+                _DOWNLOADABLE_REPORT,
+                {"analysis_case_id": analysis_case_id, "user_uuid": None},
+            )
+            .mappings()
+            .one_or_none()
+        )
+    if row is None:
+        raise ReportNotReadyError
+    key = storage_key(row["storage_bucket"], row["storage_object_key"])
+    try:
+        content = await storage.open(key)
+    except (OSError, ValueError) as error:
+        raise ReportFileUnavailableError from error
+    return ReportFile(content=content, filename=_pdf_filename(row["original_filename"]))
+
+
+def _pdf_filename(original_filename: str | None) -> str:
+    """원본 파일명을 pdf 로 바꿔 쓴다. 없으면 고정 이름."""
+    stem = PurePosixPath(original_filename or "").stem.strip()
+    return f"{stem}.pdf" if stem else "report.pdf"

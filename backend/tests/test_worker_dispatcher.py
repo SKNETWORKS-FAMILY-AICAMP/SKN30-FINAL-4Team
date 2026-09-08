@@ -13,8 +13,10 @@ sims 스키마와 팀원 Supabase 스키마가 **한 DB 에 같이** 있어야 �
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import pathlib
+from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
@@ -22,11 +24,30 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 
 from app.db.identity_bridge import ensure_identity, teammate_schema_installed
+from app.infrastructure.reportlab_pdf_renderer import ReportLabPdfRenderer
+from app.ports.object_storage import StoredObject, storage_key
 from app.schemas.cpl import CplFieldCode
+from app.schemas.sim import SimAxis, SimReviewGrade, SimStatus
 from worker.contracts.cpl_result import CplItem, CplResult
+from worker.contracts.sim_result import (
+    SIM_AXIS_IDS,
+    InternalRanking,
+    SimAxisResult,
+    SimCandidateResult,
+    SimCommonEntry,
+    SimCommonProfile,
+    SimComparisonResult,
+)
+from worker.outcome import USER_ERROR_MESSAGES
+from worker.profiles import StageDiagnostic, StageError
 from worker.dispatcher import QueueJobDispatcher, enqueue, run_once, submission_key
 from worker.jobs import claim_next
-from worker.persistence import AnalysisResults
+from worker.persistence import (
+    AnalysisResults,
+    _sim_axis_summary,
+    _sim_result_summary,
+)
+from worker.report_pdf import compose_queued_case_report
 
 _DISPATCHER_DATABASE = "sims_dispatcher_test"
 _BACKEND = pathlib.Path(__file__).resolve().parents[1]
@@ -34,6 +55,44 @@ _SCHEMA = _BACKEND / "app/db/schema.sql"
 _MIGRATIONS = _BACKEND / "app/db/migrations"
 # 이미 만료된 임대. 다음 트랜잭션의 now() 를 기다리지 않고 결정적으로 만료시킨다.
 _EXPIRED = -1
+_PDF = b"%PDF-1.7\n% queued report\n%%EOF\n"
+
+
+class _FakeStorage:
+    def __init__(self, *, mismatch: bool = False, fail: bool = False) -> None:
+        self.files: dict[str, bytes] = {}
+        self.deleted: list[str] = []
+        self.mismatch = mismatch
+        self.fail = fail
+
+    async def put(self, key: str, content: io.BytesIO) -> StoredObject:
+        if self.fail:
+            raise OSError("storage put failed")
+        payload = content.read()
+        self.files[key] = payload
+        return StoredObject(
+            key=(key + "/wrong") if self.mismatch else key,
+            size_bytes=(len(payload) - 1) if self.mismatch else len(payload),
+        )
+
+    async def open(self, key: str) -> io.BytesIO:
+        return io.BytesIO(self.files[key])
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.files.pop(key, None)
+
+
+class _FakeRenderer:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.report = None
+        self.fail = fail
+
+    async def render(self, report):
+        self.report = report
+        if self.fail:
+            raise RuntimeError("renderer failed")
+        return _PDF
 
 
 def _valid_cpl_result() -> CplResult:
@@ -54,6 +113,67 @@ def _valid_cpl_result() -> CplResult:
         structured_schema_version="test",
         model_id="test",
         prompt_version="test",
+    )
+
+
+def _sim_profile(profile_id: str, side: str) -> SimCommonProfile:
+    def entry(axis: SimAxis) -> SimCommonEntry:
+        return SimCommonEntry(
+            fact_id=f"{side}-{axis.value}-fact",
+            source_field=f"{axis.value}_source",
+            common_key=f"{axis.value}_key",
+            value_raw=f"{side} {axis.value} 원문",
+        )
+
+    return SimCommonProfile(
+        source_profile_id=profile_id,
+        schema_version="test",
+        common_ir_document_id=None,
+        purpose={"problem_domain": [entry(SimAxis.PURPOSE)]},
+        target={"target_group": [entry(SimAxis.TARGET)]},
+        content={"activity": [entry(SimAxis.CONTENT)]},
+        delivery={"organization": [entry(SimAxis.DELIVERY)]},
+    )
+
+
+def _sim_results() -> tuple[SimComparisonResult, dict[str, SimCommonProfile]]:
+    request_id = "request-profile"
+    candidate_id = "candidate-profile"
+    axes = [
+        SimAxisResult(
+            axis=axis,
+            axis_id=SIM_AXIS_IDS[axis],
+            status=SimStatus.SIMILAR,
+            reason_code=None,
+            common_points=[f"{axis.value} 공통"],
+        )
+        for axis in SimAxis
+    ]
+    return (
+        SimComparisonResult(
+            request_profile_id=request_id,
+            candidates=[
+                SimCandidateResult(
+                    candidate_profile_id=candidate_id,
+                    candidate_notice_id="internal-notice-id",
+                    axes=axes,
+                    internal_ranking=InternalRanking(
+                        weighted_score=0.75,
+                        review_grade=SimReviewGrade.GENERAL_REVIEW,
+                        assessable_axis_count=4,
+                    ),
+                    title=None,
+                )
+            ],
+            model_profile="test",
+            ruleset_version="test",
+            prompt_version="test",
+            scoring_version="test",
+        ),
+        {
+            request_id: _sim_profile(request_id, "요청서"),
+            candidate_id: _sim_profile(candidate_id, "공고"),
+        },
     )
 
 
@@ -161,7 +281,8 @@ def _runs(engine: Engine, case_id: int) -> list[dict]:
             dict(row)
             for row in connection.execute(
                 text(
-                    "SELECT analysis_run_pk, status, last_error"
+                    "SELECT analysis_run_pk, status, last_error, analysis_case_pk,"
+                    "       error_code, error_message"
                     "  FROM workspace.analysis_run"
                     " WHERE submission_sha256 = :sha"
                     " ORDER BY created_at"
@@ -177,7 +298,7 @@ def _results(engine: Engine, run_id: UUID) -> list[dict]:
             dict(row)
             for row in connection.execute(
                 text(
-                    "SELECT user_id, case_status, analysis_completed_at"
+                    "SELECT analysis_case_pk, user_id, case_status, analysis_completed_at"
                     "  FROM result.analysis_case"
                     " WHERE source_analysis_run_id = :run_id"
                 ),
@@ -257,6 +378,12 @@ def test_집은_작업은_연결된_케이스를_돌리고_결과를_쓴다(engi
     assert results[0]["case_status"] == "ready"
     assert results[0]["analysis_completed_at"] is not None
 
+    # RUN-04: 화면은 이 행의 Realtime UPDATE 만 본다. analysis_case_pk 가
+    # 여기 없으면 분석이 끝나도 어느 결과를 열지 알 수 없다.
+    assert rows[0]["analysis_case_pk"] == results[0]["analysis_case_pk"]
+    assert rows[0]["error_code"] is None
+    assert rows[0]["error_message"] is None
+
 
 def test_임대를_뺏긴_워커는_결과를_한_행도_남기지_못한다(engine: Engine, case):
     case_id, _ = case
@@ -299,7 +426,15 @@ def test_분석이_터지면_fail_로_사유를_남기고_결과는_없다(engin
     run_id = enqueue(engine, case_id)
 
     async def exploding(_case_id: int) -> None:
-        raise RuntimeError("파서가 죽었다")
+        # 단계 실패는 reason code 를 달고 올라온다. 그 코드가 화면 코드가 된다.
+        raise StageError(
+            StageDiagnostic(
+                stage="parse_to_common_ir",
+                unit=None,
+                reason_code="PARSE_FAILED",
+                message="파서가 죽었다",
+            )
+        )
 
     assert asyncio.run(run_once(engine, exploding, worker_id="w1")) == run_id
 
@@ -307,6 +442,12 @@ def test_분석이_터지면_fail_로_사유를_남기고_결과는_없다(engin
     assert [row["status"] for row in rows] == ["failed"]
     assert "파서가 죽었다" in rows[0]["last_error"]
     assert _results(engine, run_id) == []
+
+    # 코드는 단계별로 살아남고, 문구는 고정표에서만 온다. 예외 원문은 운영용
+    # last_error 에만 있고 화면 문구에는 없다.
+    assert rows[0]["error_code"] == "PARSE_FAILED"
+    assert rows[0]["error_message"] == USER_ERROR_MESSAGES["PARSE_FAILED"]
+    assert "파서가 죽었다" not in rows[0]["error_message"]
 
 
 def test_디스패처는_넣은_직후_같은_프로세스에서_한_건을_끝낸다(engine: Engine, case):
@@ -558,3 +699,267 @@ def test_디스패처는_팀원_스키마가_없으면_레거시_fallback만_한
         assert calls == [("legacy", case_id)]
     finally:
         sims_only.dispose()
+
+
+def test_큐_결과는_pdf를_저장하고_artifact와_ready를_같은_결과에_남긴다(
+    engine: Engine, case
+):
+    case_id, _ = case
+    storage = _FakeStorage()
+    renderer = _FakeRenderer()
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        return AnalysisResults(cpl=_valid_cpl_result())
+
+    run_id = enqueue(engine, case_id)
+    assert asyncio.run(
+        run_once(
+            engine,
+            worker,
+            worker_id="pdf-worker",
+            object_storage=storage,
+            pdf_renderer=renderer,
+        )
+    ) == run_id
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT analysis_case_pk, case_status, report_status "
+                "FROM result.analysis_case WHERE source_analysis_run_id = :run_id"
+            ),
+            {"run_id": run_id},
+        ).mappings().one()
+        artifact = connection.execute(
+            text(
+                "SELECT storage_bucket, storage_object_key, content_sha256, size_bytes, "
+                "       expires_at = 'infinity'::timestamptz AS open_ended "
+                "FROM result.report_artifact WHERE analysis_case_pk = :case_pk"
+            ),
+            {"case_pk": row["analysis_case_pk"]},
+        ).mappings().one()
+        assert connection.scalar(
+            text(
+                "SELECT count(*) FROM result.axis_result "
+                "WHERE analysis_case_pk = :case_pk"
+            ),
+            {"case_pk": row["analysis_case_pk"]},
+        ) == 13
+
+    expected_path = storage_key(
+        artifact["storage_bucket"], artifact["storage_object_key"]
+    )
+
+    assert row["case_status"] == "ready"
+    assert row["report_status"] == "ready"
+    assert artifact["storage_bucket"] == "report"
+    assert artifact["storage_object_key"] == f"{row['analysis_case_pk']}/report.pdf"
+    assert expected_path in storage.files
+    assert storage.files[expected_path] == _PDF
+    assert artifact["size_bytes"] == len(_PDF)
+    assert artifact["content_sha256"]
+    assert artifact["open_ended"] is True
+    # The renderer receives the result-screen projection, not internal scores.
+    projection = renderer.report.model_dump(mode="json")
+    assert renderer.report.case.title == "분석 요청서"
+    assert "score" not in repr(projection)
+    assert "weighted_score" not in repr(projection)
+
+
+def test_큐_결과는_실제_ReportLab_PDF를_저장한다(engine: Engine, case):
+    case_id, _ = case
+    storage = _FakeStorage()
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        return AnalysisResults(cpl=_valid_cpl_result())
+
+    run_id = enqueue(engine, case_id)
+    assert asyncio.run(
+        run_once(
+            engine,
+            worker,
+            worker_id="reportlab-worker",
+            object_storage=storage,
+            pdf_renderer=ReportLabPdfRenderer(),
+        )
+    ) == run_id
+
+    with engine.connect() as connection:
+        artifact = connection.execute(
+            text(
+                "SELECT storage_bucket, storage_object_key "
+                "FROM result.report_artifact "
+                "WHERE analysis_case_pk = ("
+                "  SELECT analysis_case_pk FROM result.analysis_case "
+                "   WHERE source_analysis_run_id = :run_id"
+                ")"
+            ),
+            {"run_id": run_id},
+        ).mappings().one()
+    stored = storage.files[storage_key(artifact["storage_bucket"], artifact["storage_object_key"])]
+    assert stored.startswith(b"%PDF-")
+
+
+def test_pdf_projection은_persistence_요약과_SIM_원문근거를_재사용한다():
+    sim, profiles = _sim_results()
+    projection = compose_queued_case_report(
+        case_id=1,
+        title="분석 요청서",
+        completed_at=datetime.now(timezone.utc),
+        results=AnalysisResults(sim=sim, sim_profiles=profiles),
+    )
+
+    candidate = sim.candidates[0]
+    display_candidate = projection.report.similar_candidates[0]
+    assert display_candidate.title == "공고명 미확인"
+    assert "internal-notice-id" not in display_candidate.title
+    assert "candidate-profile" not in display_candidate.title
+    assert display_candidate.comparison_summary == _sim_result_summary(candidate.axes)
+
+    display_axes = {
+        SimAxis.PURPOSE: display_candidate.axes.purpose,
+        SimAxis.TARGET: display_candidate.axes.target,
+        SimAxis.CONTENT: display_candidate.axes.content,
+        SimAxis.DELIVERY: display_candidate.axes.delivery,
+    }
+    for axis in candidate.axes:
+        displayed = display_axes[axis.axis]
+        assert displayed.summary == _sim_axis_summary(axis)
+        assert displayed.request_evidence[0].excerpt == f"요청서 {axis.axis.value} 원문"
+        assert displayed.candidate_evidence[0].excerpt == f"공고 {axis.axis.value} 원문"
+
+    assert "weighted_score" not in repr(projection)
+    assert "0.75" not in repr(projection)
+
+
+@pytest.mark.parametrize("failure", ["renderer", "storage", "metadata"])
+def test_pdf_실패는_분석결과를_보존하고_artifact를_남기지_않는다(
+    engine: Engine, case, failure: str
+):
+    case_id, _ = case
+    storage = _FakeStorage(mismatch=failure == "metadata", fail=failure == "storage")
+    renderer = _FakeRenderer(fail=failure == "renderer")
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        return AnalysisResults(cpl=_valid_cpl_result())
+
+    run_id = enqueue(engine, case_id)
+    asyncio.run(
+        run_once(
+            engine,
+            worker,
+            worker_id=f"pdf-failure-{failure}",
+            object_storage=storage,
+            pdf_renderer=renderer,
+        )
+    )
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT analysis_case_pk, case_status, report_status "
+                "FROM result.analysis_case WHERE source_analysis_run_id = :run_id"
+            ),
+            {"run_id": run_id},
+        ).mappings().one()
+        artifact_count = connection.scalar(
+            text(
+                "SELECT count(*) FROM result.report_artifact "
+                "WHERE analysis_case_pk = :case_pk"
+            ),
+            {"case_pk": row["analysis_case_pk"]},
+        )
+        axis_count = connection.scalar(
+            text(
+                "SELECT count(*) FROM result.axis_result "
+                "WHERE analysis_case_pk = :case_pk"
+            ),
+            {"case_pk": row["analysis_case_pk"]},
+        )
+    assert row["case_status"] == "ready"
+    assert row["report_status"] == "failed"
+    assert artifact_count == 0
+    assert axis_count == 13
+    assert storage.files == {}
+
+
+def test_fenced_worker는_저장한_pdf와결과를_함께_버린다(engine: Engine, case):
+    case_id, _ = case
+    storage = _FakeStorage()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class _SlowRenderer(_FakeRenderer):
+        async def render(self, report):
+            self.report = report
+            started.set()
+            await release.wait()
+            return _PDF
+
+    renderer = _SlowRenderer()
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        return AnalysisResults(cpl=_valid_cpl_result())
+
+    async def scenario() -> UUID:
+        run_id = enqueue(engine, case_id)
+        task = asyncio.create_task(
+            run_once(
+                engine,
+                worker,
+                worker_id="fenced-a",
+                lease_seconds=_EXPIRED,
+                object_storage=storage,
+                pdf_renderer=renderer,
+            )
+        )
+        await started.wait()
+        with engine.begin() as connection:
+            stolen = claim_next(connection, worker_id="fenced-b", lease_seconds=300)
+        assert stolen is not None and stolen.analysis_run_pk == run_id
+        release.set()
+        assert await task == run_id
+        return run_id
+
+    run_id = asyncio.run(scenario())
+    assert _results(engine, run_id) == []
+    assert storage.files == {}
+    assert storage.deleted
+    assert _runs(engine, case_id)[0]["status"] == "running"
+
+
+def test_재실행은_새로운_pdf_key를_쓰고_이전_결과를_덮지_않는다(
+    engine: Engine, case
+):
+    case_id, _ = case
+    storage = _FakeStorage()
+    renderer = _FakeRenderer()
+
+    async def worker(_case_id: int) -> AnalysisResults:
+        return AnalysisResults(cpl=_valid_cpl_result())
+
+    run_ids: list[UUID] = []
+    for index in range(2):
+        run_id = enqueue(engine, case_id)
+        run_ids.append(run_id)
+        asyncio.run(
+            run_once(
+                engine,
+                worker,
+                worker_id=f"rerun-{index}",
+                object_storage=storage,
+                pdf_renderer=renderer,
+            )
+        )
+
+    assert len(set(run_ids)) == 2
+    assert len(storage.files) == 2
+    with engine.connect() as connection:
+        assert connection.scalar(
+            text(
+                "SELECT count(*) FROM result.report_artifact a "
+                "JOIN result.analysis_case c ON c.analysis_case_pk = a.analysis_case_pk "
+                "WHERE c.user_id = (SELECT external_uuid FROM sims.app_user WHERE id = :user_id)"
+            ),
+            {"user_id": case[1]},
+        ) == 2

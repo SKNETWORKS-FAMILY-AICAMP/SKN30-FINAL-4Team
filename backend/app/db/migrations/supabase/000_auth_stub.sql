@@ -29,9 +29,24 @@ CREATE TABLE IF NOT EXISTS auth.users (
 
 -- RLS 정책(08)이 호출한다. 순수 PostgreSQL 에는 JWT 클레임이 없으므로
 -- 설정되지 않은 경우 NULL 을 돌려준다.
-CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID
-LANGUAGE sql STABLE
-AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+--
+-- **CREATE OR REPLACE 를 쓰지 않는다.** 이 파일이 진짜 Supabase 에 적용되면
+-- CREATE OR REPLACE 는 Supabase 자신의 auth.uid() 를 덮어쓴다. 우리 스텁은
+-- 구버전 PostgREST 의 `request.jwt.claim.sub` 만 읽는데 지금 PostgREST 는
+-- `request.jwt.claims` (JSON 한 덩어리) 를 설정하므로, 덮어쓰는 순간
+-- auth.uid() 가 모든 요청에서 NULL 이 되고 그 프로젝트의 RLS 정책 전체가
+-- 모두를 거부한다. 없을 때만 만든다.
+DO $$
+BEGIN
+    IF to_regprocedure('auth.uid()') IS NULL THEN
+        CREATE FUNCTION auth.uid() RETURNS UUID
+        LANGUAGE sql STABLE
+        AS $stub$
+            SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+        $stub$;
+    END IF;
+END
+$$;
 
 -- 08_rls_policies.sql 의 GRANT 대상 롤. Supabase 가 만들어 두는 것들이라
 -- 없을 때만 만든다.

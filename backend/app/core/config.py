@@ -57,6 +57,9 @@ class Settings(BaseSettings):
         default="detail-ref-v1", min_length=1
     )
     embedding_timeout_seconds: int = Field(default=30, ge=1)
+    # 명세 §11 응답의 expires_in_seconds. 브라우저가 곧바로 이동하므로
+    # 짧아도 된다. URL 자체가 자격증명이라 길면 그만큼 위험하다.
+    report_download_ttl_seconds: int = Field(default=60, ge=10, le=600)
     embedding_batch_size: int = Field(default=100, ge=1, le=2048)
     cpl_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
     cpl_prompt_version: str = Field(default="cpl-semantic-v0.9", min_length=1)

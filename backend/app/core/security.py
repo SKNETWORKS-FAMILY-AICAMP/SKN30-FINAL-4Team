@@ -67,3 +67,57 @@ def decode_access_token(token: str, secret: str) -> dict[str, object]:
         algorithms=[_ALGORITHM],
         options={"require": ["sub", "iat", "exp", "pwd"]},
     )
+
+
+# ---------------------------------------------------------- 보고서 다운로드
+
+# 브라우저가 `window.location.href = signed_url` 로 이동한다. 그 이동에는
+# Authorization 헤더가 붙지 않는다 — 그래서 URL 자체가 자격증명이어야 하고,
+# 그것이 Supabase 서명 URL 이 존재하는 이유다. 여기서는 같은 역할을 짧게 사는
+# 토큰으로 한다. Supabase Storage 가 서면 이 토큰은 그쪽 서명 URL 로 바뀐다.
+#
+# 소유권은 **발급 시점에** 확인한다. 토큰에 사용자를 담지 않는 이유이자,
+# 수명을 분 단위로 두는 이유다.
+_DOWNLOAD_PURPOSE = "report-download"
+
+
+def create_report_download_token(
+    analysis_case_id: str, secret: str, expires_in_seconds: int
+) -> str:
+    if not secret:
+        raise ValueError("JWT secret must not be empty")
+    if expires_in_seconds <= 0:
+        raise ValueError("Download-token lifetime must be positive")
+
+    issued_at = time.time()
+    return jwt.encode(
+        {
+            "case": str(analysis_case_id),
+            # 접근 토큰과 클레임 집합이 겹치지 않게 한다. decode_access_token 은
+            # sub/pwd 를 요구하므로 이 토큰은 그쪽으로 쓸 수 없고, 그 반대도 같다.
+            "purpose": _DOWNLOAD_PURPOSE,
+            "iat": issued_at,
+            "exp": issued_at + expires_in_seconds,
+        },
+        secret,
+        algorithm=_ALGORITHM,
+    )
+
+
+def decode_report_download_token(token: str, secret: str) -> str:
+    """``analysis_case_id`` 를 돌려준다. 아니면 ``InvalidTokenError``."""
+    if not secret:
+        raise ValueError("JWT secret must not be empty")
+
+    claims = jwt.decode(
+        token,
+        secret,
+        algorithms=[_ALGORITHM],
+        options={"require": ["case", "purpose", "iat", "exp"]},
+    )
+    if claims.get("purpose") != _DOWNLOAD_PURPOSE:
+        raise jwt.InvalidTokenError("Token was not issued for report download")
+    case_id = claims["case"]
+    if not isinstance(case_id, str):
+        raise jwt.InvalidTokenError("Invalid case identifier")
+    return case_id

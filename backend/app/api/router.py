@@ -4,10 +4,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.analysis_runs import router as analysis_runs_router
 from app.api.v1.analyze import router as analyze_router
 from app.api.v1.cases import router as cases_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.report import router as report_router
+from app.api.v1.report_download import router as report_download_router
 from app.api.v1.password_reset import router as password_reset_router
 from app.db.session import check_database_ready
 
@@ -18,7 +20,9 @@ router.include_router(auth_router)
 router.include_router(password_reset_router)
 router.include_router(cases_router)
 router.include_router(analyze_router)
+router.include_router(analysis_runs_router)
 router.include_router(report_router)
+router.include_router(report_download_router)
 router.include_router(chat_router)
 
 

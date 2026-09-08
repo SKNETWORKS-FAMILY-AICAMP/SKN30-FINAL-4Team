@@ -9,7 +9,7 @@ from typing import BinaryIO, Literal
 from uuid import uuid4
 
 import olefile
-from sqlalchemy import Engine, text
+from sqlalchemy import Connection, Engine, text
 
 from app.core.upload_limits import MAX_UPLOAD_BYTES
 from app.ports.object_storage import ObjectStorage
@@ -140,6 +140,105 @@ def validate_upload(filename: str | None, content: BinaryIO) -> ValidatedUpload:
     )
 
 
+def validate_declared_upload(
+    filename: str | None, declared_size_bytes: int
+) -> Literal["hwp", "hwpx"]:
+    """파일이 오기 **전에** 신고값만으로 걸러낸다.
+
+    RUN-01 은 파일을 받지 않는다. 내용 검사는 RUN-03 이 실제 바이트로 다시
+    하므로 여기서 통과했다고 정상 파일이 되는 것은 아니다. 확장자·크기가
+    명백히 틀린 요청에 object key 를 예약해 주지 않는 것이 목적이다.
+    """
+    original_filename = _safe_filename(filename)
+    extension = Path(original_filename).suffix.lower().removeprefix(".")
+    if extension not in {"hwp", "hwpx"}:
+        raise UnsupportedDocumentError("Only HWP and HWPX files are supported")
+    if isinstance(declared_size_bytes, bool) or not isinstance(
+        declared_size_bytes, int
+    ):
+        raise InvalidUploadError("A valid file size is required")
+    if declared_size_bytes <= 0:
+        raise InvalidUploadError("File must not be empty")
+    if declared_size_bytes > MAX_UPLOAD_BYTES:
+        raise UploadTooLargeError("File exceeds the 50MB limit")
+    return extension  # type: ignore[return-value]
+
+
+def record_uploaded_document(
+    connection: Connection,
+    *,
+    owner_user_id: int,
+    case_id: int,
+    storage_key: str,
+    upload: ValidatedUpload,
+) -> int:
+    """검사 건 하나에 원본 파일 두 행(file_asset + uploaded_document)을 단다.
+
+    업로드 진입점이 둘(멀티파트 한 번 / Edge 세 번)이지만 원본 기록은 하나다.
+    저장소에 바이트를 넣는 방법만 다르고 남기는 행은 같아야 한다.
+    """
+    file_asset_id = connection.scalar(
+        text(
+            """
+            INSERT INTO sims.file_asset (
+                asset_scope,
+                owner_user_id,
+                inspection_case_id,
+                storage_key,
+                original_filename,
+                detected_mime_type,
+                extension,
+                size_bytes,
+                sha256_hex
+            )
+            VALUES (
+                'USER',
+                :owner_user_id,
+                :case_id,
+                :storage_key,
+                :original_filename,
+                :detected_mime_type,
+                :extension,
+                :size_bytes,
+                :sha256_hex
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "owner_user_id": owner_user_id,
+            "case_id": case_id,
+            "storage_key": storage_key,
+            "original_filename": upload.original_filename,
+            "detected_mime_type": upload.detected_mime_type,
+            "extension": upload.extension,
+            "size_bytes": upload.size_bytes,
+            "sha256_hex": upload.sha256_hex,
+        },
+    )
+    if file_asset_id is None:
+        raise RuntimeError("Failed to create file asset")
+
+    connection.execute(
+        text(
+            """
+            INSERT INTO sims.uploaded_document (
+                inspection_case_id,
+                file_asset_id,
+                declared_format
+            )
+            VALUES (:case_id, :file_asset_id, :declared_format)
+            """
+        ),
+        {
+            "case_id": case_id,
+            "file_asset_id": file_asset_id,
+            "declared_format": upload.declared_format,
+        },
+    )
+    return file_asset_id
+
+
 async def create_case_from_upload(
     engine: Engine,
     storage: ObjectStorage,
@@ -188,64 +287,12 @@ async def create_case_from_upload(
             if stored.size_bytes != upload.size_bytes:
                 raise RuntimeError("Stored file size does not match upload")
 
-            file_asset_id = connection.scalar(
-                text(
-                    """
-                    INSERT INTO sims.file_asset (
-                        asset_scope,
-                        owner_user_id,
-                        inspection_case_id,
-                        storage_key,
-                        original_filename,
-                        detected_mime_type,
-                        extension,
-                        size_bytes,
-                        sha256_hex
-                    )
-                    VALUES (
-                        'USER',
-                        :owner_user_id,
-                        :case_id,
-                        :storage_key,
-                        :original_filename,
-                        :detected_mime_type,
-                        :extension,
-                        :size_bytes,
-                        :sha256_hex
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "owner_user_id": owner_user_id,
-                    "case_id": case_id,
-                    "storage_key": storage_key,
-                    "original_filename": upload.original_filename,
-                    "detected_mime_type": upload.detected_mime_type,
-                    "extension": upload.extension,
-                    "size_bytes": upload.size_bytes,
-                    "sha256_hex": upload.sha256_hex,
-                },
-            )
-            if file_asset_id is None:
-                raise RuntimeError("Failed to create file asset")
-
-            connection.execute(
-                text(
-                    """
-                    INSERT INTO sims.uploaded_document (
-                        inspection_case_id,
-                        file_asset_id,
-                        declared_format
-                    )
-                    VALUES (:case_id, :file_asset_id, :declared_format)
-                    """
-                ),
-                {
-                    "case_id": case_id,
-                    "file_asset_id": file_asset_id,
-                    "declared_format": upload.declared_format,
-                },
+            record_uploaded_document(
+                connection,
+                owner_user_id=owner_user_id,
+                case_id=case_id,
+                storage_key=storage_key,
+                upload=upload,
             )
     except BaseException:
         for cleanup_key in cleanup_keys:
