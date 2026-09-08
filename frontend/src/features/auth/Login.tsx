@@ -18,17 +18,25 @@ export default function Login() {
 
         try {
             const response = await authService.login({
-                login_id: email,
+                email: email,
                 password,
             })
 
-            // 성공 시 sessionStorage에 access_token 저장
-            if (response && response.data && response.data.access_token) {
-                sessionStorage.setItem('access_token', response.data.access_token)
+            // 성공 시 sessionStorage에 access_token 및 expire_time 저장
+            if (response && response.access_token) {
+                sessionStorage.setItem('access_token', response.access_token)
+                
+                // 1시간(60분 * 60초 * 1000ms) 뒤의 만료 시간 저장
+                const expireTime = Date.now() + 60 * 60 * 1000
+                sessionStorage.setItem('expire_time', String(expireTime))
+
                 window.dispatchEvent(new Event('auth-change'))
                 navigate('/')
             }
         } catch (error: any) {
+            // 🔍 어떤 에러 때문에 catch로 빠지는지 상세히 출력
+            console.error('로그인 try 내부 에러 상세:', error)
+
             const errorData = error.response?.data
             if (errorData && errorData.message) {
                 setAlertMessage(errorData.message)

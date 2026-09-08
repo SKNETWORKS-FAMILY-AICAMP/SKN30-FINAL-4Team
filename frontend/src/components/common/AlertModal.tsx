@@ -27,9 +27,12 @@ export default function AlertModal({
                 <h3 className="font-bold text-lg text-slate-900 pt-md">
                     {title}
                 </h3>
-                <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line">
-                    {description}
-                </p>
+                
+                {/* <br> 태그가 HTML로 렌더링되도록 dangerouslySetInnerHTML 적용 */}
+                <div 
+                    className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-line"
+                    dangerouslySetInnerHTML={{ __html: description }}
+                />
 
                 {type === 'confirm' ? (
                     <div className="grid grid-cols-2 gap-3 mt-6 w-full">

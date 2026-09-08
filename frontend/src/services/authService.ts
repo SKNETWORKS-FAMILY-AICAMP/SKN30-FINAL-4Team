@@ -1,7 +1,7 @@
 import { apiClient } from './apiClient'
 
 export interface LoginRequest {
-    login_id: string
+    email: string
     password: string
 }
 
@@ -44,13 +44,19 @@ export const authService = {
         return response.data
     },
 
-    // 5. 비밀번호 재설정 요청 (`POST /api/v1/auth/password-reset/request`)
+    // 5. 세션 연장 (`POST /api/v1/auth/refresh`)
+    refreshToken: async () => {
+        const response = await apiClient.post('/api/v1/auth/refresh')
+        return response.data
+    },
+
+    // 6. 비밀번호 재설정 요청 (`POST /api/v1/auth/password-reset/request`)
     requestPasswordReset: async (data: PasswordResetRequestDto) => {
         const response = await apiClient.post('/api/v1/auth/password-reset/request', data)
         return response.data
     },
 
-    // 6. 비밀번호 재설정 확인 (`POST /api/v1/auth/password-reset/confirm`)
+    // 7. 비밀번호 재설정 확인 (`POST /api/v1/auth/password-reset/confirm`)
     confirmPasswordReset: async (data: PasswordResetConfirmDto) => {
         const response = await apiClient.post('/api/v1/auth/password-reset/confirm', data)
         return response.data
