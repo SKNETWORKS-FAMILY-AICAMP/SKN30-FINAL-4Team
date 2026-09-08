@@ -228,6 +228,33 @@ def test_source_text_comes_from_the_common_ir_document(profile, cpl_result, comm
     assert entry.sources
 
 
+def test_model3_payload_exposes_quantity_raw_fragments_without_common_ir(
+    profile, cpl_result
+):
+    """L1 quantity facts reach the child parser when Common IR is unavailable."""
+
+    entry = build_ml_inputs(profile, cpl_result, common_ir=None)[
+        MlModelId.MODEL_3_ANOMALY
+    ]
+    text = entry.payload["evidence_text"]
+
+    assert isinstance(text, str)
+    expected = [
+        "20개팀",
+        "최종 선정 4개팀",
+        "팀당 400만원",
+        "150만원",
+        "250만원",
+        "전액 지원",
+        "21,000천원",
+    ]
+    assert all(value in text for value in expected)
+    assert [text.index(value) for value in expected] == sorted(
+        text.index(value) for value in expected
+    )
+    assert entry.reason_code is None
+
+
 def test_withheld_model_1_is_not_fed_onward(profile, cpl_result, common_ir):
     """판단보류를 임의 유형으로 승격하지 않는다 (초안 §8)."""
 

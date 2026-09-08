@@ -357,6 +357,62 @@ def _quantities(profile: dict[str, Any]) -> tuple[dict[str, list[str]], list[str
     return values, sources
 
 
+_QUANTITY_EVIDENCE_LABELS: dict[str, str] = {
+    "support_scale": "지원규모",
+    "cost_sharing": "자부담",
+    "support_period": "지원기간",
+    "total_budget": "총사업비",
+}
+
+
+def _quantity_evidence_text(
+    profile: dict[str, Any],
+    quantities: dict[str, list[str]],
+    common_ir: CommonIrArtifact | None,
+) -> tuple[str | None, list[str]]:
+    """Model 3 원문을 만든다. Common IR 이 있으면 그 reading order를 따른다.
+
+    Model 3도 팀 어댑터가 원문을 파싱해야 하므로 숫자를 여기서 정규화하지
+    않는다. Common IR이 없을 때만 L1 fact의 ``value_raw``를 필드 맥락과 함께
+    그대로 이어 붙인다. prefix는 파싱 규칙이 아니라 어느 quantity fact인지
+    보존하는 라벨이고, 값 자체는 원문 그대로다.
+    """
+
+    if common_ir is not None:
+        grounded: set[str] = set()
+        for path in QUANTITY_SOURCES:
+            for fact in facts_at(profile, path):
+                if fact.source_block_id:
+                    grounded.add(fact.source_block_id)
+                for evidence in fact.evidence:
+                    block_id = evidence.common_ir_block_id or evidence.source_block_id
+                    if block_id:
+                        grounded.add(block_id)
+        blocks = common_ir.document.get("blocks")
+        if isinstance(blocks, list) and grounded:
+            texts: list[str] = []
+            source_ids: list[str] = []
+            for block in blocks:
+                if not isinstance(block, dict) or block.get("block_id") not in grounded:
+                    continue
+                text = block.get("text")
+                if isinstance(text, str) and text.strip():
+                    texts.append(text)
+                    source_ids.append(str(block["block_id"]))
+            if texts:
+                return "\n".join(texts), source_ids
+
+    # No grounded Common IR block: preserve quantity fact order.  ``quantities``
+    # is populated in QUANTITY_SOURCES order and each list preserves facts_at().
+    lines: list[str] = []
+    for key, values in quantities.items():
+        label = _QUANTITY_EVIDENCE_LABELS.get(key)
+        if label is None:
+            continue
+        lines.extend(f"{label}: {value}" for value in values if value.strip())
+    return ("\n".join(lines) or None), []
+
+
 def build_ml_inputs(
     profile: dict[str, Any],
     cpl_result: CplResult | None = None,
@@ -403,6 +459,9 @@ def build_ml_inputs(
 
     quantities, quantity_sources = _quantities(profile)
     evidence_text, evidence_sources = _evidence_text(cpl_result, common_ir)
+    model_3_evidence_text, model_3_evidence_sources = _quantity_evidence_text(
+        profile, quantities, common_ir
+    )
     model_2 = MlModelInput(
         model_id=MlModelId.MODEL_2_AMOUNT,
         payload={
@@ -417,8 +476,8 @@ def build_ml_inputs(
 
     model_3 = MlModelInput(
         model_id=MlModelId.MODEL_3_ANOMALY,
-        payload={"quantities": quantities},
-        sources=list(quantity_sources),
+        payload={"evidence_text": model_3_evidence_text, "quantities": quantities},
+        sources=[*model_3_evidence_sources, *quantity_sources],
         reason_code=None if quantity_sources else INPUT_EVIDENCE_MISSING,
     )
 
