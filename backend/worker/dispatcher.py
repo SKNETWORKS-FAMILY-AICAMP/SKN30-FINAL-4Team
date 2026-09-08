@@ -250,6 +250,7 @@ class QueueJobDispatcher:
         engine: Engine,
         run_analysis: Callable[[int], Awaitable[object]] | None = None,
         *,
+        legacy_run_analysis: Callable[[int], Awaitable[object]] | None = None,
         worker_id: str | None = None,
     ) -> None:
         self._engine = engine
@@ -257,9 +258,11 @@ class QueueJobDispatcher:
         self._worker_id = worker_id or f"inproc-{os.getpid()}"
         self._tasks: set[asyncio.Task[UUID | None]] = set()
         self._queue_installed: bool | None = None
-        self._legacy = (
-            InProcessJobDispatcher(run_analysis) if run_analysis is not None else None
-        )
+        # 큐 갈래는 결과 계약(``AnalysisResults``)까지 돌려주는 콜러블을 쓰고,
+        # 큐가 없는 전환기 DB 는 예전 콜러블을 그대로 쓴다. 하나만 주면 두
+        # 갈래가 같은 것을 쓴다 — 기존 호출자의 모양이다.
+        legacy = legacy_run_analysis or run_analysis
+        self._legacy = InProcessJobDispatcher(legacy) if legacy is not None else None
 
     def _queue_available(self) -> bool:
         if self._queue_installed is None:
