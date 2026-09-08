@@ -4,6 +4,7 @@ LLM 호출은 저장된 selection 을 되돌려주는 가짜 selector 로 대체
 """
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,10 @@ import httpx
 
 from app.ports.llm_client import LLMInvalidResponseError, LLMTimeoutError
 from worker.adapters.vllm_llm_client import VllmLLMClient
+from pydantic import ValidationError
+
 from worker.profiles import (
+    _selection_validation_messages,
     build_pack,
     make_vllm_selector,
     parse_to_common_ir,
@@ -20,6 +24,7 @@ from worker.profiles import (
     structure_request_profile,
 )
 from worker.contracts.profile_snapshot import (
+    PARTIAL_MATERIALIZATION,
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
     REPAIR_BUDGET_EXHAUSTED,
@@ -471,3 +476,143 @@ def test_pack_id_mismatch_is_isolated_into_a_failed_snapshot():
     assert snapshot.status == "FAILED"
     assert snapshot.profile is None
     assert snapshot.diagnostics[-1].reason_code == LLM_INVALID_RESPONSE
+
+def test_repair_hint_keeps_the_allowed_values_the_model_must_choose_from():
+    """보완 힌트가 허용 목록을 온전히 담아야 한다.
+
+    이전 구현은 raw 의 모든 문자열을 메시지에서 치환했다. facts 에 ``target``
+    이 있으면 허용 목록의 ``support_target`` 이 ``support_[redacted]`` 가 되어,
+    "이 중에서 고르라" 는 안내가 고를 수 없는 목록과 함께 나갔다. 실제 RunPod
+    실행에서 보완 시도가 같은 진단을 반복한 원인이다.
+    """
+    invalid = _stored_selection_payload()
+    # 허용 목록의 다른 값(support_target)의 부분 문자열인 값을 일부러 넣는다.
+    invalid["facts"][0]["field_name"] = "target"
+
+    with pytest.raises(ValidationError) as raised:
+        RequestSourceSelectionV012.model_validate(invalid)
+    messages = _selection_validation_messages(raised.value)
+
+    joined = " ".join(messages)
+    assert "redacted" not in joined
+    assert "support_target" in joined
+    assert "facts.0.field_name" in joined
+
+
+def test_repair_hint_reaches_the_model_and_nothing_else(caplog):
+    """힌트는 다음 호출 payload 로만 간다. 로그·예외 문구로 새지 않는다."""
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    invalid = _stored_selection_payload()
+    invalid["facts"][0]["value_anchor"]["anchor_text"] = None
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        content = json.dumps(invalid) if len(sent) == 1 else selection.model_dump_json()
+        return httpx.Response(200, json=_chat_response(content))
+
+    selector = make_vllm_selector(
+        VllmLLMClient(
+            api_key="test-key",
+            base_url="https://vllm.invalid/v1",
+            model_profiles={"structuring": "served-gemma"},
+            timeout_seconds=5,
+            transport=httpx.MockTransport(handler),
+        ),
+        model_profile="structuring",
+        pack=pack,
+        document=document,
+        profile_id=selection.profile_id,
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        snapshot = structure_request_profile(
+            document=document,
+            pack=pack,
+            profile_id=selection.profile_id,
+            selector=selector,
+            model_id="served-gemma",
+            max_repairs=1,
+        )
+
+    assert snapshot.status == "OK"
+    hints = json.loads(sent[1]["messages"][1]["content"])["server_validation_errors"]
+    assert hints
+    # 힌트 문구가 로그로 새지 않는다.
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    for hint in hints:
+        assert hint not in logged
+
+
+def _selector_returning(payload: dict):
+    """LLM 없이 selector 를 흉내낸다. 재료화는 순수 로컬 함수다."""
+
+    def selector(prior_selection, validation_errors):
+        return RequestSourceSelectionV012.model_validate(payload), {"repair": False}
+
+    return selector
+
+
+def test_a_broken_delivery_relation_no_longer_destroys_the_whole_profile():
+    """어긋난 묶음만 덜어내고 나머지를 살린다 (초안: 정상 결과 보존).
+
+    지금까지는 delivery relation 하나가 컨테이너 규칙을 어기면 facts 26 개와
+    support_components 까지 통째로 사라지고 FAILED 였다. 실제 요청서가 결과를
+    하나도 못 내던 이유다.
+    """
+    document, _ = _stored_selection()
+    pack = build_pack(document)
+    payload = _stored_selection_payload()
+    assert len(payload["delivery_relations"]) == 1
+    assert len(payload["facts"]) == 26
+    # actor 를 컨테이너와 다른 블록으로 옮긴다 — 관찰된 실패와 같은 모양이다.
+    other = next(
+        block.block_id
+        for block in pack.blocks
+        if block.block_id != payload["delivery_relations"][0]["actor_anchor"]["source_block_id"]
+    )
+    payload["delivery_relations"][0]["actor_anchor"]["source_block_id"] = other
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=payload["profile_id"],
+        selector=_selector_returning(payload),
+        model_id="served-gemma",
+        max_repairs=0,
+    )
+
+    assert snapshot.status == "OK"
+    assert snapshot.profile is not None
+    # 본체는 살아남는다.
+    assert snapshot.profile["support_components"]
+    # 덜어낸 사실이 진단에 남는다. 남지 않으면 "조용히 버리기" 다.
+    codes = [diagnostic.reason_code for diagnostic in snapshot.diagnostics]
+    assert PARTIAL_MATERIALIZATION in codes
+    partial = snapshot.diagnostics[-1]
+    assert partial.unit == "delivery_relations"
+    assert "delivery_relations=1" in partial.message
+
+
+def test_a_broken_fact_still_fails_the_whole_profile():
+    """본체는 덜어내지 않는다. 사실이 없는 프로필은 부분 결과가 아니다."""
+    document, _ = _stored_selection()
+    pack = build_pack(document)
+    payload = _stored_selection_payload()
+    payload["facts"][0]["value_anchor"]["source_block_id"] = "markdown:no-such-block"
+
+    snapshot = structure_request_profile(
+        document=document,
+        pack=pack,
+        profile_id=payload["profile_id"],
+        selector=_selector_returning(payload),
+        model_id="served-gemma",
+        max_repairs=0,
+    )
+
+    assert snapshot.status == "FAILED"
+    assert snapshot.profile is None
+    assert PARTIAL_MATERIALIZATION not in [
+        diagnostic.reason_code for diagnostic in snapshot.diagnostics
+    ]

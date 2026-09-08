@@ -34,6 +34,7 @@ from .contracts.profile_snapshot import (
     LLM_UNAVAILABLE,
     MATERIALIZATION_FAILED,
     PARSE_FAILED,
+    PARTIAL_MATERIALIZATION,
     REPAIR_BUDGET_EXHAUSTED,
     CommonIrArtifact,
     ProfileSnapshot,
@@ -43,6 +44,7 @@ from .contracts.profile_snapshot import (
 from common_ir_pipeline.schema import validation_errors  # noqa: E402
 from semantic_structuring.request_profile_v012 import (  # noqa: E402
     REQUEST_PIPELINE_VERSION,
+    assemble_request_profile_v012,
     RequestSourceSelectionV012,
     build_request_candidate_pack,
     resolve_request_type_from_candidate_pack,
@@ -217,31 +219,27 @@ _REPAIR_INSTRUCTION = (
 )
 
 
-def _selection_validation_messages(
-    error: ValidationError, raw: dict[str, Any]
-) -> list[str]:
-    """Keep Pydantic repair hints useful without echoing model input."""
+def _selection_validation_messages(error: ValidationError) -> list[str]:
+    """스키마 위반을 모델이 고칠 수 있는 형태로 옮긴다.
 
-    raw_strings: set[str] = set()
+    **메시지에서 문자열을 지우지 않는다.** 이 값이 가는 곳은 다음 호출의
+    ``server_validation_errors`` 하나뿐이고, 받는 쪽은 그 입력을 만든 모델
+    자신이다. 로그·진단·사용자 응답 어디에도 닿지 않으므로 가릴 대상이 없다.
 
-    def collect(value: Any) -> None:
-        if isinstance(value, str):
-            raw_strings.add(value)
-        elif isinstance(value, dict):
-            for item in value.values():
-                collect(item)
-        elif isinstance(value, list):
-            for item in value:
-                collect(item)
+    지우면 오히려 힌트가 부서진다. 이전 구현은 raw 의 모든 문자열을 메시지에서
+    치환했는데, 짧고 흔한 값 하나가 정당한 스키마 상수를 갉아먹었다. facts 에
+    ``target`` 이 있으면 허용 목록의 ``support_target`` 이
+    ``support_[redacted]`` 가 되어, "이 중에서 고르라" 는 안내가 고를 수 없는
+    목록과 함께 나갔다. 보완 시도가 같은 진단을 반복한 원인이다.
 
-    collect(raw)
+    ``include_input=False`` 는 유지한다. 모델은 자기가 보낸 값을
+    ``prior_selection`` 으로 그대로 다시 받으므로 여기서 되풀이할 필요가 없고,
+    프롬프트만 커진다.
+    """
     messages: list[str] = []
     for issue in error.errors(include_input=False, include_context=False):
         location = ".".join(str(part) for part in issue.get("loc", ()))
         message = str(issue.get("msg", "validation failed"))
-        for value in sorted(raw_strings, key=len, reverse=True):
-            if value:
-                message = message.replace(value, "[redacted]")
         messages.append(f"{location}: {message}" if location else message)
     return messages
 
@@ -310,8 +308,8 @@ def make_vllm_selector(
                     raise error from None
                 repair_payload = selection_request_payload(pack, document, profile_id)
                 repair_payload["prior_selection"] = normalized
-                repair_payload["server_validation_errors"] = _selection_validation_messages(
-                    validation_error, normalized
+                repair_payload["server_validation_errors"] = (
+                    _selection_validation_messages(validation_error)
                 )
                 selection = call(
                     instructions + _REPAIR_INSTRUCTION,
@@ -335,6 +333,59 @@ def make_vllm_selector(
 
 
 # ------------------------------------------------------------ 4. 구조화
+
+
+# 어긋난 묶음만 덜어내고 나머지를 살릴 때, 덜어내도 되는 것들.
+#
+# **facts / support_components / program_hierarchy 는 넣지 않는다.** 그것이
+# 프로필의 본체다. 사실이 없는 프로필은 부분 결과가 아니라 빈 결과이고,
+# 그것을 정상으로 저장하는 것은 §11 이 금지한 바로 그 행위다.
+#
+# 여기 있는 둘은 수행체계(delivery) 축의 재료다. 빠지면 FIT·SIM 의 해당 축이
+# 근거 없음으로 INSUFFICIENT 를 내고, 그것이 화면에 그대로 나간다 — 없는 것을
+# 있다고 하지 않는다. 대신 CPL 13 개와 나머지 축은 살아남는다.
+#
+# 순서가 곧 시도 순서다. 관찰된 실패가 delivery_relations 에 몰려 있으므로
+# 그것부터 덜어낸다.
+_ISOLATABLE_GROUPS = ("delivery_relations", "delivery_methods")
+
+
+def _materialize_isolated(
+    error: RequestMaterializationError,
+    document: dict[str, Any],
+    pack,
+    model_id: str,
+) -> tuple[dict[str, Any], list[str], dict[str, int]] | None:
+    """어긋난 묶음을 덜어내고 다시 재료화한다. 못 살리면 ``None``.
+
+    재료화는 **순수 로컬 함수**다. LLM 도 네트워크도 타지 않으므로 이 재시도는
+    공짜다. 보완 호출을 늘리는 것과는 성격이 다르다.
+
+    팀원 검증은 하나도 완화하지 않는다. 같은 ``assemble_request_profile_v012``
+    를 그대로 다시 부르고, 통과하는 부분만 남긴다.
+    """
+    baseline = error.selection.model_dump(mode="json")
+    dropped: list[str] = []
+    counts: dict[str, int] = {}
+    for group in _ISOLATABLE_GROUPS:
+        if not baseline.get(group):
+            continue
+        dropped.append(group)
+        counts[group] = len(baseline[group])
+        payload = {**baseline, **{name: [] for name in dropped}}
+        try:
+            trimmed = RequestSourceSelectionV012.model_validate(payload)
+            profile = assemble_request_profile_v012(
+                document,
+                pack,
+                trimmed,
+                model_id=model_id,
+                prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+            )
+        except (ValidationError, ValueError):
+            continue
+        return profile, dropped, counts
+    return None
 
 
 def structure_request_profile(
@@ -376,17 +427,49 @@ def structure_request_profile(
             model_id=model_id,
         )
     except RequestMaterializationError as error:
+        attempted = [
+            StageDiagnostic(
+                stage="structure_request_profile",
+                unit=row.get("error_type"),
+                reason_code=MATERIALIZATION_FAILED,
+                message=str(row.get("validation_error"))[:2000],
+                attempt=row.get("repair_attempt"),
+            )
+            for row in error.diagnostics
+        ]
+        # 보완을 다 써도 실패했다면, 어긋난 묶음만 덜어내고 나머지를 살려 본다.
+        # 지금까지는 delivery relation 하나가 CPL·FIT 재료까지 함께 죽였다.
+        isolated = _materialize_isolated(error, document, pack, model_id)
+        if isolated is not None:
+            profile, dropped, counts = isolated
+            return ProfileSnapshot(
+                profile_id=profile_id,
+                status="OK",
+                profile=profile,
+                candidate_pack_id=pack.pack_id,
+                common_ir=common_ir,
+                model_id=model_id,
+                prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+                profile_contract_version=REQUEST_PIPELINE_VERSION,
+                selection_attempts=error.retry_count + 1,
+                usage=list(error.usage),
+                # 무엇을 덜어냈는지가 여기 남지 않으면 "조용히 버리기" 가 된다.
+                diagnostics=attempted
+                + [
+                    StageDiagnostic(
+                        stage="structure_request_profile",
+                        unit=",".join(dropped),
+                        reason_code=PARTIAL_MATERIALIZATION,
+                        message=(
+                            "근거 불일치로 제외한 묶음: "
+                            + ", ".join(f"{name}={counts[name]}" for name in dropped)
+                        ),
+                        attempt=error.retry_count + 1,
+                    )
+                ],
+            )
         return failed(
-            [
-                StageDiagnostic(
-                    stage="structure_request_profile",
-                    unit=row.get("error_type"),
-                    reason_code=MATERIALIZATION_FAILED,
-                    message=str(row.get("validation_error"))[:2000],
-                    attempt=row.get("repair_attempt"),
-                )
-                for row in error.diagnostics
-            ]
+            attempted
             + [
                 StageDiagnostic(
                     stage="structure_request_profile",
