@@ -1,7 +1,13 @@
 from pathlib import Path
 from urllib.parse import urlsplit
+from functools import cached_property
+
+from app.services.sim.sim_engine import load_sim_scoring, load_sim_prompt
+from app.services.fit.fit_engine import load_fit_scoring, load_fit_prompt
 
 from pydantic import AnyHttpUrl, Field, PostgresDsn, SecretStr, field_validator
+from app.schemas.sim import SimScoringPolicy
+from app.schemas.fit import FitScoringPolicy
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -95,6 +101,22 @@ class Settings(BaseSettings):
     chat_prompt_path: Path = (
         PROJECT_ROOT / "backend" / "config" / "prompts" / "chat-v0.1.txt"
     )
+
+    @cached_property
+    def sim_scoring(self) -> SimScoringPolicy:
+        return load_sim_scoring(self.sim_scoring_path)
+
+    @cached_property
+    def sim_prompt(self) -> str:
+        return load_sim_prompt(self.sim_prompt_path)
+
+    @cached_property
+    def fit_scoring(self) -> FitScoringPolicy:
+        return load_fit_scoring(self.fit_scoring_path)
+
+    @cached_property
+    def fit_prompt(self) -> str:
+        return load_fit_prompt(self.fit_prompt_path)
 
     @field_validator("database_url")
     @classmethod

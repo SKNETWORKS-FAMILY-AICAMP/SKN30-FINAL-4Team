@@ -37,24 +37,30 @@ LABEL_MAPPING_PATH = os.path.join(_SERVING_DIR, "label_mapping.json")
 # 여기서는 실제 학습에 쓴 256 을 쓴다.
 MAX_LEN = 256
 
+import threading
+
 _model = None
 _tok = None
 _classes = None
+_load_lock = threading.Lock()
 
 
 def _load():
     global _model, _tok, _classes
     if _model is not None:
         return
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    with _load_lock:
+        if _model is not None:
+            return
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-    _tok = AutoTokenizer.from_pretrained(TOKENIZER_DIR)
-    _model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
-    _model.eval()
-    if torch.cuda.is_available():
-        _model = _model.cuda()
-    with open(LABEL_MAPPING_PATH, encoding="utf-8") as f:
-        _classes = json.load(f)["classes"]
+        _tok = AutoTokenizer.from_pretrained(TOKENIZER_DIR)
+        _model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+        _model.eval()
+        if torch.cuda.is_available():
+            _model = _model.cuda()
+        with open(LABEL_MAPPING_PATH, encoding="utf-8") as f:
+            _classes = json.load(f)["classes"]
 
 
 def predict(texts, already_cleaned=False):

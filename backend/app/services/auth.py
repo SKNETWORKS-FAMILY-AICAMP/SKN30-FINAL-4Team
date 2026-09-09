@@ -27,13 +27,30 @@ class AppUser:
     is_active: bool
 
 
-_USER_COLUMNS = """
-    id,
-    email::text AS email,
-    password_hash,
-    password_changed_at,
-    is_active
-"""
+_SELECT_USER_BY_EMAIL = text(
+    """
+    SELECT id, email::text AS email, password_hash, password_changed_at, is_active
+    FROM sims.app_user
+    WHERE email = :email
+    """
+)
+
+_SELECT_USER_BY_ID = text(
+    """
+    SELECT id, email::text AS email, password_hash, password_changed_at, is_active
+    FROM sims.app_user
+    WHERE id = :user_id
+    """
+)
+
+_SELECT_USER_BY_ID_FOR_UPDATE = text(
+    """
+    SELECT id, email::text AS email, password_hash, password_changed_at, is_active
+    FROM sims.app_user
+    WHERE id = :user_id
+    FOR UPDATE
+    """
+)
 
 
 def login(engine: Engine, email: str, password: str) -> AppUser:
@@ -46,13 +63,7 @@ def login(engine: Engine, email: str, password: str) -> AppUser:
     with engine.begin() as connection:
         row = (
             connection.execute(
-                text(
-                    f"""
-                    SELECT {_USER_COLUMNS}
-                    FROM sims.app_user
-                    WHERE email = :email
-                    """
-                ),
+                _SELECT_USER_BY_EMAIL,
                 {"email": email},
             )
             .mappings()
@@ -86,13 +97,7 @@ def get_user_by_id(engine: Engine, user_id: int) -> AppUser | None:
     with engine.connect() as connection:
         row = (
             connection.execute(
-                text(
-                    f"""
-                    SELECT {_USER_COLUMNS}
-                    FROM sims.app_user
-                    WHERE id = :user_id
-                    """
-                ),
+                _SELECT_USER_BY_ID,
                 {"user_id": user_id},
             )
             .mappings()
@@ -118,14 +123,7 @@ def change_password(
     with engine.begin() as connection:
         row = (
             connection.execute(
-                text(
-                    f"""
-                    SELECT {_USER_COLUMNS}
-                    FROM sims.app_user
-                    WHERE id = :user_id
-                    FOR UPDATE
-                    """
-                ),
+                _SELECT_USER_BY_ID_FOR_UPDATE,
                 {"user_id": user_id},
             )
             .mappings()

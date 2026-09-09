@@ -150,15 +150,19 @@ class ReportSimCandidate(BaseModel):
 
 
 class ReportJsonV01(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     schema_version: Literal[REPORT_SCHEMA_VERSION] = REPORT_SCHEMA_VERSION
     case: ReportCase
     ui_status: Literal["COMPLETED"] = "COMPLETED"
+    quality: Literal["COMPLETE", "PARTIAL"] = "COMPLETE"
     self_check: SelfCheck
     structural_consistency: StructuralConsistency
     review_issues: list[ReviewIssue] = Field(default_factory=list)
     similar_candidates: list[ReportSimCandidate] = Field(default_factory=list)
+    models: dict[str, Any] | None = None
+    dif: dict[str, Any] | None = None
+    module_summary: dict[str, Any] | None = None
     ben_references: list[dict[str, Any]] = Field(default_factory=list)
     differences: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

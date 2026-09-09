@@ -553,6 +553,8 @@ def test_changed_stored_source_is_rejected_before_parser(
                 FROM sims.document_parse_run r
                 JOIN sims.uploaded_document d ON d.file_asset_id = r.file_asset_id
                 WHERE d.inspection_case_id = :case_id
+                ORDER BY r.attempt_no DESC
+                LIMIT 1
                 """
             ),
             {"case_id": case_id},

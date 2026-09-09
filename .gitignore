@@ -150,7 +150,7 @@ docker-data/
 # 다시 생긴다. 팀이 Claude Code 설정을 공유하기로 하면 그때
 # `!.claude/settings.json` 처럼 특정 파일만 예외로 풀 것.
 .claude/
-=======
+.agents/
 /backend/storage/
 
 # E2E · 데모 산출물 (PDF, 프론트 전달본)

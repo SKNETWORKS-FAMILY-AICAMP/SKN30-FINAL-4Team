@@ -1,7 +1,13 @@
 import asyncio
+import hashlib
 import json
 import logging
+import os
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+
 
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
@@ -42,7 +48,9 @@ from app.services.cpl.logic_validator import (
     semantic_fragments,
 )
 from app.services.document_parsing import run_case_parsing
+from app.schemas.analysis_result import FrozenInspectionContext
 from app.services.fit.fit_engine import analyze_fit, load_fit_prompt, load_fit_scoring
+from app.services.fit.runner import run_fit_subagents_parallel
 from app.services.ml import pipeline_bridge
 from app.services.retrieval.retrieval import (
     RetrievalResult,
@@ -64,6 +72,55 @@ logger = logging.getLogger(__name__)
 SAFE_FAILURE_CODE = "CPL_ANALYSIS_FAILED"
 SAFE_FAILURE_MESSAGE = "The document checklist could not be completed"
 RETRIEVAL_FAILURE_MESSAGE = "Similar-program retrieval could not be completed"
+
+# Path setup for ML serving modules
+_SERVING_SHARED = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml", "serving", "shared")
+)
+_SERVING_M1 = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml", "serving", "model1")
+)
+for _p in (_SERVING_SHARED, _SERVING_M1):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+
+def freeze_inspection_context(
+    case_id: int,
+    document: Any,
+    cpl_result: CplResult,
+) -> FrozenInspectionContext:
+    """Freeze case CPL findings and raw text into an immutable snapshot."""
+    text_content = getattr(document, "text", "") or ""
+    cpl_dump = (
+        cpl_result.model_dump(mode="json")
+        if hasattr(cpl_result, "model_dump")
+        else {}
+    )
+    content_payload = f"{text_content}\n{json.dumps(cpl_dump, sort_keys=True)}"
+    ctx_hash = hashlib.sha256(content_payload.encode("utf-8")).hexdigest()[:12]
+    context_version = f"ctx-{case_id}-{ctx_hash}"
+
+    title = getattr(document, "title", None)
+    if not title and text_content and text_content.strip():
+        first_line = text_content.strip().split("\n")[0].strip()
+        if first_line:
+            title = first_line[:80]
+    if not title:
+        title = "사전협의 요청서"
+
+    return FrozenInspectionContext(
+        context_version=context_version,
+        case_id=case_id,
+        title=title,
+        document_title=title,
+        document_text=text_content,
+        cpl_result=cpl_result,
+        cpl_results=cpl_dump,
+        frozen_at=datetime.now(timezone.utc),
+        context_hash=ctx_hash,
+    )
+
 
 
 async def run_analysis_pipeline(
@@ -140,26 +197,42 @@ async def run_analysis_pipeline(
             type(error).__name__,
         )
         _record_cpl_failure(engine, case_id)
-        return
+        return None
 
-    fit_result = await _run_fit(result, llm_client, settings, case_id)
-    # Model 1 의 support_type 을 검색 라우팅에 넘긴다. 세 모델을 돌릴 수 없는
-    # 배포에서는 ml_results 가 None 이고, 라우팅은 좁히지 않는 쪽으로 남는다.
+    # Step 3: Context Snapshot Freezing (Architecture v2.2)
+    frozen_context = freeze_inspection_context(
+        case_id=case_id,
+        document=document,
+        cpl_result=result,
+    )
+    logger.info(
+        "Frozen inspection context created: version=%s case_id=%s hash=%s",
+        frozen_context.context_version,
+        case_id,
+        frozen_context.context_hash,
+    )
+
+    # Step 4: FIT Analysis (runs 3 subagents in parallel internally)
+    fit_result = await _run_fit(frozen_context, llm_client, settings, case_id)
+
+    # Model 1 -> Model 2 & 3 via pipeline_bridge
     ml_results = None
     if settings.ml_models_enabled:
         ml_results = await pipeline_bridge.run_models(
             case_id=case_id,
-            cpl_result=result,
+            cpl_result=frozen_context.cpl_result,
             document_text=document.text,
             title=_document_title(document),
             cohort=settings.ml_model2_cohort,
         )
     support_type, trust_grade = pipeline_bridge.routing_inputs(ml_results)
+
+    # Step 5: Retrieval & SIM Execution (with 4-stage routing inputs)
     retrieval_result = await _run_retrieval(
         engine,
         embedding_client,
         case_id,
-        result,
+        frozen_context.cpl_result,
         support_type=support_type,
         trust_grade=trust_grade,
     )
@@ -167,7 +240,7 @@ async def run_analysis_pipeline(
         sim_results = await _run_sim(
             engine,
             retrieval_result,
-            result,
+            frozen_context.cpl_result,
             llm_client,
             settings,
             case_id,
@@ -180,29 +253,139 @@ async def run_analysis_pipeline(
             case_id=case_id,
             missing_check_run_id=cpl_run.missing_check_run_id,
             retrieval_run_id=retrieval_result.retrieval_run_id,
-            cpl_result=result,
+            cpl_result=frozen_context.cpl_result,
             fit_result=fit_result,
             sim_results=sim_results,
             expected_candidate_count=len(retrieval_result.candidates),
+            ml_results=ml_results,
         )
     return fit_result
 
 
+async def _run_ml_branch(frozen_context: FrozenInspectionContext) -> dict | None:
+    """Orchestrate Model 1, and immediately trigger Model 2 and Model 3 upon return."""
+    if not frozen_context.document_text:
+        return None
+
+    import result_envelope as RE
+
+    aid = str(frozen_context.case_id)
+    try:
+        model_1 = await _run_model_1(frozen_context)
+    except Exception as error:
+        logger.warning("Model 1 execution failed for case %s: %s", aid, error)
+        model_1 = RE.failed(
+            aid,
+            "support_type_classifier",
+            "1.0",
+            "KLUE-BERT",
+            code="MODEL1_INFERENCE_FAILED",
+            message=str(error),
+        )
+
+    # Pre-extract canonical features once to avoid redundant regex scans
+    import preconsultation_adapter as PA
+    try:
+        shared_adapter = PA.adapt(frozen_context.document_text)
+    except Exception as e:
+        logger.warning("Pre-consultation adapter failed for case %s: %s", aid, e)
+        shared_adapter = None
+
+    # Upon Model 1 return, trigger Model 2 and Model 3 in parallel
+    model_2_task = asyncio.create_task(_run_model_2(frozen_context, model_1, adapter_output=shared_adapter))
+    model_3_task = asyncio.create_task(_run_model_3(frozen_context, model_1, adapter_output=shared_adapter))
+    model_2, model_3 = await asyncio.gather(model_2_task, model_3_task)
+
+    results = {
+        "model_1": model_1,
+        "model_2": model_2,
+        "model_3": model_3,
+    }
+    return {
+        "analysis_id": aid,
+        "context_version": frozen_context.context_version,
+        **results,
+        "summary": RE.summarize(results),
+    }
+
+
+async def _run_model_1(frozen_context: FrozenInspectionContext) -> dict:
+    """Run Model 1 (KLUE-BERT support type classifier) in thread pool."""
+    import ml_orchestrator as ml_orch
+
+    return await ml_orch.run_model_1_async(frozen_context)
+
+
+async def _run_model_2(
+    frozen_context: FrozenInspectionContext,
+    model_1_envelope: dict,
+    adapter_output: dict | None = None,
+) -> dict:
+    """Run Model 2 (XGBoost support scale regressor) upon Model 1 return."""
+    import ml_orchestrator as ml_orch
+    import result_envelope as RE
+
+    aid = str(frozen_context.case_id)
+    try:
+        return await ml_orch.run_model_2_async(
+            model_1_envelope,
+            frozen_context,
+            cohort="taxonomy",
+            adapter_output=adapter_output,
+        )
+    except Exception as error:
+        logger.warning("Model 2 execution failed for case %s: %s", aid, error)
+        return RE.failed(
+            aid,
+            "support_amount_regressor",
+            "1.0",
+            "XGBoost",
+            code="MODEL2_INFERENCE_FAILED",
+            message=str(error),
+        )
+
+
+async def _run_model_3(
+    frozen_context: FrozenInspectionContext,
+    model_1_envelope: dict,
+    adapter_output: dict | None = None,
+) -> dict:
+    """Run Model 3 (DIF statistical anomaly detector) upon Model 1 return."""
+    import ml_orchestrator as ml_orch
+    import result_envelope as RE
+
+    aid = str(frozen_context.case_id)
+    try:
+        return await ml_orch.run_model_3_async(
+            model_1_envelope,
+            frozen_context,
+            adapter_output=adapter_output,
+        )
+    except Exception as error:
+        logger.warning("Model 3 execution failed for case %s: %s", aid, error)
+        return RE.failed(
+            aid,
+            "design_anomaly_detector",
+            "1.0",
+            "unsupervised_distance_based",
+            code="MODEL3_INFERENCE_FAILED",
+            message=str(error),
+        )
+
+
 async def _run_fit(
-    cpl_result: CplResult,
+    cpl_result_or_context: Any,
     llm_client: LLMClient | None,
     settings: Settings,
     case_id: int,
 ) -> FitResult | None:
+    """Entry point for FIT analysis, supporting both FrozenInspectionContext and bare CplResult."""
     try:
-        return await analyze_fit(
-            cpl_result,
+        return await run_fit_subagents_parallel(
+            cpl_result_or_context,
             llm_client,
-            scoring=load_fit_scoring(settings.fit_scoring_path),
-            prompt=load_fit_prompt(settings.fit_prompt_path),
-            ruleset_version=settings.fit_ruleset_version,
-            prompt_version=settings.fit_prompt_version,
-            model_profile=settings.fit_model_profile,
+            settings=settings,
+            case_id=case_id,
         )
     except asyncio.CancelledError:
         raise
@@ -289,8 +472,8 @@ async def _run_sim(
             retrieval_result,
             cpl_result,
             llm_client,
-            scoring=load_sim_scoring(settings.sim_scoring_path),
-            prompt=load_sim_prompt(settings.sim_prompt_path),
+            scoring=settings.sim_scoring,
+            prompt=settings.sim_prompt,
             ruleset_version=settings.sim_ruleset_version,
             prompt_version=settings.sim_prompt_version,
             model_profile=settings.sim_model_profile,
@@ -321,7 +504,9 @@ def _document_title(document: ParsedDocument) -> str | None:
 
 
 def _cpl_axis_text(result: CplResult, field_code: CplFieldCode) -> str:
-    item = next(item for item in result.items if item.field_code == field_code)
+    item = next((item for item in result.items if item.field_code == field_code), None)
+    if item is None:
+        return ""
     values = dict.fromkeys(
         occurrence.raw_text.strip()
         for occurrence in item.occurrences

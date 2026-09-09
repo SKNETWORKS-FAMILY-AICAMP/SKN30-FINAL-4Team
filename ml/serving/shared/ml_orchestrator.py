@@ -38,6 +38,7 @@ for _p in (_HERE, os.path.join(_SERVING, "model1"),
 
 import result_envelope as RE                   # noqa: E402
 
+M1_NAME, M1_VERSION, M1_TYPE = "support_type_classifier", "1.0", "KLUE-BERT"
 M2_NAME, M2_VERSION, M2_TYPE = "support_amount_regressor", "1.0", "XGBoost"
 M3_NAME, M3_VERSION, M3_TYPE = ("design_anomaly_detector", "1.0",
                                 "unsupervised_distance_based")
@@ -50,6 +51,98 @@ M3_MIN_COHORT = 20
 def _model1():
     import runner
     return runner
+
+
+def run_model_1(
+    analysis_id,
+    cpl_result=None,
+    title=None,
+    include_scale_field=False,
+    already_cleaned=True,
+):
+    """Model 1 진입 함수 — CPL 결과 → 지원성격 분류 Result Envelope."""
+    # Context 객체 또는 dict가 첫 인자로 전달된 경우 자동 언패킹
+    if hasattr(analysis_id, "cpl_results") or (
+        isinstance(analysis_id, dict) and "cpl_results" in analysis_id
+    ):
+        ctx = analysis_id
+        cpl_res = (
+            getattr(ctx, "cpl_results", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("cpl_results")
+        )
+        if not cpl_res and hasattr(ctx, "cpl_result") and ctx.cpl_result is not None:
+            cpl_res = ctx.cpl_result
+        case_id = (
+            getattr(ctx, "case_id", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("case_id")
+        )
+        doc_text = (
+            getattr(ctx, "document_text", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("document_text", "")
+        )
+        doc_title = (
+            getattr(ctx, "title", None) or getattr(ctx, "document_title", None)
+            if not isinstance(ctx, dict)
+            else (ctx.get("title") or ctx.get("document_title"))
+        )
+        if not doc_title and doc_text:
+            lines = [
+                line.strip() for line in doc_text.splitlines() if line.strip()
+            ]
+            doc_title = lines[0][:50] if lines else "사전협의 요청서"
+        return run_model_1(
+            analysis_id=str(case_id or "AN-UNKNOWN"),
+            cpl_result=cpl_res,
+            title=title or doc_title,
+            include_scale_field=include_scale_field,
+            already_cleaned=already_cleaned,
+        )
+
+    try:
+        M1 = _model1()
+        return M1.run_model_1(
+            analysis_id=analysis_id,
+            cpl_result=cpl_result,
+            title=title,
+            include_scale_field=include_scale_field,
+            already_cleaned=already_cleaned,
+        )
+    except Exception as e:
+        return RE.failed(
+            analysis_id=analysis_id,
+            name=M1_NAME,
+            version=M1_VERSION,
+            model_type=M1_TYPE,
+            code="MODEL1_EXECUTION_FAILED",
+            message="%s: %s" % (type(e).__name__, e),
+        )
+
+
+async def run_model_1_async(
+    analysis_id,
+    cpl_result=None,
+    title=None,
+    include_scale_field=False,
+    already_cleaned=True,
+):
+    """Model 1 비동기 진입 함수 (CPU 추론 및 가중치 로드를 스레드로 오프로드)."""
+    import asyncio
+    import functools
+
+    return await asyncio.to_thread(
+        functools.partial(
+            run_model_1,
+            analysis_id,
+            cpl_result=cpl_result,
+            title=title,
+            include_scale_field=include_scale_field,
+            already_cleaned=already_cleaned,
+        )
+    )
+
 
 
 def _model2():
@@ -111,7 +204,7 @@ def check_support_type(support_type, path=None):
     return "unseen_by_model2", support_type
 
 
-def run_model_2(analysis_id, record, text=None, cohort=None):
+def run_model_2(analysis_id, record=None, text=None, cohort=None, adapter_output=None):
     """기존 Model 2 서빙 호출 → Result JSON.
 
     record 는 canonical feature dict(어댑터 출력 `features` 와 같은 모양).
@@ -121,6 +214,80 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
     단위)와 헷갈리기 쉬운데 그것들은 record 에서 읽는다. 값이 유효하지 않으면
     회귀 예측은 그대로 내고 percentile 만 비운 뒤 이유를 metadata 에 남긴다.
     """
+    # 패턴 감지: run_model_2(model1_result, frozen_context, cohort=...)
+    if (
+        isinstance(analysis_id, dict)
+        and ("model" in analysis_id or "status" in analysis_id)
+        and (
+            hasattr(record, "document_text")
+            or (isinstance(record, dict) and "document_text" in record)
+        )
+    ):
+        model1_result = analysis_id
+        ctx = record
+        case_id = (
+            getattr(ctx, "case_id", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("case_id")
+        )
+        doc_text = (
+            getattr(ctx, "document_text", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("document_text", "")
+        )
+        doc_title = (
+            getattr(ctx, "title", None) or getattr(ctx, "document_title", None)
+            if not isinstance(ctx, dict)
+            else (ctx.get("title") or ctx.get("document_title"))
+        )
+        aid = str(case_id or "AN-UNKNOWN")
+
+        if not RE.is_ok(model1_result):
+            return RE.not_available(
+                aid,
+                M2_NAME,
+                M2_VERSION,
+                M2_TYPE,
+                depends_on="model_1",
+            )
+
+        support_type = (model1_result.get("result") or {}).get("support_type")
+        if not support_type:
+            return RE.not_available(
+                aid,
+                M2_NAME,
+                M2_VERSION,
+                M2_TYPE,
+                depends_on="model_1.support_type",
+            )
+
+        if adapter_output is None:
+            import preconsultation_adapter as PA
+            adapter_output = PA.adapt(doc_text)
+        rec = dict(adapter_output.get("features") or {})
+        rec["support_type"] = support_type
+
+        if not doc_title and doc_text:
+            lines = [
+                line.strip() for line in doc_text.splitlines() if line.strip()
+            ]
+            doc_title = lines[0][:50] if lines else "사전협의 요청서"
+        rec["title"] = doc_title or "사전협의 요청서"
+        rec["evidence_text"] = doc_text
+
+        if not rec.get("support_unit"):
+            amount_type = (adapter_output.get("amounts") or {}).get(
+                "support_amount_type"
+            )
+            rec["support_unit"] = (
+                "company" if amount_type == "per_company" else "project"
+            )
+        if not rec.get("support_method"):
+            rec["support_method"] = "grant"
+
+        selected_cohort = cohort or "taxonomy"
+        return run_model_2(aid, rec, text=doc_text, cohort=selected_cohort)
+
     try:
         M2 = _model2()
         rec = dict(record)
@@ -220,9 +387,73 @@ def run_model_2(analysis_id, record, text=None, cohort=None):
     )
 
 
+async def run_model_2_async(analysis_id, record=None, text=None, cohort="taxonomy", adapter_output=None):
+    """Model 2 비동기 진입 함수 (XGBoost 회귀 및 분위수 조회를 스레드로 오프로드)."""
+    import asyncio
+    import functools
+
+    return await asyncio.to_thread(
+        functools.partial(run_model_2, analysis_id, record=record, text=text, cohort=cohort, adapter_output=adapter_output)
+    )
+
+
 # ------------------------------------------------------------------ Model 3
-def run_model_3(analysis_id, record, adapter_meta=None):
+def run_model_3(analysis_id, record=None, adapter_meta=None, adapter_output=None):
     """기존 Model 3 서빙 호출 → Result JSON. 유효 축 2개 미만이면 채점하지 않는다."""
+    # 패턴 감지: run_model_3(model1_result, frozen_context)
+    if (
+        isinstance(analysis_id, dict)
+        and ("model" in analysis_id or "status" in analysis_id)
+        and (
+            hasattr(record, "document_text")
+            or (isinstance(record, dict) and "document_text" in record)
+        )
+    ):
+        model1_result = analysis_id
+        ctx = record
+        case_id = (
+            getattr(ctx, "case_id", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("case_id")
+        )
+        doc_text = (
+            getattr(ctx, "document_text", None)
+            if not isinstance(ctx, dict)
+            else ctx.get("document_text", "")
+        )
+        aid = str(case_id or "AN-UNKNOWN")
+
+        if not RE.is_ok(model1_result):
+            return RE.not_available(
+                aid,
+                M3_NAME,
+                M3_VERSION,
+                M3_TYPE,
+                depends_on="model_1",
+            )
+
+        support_type = (model1_result.get("result") or {}).get("support_type")
+        if not support_type:
+            return RE.not_available(
+                aid,
+                M3_NAME,
+                M3_VERSION,
+                M3_TYPE,
+                depends_on="model_1.support_type",
+            )
+
+        if adapter_output is None:
+            import preconsultation_adapter as PA
+            adapter_output = PA.adapt(doc_text)
+        rec = dict(adapter_output.get("features") or {})
+        rec["support_type"] = support_type
+
+        meta = dict(adapter_output)
+        meta["features"] = dict(meta.get("features") or {})
+        meta["features"]["support_type"] = support_type
+
+        return run_model_3(aid, rec, adapter_meta=meta)
+
     try:
         M3 = _model3()
         rec = dict(record)
@@ -296,6 +527,16 @@ def run_model_3(analysis_id, record, adapter_meta=None):
             "axis_validity": None if validity is None else validity["axis_validity"],
             "evidence_confidence": None if validity is None else validity["confidence"],
         },
+    )
+
+
+async def run_model_3_async(analysis_id, record=None, adapter_meta=None, adapter_output=None):
+    """Model 3 비동기 진입 함수 (통계 거리 산출을 스레드로 오프로드)."""
+    import asyncio
+    import functools
+
+    return await asyncio.to_thread(
+        functools.partial(run_model_3, analysis_id, record=record, adapter_meta=adapter_meta, adapter_output=adapter_output)
     )
 
 

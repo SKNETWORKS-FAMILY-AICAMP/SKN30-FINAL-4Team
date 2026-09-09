@@ -5,6 +5,9 @@ from typing import Literal
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
 
+import os
+import sys
+
 from app.core.config import Settings
 from app.ports.llm_client import (
     LLMClient,
@@ -20,6 +23,60 @@ from app.schemas.chat import (
     ChatTurnResponse,
 )
 from app.schemas.report import ReportJsonV01
+
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+try:
+    from chatmessage.context_loader import ChatContextLoader, INTENT_TO_KEY, _empty, _evidence_of
+except ImportError:
+    ChatContextLoader = object
+    INTENT_TO_KEY = {}
+    _empty = lambda s="not_available": {"status": s, "data": None, "evidence": []}
+    _evidence_of = lambda d, s: []
+
+
+class DbChatContextLoader(ChatContextLoader):
+    """실제 DB에 저장된 ReportJsonV01/models/dif 데이터를 chatmessage context 형태로 변환."""
+
+    def __init__(self, report_json: dict, document_text: str = ""):
+        self.report_json = report_json or {}
+        self.document_text = document_text
+
+    def get_context(self, analysis_id: str, intent: str, question: str) -> dict:
+        key = INTENT_TO_KEY.get(intent)
+        if key is None:
+            return _empty()
+
+        if key == "model_1":
+            models = self.report_json.get("models") or {}
+            data = models.get("model_1")
+        elif key == "model_2":
+            models = self.report_json.get("models") or {}
+            data = models.get("model_2")
+        elif key == "model_3":
+            data = self.report_json.get("dif")
+        elif key == "document":
+            data = {"text": self.document_text}
+        elif key == "report":
+            data = self.report_json
+        else:
+            data = None
+
+        if data is None:
+            return _empty()
+
+        if isinstance(data, dict) and "status" in data and "result" in data:
+            status = data.get("status")
+            if status != "success":
+                mapped = "insufficient_data" if status == "insufficient_data" else "not_available"
+                return {"status": mapped, "data": None, "evidence": [], "source_status": status}
+            payload = dict(data.get("result") or {})
+            payload["_model"] = data.get("model")
+            return {"status": "success", "data": payload, "evidence": _evidence_of(data, key)}
+
+        return {"status": "success", "data": data, "evidence": _evidence_of(data, key)}
 
 
 CHAT_CONTEXT_MESSAGE_LIMIT = 20

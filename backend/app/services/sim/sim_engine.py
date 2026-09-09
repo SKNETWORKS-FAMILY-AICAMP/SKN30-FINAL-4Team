@@ -676,6 +676,7 @@ def _persist_results(
                 {"candidate_id": candidate_id},
             )
             seen: set[tuple[str, str]] = set()
+            evidence_params = []
             for axis, axis_result in (
                 (SimAxis.PURPOSE, result.axes.purpose),
                 (SimAxis.TARGET, result.axes.target),
@@ -699,20 +700,7 @@ def _persist_results(
                             "extraction_method": evidence.extraction_method,
                             "extraction_version": evidence.extraction_version,
                         }
-                        connection.execute(
-                            text(
-                                """
-                                INSERT INTO sims.candidate_evidence (
-                                    retrieval_candidate_id, evidence_side,
-                                    field_code, page_no, source_locator,
-                                    excerpt, explanation
-                                ) VALUES (
-                                    :candidate_id, :side, :field_code, :page_no,
-                                    CAST(:source_locator AS jsonb), :excerpt,
-                                    :explanation
-                                )
-                                """
-                            ),
+                        evidence_params.append(
                             {
                                 "candidate_id": candidate_id,
                                 "side": side,
@@ -725,5 +713,22 @@ def _persist_results(
                                 ),
                                 "excerpt": evidence.excerpt,
                                 "explanation": f"{SIM_AXIS_IDS[axis]} evidence",
-                            },
+                            }
                         )
+            if evidence_params:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO sims.candidate_evidence (
+                            retrieval_candidate_id, evidence_side,
+                            field_code, page_no, source_locator,
+                            excerpt, explanation
+                        ) VALUES (
+                            :candidate_id, :side, :field_code, :page_no,
+                            CAST(:source_locator AS jsonb), :excerpt,
+                            :explanation
+                        )
+                        """
+                    ),
+                    evidence_params,
+                )
