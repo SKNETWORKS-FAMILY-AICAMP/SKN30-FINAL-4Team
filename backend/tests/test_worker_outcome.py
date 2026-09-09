@@ -27,6 +27,11 @@ from app.db.identity_bridge import ensure_identity
 from worker.jobs import claim_next, complete, fail
 from worker.outcome import DEFAULT_ERROR_CODE, USER_ERROR_MESSAGES, user_outcome
 from worker.profiles import StageError
+from worker.contracts.profile_snapshot import (
+    REQUEST_TYPE_CONTAINER_AMBIGUOUS,
+    REQUEST_TYPE_CONTAINER_MISSING,
+    REQUEST_TYPE_SELECTION_INVALID,
+)
 
 
 _DATABASE = "sims_outcome_test"
@@ -56,6 +61,28 @@ def test_known_reason_code_keeps_its_code_and_uses_a_fixed_message() -> None:
 
     assert code == "PARSE_FAILED"
     assert message == USER_ERROR_MESSAGES["PARSE_FAILED"]
+
+
+@pytest.mark.parametrize(
+    ("reason_code", "message_code"),
+    [
+        (REQUEST_TYPE_CONTAINER_MISSING, "PARSE_FAILED"),
+        (REQUEST_TYPE_CONTAINER_AMBIGUOUS, "PARSE_FAILED"),
+        (REQUEST_TYPE_SELECTION_INVALID, DEFAULT_ERROR_CODE),
+    ],
+)
+def test_request_type_diagnostics_keep_specific_code_and_safe_category(
+    reason_code: str, message_code: str
+) -> None:
+    error = StageError.__new__(StageError)
+    error.diagnostic = _FakeDiagnostic(reason_code)
+
+    code, message = user_outcome(error)
+
+    assert code == reason_code
+    assert message == USER_ERROR_MESSAGES[message_code]
+    assert _SECRET not in message
+    assert _REQUEST_TEXT not in message
 
 
 def test_unknown_reason_code_falls_back_instead_of_passing_it_through() -> None:

@@ -73,7 +73,11 @@ REQUEST_TYPE_LABELS = {
     RequestTypeCode.SUB_SUB_PROGRAM_NEW: "내내역사업 신설",
     RequestTypeCode.PROGRAM_CONTENT_CHANGE: "사업내용 변경",
 }
-CHECKED_GLYPHS = frozenset({"☑", "", "✓", "✔"})
+# Supplied request-form samples use both Unicode checkbox glyphs and
+# filled/empty squares. ``■`` is the checked counterpart of ``□`` in those
+# samples; keep it in the exact-span contract rather than normalizing the
+# source text before evidence materialization.
+CHECKED_GLYPHS = frozenset({"☑", "", "✓", "✔", "■"})
 _CELL_ROW = re.compile(r"#r(?P<row>\d+)c\d+p\d+$")
 _REQUEST_TYPE_LAYOUT = re.compile(r"[\s:：\-–—|/·]*")
 _CELL_COORDINATES = re.compile(r"#r(?P<row>\d+)c(?P<col>\d+)p\d+$")

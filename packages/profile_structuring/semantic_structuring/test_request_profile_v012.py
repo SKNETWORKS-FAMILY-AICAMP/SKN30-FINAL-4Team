@@ -14,6 +14,7 @@ from .request_profile_v012 import (
     build_request_candidate_pack,
     build_value_span_candidates,
     candidate_pack_artifact,
+    resolve_request_type_from_candidate_pack,
 )
 from .run_request_profile_v012 import (
     RequestMaterializationError,
@@ -1220,6 +1221,25 @@ def test_request_type_is_server_resolved_and_rejects_multiple_checked_choices() 
         assert "exactly one checked option" in str(error)
     else:
         raise AssertionError("multiple checked request types must remain unresolved")
+
+
+def test_request_type_accepts_filled_square_without_rewriting_source_span() -> None:
+    document = _document()
+    pack = build_request_candidate_pack(document)
+    checkbox_block = next(block for block in pack.blocks if "☑ 사업내용 변경" in block.text)
+    filled = checkbox_block.model_copy(update={
+        "text": checkbox_block.text.replace("☑ 사업내용 변경", "■ 사업내용 변경"),
+    })
+    filled_pack = pack.model_copy(update={
+        "blocks": [filled if block.block_id == filled.block_id else block for block in pack.blocks],
+    })
+
+    request_type = resolve_request_type_from_candidate_pack(filled_pack)
+
+    assert request_type["selected_code"] == "program_content_change"
+    assert request_type["selection_source"]["glyph_raw"] == "■"
+    source = request_type["selection_source"]
+    assert filled.text[source["start_char"]:source["end_char"]] == "■"
 
 
 def test_request_type_sub_program_resolves_label_from_selected_glyph_not_global_substring() -> None:

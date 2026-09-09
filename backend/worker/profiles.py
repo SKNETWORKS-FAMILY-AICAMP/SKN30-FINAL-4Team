@@ -36,12 +36,16 @@ from .contracts.profile_snapshot import (
     PARSE_FAILED,
     PARTIAL_MATERIALIZATION,
     REPAIR_BUDGET_EXHAUSTED,
+    REQUEST_TYPE_CONTAINER_AMBIGUOUS,
+    REQUEST_TYPE_CONTAINER_MISSING,
+    REQUEST_TYPE_SELECTION_INVALID,
     CommonIrArtifact,
     ProfileSnapshot,
     StageDiagnostic,
 )
 
 from common_ir_pipeline.schema import validation_errors  # noqa: E402
+import semantic_structuring.request_profile_v012 as _request_profile_contract  # noqa: E402
 from semantic_structuring.request_profile_v012 import (  # noqa: E402
     REQUEST_PIPELINE_VERSION,
     assemble_request_profile_v012,
@@ -58,6 +62,27 @@ from semantic_structuring.run_request_profile_v012 import (  # noqa: E402
     select_and_materialize_with_repairs,
     selection_request_payload,
 )
+
+
+_REQUEST_TYPE_COMPAT_GLYPH = "■"
+
+
+def _ensure_request_type_checked_glyph_compatibility() -> None:
+    """Keep older vendored profile packages compatible with real form glyphs.
+
+    The source text is never rewritten: the resolver still receives the
+    original CandidatePack and its selection/evidence spans. The vendored
+    package owns the canonical set; this idempotent boundary shim only fills
+    the missing glyph when an older package is present. With the current
+    package (which includes ``■``) this is a no-op.
+    """
+
+    checked = frozenset(getattr(_request_profile_contract, "CHECKED_GLYPHS", ()))
+    if _REQUEST_TYPE_COMPAT_GLYPH not in checked:
+        _request_profile_contract.CHECKED_GLYPHS = checked | {_REQUEST_TYPE_COMPAT_GLYPH}
+
+
+_ensure_request_type_checked_glyph_compatibility()
 
 
 class StageError(RuntimeError):
@@ -206,6 +231,61 @@ def resolve_request_type(pack) -> dict[str, Any]:
     """
 
     return resolve_request_type_from_candidate_pack(pack)
+
+
+def _request_type_option_blocks(pack) -> list[Any]:
+    """Mirror the vendored resolver's option-container predicate.
+
+    This is intentionally structural rather than exception-message based. It
+    lets the worker report whether the form has no resolvable option container
+    or more than one, while leaving the actual exact-span selection to the
+    vendored resolver.
+    """
+
+    labels = tuple(_request_profile_contract.REQUEST_TYPE_LABELS.values())
+    checked = tuple(_request_profile_contract.CHECKED_GLYPHS)
+    return [
+        block
+        for block in pack.blocks
+        if any(label in block.text for label in labels)
+        and any(glyph in block.text for glyph in checked)
+    ]
+
+
+def _request_type_preflight_diagnostic(pack) -> StageDiagnostic | None:
+    """Validate the server-owned request type before any LLM call."""
+
+    option_blocks = _request_type_option_blocks(pack)
+    if not option_blocks:
+        return StageDiagnostic(
+            stage="structure_request_profile",
+            unit=pack.pack_id,
+            reason_code=REQUEST_TYPE_CONTAINER_MISSING,
+            message="request_type option container is missing",
+            terminated_because=REQUEST_TYPE_CONTAINER_MISSING,
+        )
+    if len(option_blocks) > 1:
+        return StageDiagnostic(
+            stage="structure_request_profile",
+            unit=pack.pack_id,
+            reason_code=REQUEST_TYPE_CONTAINER_AMBIGUOUS,
+            message="request_type option containers are ambiguous",
+            terminated_because=REQUEST_TYPE_CONTAINER_AMBIGUOUS,
+        )
+    try:
+        resolve_request_type_from_candidate_pack(pack)
+    except ValueError:
+        # Do not expose vendor exception details or infer a reason from their
+        # wording. The one-container shape was found, but its checked option
+        # cannot be resolved safely.
+        return StageDiagnostic(
+            stage="structure_request_profile",
+            unit=pack.pack_id,
+            reason_code=REQUEST_TYPE_SELECTION_INVALID,
+            message="request_type checked option is invalid or unresolved",
+            terminated_because=REQUEST_TYPE_SELECTION_INVALID,
+        )
+    return None
 
 
 # ------------------------------------------------------------ 3. selector
@@ -416,6 +496,12 @@ def structure_request_profile(
             usage=usage,
             diagnostics=diagnostics,
         )
+
+    request_type_diagnostic = _request_type_preflight_diagnostic(pack)
+    if request_type_diagnostic is not None:
+        # Request type is server-owned deterministic input. Do not spend an
+        # LLM call or let a vendor ValueError escape when this gate fails.
+        return failed([request_type_diagnostic], 0, [])
 
     try:
         profile, _selection, usage, diagnostics = select_and_materialize_with_repairs(

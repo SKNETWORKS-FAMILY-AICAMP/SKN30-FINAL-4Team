@@ -16,6 +16,8 @@ from worker.adapters.vllm_llm_client import VllmLLMClient
 from pydantic import ValidationError
 
 from worker.profiles import (
+    _ensure_request_type_checked_glyph_compatibility,
+    _request_type_option_blocks,
     _selection_validation_messages,
     build_pack,
     make_vllm_selector,
@@ -27,15 +29,31 @@ from worker.contracts.profile_snapshot import (
     PARTIAL_MATERIALIZATION,
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
+    REQUEST_TYPE_CONTAINER_AMBIGUOUS,
+    REQUEST_TYPE_CONTAINER_MISSING,
+    REQUEST_TYPE_SELECTION_INVALID,
     REPAIR_BUDGET_EXHAUSTED,
 )
 from worker.vendor import REPO_ROOT
 
+import semantic_structuring.request_profile_v012 as request_profile_contract
 from semantic_structuring.request_profile_v012 import RequestSourceSelectionV012
 
 
 _SAMPLE = REPO_ROOT / "samples" / "hwpx" / "mockup_01_우수사례_AI바이오실증.hwpx"
 _EXAMPLES = REPO_ROOT / "packages" / "profile_structuring" / "examples" / "request"
+_REAL_REQUEST_SAMPLES = {
+    "mockup_01_우수사례_AI바이오실증.hwpx": ("detail_program_new", "☑"),
+    "mockup_02_우수사례_뿌리산업스마트제조.hwpx": ("detail_program_new", "☑"),
+    "mockup_03_보통사례_청년로컬크리에이터.hwpx": ("detail_program_new", "☑"),
+    "mockup_04_보통사례_친환경그린에너지.hwpx": ("program_content_change", "☑"),
+    "mockup_05_저급사례_AI바우처_모순충돌.hwpx": ("detail_program_new", "☑"),
+    "mockup_06_저급사례_해외수출_목적내용불일치.hwpx": ("detail_program_new", "☑"),
+    "mockup_07_우수사례_서식기준_딥테크스케일업.hwpx": ("detail_program_new", "■"),
+    "mockup_08_CPL전항목_스마트기술사업화.hwpx": ("sub_program_new", "■"),
+    "사전협의요청서_미흡사례.hwpx": ("detail_program_new", "■"),
+    "사전협의요청서_우수사례.hwpx": ("detail_program_new", "■"),
+}
 
 
 def _load_json(path: Path) -> dict:
@@ -101,6 +119,105 @@ def test_real_hwpx_parses_and_request_type_comes_from_the_checkbox(tmp_path):
     request_type = resolve_request_type(pack)
     assert request_type["selected_code"] == "detail_program_new"
     assert request_type["selection_source"]["glyph_raw"] == "☑"
+
+
+def test_all_real_hwpx_request_types_resolve_including_filled_square_forms(tmp_path):
+    pytest.importorskip("rhwp", reason="rhwp-python 런타임이 없으면 파싱 단계를 건너뛴다")
+
+    for name, (expected_code, expected_glyph) in _REAL_REQUEST_SAMPLES.items():
+        path = REPO_ROOT / "samples" / "hwpx" / name
+        if not path.is_file():
+            pytest.fail(f"샘플 문서가 없다: {path}")
+        artifact = parse_to_common_ir(
+            input_path=path,
+            notice_id=path.stem,
+            source_kind="hwpx",
+            run_dir=tmp_path / path.stem,
+        )
+        request_type = resolve_request_type(build_pack(artifact.document))
+        assert request_type["selected_code"] == expected_code
+        assert request_type["value_raw"]
+        assert request_type["selection_source"]["glyph_raw"] == expected_glyph
+
+
+def test_worker_compatibility_shim_repairs_an_older_vendor_glyph_set(monkeypatch):
+    document, _ = _stored_selection()
+    pack = build_pack(document)
+    # Keep the original block coordinates while replacing only the checked
+    # glyph, as an older vendored package would have received the same text.
+    original = next(block for block in pack.blocks if "☑ 사업내용 변경" in block.text)
+    filled = original.model_copy(update={"text": original.text.replace("☑ 사업내용 변경", "■ 사업내용 변경")})
+    filled_pack = pack.model_copy(update={
+        "blocks": [filled if block.block_id == filled.block_id else block for block in pack.blocks],
+    })
+    old_checked = frozenset(request_profile_contract.CHECKED_GLYPHS) - {"■"}
+    monkeypatch.setattr(request_profile_contract, "CHECKED_GLYPHS", old_checked)
+
+    _ensure_request_type_checked_glyph_compatibility()
+
+    assert "■" in request_profile_contract.CHECKED_GLYPHS
+    request_type = resolve_request_type(filled_pack)
+    assert request_type["selection_source"]["glyph_raw"] == "■"
+    assert filled.text[
+        request_type["selection_source"]["start_char"]:
+        request_type["selection_source"]["end_char"]
+    ] == "■"
+
+
+def test_request_type_preflight_distinguishes_missing_and_ambiguous_without_llm_call():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    source_blocks = _request_type_option_blocks(pack)
+    assert len(source_blocks) == 1
+    missing_pack = pack.model_copy(update={
+        "blocks": [block for block in pack.blocks if block.block_id != source_blocks[0].block_id],
+    })
+    duplicate = source_blocks[0].model_copy(update={"block_id": source_blocks[0].block_id + "-duplicate"})
+    ambiguous_pack = pack.model_copy(update={"blocks": [*pack.blocks, duplicate]})
+    calls: list[int] = []
+
+    def selector(prior_selection, validation_errors):
+        calls.append(1)
+        return selection, {"repair": False}
+
+    missing = structure_request_profile(
+        document=document, pack=missing_pack, profile_id=selection.profile_id,
+        selector=selector, model_id="offline-fake", max_repairs=0,
+    )
+    ambiguous = structure_request_profile(
+        document=document, pack=ambiguous_pack, profile_id=selection.profile_id,
+        selector=selector, model_id="offline-fake", max_repairs=0,
+    )
+
+    assert missing.status == "FAILED"
+    assert missing.diagnostics[0].reason_code == REQUEST_TYPE_CONTAINER_MISSING
+    assert ambiguous.status == "FAILED"
+    assert ambiguous.diagnostics[0].reason_code == REQUEST_TYPE_CONTAINER_AMBIGUOUS
+    assert calls == []
+
+
+def test_request_type_preflight_reports_invalid_single_container_without_llm_call():
+    document, selection = _stored_selection()
+    pack = build_pack(document)
+    source = next(block for block in pack.blocks if "☑ 사업내용 변경" in block.text)
+    malformed = source.model_copy(update={"text": source.text.replace("☑ 사업내용 변경", "☑ 잘못된 라벨")})
+    malformed_pack = pack.model_copy(update={
+        "blocks": [malformed if block.block_id == source.block_id else block for block in pack.blocks],
+    })
+    calls: list[int] = []
+
+    def selector(prior_selection, validation_errors):
+        calls.append(1)
+        return selection, {"repair": False}
+
+    snapshot = structure_request_profile(
+        document=document, pack=malformed_pack, profile_id=selection.profile_id,
+        selector=selector, model_id="offline-fake", max_repairs=0,
+    )
+
+    assert snapshot.status == "FAILED"
+    assert snapshot.diagnostics[0].reason_code == REQUEST_TYPE_SELECTION_INVALID
+    assert calls == []
 
 
 def test_stored_selection_replays_into_an_ok_snapshot():

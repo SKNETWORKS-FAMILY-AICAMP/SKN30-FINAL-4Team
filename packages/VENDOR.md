@@ -26,12 +26,16 @@
 | 원본 폴더명 | `portable_existing_request_profiles_20260831` |
 | 계약 문서 | `README.md`, `docs/request/`, `docs/existing/`, `docs/common_ir/` |
 | 파일 수 | 92 |
-| tree sha256 | `37ac8d0e7b548ac2d5ac68f55bc781020a6ca6e252de2e5de27e7b31cec8f2fc` |
+| tree sha256 | `d938a178657c574cdc69c19b0247a1b483e6a199995de687dabad30709511457` |
 | 런타임 의존성 | `jsonschema`, `openai>=2.26,<3`, `pydantic`, `python-dotenv` |
 
 ## 로컬 수정 이력
 
-없음. 패키지 자체를 수정하게 되면 변경 이유·입력 사례·검증을 여기에 남기고 해시를 갱신한다.
+2026-09-09 — `semantic_structuring/request_profile_v012.py`의
+`CHECKED_GLYPHS`에 `■`(U+25A0)를 추가했다. 제공된 HWPX 샘플 10건 중
+4건이 `■`/`□` 표기를 사용해 기존 집합으로는 요청 유형 컨테이너를 찾지 못했다.
+원문 텍스트는 변경하지 않고 resolver가 원래 글리프의 exact span을 보존한다.
+패키지 계약 테스트 45건과 워커의 실제 HWPX 10건 회귀로 검증했다.
 
 `semantic_structuring`의 원격 경로(`run_request_profile_v012._remote_selection`)는 OpenAI
 Responses API(`client.responses.create` + `reasoning.effort`)를 사용한다. vLLM은 이 API를

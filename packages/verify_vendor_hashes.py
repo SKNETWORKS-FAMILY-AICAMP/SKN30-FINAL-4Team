@@ -6,7 +6,7 @@ import sys
 
 EXPECTED = {
     "common_ir_pipeline": "2c9b06aaf7dde39d017eaef76d1e2343d4f6793bc5841734dbe9c10ade2a311e",
-    "profile_structuring": "37ac8d0e7b548ac2d5ac68f55bc781020a6ca6e252de2e5de27e7b31cec8f2fc",
+    "profile_structuring": "d938a178657c574cdc69c19b0247a1b483e6a199995de687dabad30709511457",
 }
 
 
