@@ -588,6 +588,17 @@ CREATE TABLE sims.announcement_version (
     status_checked_at   timestamptz,
     status_source       text,
 
+    -- Model 1 이 붙인 지원유형. 원문이 아니라 분류 결과이므로 confidence 와
+    -- grade 를 함께 둔다. SIM-R 이 이 컬럼으로 코퍼스를 자르는데, 실측상 라벨의
+    -- 28% 만 '신뢰' 등급이다(공고 1,570건, confidence 중앙값 0.25). 값만 남기면
+    -- 하류가 확정된 사실로 읽고 저신뢰 라벨 위에서 hard filtering 을 건다.
+    -- 결과 테이블에 두고 매 검색마다 join 하는 대신 검색 대상 테이블에 직접 둔다.
+    support_type            text,
+    support_type_confidence numeric(6,5),
+    support_type_grade      text,
+    support_type_model_version text,
+    support_type_classified_at timestamptz,
+
     raw_payload         jsonb NOT NULL DEFAULT '{}'::jsonb,
     created_at          timestamptz NOT NULL DEFAULT now(),
     updated_at          timestamptz NOT NULL DEFAULT now(),
@@ -622,6 +633,32 @@ CREATE TABLE sims.announcement_version (
         ),
     CONSTRAINT ck_announcement_search_status
         CHECK (search_status IN ('OPEN', 'CLOSED', 'UNKNOWN')),
+    -- 라벨링은 다섯 컬럼이 한 묶음이다. 일부만 채우면 어느 모델이 언제 붙인
+    -- 값인지를 잃은 라벨이 남고, 재라벨링 때 무엇을 덮어야 하는지 알 수 없다.
+    CONSTRAINT ck_announcement_support_type_shape
+        CHECK (
+            (support_type IS NULL
+             AND support_type_confidence IS NULL
+             AND support_type_grade IS NULL
+             AND support_type_model_version IS NULL
+             AND support_type_classified_at IS NULL)
+            OR
+            (support_type IS NOT NULL
+             AND support_type_confidence IS NOT NULL
+             AND support_type_grade IS NOT NULL
+             AND support_type_model_version IS NOT NULL
+             AND support_type_classified_at IS NOT NULL)
+        ),
+    CONSTRAINT ck_announcement_support_type_grade
+        CHECK (
+            support_type_grade IS NULL
+            OR support_type_grade IN ('trusted', 'reference', 'hold')
+        ),
+    CONSTRAINT ck_announcement_support_type_confidence
+        CHECK (
+            support_type_confidence IS NULL
+            OR (support_type_confidence >= 0 AND support_type_confidence <= 1)
+        ),
     CONSTRAINT ck_announcement_view_count
         CHECK (view_count IS NULL OR view_count >= 0),
     CONSTRAINT ck_announcement_detail_ref_fields
@@ -660,6 +697,12 @@ CREATE INDEX ix_announcement_version_jurisdiction
 CREATE INDEX ix_announcement_version_executor
     ON sims.announcement_version (exc_instt_nm)
     WHERE is_current;
+
+-- SIM-R 라우팅이 거는 필터. 라벨이 없는 행은 색인하지 않는다 — backfill 전에는
+-- 전부 NULL 이라 부분 색인이 비어 있고, 채워지는 만큼만 커진다.
+CREATE INDEX ix_announcement_version_support_type
+    ON sims.announcement_version (support_type)
+    WHERE is_current AND support_type IS NOT NULL;
 
 CREATE INDEX ix_announcement_version_hashtags
     ON sims.announcement_version USING gin (hashtags)

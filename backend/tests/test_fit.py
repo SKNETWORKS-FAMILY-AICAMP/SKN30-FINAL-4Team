@@ -873,7 +873,7 @@ def test_analysis_pipeline_calls_fit_retrieval_then_sim(monkeypatch) -> None:
 
     retrieval_marker = SimpleNamespace(retrieval_run_id=20, candidates=[])
 
-    async def retrieval(*_args):
+    async def retrieval(*_args, **_kwargs):
         calls.append("retrieval")
         return retrieval_marker
 

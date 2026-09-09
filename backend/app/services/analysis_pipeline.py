@@ -43,6 +43,7 @@ from app.services.cpl.logic_validator import (
 )
 from app.services.document_parsing import run_case_parsing
 from app.services.fit.fit_engine import analyze_fit, load_fit_prompt, load_fit_scoring
+from app.services.ml import pipeline_bridge
 from app.services.retrieval.retrieval import (
     RetrievalResult,
     RetrievalNotReadyError,
@@ -142,11 +143,25 @@ async def run_analysis_pipeline(
         return
 
     fit_result = await _run_fit(result, llm_client, settings, case_id)
+    # Model 1 의 support_type 을 검색 라우팅에 넘긴다. 세 모델을 돌릴 수 없는
+    # 배포에서는 ml_results 가 None 이고, 라우팅은 좁히지 않는 쪽으로 남는다.
+    ml_results = None
+    if settings.ml_models_enabled:
+        ml_results = await pipeline_bridge.run_models(
+            case_id=case_id,
+            cpl_result=result,
+            document_text=document.text,
+            title=_document_title(document),
+            cohort=settings.ml_model2_cohort,
+        )
+    support_type, trust_grade = pipeline_bridge.routing_inputs(ml_results)
     retrieval_result = await _run_retrieval(
         engine,
         embedding_client,
         case_id,
         result,
+        support_type=support_type,
+        trust_grade=trust_grade,
     )
     if retrieval_result is not None:
         sim_results = await _run_sim(
@@ -205,6 +220,9 @@ async def _run_retrieval(
     client: EmbeddingClient | None,
     case_id: int,
     cpl_result: CplResult,
+    *,
+    support_type: str | None = None,
+    trust_grade: str = "hold",
 ) -> RetrievalResult | None:
     if client is None:
         logger.warning("Retrieval skipped for case %s: embedding client disabled", case_id)
@@ -229,6 +247,8 @@ async def _run_retrieval(
             client,
             case_id=case_id,
             input_text=input_text,
+            support_type=support_type,
+            trust_grade=trust_grade,
         )
     except asyncio.CancelledError:
         _record_retrieval_failure(engine, case_id, "RETRIEVAL_CANCELLED")
@@ -284,6 +304,20 @@ async def _run_sim(
             type(error).__name__,
         )
         return []
+
+
+def _document_title(document: ParsedDocument) -> str | None:
+    """Model 1 입력의 title 자리. 문서의 첫 heading 블록을 쓴다.
+
+    스키마에 사건 제목이 없고, 업로드 파일명은 제목이 아니다("사전협의요청서_
+    최종_v3.hwpx"). 없는 것을 지어내느니 비워 두는 편이 낫다 — Model 1 은 빈
+    title 을 받아들이고, 어느 필드에서 왔는지는 결과 input.source_fields 에
+    남는다.
+    """
+    for block in document.blocks:
+        if block.block_type == "heading" and block.text.strip():
+            return block.text.strip()
+    return None
 
 
 def _cpl_axis_text(result: CplResult, field_code: CplFieldCode) -> str:

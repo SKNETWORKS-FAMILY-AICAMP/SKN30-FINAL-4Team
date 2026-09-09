@@ -283,7 +283,7 @@ def test_analysis_pipeline_runs_targeted_cpl_recheck_before_fit(monkeypatch) -> 
     monkeypatch.setattr(analysis_pipeline, "request_reason_from_result", lambda *_args: None)
     monkeypatch.setattr(analysis_pipeline, "_run_fit", fit)
 
-    async def no_retrieval(*_args) -> None:
+    async def no_retrieval(*_args, **_kwargs) -> None:
         return None
 
     monkeypatch.setattr(analysis_pipeline, "_run_retrieval", no_retrieval)

@@ -81,6 +81,15 @@ class Settings(BaseSettings):
     sim_prompt_path: Path = (
         PROJECT_ROOT / "backend" / "config" / "prompts" / "sim-v0.3.txt"
     )
+    # 세 모델(Model 1/2/3)을 분석 파이프라인에서 돌릴지. 기본은 꺼 둔다 —
+    # backend/requirements.txt 에 torch·transformers 가 없고, Model 1 이
+    # 442MB 가중치를 올린다. 켜는 것은 배포의 결정이지 코드의 기본값이 아니다.
+    ml_models_enabled: bool = False
+    # Model 2 비교군 참조표의 '출처'. ml_orchestrator.COHORTS 중 하나여야 하고,
+    # 벗어나면 회귀 예측은 그대로 나오되 percentile 만 비고 이유가 metadata 에
+    # 남는다. 이 backend 가 동기화하는 공고가 BIZINFO 라 그쪽을 기본으로 둔다 —
+    # 사전협의요청서에 맞는 모집단이 어느 쪽인지는 아직 평가된 바 없다.
+    ml_model2_cohort: str = Field(default="bizinfo", min_length=1)
     chat_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
     chat_prompt_version: str = Field(default="chat-v0.1", min_length=1)
     chat_prompt_path: Path = (
