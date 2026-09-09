@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './ProtectedRoute'
+import { supabase } from '../services/supabase'
 
 // Layouts
 import PublicLayout from '../components/layout/PublicLayout'
@@ -10,47 +11,49 @@ import AppLayout from '../components/layout/AppLayout'
 import LandingPage from '../pages/LandingPage'
 import LoginPage from '../pages/LoginPage'
 import PasswordResetPage from '../pages/PasswordResetPage'
-import MainPage from '../pages/MainPage'
 import PasswordChangePage from '../pages/PasswordChangePage'
 
+import MainPage from '../pages/MainPage'
+import MyPage from '../pages/MyPage'
+
 export default function AppRoutes() {
-    // sessionStorage의 토큰을 리액트 state로 관리
-    const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('access_token'))
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
 
     useEffect(() => {
-        // storage 이벤트나 커스텀벤트를 통해 토큰 변경 감지
-        const handleStorageChange = () => {
-            setToken(sessionStorage.getItem('access_token'))
-        }
+        // 초기 세션 동기화
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setIsAuthenticated(!!session?.user)
+        }).catch(() => {
+            setIsAuthenticated(false)
+        })
 
-        window.addEventListener('storage', handleStorageChange)
-        // 로그인 성공 시 강제로 발생시킬 커스텀 이벤트 대비
-        window.addEventListener('auth-change', handleStorageChange)
+        // 인증 상태 변경 실시간 감지
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setIsAuthenticated(!!session?.user)
+        })
 
         return () => {
-            window.removeEventListener('storage', handleStorageChange)
-            window.removeEventListener('auth-change', handleStorageChange)
+            subscription.unsubscribe()
         }
     }, [])
 
     return (
         <Routes>
-            {token ? (
+            {isAuthenticated ? (
                 // --- 로그인 상태 ---
-                // 루트('/') 자체가 업로드 화면(MainPage)이며 AppLayout을 사용
                 <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                         <Route path="/" element={<MainPage />} />
-                        <Route path="/mypage" element={<PasswordChangePage />} />
+                        <Route path="/mypage" element={<MyPage />} />
                     </Route>
                 </Route>
             ) : (
-                // --- 미로그인 상태 ---
-                // 루트('/')가 랜딩 페이지이며 PublicLayout을 사용
+                // --- 미로그인 상태 (퍼블릭 레이아웃) ---
                 <Route element={<PublicLayout />}>
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/password-reset" element={<PasswordResetPage />} />
+                    <Route path="/password-reset/update" element={<PasswordChangePage />} />
                 </Route>
             )}
 

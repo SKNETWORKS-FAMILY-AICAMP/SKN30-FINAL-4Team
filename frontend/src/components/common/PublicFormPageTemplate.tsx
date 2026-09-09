@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
 interface PublicFormPageTemplateProps {
@@ -21,8 +21,16 @@ export default function PublicFormPageTemplate({
     onActionClick,
     footerLink,
 }: PublicFormPageTemplateProps) {
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault()
+        onActionClick()
+    }
+
     return (
-        <div className="w-full max-w-[400px] mx-auto my-20 p-xl bg-surface-container-lowest border border-surface-variant rounded-lg">
+        <form 
+            onSubmit={handleSubmit}
+            className="w-full max-w-[400px] mx-auto my-20 p-xl bg-surface-container-lowest border border-surface-variant rounded-lg"
+        >
             <h2 className="font-headline-md text-headline-md text-primary-container text-center mb-md">
                 {title}
             </h2>
@@ -37,8 +45,7 @@ export default function PublicFormPageTemplate({
 
             <div className="mt-xl">
                 <button
-                    type="button"
-                    onClick={onActionClick}
+                    type="submit"
                     className="w-full py-md rounded-lg bg-primary text-on-primary font-title-sm text-title-sm hover:opacity-90 transition-opacity shadow-sm cursor-pointer"
                 >
                     {actionButtonText}
@@ -55,6 +62,6 @@ export default function PublicFormPageTemplate({
                     </Link>
                 </div>
             )}
-        </div>
+        </form>
     )
 }

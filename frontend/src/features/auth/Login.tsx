@@ -17,24 +17,14 @@ export default function Login() {
         }
 
         try {
-            const response = await authService.login({
-                login_id: email,
+            await authService.login({
+                email,
                 password,
             })
-
-            // 성공 시 sessionStorage에 access_token 저장
-            if (response && response.data && response.data.access_token) {
-                sessionStorage.setItem('access_token', response.data.access_token)
-                window.dispatchEvent(new Event('auth-change'))
-                navigate('/')
-            }
+            navigate('/')
         } catch (error: any) {
-            const errorData = error.response?.data
-            if (errorData && errorData.message) {
-                setAlertMessage(errorData.message)
-            } else {
-                setAlertMessage('로그인 중 오류가 발생했습니다.')
-            }
+            console.error('로그인 에러:', error)
+            setAlertMessage(error.message || '로그인 중 오류가 발생했습니다.')
         }
     }
 
@@ -48,7 +38,6 @@ export default function Login() {
                 onSubmit={handleLogin}
             />
 
-            {/* 공통 얼럿 컴포넌트 적용 */}
             {alertMessage && (
                 <AlertModal
                     title="알림"
