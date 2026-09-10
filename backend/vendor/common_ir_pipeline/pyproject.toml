@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "common-ir-pipeline"
+version = "1.0.0"
+description = "Portable Common IR v1 generation and validation pipeline"
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4.23,<5"]
+
+[project.optional-dependencies]
+hwp = ["rhwp-python"]
+# OCR is deliberately optional.  The worker emits geometry-only diagnostic
+# sidecars; neither its dependencies nor model weights are required by the
+# native PDF Common IR path.
+ocr = [
+  "PyMuPDF>=1.24,<2",
+  "numpy>=1.26,<3",
+  # PaddleOCR is a frontend; the CPU PaddlePaddle runtime is required to
+  # load and execute its models.  GPU runtime selection remains a deployment
+  # concern and is intentionally not bundled by this portable package.
+  "paddlepaddle>=3.0,<4",
+  "paddleocr>=2.9,<3",
+  "easyocr>=1.7,<2",
+]
+
+[project.scripts]
+common-ir-rhwp = "common_ir_pipeline.run_rhwp_e2e:main"
+common-ir-markdown-fixture = "common_ir_pipeline.adapters.markdown_fixture:main"
+common-ir-pdf-native = "common_ir_pipeline.adapters.pdf_native:main"
+common-ir-pdf-ocr-layout = "common_ir_pipeline.workers.pdf_ocr_layout:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -49,9 +49,16 @@ class MigrationContractTest:
         "15_api_views_and_result_rpcs.sql",
         "16_conversation_command_rpcs.sql",
         "17_request_profile_ingest_core.sql",
+        "18_worker_existing_api_and_result_ingest.sql",
+        "19_pgvector_existing_profile_retrieval.sql",
+        "20_embedding_input_policy_and_axis_match.sql",
+        "21_analysis_worker_queue.sql",
+        "22_fenced_analysis_result_ingest.sql",
+        "23_result_read_retention_and_candidate_evidence.sql",
+        "24_retire_legacy_worker_completion.sql",
     ]
 
-    REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result"}
+    REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
 
     REQUIRED_TABLES = {
         # app schema
@@ -61,6 +68,10 @@ class MigrationContractTest:
         "ops.processing_run",
         "ops.model_invocation",
         "ops.cleanup_event",
+
+        # retrieval schema (persistent Existing Profile embeddings only)
+        "retrieval.embedding_configuration",
+        "retrieval.existing_profile_embedding",
 
         # kb schema (existing knowledge base)
         "kb.notice",
@@ -309,6 +320,191 @@ class MigrationContractTest:
         assert "retry_conversation_message" in conversation_commands
         assert "ingest_request_profile_core" in request_ingest
 
+    def test_embedding_input_policy_and_axis_match(self):
+        """Embedding input limits and A/B retrieval must stay reproducible."""
+        policy = (
+            self.MIGRATIONS_DIR / "20_embedding_input_policy_and_axis_match.sql"
+        ).read_text()
+
+        assert "max_input_tokens" in policy
+        assert "BETWEEN 1 AND 8192" in policy
+        assert "fact-boundary-token-weighted-mean-v1" in policy
+        assert "approved-facts-role-aware-v1" in policy
+        assert "match_existing_profiles_three_axis" in policy
+        assert "HAVING COUNT(*) = 3" in policy
+
+    def test_analysis_worker_queue_contract(self):
+        """The durable worker queue must be PostgreSQL-only and fenced."""
+        queue = (
+            self.MIGRATIONS_DIR / "21_analysis_worker_queue.sql"
+        ).read_text()
+        queue_lower = queue.lower()
+
+        # Idempotence matters for self-hosted repair/replay runs.
+        assert "ADD COLUMN IF NOT EXISTS attempt_count" in queue
+        assert "CREATE INDEX IF NOT EXISTS ix_workspace_analysis_run_queue_poll" in queue
+        assert "CREATE OR REPLACE FUNCTION workspace.claim_next_analysis_run" in queue
+        assert "analysis_run_dispatch_attempt_count_check" in queue
+
+        # Claim selection must be database polling with lock skipping, rather
+        # than an external broker.  The dispatch table owns all lease fields.
+        assert "FOR UPDATE OF ar, dispatch SKIP LOCKED" in queue
+        assert "workspace.analysis_run_dispatch" in queue
+        assert "CHECK (attempt_count BETWEEN 0 AND 2)" in queue
+        assert "p_lease_seconds INTEGER DEFAULT 120" in queue
+        assert "v_heartbeat_seconds CONSTANT INTEGER := 30" in queue
+        assert not re.search(r"\\b(redis|rq)\\b", queue_lower)
+
+        # One audit run per claim is the fence token used on heartbeat and both
+        # terminal transitions.  Both stale and explicit first failures are
+        # retried; the exhausted second attempt becomes terminal public
+        # failure while ops retains each failed attempt.
+        assert "INSERT INTO ops.processing_run AS processing_attempt" in queue
+        assert "RETURNING processing_attempt.processing_run_pk" in queue
+        assert "WORKER_LEASE_EXPIRED" in queue
+        assert "WORKER_MAX_ATTEMPTS_EXCEEDED" in queue
+        assert "IF v_attempt_count < 2 THEN" in queue
+        assert "SET status = 'queued'" in queue
+        assert "ATTEMPT_ERROR_DETAILS_REQUIRED" in queue
+        for function_name in (
+            "heartbeat_analysis_run",
+            "complete_analysis_run",
+            "fail_analysis_run",
+        ):
+            assert f"CREATE OR REPLACE FUNCTION workspace.{function_name}" in queue
+            assert "dispatch.processing_run_pk = p_processing_run_pk" in queue
+
+        # Dispatch source locations and lease state remain backend-only.
+        assert "ALTER TABLE workspace.analysis_run_dispatch ENABLE ROW LEVEL SECURITY" in queue
+        assert "REVOKE ALL ON TABLE workspace.analysis_run_dispatch FROM PUBLIC, anon, authenticated" in queue
+        assert "GRANT EXECUTE ON FUNCTION workspace.claim_next_analysis_run" in queue
+        assert "TO service_role" in queue
+
+    def test_fenced_analysis_result_ingest_contract(self):
+        """Only a live processing-run fence may materialise a result."""
+        ingest = (
+            self.MIGRATIONS_DIR / "22_fenced_analysis_result_ingest.sql"
+        ).read_text()
+
+        assert "CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core" in ingest
+        assert "p_processing_run_pk UUID" in ingest
+        assert "RETURNS UUID" in ingest
+        assert "FOR UPDATE OF ar, dispatch" in ingest
+        assert "dispatch.processing_run_pk = p_processing_run_pk" in ingest
+        assert "dispatch.lease_expires_at > v_now" in ingest
+
+        # Fence loss is a normal no-op: return before any materialisation.
+        assert "IF NOT FOUND THEN\n        RETURN NULL;" in ingest
+        assert ingest.index("RETURN NULL;") < ingest.index("INSERT INTO result.analysis_case")
+        assert "NULL performs no result or state mutation" in ingest
+
+        # The legacy materialisation remains complete, but terminal queue and
+        # ops state changes happen in the same fenced database function.
+        for table in (
+            "result.analysis_case",
+            "result.axis_result",
+            "result.sim_candidate",
+            "result.evidence_snapshot",
+            "result.analysis_session",
+        ):
+            assert table in ingest
+        assert "UPDATE ops.processing_run" in ingest
+        assert "SET status = 'succeeded'" in ingest
+        assert "UPDATE workspace.analysis_run_dispatch" in ingest
+        assert "UPDATE workspace.analysis_run" in ingest
+
+        # Service-role execution of the old unfenced Edge callback is retired.
+        assert "COMMENT ON FUNCTION api.ingest_comparison_result_core(UUID, JSONB)" in ingest
+        assert "Deprecated unfenced legacy Edge callback" in ingest
+        assert "REVOKE ALL ON FUNCTION api.ingest_comparison_result_core(UUID, JSONB)" in ingest
+        assert "authenticated, service_role" in ingest
+        assert "GRANT EXECUTE ON FUNCTION workspace.persist_analysis_result_core(UUID, UUID, JSONB)" in ingest
+
+    def test_legacy_state_only_success_transition_is_removed(self):
+        """A worker cannot mark success without atomically storing a result."""
+        retirement = (
+            self.MIGRATIONS_DIR / "24_retire_legacy_worker_completion.sql"
+        ).read_text()
+
+        assert (
+            "DROP FUNCTION IF EXISTS "
+            "workspace.complete_analysis_run(UUID, UUID, UUID)"
+        ) in retirement
+        assert "persist_analysis_result_core" in retirement
+
+    def test_result_read_retention_and_candidate_evidence_contract(self):
+        """Result reads hide expired history and expose only linked SIM evidence."""
+        projection = (
+            self.MIGRATIONS_DIR
+            / "23_result_read_retention_and_candidate_evidence.sql"
+        ).read_text()
+
+        # A completed result without a live expiry is not history-visible and
+        # a guessed UUID cannot bypass that boundary through either RPC.
+        assert "CREATE OR REPLACE VIEW api.v_my_analysis_history" in projection
+        assert projection.count("c.retention_expires_at > now()") == 3
+        assert "CREATE OR REPLACE FUNCTION api.rpc_get_analysis_result" in projection
+        for result_field in (
+            "'case', jsonb_build_object(",
+            "'cpl', jsonb_build_object",
+            "'fit', jsonb_build_object",
+            "'sim', jsonb_build_object",
+            "'report', COALESCE",
+            "'session', COALESCE",
+            "'evidences', COALESCE(evidence.items, '[]'::jsonb)",
+        ):
+            assert result_field in projection
+
+        # Detail objects use the stable public evidence object fields and are
+        # scoped through the relational candidate FK, never a client-supplied
+        # owner or unscoped case-wide evidence list.
+        assert "CREATE OR REPLACE FUNCTION api.rpc_get_sim_candidate_detail" in projection
+        assert "'evidences', COALESCE(evidence.items, '[]'::jsonb)" in projection
+        assert "e.sim_candidate_pk = sc.sim_candidate_pk" in projection
+        for field in (
+            "'evidence_id', e.evidence_snapshot_pk",
+            "'side', lower(e.side)",
+            "'field_name', e.field_name",
+            "'raw_value', e.raw_value",
+            "'excerpt', e.context_excerpt",
+        ):
+            assert field in projection
+
+        # The worker may opt in to candidate linkage, but the mapping is
+        # resolved only against candidates materialised for the same case.
+        assert "candidate_source_profile_id" in projection
+        assert "sc.analysis_case_pk = v_case_pk" in projection
+        assert "EVIDENCE_CANDIDATE_NOT_FOUND" in projection
+
+        # Candidate display fields are resolved from the Existing-KB lineage,
+        # rather than copied from worker-supplied candidate JSON.
+        assert "JOIN kb.notice n ON n.notice_pk = sp.notice_pk" in projection
+        assert "v_item->>'profile_version_pk'" in projection
+        assert (
+            "pv.profile_version_pk = (v_item->>'profile_version_pk')::uuid"
+            in projection
+        )
+        assert "WHERE pv.is_current AND sv.is_current" not in projection[
+            projection.index("FOR v_item IN SELECT value FROM jsonb_array_elements(COALESCE(p_result->'candidates'"):
+            projection.index("INSERT INTO result.sim_candidate")
+        ]
+        for metadata_field in (
+            "n.portal_metadata ->> 'title'",
+            "n.portal_metadata ->> 'executing_agency'",
+            "n.portal_metadata ->> 'detail_url'",
+            "n.portal_metadata ->> 'source_state'",
+        ):
+            assert metadata_field in projection
+        assert "sv.notice_detail_url" in projection
+        assert "priority_score, status, notice_title, issuing_organization, source_url," in projection
+
+        # Migration 23 replaces the fenced writer as well, so preserve the
+        # migration-22 fence in the active function definition.
+        assert "CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core" in projection
+        assert "dispatch.processing_run_pk = p_processing_run_pk" in projection
+        assert "dispatch.lease_expires_at > v_now" in projection
+        assert projection.index("RETURN NULL;") < projection.index("INSERT INTO result.analysis_case")
+
     def test_storage_buckets_documented(self):
         """Verify storage bucket configuration is documented."""
         readme = Path(self.MIGRATIONS_DIR.parent) / "README.md"
@@ -320,14 +516,39 @@ class MigrationContractTest:
         assert "analysis-reports" in content, "analysis-reports bucket not documented"
 
     def test_env_example_provided(self):
-        """Verify .env.example is provided."""
-        env_example = Path(self.MIGRATIONS_DIR.parent) / ".env.example"
-        assert env_example.exists(), ".env.example missing"
+        """Host-path and application env examples must keep separate roles."""
+        supabase_env = self.MIGRATIONS_DIR.parent / ".env.example"
+        backend_env = self.MIGRATIONS_DIR.parents[1] / ".env.example"
+        assert supabase_env.exists(), "backend/supabase/.env.example missing"
+        assert backend_env.exists(), "backend/.env.example missing"
 
-        content = env_example.read_text()
-        assert "SUPABASE_URL" in content, "SUPABASE_URL not in .env.example"
-        assert "SUPABASE_KEY" in content, "SUPABASE_KEY not in .env.example"
-        assert "SUPABASE_SERVICE_ROLE_KEY" in content, "SERVICE_ROLE_KEY not in .env.example"
+        supabase_content = supabase_env.read_text()
+        for variable_name in (
+            "SUPABASE_COMPOSE_DIR=",
+            "SUPABASE_DB_DATA_DIR=",
+            "SUPABASE_STORAGE_DATA_DIR=",
+        ):
+            assert variable_name in supabase_content
+        assert not re.search(
+            r"^(SUPABASE_URL|SUPABASE_(?:ANON_)?KEY|"
+            r"SUPABASE_(?:SECRET|SERVICE_ROLE)_KEY)=",
+            supabase_content,
+            re.MULTILINE,
+        )
+
+        backend_content = backend_env.read_text()
+        for variable_name in (
+            "SUPABASE_URL=",
+            "SUPABASE_ANON_KEY=",
+            "SUPABASE_SERVICE_ROLE_KEY=",
+            "DATABASE_URL=",
+        ):
+            assert variable_name in backend_content
+        assert not re.search(
+            r"^SUPABASE_(?:COMPOSE_DIR|DB_DATA_DIR|STORAGE_DATA_DIR)=",
+            backend_content,
+            re.MULTILINE,
+        )
 
     def test_unique_constraints(self):
         """Verify UNIQUE constraints on identity columns."""

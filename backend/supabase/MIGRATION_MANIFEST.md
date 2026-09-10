@@ -1,351 +1,167 @@
-# Supabase Migration Manifest
-Date: 2026-09-08 | Version: v0.6
+# Supabase migration manifest
 
-## Migration Summary
+마지막 감사: 2026-09-10
+현재 버전: v0.9
 
-This manifest documents the self-hosted Supabase database migrations for the Pre-Review platform.
+이 manifest는 `backend/supabase/migrations`의 순차 SQL과 현재
+Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조를 설명한다.
+브라우저는 Supabase Auth/Storage/PostgREST/Realtime/Edge Function을 직접 호출하지 않는다.
 
-**Total Migrations:** 17 sequential SQL migrations  
-**Total Tables:** 57 tables across 5 data-bearing schemas  
-**Total Lines of SQL:** 2,447 lines  
-**Authorization:** Trusted workers/Edge Functions write business data; authenticated users have curated reads and one reservation-bound Storage upload path  
+## 현재 수량
 
-## Migration Files
+- 순차 migration: 24개 (`01`~`24`)
+- SQL 물리 행 수: 4,293 (`wc -l`, 주석/빈 줄 포함)
+- 애플리케이션 table: 60개
+- data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
+- contract schema: 1개 (`api`, table 없이 View/RPC)
+- `CREATE [UNIQUE] INDEX` 정의: 72개
 
-| # | File | Lines | Tables | Indexes | Purpose |
-|---|------|-------|--------|---------|---------|
-| 1 | `01_core_schemas.sql` | 27 | 0 | 0 | Create app, ops, kb, workspace, result, retrieval schemas |
-| 2 | `02_core_ddl.sql` | 553 | 29 | 0 | App user profile, ops audit, kb existing knowledge base |
-| 3 | `03_workspace_ddl.sql` | 97 | 4 | 0 | Workspace analysis_run root and artifacts |
-| 4 | `04_workspace_components.sql` | 114 | 6 | 0 | Workspace support components, program hierarchy, facts |
-| 5 | `05_workspace_projections.sql` | 233 | 14 | 0 | Workspace projections, delivery, field state |
-| 6 | `06_result_ddl.sql` | 166 | 8 | 0 | Result analysis cases, similarity, conversations, reports |
-| 7 | `07_indexes.sql` | 206 | 0 | 60 | Strategic indexes for common access patterns |
-| 8 | `08_rls_policies.sql` | 250 | 0 | 0 | RLS enable + read-only policies for authenticated |
-| 9 | `09_kb_notice_metadata.sql` | 9 | 0 | 0 | Deterministic Bizinfo portal metadata on KB notice roots |
-| 10 | `10_api_contract_foundation.sql` | 70 | 0 | 2 | `api` schema, direct-client run state, worker job link, chat state |
-| 11 | `11_storage_policies.sql` | 41 | 0 | 0 | Private buckets and authenticated source upload policy |
-| 12 | `12_realtime_analysis_run.sql` | 21 | 0 | 0 | Publish analysis-run state to Realtime |
-| 13 | `13_api_contract_state_hardening.sql` | 151 | 1 | 3 | Private dispatch metadata, durable result snapshots, retry/state hardening |
-| 14 | `14_storage_upload_hardening.sql` | 66 | 0 | 1 | Reservation-bound 50 MiB browser upload policy |
-| 15 | `15_api_views_and_result_rpcs.sql` | 298 | 0 | 0 | Frontend Views and result/session RPC read models |
-| 16 | `16_conversation_command_rpcs.sql` | 126 | 0 | 0 | Atomic Edge-only chat creation and retry commands |
-| 17 | `17_request_profile_ingest_core.sql` | 137 | 0 | 0 | Trusted Edge RPC for Request Profile core materialisation |
+`auth`, `storage`, role(`anon`, `authenticated`, `service_role`)은 공식 Supabase stack이 먼저
+제공해야 한다. migration 19 전에 pgvector가 포함된 호환 PostgreSQL image가 실행 중이어야
+한다.
 
-## Schema Breakdown
+## Migration 파일
 
-### app (Application)
-- **Tables:** 1
-- **Purpose:** User profiles and application settings
-- **Lifecycle:** Persistent
-- **RLS:** Own row only
+| # | 파일 | 행 | Table | Index | 현재 의미 |
+|---:|---|---:|---:|---:|---|
+| 01 | `01_core_schemas.sql` | 27 | 0 | 0 | application schema 생성 |
+| 02 | `02_core_ddl.sql` | 553 | 26 | 3 | app/ops/Existing KB core |
+| 03 | `03_workspace_ddl.sql` | 97 | 4 | 0 | analysis run, source/profile artifact root |
+| 04 | `04_workspace_components.sql` | 114 | 5 | 1 | request component/fact projection |
+| 05 | `05_workspace_projections.sql` | 233 | 14 | 0 | target/support/delivery/field projection |
+| 06 | `06_result_ddl.sql` | 166 | 8 | 0 | result, session, conversation/report table |
+| 07 | `07_indexes.sql` | 206 | 0 | 60 | base FK/query index |
+| 08 | `08_rls_policies.sql` | 250 | 0 | 0 | RLS와 과거 direct-client read grant |
+| 09 | `09_kb_notice_metadata.sql` | 9 | 0 | 0 | Bizinfo portal metadata |
+| 10 | `10_api_contract_foundation.sql` | 70 | 0 | 2 | `api` schema와 초기 상태 제약 |
+| 11 | `11_storage_policies.sql` | 41 | 0 | 0 | private bucket 생성, 과거 browser upload policy |
+| 12 | `12_realtime_analysis_run.sql` | 21 | 0 | 0 | 과거 Realtime publication; 활성 UI는 polling |
+| 13 | `13_api_contract_state_hardening.sql` | 151 | 1 | 2 | private dispatch metadata와 상태 hardening |
+| 14 | `14_storage_upload_hardening.sql` | 68 | 0 | 0 | 50 MiB/reservation Storage policy hardening |
+| 15 | `15_api_views_and_result_rpcs.sql` | 298 | 0 | 0 | owner-scoped read View/RPC |
+| 16 | `16_conversation_command_rpcs.sql` | 145 | 0 | 0 | 과거 chat command; chat runtime 미구현 |
+| 17 | `17_request_profile_ingest_core.sql` | 193 | 0 | 0 | worker Request Profile materialisation |
+| 18 | `18_worker_existing_api_and_result_ingest.sql` | 222 | 0 | 0 | 과거 Edge read/unfenced ingest 계약 |
+| 19 | `19_pgvector_existing_profile_retrieval.sql` | 132 | 2 | 2 | Existing Profile embedding/config와 cosine match |
+| 20 | `20_embedding_input_policy_and_axis_match.sql` | 149 | 0 | 0 | 8,192-token input policy, three-axis match |
+| 21 | `21_analysis_worker_queue.sql` | 495 | 0 | 2 | polling claim, lease, heartbeat, two-attempt retry/fence |
+| 22 | `22_fenced_analysis_result_ingest.sql` | 194 | 0 | 0 | fenced atomic result ingest, unfenced writer 폐기 |
+| 23 | `23_result_read_retention_and_candidate_evidence.sql` | 449 | 0 | 0 | live-retention reads, exact candidate version/evidence |
+| 24 | `24_retire_legacy_worker_completion.sql` | 10 | 0 | 0 | 결과 없는 성공 전이를 허용한 과거 완료 함수 제거 |
 
-### ops (Operations & Audit)
-- **Tables:** 3 (processing_run, model_invocation, cleanup_event)
-- **Purpose:** Processing runs, model invocations, cleanup audit trails
-- **Lifecycle:** Persistent (audit log)
-- **RLS:** No authenticated policies (backend only)
+합계는 60 table, 72 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
+스키마 정확성을 대신하는 검증이 아니다.
 
-### kb (Existing Knowledge Base)
-- **Tables:** 22
-- **Purpose:** Existing program/policy data with version lineage
-- **Key:** source → source_version → artifact → profile_version → facts/components/projections
-- **Lifecycle:** Persistent
-- **RLS:** Authenticated read-only
+## Schema와 활성 계약
 
-### workspace (Request Analysis)
-- **Tables:** 23
-- **Purpose:** Temporary workspace during user analysis (ephemeral)
-- **Key:** analysis_run → request_profile → facts/components/projections
-- **Lifecycle:** Deleted after analysis_session close/expiry
-- **RLS:** Own analysis_run only
+| Schema | Table | Lifecycle/접근 |
+|---|---:|---|
+| `app` | 1 | 사용자 profile. RLS own-row read |
+| `ops` | 3 | worker attempt/model/cleanup 감사 구조. browser 미노출 |
+| `kb` | 22 | versioned Existing KB. 영속 |
+| `workspace` | 24 | request 분석과 private queue state |
+| `result` | 8 | 분석 결과/session/conversation/report 구조 |
+| `retrieval` | 2 | Existing embedding만 영속; request vector는 worker 메모리에서 폐기 |
+| `api` | 0 | FastAPI가 transaction-local user claim으로 호출하는 read View/RPC |
 
-### result (Analysis Results)
-- **Tables:** 8
-- **Purpose:** Analysis results, similarity candidates, conversations
-- **Key:** analysis_case → sim_candidate/evidence/session → messages
-- **Lifecycle:** 90-day retention (retention_expires_at)
-- **RLS:** Own analysis_case only
+활성 분석 lifecycle은 다음과 같다.
 
-### api (Frontend Contract)
-- **Tables:** 0
-- **Purpose:** Curated Views and RPCs used by the React client
-- **Lifecycle:** Contract layer; base tables remain internal
-- **RLS:** Every View/RPC must enforce `auth.uid()` ownership before exposure
-
-## Table Statistics
-
-### Table Count by Schema
-- app: 1
-- ops: 3
-- kb: 22
-- workspace: 23
-- result: 8
-- **Total: 57**
-
-### Table Count by Type
-- **Core tables:** 46 (entity data)
-- **Relationship tables:** 20 (fact_evidence, fact_context, lineage, etc.)
-- **Metadata tables:** 12 (user_profile, processing_run, cleanup_event, etc.)
-
-## Key Design Principles
-
-### 1. Immutable Audit Trail
-- Processing runs and model invocations are immutable once created
-- Cleanup events track all deletion operations
-- No UPDATE/DELETE on core entities (only INSERTs)
-
-### 2. Multi-Version Lineage
-- Knowledge base sources track all versions (is_current flag)
-- Profiles have version history with SHA256 integrity
-- Artifacts track transformation pipeline (artifact_lineage)
-
-### 3. User-Scoped Isolation
-- All user data is scoped to auth.users(id)
-- RLS ensures users can only see their own data
-- Batch operations use service role for efficiency
-
-### 4. Ephemeral Workspaces
-- Workspace analysis_run has expires_at field
-- Session retention drives workspace cleanup
-- Failed analysis_runs cleaned immediately
-
-### 5. Result Retention
-- Results retained for 90 days (configurable)
-- retention_expires_at gates automatic cleanup
-- Stable correlation IDs survive workspace deletion
-
-## FK Hierarchy
-
-```
-auth.users
-├── app.user_profile
-├── workspace.analysis_run
-│   ├── workspace.source_artifact
-│   ├── workspace.request_profile
-│   │   ├── workspace.support_component
-│   │   ├── workspace.program_node
-│   │   ├── workspace.fact_occurrence
-│   │   ├── workspace.target_constraint
-│   │   ├── workspace.support_facet
-│   │   ├── workspace.support_scale_projection
-│   │   ├── workspace.request_type
-│   │   ├── workspace.delivery_relation
-│   │   └── workspace.field_state
-│   └── ops.processing_run (optional)
-│       ├── ops.model_invocation
-│       └── ops.cleanup_event (audit)
-└── result.analysis_case
-    ├── result.axis_result
-    ├── result.sim_candidate
-    │   └── kb.profile_version (link to existing)
-    ├── result.evidence_snapshot
-    ├── result.analysis_session
-    │   ├── result.conversation_message
-    │   └── result.conversation_reference
-    └── result.report_artifact
-
-kb.notice (Existing KB root)
-├── kb.source_profile
-│   └── kb.source_version
-│       ├── kb.artifact
-│       │   └── kb.artifact_lineage
-│       └── kb.profile_version
-│           ├── kb.support_component
-│           ├── kb.fact_occurrence
-│           ├── kb.target_constraint
-│           ├── kb.support_facet
-│           └── kb.support_scale_projection
-└── kb.delivery_role (fact subtype)
-    └── kb.delivery_role_organization
+```text
+FastAPI private upload + queued run
+  → workspace.claim_next_analysis_run (FOR UPDATE SKIP LOCKED)
+  → heartbeat/lease + processing_run_pk fence
+  → artifact/Request Profile + ephemeral request embedding
+  → workspace.persist_analysis_result_core
+  → result materialisation과 succeeded 전이를 한 transaction으로 commit
 ```
 
-## Constraints & Validation
+기본 heartbeat는 30초, lease는 120초, 최대 시도는 2회다. stale/expired/replaced
+`processing_run_pk`로 완료하면 `NULL`을 반환하고 결과를 변경하지 않는다. 후보 결과는
+논리 `source_profile_id`와 retrieval에 실제 사용한 `profile_version_pk`를 함께 검증한다.
 
-### Foreign Keys
-- 30+ foreign key constraints
-- ON DELETE CASCADE for ownership hierarchies
-- ON DELETE RESTRICT for critical references (auth.users, notices)
-- ON DELETE SET NULL for optional references (processing_run)
+## 남아 있는 legacy DB surface
 
-### CHECK Constraints
-- **status enums:** processing_run, model_invocation, analysis_case, analysis_session
-- **fact_scope enums:** comparison, existing_specific, request_context, request_delivery
-- **value_kind enums:** categorical, numeric
-- **comparator enums:** eq, lt, lte, gt, gte, range, approx
-- **side enums:** REQUEST, EXISTING
-- **role enums:** lead_agency, operating_agency, etc.
-- **action enums:** announce, recruit, receive, etc.
-- **method enums:** direct, subsidy, contribution, commissioned
-- **facet_type enums:** activity, method, item
-- **measure_type/role:** count, amount, rate with correct role pairs
-- **text basis validation:** text_basis = 'common_ir_v1_candidate_pack'
-- **character span validation:** start_char >= 0, end_char > start_char
-- **numeric ranges:** comparator/lower_value/upper_value consistency
-- **SHA256 validation:** 64-char hex pattern
+migration은 append-only 이력이라 다음 객체가 물리적으로 남아 있다. 존재한다고 해서 활성
+애플리케이션 경로는 아니다.
 
-### UNIQUE Constraints
-- 40+ UNIQUE constraints on identity fields
-- Single-current-version indexes: kb.source_version, kb.profile_version
-- Composite uniqueness: (profile_version, fact_id), (analysis_case, rank_no), etc.
-- Exact-span uniqueness: (profile, source_block, start_char, end_char) for comparison facts
+- migration 08/13~15의 authenticated direct-read grant/RLS
+- migration 11/14의 authenticated direct Storage upload/delete policy
+- migration 12의 Realtime publication
+- migration 16의 conversation command
+- migration 18의 Edge worker read 함수와 unfenced ingest 함수
 
-### Indexes
-- 60 indexes created
-- FK indexes on all foreign key columns
-- Composite indexes for common query patterns
-- Partial indexes for sparse data (expires_at, parent_program_node)
+migration 22가 `api.ingest_comparison_result_core`의 `service_role` 실행 권한을 회수한다.
+현재 worker는 migration 21~24의 DB queue/fenced path만 사용한다. browser JavaScript에는
+Supabase key나 token 응답을 전달하지 않고 access/refresh token은 HttpOnly Cookie에만 둔다.
+FastAPI만 공개 업무 API로 사용한다.
 
-## RLS Policy Summary
+## Retention과 cleanup의 정확한 상태
 
-| Schema | Tables | Policy Type | Authenticated Access |
-|--------|--------|-------------|---------------------|
-| app | user_profile | Self | Own row only |
-| kb | 22 tables | Public | All readable |
-| workspace | 24 tables | API-only | No browser grants; service-role backend reads them |
-| result | 8 tables | API-only | No browser grants; service-role backend reads them |
-| ops | 3 tables | None | Denied (no policy = deny) |
+- 성공 결과의 `retention_expires_at`은 현재 SQL에 **90일로 고정**되어 있다.
+- migration 23의 history/result/candidate read는 만료 시각 이후 즉시 fail-closed한다.
+- `analysis_session`은 30분 expiry를 기록한다.
+- workspace/result/Storage object를 물리 삭제하는 scheduler/GC는 아직 구현되지 않았다.
+- `ops.cleanup_event`, `cleanup_pending`과 expiry column은 cleanup 메타데이터일 뿐 자동 삭제를
+  수행하지 않는다.
 
-## Storage Buckets
+따라서 “90일 뒤 자동 삭제”, “실패 run 즉시 정리”, “session 종료 시 workspace 삭제”라고
+운영 문서나 개인정보 고지에 주장하면 안 된다. reference-aware cleanup job, 감사 기록,
+Storage/DB 삭제 순서와 복구 정책을 구현·검증한 뒤에만 물리 보존 기한을 보장한다.
 
-Three object storage buckets (documentation only):
+## 적용 절차
 
-| Bucket | Purpose | Retention | Key Pattern |
-|--------|---------|-----------|------------|
-| `existing-kb` | KB artifacts | Indefinite | `{notice_id}/{source_profile_id}/{source_sha256}/{artifact_type}/{content_sha256}.{ext}` |
-| `request-temp` | Workspace artifacts | On cleanup | Browser uploads: `request-source/{user_id}/{analysis_run_pk}/source.{ext}`; exact key must match a reserved run |
-| `analysis-reports` | Generated reports | 90 days | `{user_id}/{analysis_case_pk}/{report_type}/{content_sha256}.{ext}` |
+지원되는 적용 경로는 repository script 하나다. `supabase migration up`은 이 저장소에
+Supabase CLI migration project/timestamp 형식이 없으므로 사용하지 않는다. 수동 `psql`
+loop는 `ON_ERROR_STOP`, Compose 위치와 적용 순서 실수를 만들 수 있으므로 문서화된 경로가
+아니다.
 
-## Testing
+사전 조건:
 
-### Contract Tests
-File: `backend/tests/test_migration_contract.py`
+1. 공식 self-hosted Supabase release와 pgvector DB image 조합을 staging에서 고정·검증한다.
+2. Auth/Storage가 초기화되고 DB가 healthy인지 확인한다.
+3. 실제 DB/Storage volume 경로와 container UID/GID 쓰기 권한을 확인한다.
+4. `pg_dump -Fc`와 Storage backup을 만들고 복구 절차를 시험한다.
+5. API/worker를 drain하고 적용할 Git SHA를 기록한다.
 
-**18 static tests** verify:
-1. All migration files exist in order
-2. All schemas created
-3. All tables created
-4. All critical foreign keys exist
-5. auth.users constraints use ON DELETE RESTRICT
-6. RLS enabled on protected tables
-7. All indexes created
-8. Authenticated role has no write grants
-9. Storage buckets documented
-10. .env.example provided
-11. UNIQUE constraints on identity fields
-12. Retention columns exist
-13. Lifecycle tracking columns exist
-
-Run: `pytest backend/tests/test_migration_contract.py -v`
-
-### Runtime Tests
-Database runtime tests are the responsibility of the application layer and integration tests.
-
-## Migration Checklist
-
-- [x] Schemas created (5 required)
-- [x] Core DDL tables created (78 total)
-- [x] Foreign key hierarchy established
-- [x] CHECK constraints for all enums
-- [x] UNIQUE constraints on identity fields
-- [x] Indexes on FK columns and common queries
-- [x] RLS enabled and configured
-- [x] Auth.users ownership preserved
-- [x] Authenticated role is read-only
-- [x] Service role is the only writer
-- [x] Storage bucket documentation
-- [x] Environment variables documented
-- [x] Contract tests provided
-
-## Deployment Instructions
-
-### Prerequisites
-- PostgreSQL 14+ (via self-hosted Supabase)
-- Supabase instance configured
-- Service role key available
-
-### Apply Migrations
 ```bash
-# Option 1: Supabase CLI
-supabase migration up
-
-# Option 2: psql
-for f in backend/supabase/migrations/*.sql; do
-  psql -U postgres -d postgres -f "$f"
-done
-
-# Option 3: Manual in Supabase SQL Editor
-# Copy each migration file content and execute in sequence
+SUPABASE_DIR=/srv/pre-review/supabase \
+  /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-### Initialize Buckets
+이 script에는 migration ledger가 없으며 매번 `01`~`24`를 모두 실행한다. 각 파일은 독립
+transaction이라 중간 실패 전 파일은 이미 commit된다. reset/delete는 하지 않지만 모든
+부분 적용·재실행 상태가 안전하다고 보장하지도 않는다. 실패 시 무작정 재실행하지 말고
+적용된 객체와 오류 migration을 확인한 뒤 backup restore 또는 검증된 repair 절차를 따른다.
+
+migration 11이 `existing-kb`, `request-temp`, `analysis-reports`를 private bucket으로 만든다.
+별도 curl로 중복 생성하지 않는다.
+
+## 검증
+
+정적 계약 test는 하나의 pytest entry가 내부 20개 schema/RLS/queue/fencing 조건을 검사한다.
+SQL을 실제 PostgreSQL에서 실행하거나 container/network/Storage/OpenAI를 검증하지는 않는다.
+
 ```bash
-# Via Supabase dashboard or API
-curl -X POST https://your-instance.supabase.co/storage/v1/bucket \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"existing-kb","public":false}'
+cd /path/to/repository/backend
+UV_CACHE_DIR=/tmp/pre_review_uv_cache uv run --extra dev \
+  pytest supabase/tests/test_migration_contract.py -q
 ```
 
-### Verify Schema
+queue runtime SQL은 transaction 안에서 claim/heartbeat/retry/fence를 검사하고 rollback한다.
+
 ```bash
-python backend/tests/test_migration_contract.py
+cd /path/to/repository/backend
+SUPABASE_DIR=/path/to/supabase-compose \
+  ./supabase/run_worker_queue_validation.sh
 ```
 
-## Maintenance
+배포 gate에는 별도로 migration 01~24 fresh apply, 실제 private Storage put/get/delete,
+FastAPI Cookie auth/upload/poll/result, HWP/HWPX parser와 OpenAI를 포함한 worker E2E가 필요하다.
 
-### Monitor Workspace Cleanup
-```sql
--- Find orphaned analysis runs (expired but not cleaned)
-SELECT ar.analysis_run_pk, ar.created_at, ar.expires_at, ar.status
-FROM workspace.analysis_run ar
-WHERE ar.expires_at < now()
-  AND ar.status != 'cleanup_pending'
-ORDER BY ar.created_at DESC;
-```
+## 관련 문서
 
-### Monitor Result Retention
-```sql
--- Find analysis cases about to expire
-SELECT ac.analysis_case_pk, ac.retention_expires_at, ac.user_id
-FROM result.analysis_case ac
-WHERE ac.retention_expires_at BETWEEN now() AND now() + interval '7 days'
-ORDER BY ac.retention_expires_at ASC;
-```
-
-### Check Index Health
-```sql
--- Find unused or bloated indexes
-SELECT schemaname, tablename, indexname, idx_scan, idx_tup_read, idx_tup_fetch
-FROM pg_stat_user_indexes
-ORDER BY idx_scan ASC;
-```
-
-## Known Limitations & Future Work
-
-### Excluded from v0.3
-- pgvector embedding tables (dimension TBD)
-- Request embedding persistence (ephemeral by design)
-- Graph DB projections
-- unresolved_relations RDB projection
-
-### Future Enhancements
-- Vector similarity search index (pgvector)
-- Materialized views for common queries
-- Partitioning on workspace.analysis_run.expires_at
-- Audit logging views
-- Analytical summary tables (star schema)
-
-## References
-
-- Schema Handoff: `backend/handover/PreReview_DB_Implementation_Handoff_v1.1_20260831/`
-- Core DDL: `backend/handover/.../02_ddl/PreReview_PostgreSQL_Core_DDL_v0.3_20260831.sql`
-- RLS Spec: `backend/handover/.../02_ddl/PreReview_PostgreSQL_RLS_v0.3_20260831.sql`
-- Request Profile Contract: `backend/handover/.../99_reference/contracts/PreReview_Request_Profile_Structured_JSON_Contract_v0.1.2_20260830.md`
-
----
-
-**Migration Generated:** 2026-08-31  
-**Source:** PreReview DB Implementation Handoff v1.1  
-**Author:** Claude Code / PreReview Team  
-**Status:** Ready for self-hosted Supabase deployment
+- [Self-hosted Supabase 운영 안내](README.md)
+- [Worker PostgreSQL 접근 경계](WORKER_DB_ACCESS.md)
+- [레거시 Edge Functions](functions/README.md)
+- [현재 worker 결과 저장 계약](../fastapi/docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md)
+- [FastAPI·worker runbook](../fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)

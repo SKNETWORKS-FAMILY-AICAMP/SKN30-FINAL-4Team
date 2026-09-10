@@ -1,204 +1,151 @@
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import cast
+"""FastAPI entrypoint for the rebuilt PreReview backend."""
+
+import os
 
 from fastapi import FastAPI, Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.envelope import apply_envelope_to_openapi, error_body
-from app.api.request_body_limit import RequestBodyLimitMiddleware
-from app.api.router import router
-from app.core.config import Settings
-from app.core.upload_limits import MAX_MULTIPART_BODY_BYTES
-from app.db.session import create_database_engine
-from app.infrastructure.in_process_job_dispatcher import InProcessJobDispatcher
-from app.infrastructure.local_object_storage import LocalObjectStorage
-from app.infrastructure.openai_embedding_client import OpenAIEmbeddingClient
-from app.infrastructure.openai_llm_client import OpenAILLMClient
-from app.infrastructure.reportlab_pdf_renderer import ReportLabPdfRenderer
-from app.parsers.hwp_parser import RhwpDocumentParser
-from app.ports.document_parser import DocumentParser
-from app.ports.embedding_client import EmbeddingClient
-from app.ports.llm_client import LLMClient
-from app.ports.pdf_renderer import PdfRenderer
-from app.ports.mail_sender import MailSender
-from app.infrastructure.smtp_mail_sender import SmtpMailSender
-from app.services.password_reset import ResetRateLimiter
-from app.services.analysis_pipeline import run_analysis_pipeline
+from app.api.auth import parse_allowed_origins
+from app.api.router import router as api_router
+from app.api.v1.openapi_models import HealthStatusResponse, error_responses
+from app.infrastructure.postgres_analysis_runs import PostgresAnalysisRunRepository
+from app.infrastructure.postgres_results import PostgresResultRepository
+from app.infrastructure.supabase_storage import SupabasePrivateObjectStorage
+from app.services.analysis_runs import AnalysisRunService
 
 
-_LLM_FROM_SETTINGS = object()
-_EMBEDDING_FROM_SETTINGS = object()
+def create_app() -> FastAPI:
+    app = FastAPI(title="PreReview API", version="0.1.0")
+    app.state.offline_mode = os.getenv("PREREVIEW_OFFLINE_MODE", "true").lower() in {"1", "true", "yes"}
+    app.state.upload_max_bytes = int(os.getenv("PREREVIEW_UPLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
+    app.state.supabase_url = os.getenv("SUPABASE_URL", "")
+    app.state.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY", "")
+    app.state.supabase_service_role_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    app.state.database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL", "")
+    # Auth routes are fail-closed unless browser origins are configured.  The
+    # auth HTTP transport is injectable so tests never need a network call.
+    app.state.supabase_auth_transport = None
+    app.state.auth_allowed_origins = parse_allowed_origins(os.getenv("PREREVIEW_AUTH_ALLOWED_ORIGINS", ""))
+    app.state.auth_cookie_secure = os.getenv("PREREVIEW_AUTH_COOKIE_SECURE", "false" if app.state.offline_mode else "true").lower() in {"1", "true", "yes"}
+    app.state.auth_cookie_samesite = os.getenv("PREREVIEW_AUTH_COOKIE_SAMESITE", "lax")
+    app.state.auth_cookie_domain = os.getenv("PREREVIEW_AUTH_COOKIE_DOMAIN", "")
+    app.state.auth_refresh_cookie_max_age = int(os.getenv("PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE", str(60 * 60 * 24 * 30)))
+    app.state.auth_password_reset_redirect_to = os.getenv("PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO", "")
 
-
-def create_app(
-    settings: Settings | None = None,
-    document_parser: DocumentParser | None = None,
-    llm_client: LLMClient | None | object = _LLM_FROM_SETTINGS,
-    embedding_client: EmbeddingClient | None | object = _EMBEDDING_FROM_SETTINGS,
-    pdf_renderer: PdfRenderer | None = None,
-    mail_sender: MailSender | None = None,
-) -> FastAPI:
-    runtime_settings = settings or Settings()
-
-    @asynccontextmanager
-    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        engine = create_database_engine(
-            str(runtime_settings.database_url),
-            runtime_settings.database_connect_timeout_seconds,
+    app.state.analysis_run_service = None
+    app.state.result_repository = None
+    if not app.state.offline_mode and app.state.database_url:
+        app.state.result_repository = PostgresResultRepository(app.state.database_url)
+    if (
+        not app.state.offline_mode
+        and app.state.supabase_url
+        and app.state.supabase_service_role_key
+        and app.state.database_url
+    ):
+        app.state.analysis_run_service = AnalysisRunService(
+            PostgresAnalysisRunRepository(app.state.database_url),
+            SupabasePrivateObjectStorage(
+                supabase_url=app.state.supabase_url,
+                service_role_key=app.state.supabase_service_role_key,
+            ),
         )
-        application.state.database_engine = engine
-        application.state.settings = runtime_settings
-        active_mail_sender = mail_sender
-        if active_mail_sender is None and all((
-            runtime_settings.smtp_host, runtime_settings.smtp_username,
-            runtime_settings.smtp_password, runtime_settings.smtp_from_email,
-            runtime_settings.password_reset_url,
-        )):
-            active_mail_sender = SmtpMailSender(
-                host=runtime_settings.smtp_host,
-                port=runtime_settings.smtp_port,
-                username=runtime_settings.smtp_username,
-                password=runtime_settings.smtp_password.get_secret_value(),
-                from_email=runtime_settings.smtp_from_email,
-            )
-        application.state.mail_sender = active_mail_sender
-        application.state.password_reset_limiter = ResetRateLimiter()
-        object_storage = LocalObjectStorage(
-            runtime_settings.local_storage_root
-        )
-        active_parser = document_parser or RhwpDocumentParser()
-        active_pdf_renderer = pdf_renderer or ReportLabPdfRenderer()
-        if llm_client is _LLM_FROM_SETTINGS:
-            active_llm_client: LLMClient | None = None
-            if runtime_settings.openai_api_key is not None:
-                active_llm_client = OpenAILLMClient(
-                    api_key=runtime_settings.openai_api_key.get_secret_value(),
-                    base_url=str(runtime_settings.openai_base_url),
-                    model_profiles={
-                        profile: profile
-                        for profile in {
-                        runtime_settings.cpl_model_profile,
-                        runtime_settings.fit_model_profile,
-                        runtime_settings.sim_model_profile,
-                        runtime_settings.chat_model_profile,
-                    }
-                    },
-                    timeout_seconds=runtime_settings.cpl_llm_timeout_seconds,
-                )
-        else:
-            active_llm_client = cast(LLMClient | None, llm_client)
-        if embedding_client is _EMBEDDING_FROM_SETTINGS:
-            active_embedding_client: EmbeddingClient | None = None
-            if runtime_settings.openai_api_key is not None:
-                active_embedding_client = OpenAIEmbeddingClient(
-                    api_key=runtime_settings.openai_api_key.get_secret_value(),
-                    base_url=str(runtime_settings.openai_base_url),
-                    model_name=runtime_settings.embedding_model_name,
-                    timeout_seconds=runtime_settings.embedding_timeout_seconds,
-                )
-        else:
-            active_embedding_client = cast(
-                EmbeddingClient | None,
-                embedding_client,
-            )
-        dispatcher = InProcessJobDispatcher(
-            lambda case_id: run_analysis_pipeline(
-                engine,
-                object_storage,
-                active_parser,
-                active_llm_client,
-                runtime_settings,
-                case_id,
-                pdf_renderer=active_pdf_renderer,
-                embedding_client=active_embedding_client,
-            )
-        )
-        application.state.object_storage = object_storage
-        application.state.document_parser = active_parser
-        application.state.llm_client = active_llm_client
-        application.state.embedding_client = active_embedding_client
-        application.state.pdf_renderer = active_pdf_renderer
-        application.state.job_dispatcher = dispatcher
-        try:
-            yield
-        finally:
-            await dispatcher.shutdown()
-            engine.dispose()
 
-    application = FastAPI(
-        title="SIMS Pre-review API",
-        version="0.1.0",
-        lifespan=lifespan,
-    )
-    application.add_middleware(
-        RequestBodyLimitMiddleware,
-        max_bytes=MAX_MULTIPART_BODY_BYTES,
-    )
-    application.add_middleware(
+    # Cross-origin browser calls are allowed only for the same explicit list
+    # used by the CSRF Origin gate. Credentials are required for HttpOnly
+    # session cookies, so wildcard origins are intentionally unsupported.
+    app.add_middleware(
         CORSMiddleware,
-        allow_origins=runtime_settings.cors_allowed_origins,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type"],
-        allow_credentials=False,
-        expose_headers=["Content-Disposition", "Retry-After"],
+        allow_origins=sorted(app.state.auth_allowed_origins),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
     )
 
-    # 비밀번호 흐름의 응답은 캐시에 남기지 않는다.
-    _NO_STORE_PATHS = {
-        "/api/v1/auth/password-reset/request",
-        "/api/v1/auth/password-reset/confirm",
-    }
-
-    def _no_store(request: Request) -> dict[str, str]:
-        return (
-            {"Cache-Control": "no-store"}
-            if request.url.path in _NO_STORE_PATHS
-            else {}
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error_handler(_, exc: StarletteHTTPException) -> JSONResponse:
+        codes = {
+            401: "UNAUTHORIZED",
+            403: "FORBIDDEN",
+            404: "NOT_FOUND",
+            409: "ANALYSIS_ALREADY_ACTIVE",
+            413: "FILE_TOO_LARGE",
+            415: "UNSUPPORTED_FILE_FORMAT",
+            422: "VALIDATION_ERROR",
+            503: "SERVICE_UNAVAILABLE",
+        }
+        message = exc.detail if isinstance(exc.detail, str) else "Request failed"
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "code": codes.get(exc.status_code, "HTTP_ERROR"),
+                "message": message,
+            },
         )
 
-    @application.exception_handler(RequestValidationError)
-    async def validation_error_handler(
-        request: Request,
-        error: RequestValidationError,
-    ) -> JSONResponse:
-        # 입력 원문(input)과 내부 문맥(ctx)은 오류에 다시 담지 않는다.
-        safe_errors = [
-            {
-                key: value
-                for key, value in item.items()
-                if key not in ("input", "ctx")
-            }
-            for item in error.errors()
-        ]
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+        # Pydantic's raw errors include the rejected input by default. Never
+        # reflect passwords, reset credentials, or other request secrets.
+        safe_errors = [{key: value for key, value in item.items() if key not in {"input", "ctx"}} for item in exc.errors()]
         return JSONResponse(
             status_code=422,
-            content=jsonable_encoder(error_body(422, safe_errors)),
-            headers=_no_store(request),
+            content={
+                "code": "VALIDATION_ERROR",
+                "message": "Request validation failed",
+                "errors": jsonable_encoder(safe_errors),
+            },
         )
 
-    @application.exception_handler(StarletteHTTPException)
-    async def http_error_handler(
-        request: Request,
-        error: StarletteHTTPException,
-    ) -> JSONResponse:
-        headers = dict(error.headers or {})
-        headers.update(_no_store(request))
+    @app.exception_handler(Exception)
+    async def unexpected_error_handler(_: Request, __: Exception) -> JSONResponse:
+        # Do not leak parser, storage, or provider details across the API boundary.
         return JSONResponse(
-            status_code=error.status_code,
-            content=jsonable_encoder(error_body(error.status_code, error.detail)),
-            headers=headers,
+            status_code=500,
+            content={"code": "INTERNAL_ERROR", "message": "Internal server error"},
         )
 
-    application.include_router(router)
-    # 응답을 라우터 바깥에서 감싸므로 OpenAPI 도 같은 모양을 말하게 맞춘다.
-    apply_envelope_to_openapi(application)
-    return application
+    @app.get(
+        "/health/live",
+        tags=["Health"],
+        response_model=HealthStatusResponse,
+        responses=error_responses(500),
+    )
+    async def live() -> HealthStatusResponse:
+        return HealthStatusResponse(status="live")
+
+    @app.get(
+        "/health/ready",
+        tags=["Health"],
+        response_model=HealthStatusResponse,
+        responses=error_responses(500, 503),
+    )
+    async def ready() -> JSONResponse:
+        configured = (
+            not app.state.offline_mode
+            and bool(app.state.supabase_url)
+            and bool(app.state.supabase_anon_key)
+            and bool(app.state.auth_allowed_origins)
+            and app.state.analysis_run_service is not None
+        )
+        if configured:
+            return JSONResponse(
+                status_code=200,
+                content={"status": "ready"},
+            )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "code": "NOT_READY",
+                "message": "Backend dependencies are not configured",
+            },
+        )
+
+    app.include_router(api_router)
+    return app
 
 
 app = create_app()

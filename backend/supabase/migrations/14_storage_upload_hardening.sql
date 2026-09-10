@@ -40,6 +40,7 @@ REVOKE ALL ON FUNCTION workspace.can_manage_own_reserved_source(TEXT, TEXT[]) FR
 GRANT EXECUTE ON FUNCTION workspace.can_manage_own_reserved_source(TEXT, TEXT[]) TO authenticated;
 
 DROP POLICY IF EXISTS request_temp_insert_own_prefix ON storage.objects;
+DROP POLICY IF EXISTS request_temp_insert_reserved_source ON storage.objects;
 CREATE POLICY request_temp_insert_reserved_source
 ON storage.objects
 FOR INSERT
@@ -52,6 +53,7 @@ WITH CHECK (
 );
 
 DROP POLICY IF EXISTS request_temp_delete_own_prefix ON storage.objects;
+DROP POLICY IF EXISTS request_temp_delete_unprocessed_source ON storage.objects;
 CREATE POLICY request_temp_delete_unprocessed_source
 ON storage.objects
 FOR DELETE
