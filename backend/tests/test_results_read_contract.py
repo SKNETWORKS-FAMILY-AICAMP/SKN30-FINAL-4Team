@@ -8,6 +8,8 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
 from app.ports.results import ResultNotFound
 from main import create_app
@@ -46,6 +48,27 @@ class FakeResultRepository:
             "cpl": {"items": []},
             "fit": {"items": []},
             "sim": {"candidates": []},
+            "ml": {
+                "model_1": {
+                    "status": "OK",
+                    "support_type": "판로",
+                    "message": "지원유형 참고 분류",
+                    "reason_code": None,
+                },
+                "model_2": {
+                    "status": "OK",
+                    "predicted_amount_won": 8534969,
+                    "message": "예측 지원액",
+                    "reason_code": None,
+                },
+                "model_3": {
+                    "status": "OK",
+                    "anomaly_level": "과거 사업 패턴과 차이가 큼",
+                    "cause_axes": ["기업(과제)당 지원한도"],
+                    "message": "이례성 참고",
+                    "reason_code": None,
+                },
+            },
             "report": {
                 "status": "generating",
                 "can_download": False,
@@ -135,6 +158,11 @@ def test_result_routes_return_bare_contract_payloads_and_never_accept_owner_ids(
             )
             assert case.status_code == 200
             assert case.json()["case"]["analysis_case_id"] == CASE_ID
+            assert case.json()["ml"]["model_1"]["support_type"] == "판로"
+            assert case.json()["ml"]["model_2"]["predicted_amount_won"] == 8534969
+            assert case.json()["ml"]["model_3"]["cause_axes"] == [
+                "기업(과제)당 지원한도"
+            ]
             assert "data" not in case.json()
 
             candidate = await client.get(
@@ -217,6 +245,60 @@ def test_route_path_ids_are_uuid_typed() -> None:
     assert UUID(SIM_ID)
 
 
+def test_ml_read_contract_rejects_internal_score_fields() -> None:
+    from app.api.v1.results import AnalysisResultReadModel
+
+    payload = {
+        "case": {
+            "analysis_case_id": CASE_ID,
+            "program_name": None,
+            "original_filename": None,
+            "completed_at": None,
+        },
+        "cpl": {"items": []},
+        "fit": {"items": []},
+        "sim": {"candidates": []},
+        "ml": {
+            "model_1": {
+                "status": "OK",
+                "support_type": "판로",
+                "message": None,
+                "reason_code": None,
+                "confidence": 0.99,
+            },
+            "model_2": {
+                "status": "UNAVAILABLE",
+                "predicted_amount_won": None,
+                "message": None,
+                "reason_code": "ML_RUNTIME_MISSING",
+            },
+            "model_3": {
+                "status": "UNAVAILABLE",
+                "anomaly_level": None,
+                "cause_axes": [],
+                "message": None,
+                "reason_code": "ML_RUNTIME_MISSING",
+            },
+        },
+        "report": {
+            "status": "generating",
+            "can_download": False,
+            "can_regenerate": False,
+            "retry_count": 0,
+        },
+        "session": {
+            "analysis_session_id": None,
+            "is_active": False,
+            "can_chat": False,
+            "expires_at": None,
+        },
+        "evidences": [],
+    }
+
+    with pytest.raises(ValidationError):
+        AnalysisResultReadModel.model_validate(payload)
+
+
 def test_openapi_exposes_named_result_read_models_not_generic_objects() -> None:
     schema = create_app().openapi()
     paths = schema["paths"]
@@ -232,6 +314,11 @@ def test_openapi_exposes_named_result_read_models_not_generic_objects() -> None:
     history = response_schema("/api/v1/analysis-history")
 
     assert case["$ref"].endswith("/AnalysisResultReadModel")
+    schemas = schema["components"]["schemas"]
+    assert schemas["AnalysisResultReadModel"]["properties"]["ml"]["$ref"].endswith(
+        "/MlReferenceReadModel"
+    )
+    assert schemas["MlReferenceReadModel"]["additionalProperties"] is False
     assert candidate["$ref"].endswith("/SimCandidateDetailReadModel")
     assert active["$ref"].endswith("/ActiveAnalysisSessionReadModel")
     assert history["type"] == "array"

@@ -33,6 +33,28 @@ def test_worker_settings_hold_queue_defaults_and_accept_legacy_dsn_name() -> Non
     assert settings.lease_seconds == 120
     assert settings.top_k == 5
     assert settings.parse_timeout_seconds == 120.0
+    assert settings.model1_serving_dir is None
+    assert settings.ml_python_executable is None
+    assert settings.ml_timeout_seconds == 180.0
+
+
+def test_worker_settings_read_external_ml_boundaries() -> None:
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+            "PREREVIEW_ML_ROOT": r"C:\external\ml",
+            "PREREVIEW_MODEL1_SERVING_DIR": r"C:\external\serving\model1",
+            "PREREVIEW_ML_PYTHON_EXECUTABLE": r"C:\venvs\ml\python.exe",
+            "PREREVIEW_ML_TIMEOUT_SECONDS": "240",
+        }
+    )
+
+    assert str(settings.ml_root).endswith(r"external\ml")
+    assert str(settings.model1_serving_dir).endswith(r"external\serving\model1")
+    assert settings.ml_python_executable.endswith(r"venvs\ml\python.exe")
+    assert settings.ml_timeout_seconds == 240.0
 
 
 @pytest.mark.parametrize(
@@ -157,9 +179,9 @@ def test_runtime_image_excludes_unimportable_retired_worker_modules() -> None:
         "worker/jobs.py",
         "worker/kb_ingest.py",
         "worker/kb_store.py",
-        "worker/ml_reference.py",
         "worker/persistence.py",
         "worker/queue.py",
         "worker/report_pdf.py",
-        "worker/adapters/ml_subprocess.py",
     } <= set(dockerignore)
+    assert "worker/ml_reference.py" not in dockerignore
+    assert "worker/adapters/ml_subprocess.py" not in dockerignore

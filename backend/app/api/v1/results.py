@@ -87,6 +87,34 @@ class AnalysisSessionReadModel(_ReadModel):
     expires_at: datetime | None
 
 
+class MlModel1ReadModel(_ReadModel):
+    status: Literal["OK", "UNAVAILABLE", "FAILED"]
+    support_type: str | None
+    message: str | None
+    reason_code: str | None
+
+
+class MlModel2ReadModel(_ReadModel):
+    status: Literal["OK", "UNAVAILABLE", "FAILED"]
+    predicted_amount_won: int | None
+    message: str | None
+    reason_code: str | None
+
+
+class MlModel3ReadModel(_ReadModel):
+    status: Literal["OK", "UNAVAILABLE", "FAILED"]
+    anomaly_level: str | None
+    cause_axes: list[str] = Field(default_factory=list)
+    message: str | None
+    reason_code: str | None
+
+
+class MlReferenceReadModel(_ReadModel):
+    model_1: MlModel1ReadModel
+    model_2: MlModel2ReadModel
+    model_3: MlModel3ReadModel
+
+
 class ResultEvidenceReadModel(_ReadModel):
     evidence_id: UUID
     side: Literal["request", "existing"]
@@ -100,6 +128,7 @@ class AnalysisResultReadModel(_ReadModel):
     cpl: AnalysisCplSection
     fit: AnalysisFitSection
     sim: AnalysisSimSection
+    ml: MlReferenceReadModel
     report: ReportReadModel
     session: AnalysisSessionReadModel
     evidences: list[ResultEvidenceReadModel] = Field(default_factory=list)
