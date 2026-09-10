@@ -43,6 +43,73 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 새 DB에 Existing Profile과 embedding을 준비하는 절차는
 [Existing KB bootstrap 가이드](../../supabase/EXISTING_KB_BOOTSTRAP.md)를 따른다.
 
+### 새 로컬 환경의 준비 순서
+
+처음부터 재현할 때는 다음 순서를 지킨다.
+
+1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
+2. migration 01~25를 적용한다.
+3. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
+4. 실제 전체 분석이 필요하면 Existing KB와 embedding을 bootstrap한다. 로그인·`/me`만
+   확인할 때는 이 단계가 필요하지 않다.
+5. `backend/.env`를 준비한다.
+6. FastAPI `api`와 polling `worker`를 기동한다.
+7. Swagger에서 `sign-in` → `me` → HWP/HWPX upload → 상태 poll 순서로 확인한다.
+
+Supabase 설치·migration 및 로컬 Auth 준비의 반대쪽 안내는
+[Supabase 운영 안내](../../supabase/README.md)에 있다.
+
+### 로컬 개발용 Auth 사용자 준비
+
+이 절차는 로컬 Swagger·프론트 수동 연동을 위한 고정 개발 계정을 만드는 용도다. 실제
+credential은 Git에서 제외되는 `.runtime/pre-review-dev-auth.env` 한 곳에만 두고 mode를
+`600`으로 제한한다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team
+mkdir -p .runtime
+cp --update=none backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
+chmod 600 .runtime/pre-review-dev-auth.env
+
+# 파일 안의 빈 값을 로컬 전용 email/password로 채운 뒤 실행한다.
+cd backend
+PREREVIEW_ENVIRONMENT=development \
+PREREVIEW_DEV_AUTH_BOOTSTRAP_ENABLED=true \
+uv run python scripts/bootstrap_local_auth_user.py
+```
+
+기본 Supabase 위치는 저장소의 `.runtime/supabase-dev`, 기본 credential 파일은
+`.runtime/pre-review-dev-auth.env`다. 다른 로컬 경로가 필요할 때만
+`--supabase-dir PATH`, `--credentials PATH`를 사용한다. credential 파일에는
+`PREREVIEW_DEV_AUTH_EMAIL`, `PREREVIEW_DEV_AUTH_PASSWORD`를 넣고, 선택 역할
+`PREREVIEW_DEV_AUTH_ROLE`은 현재 `user`만 허용한다. password는 12자 이상이면서 UTF-8
+인코딩 기준 72바이트 이하여야 한다. 스크립트는 생성/재사용 상태만
+출력하며 email·password·Supabase key·token은 출력하지 않는다.
+
+fresh installer로 만든 bundle에는 관리 marker `.pre-review-supabase-version`이 자동으로
+존재한다. 현재 PC의 과거 수동 설치처럼 marker가 없는 **기존 로컬 bundle만** 다음
+override를 추가한다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team/backend
+PREREVIEW_ENVIRONMENT=development \
+PREREVIEW_DEV_AUTH_BOOTSTRAP_ENABLED=true \
+uv run python scripts/bootstrap_local_auth_user.py --allow-unmanaged-local
+```
+
+`--allow-unmanaged-local`은 installer marker 확인만 우회한다. loopback Supabase 주소,
+`development`/명시적 enable guard, `@example.invalid` 개발 email, credential mode `600`
+검사는 우회하지 않으며 LAN·원격 주소를 허용하는 옵션이 아니다.
+
+이 스크립트는 `install_selfhosted_local.sh`, Docker Compose 기동, migration 적용에 자동으로
+포함되지 않는다. 계정 생성은 반드시 개발자가 별도로 실행하며 staging·운영에서는 이
+스크립트와 개발 credential 파일을 사용하지 않는다.
+
+`scripts/run_local_live_e2e.py`가 매 실행마다 만드는 임의 계정과도 용도가 다르다. 임의
+계정은 한 번의 격리된 자동 E2E용이고 DB에 사용자·결과를 남길 수 있다. 위 고정 개발
+계정은 사람이 Swagger와 프론트 연결을 반복 확인하기 위한 것이며, E2E가 만든 비밀번호를
+공용 개발 로그인으로 재사용하지 않는다.
+
 Supabase와 backend가 같은 호스트의 서로 다른 Compose stack이라면 이 저장소의 기본값처럼
 `host.docker.internal`을 사용한다. `compose.yaml`이 Linux의 host gateway mapping을
 추가한다. 두 stack을 하나의 명시적 Docker network에 연결한 배포라면 운영자가 정한
@@ -305,8 +372,9 @@ http://127.0.0.1:8001/redoc      ReDoc
 http://127.0.0.1:8001/openapi.json
 ```
 
-Swagger 인증은 Bearer `Authorize` 방식이 아니다. `POST /api/v1/auth/sign-in`을 먼저
-실행하면 브라우저가 HttpOnly Cookie를 저장하고 이후 요청에 함께 보낸다. Swagger의
+Swagger 인증은 Bearer `Authorize` 방식이 아니다. 위에서 명시적으로 준비한 로컬 개발
+계정으로 `POST /api/v1/auth/sign-in`을 먼저 실행하면 응답의 `Set-Cookie`를 브라우저가
+HttpOnly Cookie로 저장하고 이후 요청에 자동으로 함께 보낸다. Swagger의
 `Try it out`으로 상태 변경 API를 시험하려면 Swagger를 연 API origin도 정확한 허용
 목록에 추가한다.
 
@@ -336,8 +404,10 @@ endpoint의 성공·주요 오류(`ErrorResponse`) schema가 표시된다. `sign
 업무 API, `me`, `update-password`는 access Cookie, `refresh`는 refresh Cookie를 요구한다.
 
 이 security scheme은 HttpOnly Cookie라는 전달 방식을 문서화하기 위한 것이다. Swagger의
-`Authorize`에 token을 붙여 넣는 Bearer 인증 방식이 아니며, 성공한 `sign-in` 응답이 설정한
-Cookie를 같은 browser origin에서 자동 전송하도록 시험한다. frontend의 실제 HTTP client는
+`Authorize`에 access/refresh token이나 쿠키 값을 직접 입력하지 않는다. 성공한 `sign-in`
+응답의 `Set-Cookie`를 같은 browser origin이 저장·자동 전송하도록 시험한다. 먼저 `me`로
+세션을 확인하고, `analysis-runs`에 파일과 새 UUID v4 `Idempotency-Key`를 보내고, 반환된
+run ID를 `GET /analysis-runs/{analysis_run_id}`로 poll한다. frontend의 실제 HTTP client는
 여전히 `credentials: "include"`를 설정해야 한다. `ErrorResponse.errors`는 검증 오류일 때만
 나타나는 선택 필드이고, 비밀번호 같은 원 요청 비밀값은 포함하지 않는다.
 

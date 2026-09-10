@@ -40,12 +40,12 @@ worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table
 
 ## 검증 완료 범위
 
-- backend 회귀: 173 tests
+- backend 회귀: 192 tests
 - 합성 HWPX 5건: ZIP/manifest SHA-256/Common IR provenance/본문 보존/request type preflight
   모두 통과
 - 실제 1건: Supabase Auth → FastAPI upload → queue → HWPX/Common IR/Request Profile →
   OpenAI embedding/pgvector → CPL/FIT/SIM → fenced result → FastAPI polling/read 성공
-- Docker build 및 network 없는 container의 173개 회귀·합성 parser 실행 성공
+- Docker build 및 network 없는 container의 192개 회귀·합성 parser 실행 성공
 
 합성 HWPX는 양식을 흉내 낸 파일로 현재 파서에서 각 2개 텍스트 블록으로 평탄화된다.
 실제 Hancom 작성 문서, malformed/timeout 문서는 아직 별도 E2E 범위다.

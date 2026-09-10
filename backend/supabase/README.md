@@ -67,9 +67,50 @@ SUPABASE_DIR="$PWD" \
 `docker compose ps`에서 최소 DB가 healthy가 된 뒤 migration을 적용하고, Auth·Storage까지
 healthy인지 확인한 뒤 FastAPI를 연결한다.
 
-여기까지는 빈 application DB다. `apply_migrations.sh`는 schema/bucket/config row만 만들며
-Existing KB object/profile/embedding을 seed하지 않는다. 저장소 밖의 고정 100건 ZIP,
-checksum manifest, 안전한 batch importer와 후검증 순서는
+새 로컬 환경의 전체 순서는 **Supabase healthy 확인 → migration → 명시적 로컬 Auth 사용자
+bootstrap → 전체 분석이 필요할 때 Existing KB bootstrap → `backend/.env` 준비 → API·worker
+기동 → Swagger `sign-in`/`me`/upload/poll**이다. FastAPI 설정과 Swagger 확인까지의 상세
+절차는 [FastAPI·worker 운영 가이드](../fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 따른다.
+
+### 로컬 개발용 Auth 사용자 bootstrap
+
+migration 후, 로컬 Swagger·프론트 수동 시험용 계정이 필요할 때만 host에서 다음을
+명시적으로 실행한다.
+
+```bash
+cd /path/to/repository
+mkdir -p .runtime
+cp --update=none backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
+chmod 600 .runtime/pre-review-dev-auth.env
+# .runtime/pre-review-dev-auth.env의 빈 email/password를 로컬 전용 값으로 채움
+
+cd backend
+PREREVIEW_ENVIRONMENT=development \
+PREREVIEW_DEV_AUTH_BOOTSTRAP_ENABLED=true \
+uv run python scripts/bootstrap_local_auth_user.py
+```
+
+기본 credential 파일은 Git에서 제외되는 `.runtime/pre-review-dev-auth.env`이고 변수는
+`PREREVIEW_DEV_AUTH_EMAIL`, `PREREVIEW_DEV_AUTH_PASSWORD`, 선택적으로
+`PREREVIEW_DEV_AUTH_ROLE=user`다. 다른 로컬 bundle/credential 경로는
+`--supabase-dir PATH`, `--credentials PATH`로 명시한다. 비밀값을 셸 인자, 로그, 문서,
+Git에 넣지 않는다. password는 12자 이상이면서 UTF-8 인코딩 기준 72바이트 이하여야 한다.
+
+fresh `install_selfhosted_local.sh` 설치에는 관리 marker `.pre-review-supabase-version`이
+자동으로 있다. marker 도입 전에 수동으로 만든 현재 PC 같은 **과거 로컬 bundle에
+한해서만** `--allow-unmanaged-local`을 추가한다. 이 옵션은 marker만 우회하며 loopback
+주소, development/enable guard, `@example.invalid` email, mode `600` 검사를 완화하거나
+LAN·원격 Supabase를 허용하지 않는다.
+
+Auth bootstrap은 Supabase 설치, Compose start/up, migration에 자동 포함되지 않는다. 또한
+staging·운영에서 사용하면 안 된다. `scripts/run_local_live_e2e.py`의 매 실행 임의 계정은
+격리된 자동 E2E용이고, 이 credential 파일의 고정 계정은 사람이 Swagger·프론트를 반복
+확인하는 용도다. E2E 계정을 공용 개발 계정처럼 재사용하지 않는다.
+
+이 시점에도 위 로컬 Auth 개발 계정을 제외한 업무 데이터는 비어 있다.
+`apply_migrations.sh`는 schema/bucket/config row만 만들며 Existing KB
+object/profile/embedding을 seed하지 않는다. 저장소 밖의 고정 100건 ZIP, checksum
+manifest, 안전한 batch importer와 후검증 순서는
 [Existing KB 100건 bootstrap 가이드](EXISTING_KB_BOOTSTRAP.md)에 정리했다. 새 환경의 전체
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
@@ -126,8 +167,9 @@ SIM 후보는 논리 `source_profile_id`뿐 아니라 retrieval에서 실제 읽
 | `/srv/pre-review/supabase/.env` | 공식 Supabase Compose의 DB/JWT/SMTP 운영 설정 |
 | `backend/supabase/.env` | `prepare_selfhosted.sh`가 읽는 호스트 영속 경로 설정 |
 | `backend/.env` | FastAPI·same-server worker 런타임 설정 |
+| `.runtime/pre-review-dev-auth.env` | 로컬 수동 Auth bootstrap 전용 email/password; 운영 사용 금지 |
 
-세 파일 모두 권한을 `600`으로 제한한다. `prepare_selfhosted.sh`는 두 경로 변수와 선택적
+네 파일 모두 권한을 `600`으로 제한한다. `prepare_selfhosted.sh`는 두 경로 변수와 선택적
 Storage 경로만 source하며, `backend/supabase/.env`의 값은 Docker Compose나 FastAPI에
 자동 전달되지 않는다. 이 파일은 dotenv parser가 아니라 shell `source`로 읽으므로 신뢰한
 파일만 전달하고 값에 shell command를 넣지 않는다.

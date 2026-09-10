@@ -51,7 +51,7 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 
 ## 2026-09-10 검증 결과
 
-- 전체 backend 회귀 테스트: `173 passed`
+- 전체 backend 회귀 테스트: `192 passed`
 - Supabase migration·self-hosted 설치/경로 안전성 계약 테스트: `17 passed`
 - 합성 HWPX 5건 offline parser/preflight: `5/5 passed`
   - ZIP·manifest SHA-256·Common IR provenance·본문 보존
@@ -72,7 +72,7 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
   - private Storage 실제 객체 500/500의 byte SHA-256·크기 일치
   - 과거 importer가 누락한 delivery role 38행·기관 occurrence 48행 backfill 완료
 - Docker 이미지 build: 성공. 최신 이미지의 `--network none` 컨테이너에서 전체 회귀
-  테스트 173건과 합성 HWPX parser 5/5 성공
+  테스트 192건과 합성 HWPX parser 5/5 성공
   (`rhwp-python` native runtime에 `libexpat1`, `libfreetype6` 필요)
 - `cl100k_base` tokenizer cache를 이미지에 포함해 retrieval token 계산이 런타임
   인터넷 연결에 의존하지 않음
