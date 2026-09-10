@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mockup_01 요청서 파싱 동작 보고서</title>
+<style>
+:root{--bg:#f4f7fb;--paper:#fff;--ink:#172033;--muted:#637083;--line:#dce3ec;--blue:#2563eb;--blue2:#eaf1ff;--green:#16845b;--green2:#e8f7f0;--amber:#b56900;--amber2:#fff5df;--red:#c13d3d;--red2:#fff0f0;--code:#101827}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,"Noto Sans KR",sans-serif}main{max-width:1180px;margin:auto;padding:40px 24px 80px}h1{font-size:32px;line-height:1.25;margin:0 0 10px}h2{font-size:22px;margin:42px 0 14px}h3{font-size:17px;margin:0 0 8px}.lead{color:var(--muted);font-size:17px}.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0;box-shadow:0 4px 14px #1b2b4910}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.metric strong{display:block;font-size:25px}.metric span{color:var(--muted)}.flow{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.step{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:13px;text-align:center;position:relative}.step b{display:block;color:var(--blue);font-size:12px}.step small{display:block;color:var(--muted)}.ok{border-left:5px solid var(--green)}.warn{border-left:5px solid var(--amber)}.bad{border-left:5px solid var(--red)}.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700}.tag.ok{border:0;background:var(--green2);color:var(--green)}.tag.warn{border:0;background:var(--amber2);color:var(--amber)}.tag.bad{border:0;background:var(--red2);color:var(--red)}.tag.info{background:var(--blue2);color:var(--blue)}table{width:100%;border-collapse:collapse;background:var(--paper)}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}th{background:#f7f9fc;font-size:13px}code{background:#edf1f6;padding:2px 5px;border-radius:5px}pre{margin:0;background:var(--code);color:#dbe7ff;padding:16px;border-radius:10px;overflow:auto;white-space:pre-wrap;font:13px/1.55 ui-monospace,Consolas,monospace}.cell-grid{display:grid;grid-template-columns:220px 1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden}.cell{padding:12px;border-bottom:1px solid var(--line)}.cell:nth-child(odd){background:#f7f9fc;font-weight:700;border-right:1px solid var(--line)}.segment{display:block;background:#f5f7fa;border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin:5px 0;font-weight:400}.segment em{color:var(--blue);font-style:normal;font-size:11px;margin-right:7px}details{border:1px solid var(--line);border-radius:10px;margin:9px 0;background:#fff}summary{cursor:pointer;padding:12px 15px;font-weight:700}details>div,details>pre{margin:0 14px 14px}.callout{padding:16px;border-radius:10px;background:var(--blue2);border:1px solid #bfd2ff}.arrow{font-size:24px;text-align:center;color:var(--muted)}button{border:0;border-radius:8px;background:var(--blue);color:#fff;padding:10px 14px;font-weight:700;cursor:pointer}.legend{display:flex;gap:8px;flex-wrap:wrap}.small{font-size:13px;color:var(--muted)}@media(max-width:850px){.flow{grid-template-columns:1fr 1fr}.cell-grid{grid-template-columns:130px 1fr}}@media print{body{background:#fff}.card{box-shadow:none}.flow{grid-template-columns:repeat(3,1fr)}button{display:none}}
+</style>
+</head>
+<body><main>
+<header>
+  <div class="tag info">실제 E2E case 1 · 2026-08-28</div>
+  <h1>요청서가 들어오면 실제로 어떻게 파싱되는가</h1>
+  <p class="lead"><b>mockup_01_우수사례_AI바이오실증.hwpx</b>의 실제 저장 결과와 CPL/FIT/SIM 실패 전파를 코드 기준으로 재구성한 문서입니다.</p>
+  <button id="download">실제 파싱 스냅샷 JSON 내려받기</button>
+</header>
+
+<h2>1. 한눈에 보는 실행 흐름</h2>
+<div class="flow">
+  <div class="step"><b>01 INPUT</b>HWPX 요청서<small>42,985 bytes</small></div>
+  <div class="step"><b>02 PREFLIGHT</b>파일 안전성 검사<small>확장자·MIME·ZIP·해시</small></div>
+  <div class="step"><b>03 RHWP IR</b>문서 구조 변환<small>paragraph / table / cell</small></div>
+  <div class="step"><b>04 PARSER</b>블록·segment 보존<small>DB snapshot 저장</small></div>
+  <div class="step"><b>05 CPL</b>Rule → 부족분 LLM<small>evidence grounding</small></div>
+  <div class="step"><b>06 CONSUMERS</b>FIT → SIM → Report<small>후단 비교</small></div>
+</div>
+
+<div class="grid">
+  <div class="card metric ok"><span>문자 추출</span><strong>1,526자</strong><span>담당자·첨부서류까지 보존</span></div>
+  <div class="card metric ok"><span>물리 구조</span><strong>5 blocks</strong><span>문단 4 + 표 1</span></div>
+  <div class="card metric warn"><span>표 내부 구조</span><strong>13 / 16</strong><span>셀이 unresolved</span></div>
+  <div class="card metric warn"><span>파싱 상태</span><strong>PARTIAL_SUCCESS</strong><span>텍스트 성공, 문단 경계 불확실</span></div>
+</div>
+
+<h2>2. 입력 파일을 어떤 기준으로 받는가</h2>
+<div class="card">
+<table><thead><tr><th>검사</th><th>현재 기준</th><th>이번 파일</th></tr></thead><tbody>
+<tr><td>형식</td><td><code>.hwpx + application/hwp+zip</code> 또는 <code>.hwp + application/x-hwp</code></td><td><span class="tag ok">통과</span></td></tr>
+<tr><td>원본 무결성</td><td>저장 크기와 SHA-256 재검증</td><td><span class="tag ok">통과</span></td></tr>
+<tr><td>HWPX ZIP</td><td>경로 조작, 중복 이름, 암호화, 심볼릭 링크 차단</td><td><span class="tag ok">통과</span></td></tr>
+<tr><td>용량</td><td>10,000 entries / 압축 해제 200MB / 압축률 1,000 제한</td><td><span class="tag ok">통과</span></td></tr>
+</tbody></table>
+</div>
+
+<h2>3. HWPX가 실제로 변환된 형태</h2>
+<div class="callout"><b>중요:</b> 파서는 여기서 “사업목적”을 판단하지 않습니다. HWPX의 물리 구조를 <code>paragraph</code>, <code>table</code>, <code>cell</code>, <code>segment</code>로 보존합니다.</div>
+<div class="card">
+  <h3>블록 목록</h3>
+  <table><thead><tr><th>block_id</th><th>종류</th><th>내용</th><th>페이지</th></tr></thead><tbody>
+  <tr><td><code>body:0</code></td><td>paragraph</td><td>【 서식 1 】 사전협의 요청서…</td><td>null</td></tr>
+  <tr><td><code>body:1</code></td><td>paragraph</td><td>중소기업지원사업 사전협의 요청서</td><td>null</td></tr>
+  <tr><td><code>body:2</code></td><td>paragraph</td><td>&lt; 경상북도 &gt;</td><td>null</td></tr>
+  <tr><td><code>body:3</code></td><td>paragraph</td><td>(빈 문단)</td><td>null</td></tr>
+  <tr><td><code>body:4</code></td><td>table</td><td>8행 × 2열, 16셀</td><td>null</td></tr>
+  </tbody></table>
+</div>
+
+<div class="card"><h3>실제 표 셀과 segment</h3><p class="small">회색 조각은 rhwp가 제공한 inline run입니다. 파서는 이 조각을 문단이라고 단정하지 않고 순서와 원문만 보존합니다.</p><div id="cells" class="cell-grid"></div></div>
+
+<details open><summary>재구성되어 DB에 저장된 extracted_text 전체 보기</summary><pre id="rawText"></pre></details>
+<details><summary>실제 저장 JSON의 구조 예시</summary><pre>{
+  "parser_name": "rhwp-python",
+  "parser_version": "0.8.1",
+  "status": "PARTIAL_SUCCESS",
+  "used_ocr": false,
+  "extracted_text": "... 1,526자 ...",
+  "structured_content": {
+    "blocks": ["body:0", "body:1", "body:2", "body:3", "body:4"],
+    "partial": true,
+    "warnings": ["TABLE_CELL_INLINE_SEGMENTS ... × 13"]
+  },
+  "text_sha256_hex": "6a7fea3f...205ab8a2"
+}</pre></details>
+
+<h2>4. 파서가 성공과 실패를 가르는 기준</h2>
+<div class="grid">
+<div class="card ok"><h3>SUCCESS</h3>텍스트와 블록이 있고 모든 block ID와 위치 정보가 유효하며 warning이 없음.</div>
+<div class="card warn"><h3>PARTIAL_SUCCESS</h3>텍스트는 사용할 수 있지만 지원하지 않는 블록이나 확정하지 못한 구조가 있어 warning이 존재.</div>
+<div class="card bad"><h3>PARSE FAILED</h3>지원하지 않는 파일, 손상·암호화·위험한 파일, 빈 텍스트/블록, 잘못된 결과 계약.</div>
+</div>
+<div class="card warn"><b>이번 파일이 PARTIAL인 이유</b><br>16셀 중 13셀에서 한 ParagraphBlock 안에 여러 inline run이 있었습니다. 원문과 순서는 보존했지만 그것이 실제 문단 경계라는 근거가 없어 <code>structure_status=unresolved</code>로 기록했습니다.</div>
+
+<h2>5. 파싱 결과가 CPL 입력으로 바뀌는 방식</h2>
+<div class="card">
+<p>일반 문단은 블록 하나가 fragment가 되고, 표 셀에 여러 segment가 있으면 segment 하나가 fragment가 됩니다. 서버가 다음처럼 고유 근거 ID를 붙입니다.</p>
+<pre>body:4:cell:3:1:segment:0  → ○ 사업기간 : 2026. 03. 01. ~ ...
+body:4:cell:3:1:segment:1  → ○ 사업예산 : 금 1,500,000,000원 ...
+body:4:cell:3:1:segment:2  → ○ 지원대상 : 경상북도 소재 ...
+body:4:cell:3:1:segment:3  → ○ 지원조건 : 바이오/헬스케어 특허 ...
+body:4:cell:3:1:segment:4  → ○ 지원내용 :</pre>
+<p>따라서 <b>unresolved는 내용을 잃었다는 뜻이 아닙니다.</b> 내용은 CPL에 전달되지만, 파서가 이것을 확정된 문단 구조라고 보증하지 않는다는 뜻입니다.</p>
+</div>
+
+<h2>6. CPL은 무엇을 어떤 기준으로 판정하는가</h2>
+<div class="card">
+<table><thead><tr><th>순서</th><th>판정 주체</th><th>기준</th><th>가능한 작업</th></tr></thead><tbody>
+<tr><td>1</td><td>Rule</td><td>정의된 라벨 별칭, 체크박스, 날짜·금액·비율·기업수 정규식</td><td>명시적 근거 추출과 정량값 정규화</td></tr>
+<tr><td>2</td><td>LLM</td><td>Rule로 확정하지 못한 의미 항목만 호출</td><td>기존 fragment ref와 허용 axis 선택</td></tr>
+<tr><td>3</td><td>서버 검증</td><td>ref 존재, 원문 포함, 허용 axis, 중복 여부</td><td>검증된 evidence만 채택</td></tr>
+</tbody></table>
+</div>
+<div class="card"><h3>이번 파일의 실제 CPL 결과</h3><div id="cpl"></div></div>
+
+<h2>7. 실제로 어디에서 안 됐는가</h2>
+<div class="card warn"><h3>① 파서 구조 한계</h3><p>13개 셀의 inline run이 실제 문단인지 확정하지 못했습니다. 페이지 번호도 제공되지 않았습니다. 다만 원문과 segment는 CPL에 전달됐습니다.</p></div>
+<div class="card bad"><h3>② CPL 의미축 누락</h3><p>사업목적 원문은 있었지만 LLM이 <code>PURPOSE_SPECIFIC_OBJECTIVE</code>와 <code>PURPOSE_PROBLEM_DOMAIN</code>만 만들고 <code>PURPOSE_DIRECTION</code>, <code>PURPOSE_TARGET_CONDITION</code>을 만들지 못했습니다. 이 때문에 FIT-1~3의 왼쪽 근거가 0건이 됐습니다.</p></div>
+<div class="card bad"><h3>③ CPL evidence grounding 실패</h3><p><code>NEW_OR_CHANGED_CONTENT</code> 근거는 <code>REF_NOT_FOUND</code>, 지원대상 근거 1건은 <code>NOT_VERBATIM</code>으로 폐기됐습니다. 원문이 없었던 것이 아니라 LLM이 서버 계약과 맞지 않는 ref/구간을 반환한 문제입니다.</p></div>
+<div class="card warn"><h3>④ Rule 정규화 한계</h3><p><code>2026. 03. 01. ~ 2026. 12. 31. (10개월)</code>은 정확히 추출됐지만 현재 기간 정규식이 일 단위 표기를 정규값으로 만들지 못해 <code>VALUE_NOT_SPECIFIC</code>이 됐습니다.</p></div>
+<div class="card bad"><h3>⑤ SIM 응답 계약 실패</h3><p>Top 5 검색은 성공했지만 LLM이 비교 가능 판정을 반환하면서 양쪽 evidence를 모두 제시하지 않아 <code>Assessable SIM response requires evidence on both sides</code>로 전 후보가 <code>ON_HOLD</code>가 됐습니다.</p></div>
+
+<h2>8. 실패가 후단으로 전파된 경로</h2>
+<div class="card">
+<table><thead><tr><th>원인</th><th>직접 결과</th><th>후단 영향</th></tr></thead><tbody>
+<tr><td>목적 방향·대상조건 축 누락</td><td>CPL은 PURPOSE_GOAL 자체는 PRESENT</td><td>FIT-1~3은 비교 입력 부족으로 INSUFFICIENT</td></tr>
+<tr><td>수행절차 원문 없음</td><td>수행기관만 구조화</td><td>FIT-6 오른쪽 evidence 0건</td></tr>
+<tr><td>기간 정규화 실패</td><td>BUSINESS_PERIOD 확인 필요</td><td>보고서 review issue 생성</td></tr>
+<tr><td>SIM 후보 지원내용 evidence 0건</td><td>SIM-3 비교 기반 없음</td><td>LLM 응답까지 계약을 어겨 후보 전체 ON_HOLD</td></tr>
+</tbody></table>
+</div>
+
+<h2>9. 이 결과로 판단할 수 있는 것</h2>
+<div class="callout"><b>결론:</b> 이번 파일은 “파일을 읽지 못한 파싱 실패”가 아닙니다. 문자와 표 셀은 보존됐지만 표 내부 문단 구조는 부분 확정 상태이고, 실제 치명적인 손실은 그 다음 CPL 의미축 선택과 LLM evidence 계약에서 발생했습니다. 따라서 파서·CPL Rule·CPL LLM·후단 사전검증을 각각 분리해서 고쳐야 원인을 숨기지 않습니다.</div>
+
+<script>
+const cells=[
+["0,0","사전협의","요청사유"],["0,1","☑ 세부사업 신설     ☐ 내역사업 신설     ☐ 내내역사업 신설","☐ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)"],
+["1,0","사업명"],["1,1","(세부) 2026년 경상북도 AI 기반 바이오·헬스케어 혁신성장 실증 지원사업","(내역) 해당없음 (세부사업 신설)","(내내역) 해당없음"],
+["2,0","신설·변경","필요성(사유)"],["2,1","○ 사업목적 : 경북 도내 바이오·디지털헬스케어 중소·벤처기업의 AI 융합 신제품 개발 및 임상·인허가 실증 지원을 통한 시장 조기 진입 및 지역 주력산업 고도화","○ 사업필요성 : 글로벌 디지털 헬스케어 시장 급성장에 따라 도내 바이오 기업의 AI 융합 수요가 급증하고 있으나, 높은 임상·인허가 비용과 시험인증 인프라 부족으로 시장 진입 한계 직면. 이에 지자체 주도의 원스톱 실증 패키지 지원 시급.","○ 지원근거 : 「중소기업기본법」 제20조의5(사전협의), 「경상북도 바이오·디지털헬스산업 육성 및 지원 조례」 제6조","○ 연계정책 : 정부 120대 국정과제 [바이오·디지털헬스 글로벌 중심국가 도약], 제4차 경상북도 중소기업 육성 종합계획(2023~2027)"],
+["3,0","신설·변경","주요내용"],["3,1","○ 사업기간 : 2026. 03. 01. ~ 2026. 12. 31. (10개월)","○ 사업예산 : 금 1,500,000,000원 (금 15억원 / 도비 100%)","○ 지원대상 : 경상북도 소재(본사·공장·연구소) 바이오·디지털 헬스케어 중소·벤처기업 (업력 7년 미만 창업기업 및 기술혁신형 기업)","○ 지원조건 : 바이오/헬스케어 특허 보유 또는 AI 헬스케어 제품 개발 중인 기업 (체납 및 채무불이행 기업 제외)","○ 지원내용 :","1. AI 알고리즘 고도화 및 시제품 제작 실증 지원 (기업당 최대 7,000만원)","2. 공인시험인증 및 비임상·임상 인허가 컨설팅 (기업당 최대 3,000만원)","- 지원규모 : 총 15개사 내외 지원 (기업당 최대 1억원 지원, 자부담 10% 별도 매칭)","○ 수행기관 : (재)경북테크노파크 (바이오메디컬융합단)"],
+["4,0","기대효과"],["4,1","○ 파급효과 : 도내 디지털 헬스케어 시제품 실증 성공률 80% 달성, 신제품 조기 상용화를 통한 수혜기업 평균 매출액 15% 증대 및 신규 청년 일자리 50명 창출","○ 성과지표 : AI 실증 지원 수혜기업 수(15개사), 신규 고용창출 인원(50명), 특허 출원 및 인허가 획득(20건), 수혜기업 사업화 만족도(85점 이상)"],
+["5,0","타 제도","협의·심사여부","(해당 시)"],["5,1","• 제도명 : 지방재정 중앙투자심사","• 협의부처 : 행정안전부 | 협의일시 : 2025. 11. 15.","• 협의결과 : 원안통과(적정)"],
+["6,0","사업담당자","(부처, 기관)"],["6,1","• 담당부서 : 경상북도 바이오생명산업과","• 직급 : 지방행정사무관 | 성명 : 홍길동","• 연락처 : 054-880-1234 | 전자메일 : hongkd@korea.kr"],
+["7,0","첨부서류"],["7,1","1. 제출자료 자체 점검표 1부","2. 2026년도 사업계획서(안) 및 예산 설명자료 1부. 끝."]];
+const unresolved=new Set(["0,0","0,1","1,1","2,0","2,1","3,0","3,1","4,1","5,0","5,1","6,0","6,1","7,1"]);
+document.querySelector('#cells').innerHTML=cells.map(c=>`<div class="cell">cell ${c[0]} ${unresolved.has(c[0])?'<span class="tag warn">unresolved</span>':'<span class="tag ok">stable</span>'}</div><div class="cell">${c.slice(1).map((s,i)=>`<span class="segment"><em>segment ${i}</em>${s}</span>`).join('')}</div>`).join('');
+const raw=`【 서식 1 】 사전협의 요청서 (우수 사례 1 (High Quality - 정합도 98%))
+중소기업지원사업 사전협의 요청서
+< 경상북도 >
+사전협의
+요청사유
+☑ 세부사업 신설     ☐ 내역사업 신설     ☐ 내내역사업 신설
+☐ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)
+사업명
+(세부) 2026년 경상북도 AI 기반 바이오·헬스케어 혁신성장 실증 지원사업
+(내역) 해당없음 (세부사업 신설)
+(내내역) 해당없음
+신설·변경
+필요성(사유)
+○ 사업목적 : 경북 도내 바이오·디지털헬스케어 중소·벤처기업의 AI 융합 신제품 개발 및 임상·인허가 실증 지원을 통한 시장 조기 진입 및 지역 주력산업 고도화
+○ 사업필요성 : 글로벌 디지털 헬스케어 시장 급성장에 따라 도내 바이오 기업의 AI 융합 수요가 급증하고 있으나, 높은 임상·인허가 비용과 시험인증 인프라 부족으로 시장 진입 한계 직면. 이에 지자체 주도의 원스톱 실증 패키지 지원 시급.
+○ 지원근거 : 「중소기업기본법」 제20조의5(사전협의), 「경상북도 바이오·디지털헬스산업 육성 및 지원 조례」 제6조
+○ 연계정책 : 정부 120대 국정과제 [바이오·디지털헬스 글로벌 중심국가 도약], 제4차 경상북도 중소기업 육성 종합계획(2023~2027)
+신설·변경
+주요내용
+○ 사업기간 : 2026. 03. 01. ~ 2026. 12. 31. (10개월)
+○ 사업예산 : 금 1,500,000,000원 (금 15억원 / 도비 100%)
+○ 지원대상 : 경상북도 소재(본사·공장·연구소) 바이오·디지털 헬스케어 중소·벤처기업 (업력 7년 미만 창업기업 및 기술혁신형 기업)
+○ 지원조건 : 바이오/헬스케어 특허 보유 또는 AI 헬스케어 제품 개발 중인 기업 (체납 및 채무불이행 기업 제외)
+○ 지원내용 :
+1. AI 알고리즘 고도화 및 시제품 제작 실증 지원 (기업당 최대 7,000만원)
+2. 공인시험인증 및 비임상·임상 인허가 컨설팅 (기업당 최대 3,000만원)
+- 지원규모 : 총 15개사 내외 지원 (기업당 최대 1억원 지원, 자부담 10% 별도 매칭)
+○ 수행기관 : (재)경북테크노파크 (바이오메디컬융합단)
+기대효과
+○ 파급효과 : 도내 디지털 헬스케어 시제품 실증 성공률 80% 달성, 신제품 조기 상용화를 통한 수혜기업 평균 매출액 15% 증대 및 신규 청년 일자리 50명 창출
+○ 성과지표 : AI 실증 지원 수혜기업 수(15개사), 신규 고용창출 인원(50명), 특허 출원 및 인허가 획득(20건), 수혜기업 사업화 만족도(85점 이상)
+타 제도
+협의·심사여부
+(해당 시)
+• 제도명 : 지방재정 중앙투자심사
+• 협의부처 : 행정안전부 | 협의일시 : 2025. 11. 15.
+• 협의결과 : 원안통과(적정)
+사업담당자
+(부처, 기관)
+• 담당부서 : 경상북도 바이오생명산업과
+• 직급 : 지방행정사무관 | 성명 : 홍길동
+• 연락처 : 054-880-1234 | 전자메일 : hongkd@korea.kr
+첨부서류
+1. 제출자료 자체 점검표 1부
+2. 2026년도 사업계획서(안) 및 예산 설명자료 1부. 끝.`;
+document.querySelector('#rawText').textContent=raw;
+const cpl=[['REQUEST_TYPE','PRESENT','Rule','체크박스 4건'],['PURPOSE_GOAL','PRESENT','Rule + LLM','목적·문제영역만 생성, 방향·대상조건 누락'],['IMPLEMENTATION_PLAN','NEEDS_CONFIRMATION','LLM','사업기간을 연차계획으로 분류'],['BUSINESS_PERIOD','NEEDS_CONFIRMATION','Rule','원문은 있으나 날짜 정규화 실패'],['NEW_OR_CHANGED_CONTENT','NEEDS_CONFIRMATION','LLM','REF_NOT_FOUND로 근거 폐기'],['BUSINESS_NEED','PRESENT','Rule + LLM','문제·대응 축'],['LEGAL_BASIS','PRESENT','Rule','법령명 추출'],['LINKED_POLICY','PRESENT','Rule','라벨 근거'],['BUDGET','PRESENT','Rule','15억원 → 1,500,000,000 KRW'],['TARGET_AND_CONDITIONS','PRESENT','Rule + LLM','LLM 1건 NOT_VERBATIM 폐기'],['SUPPORT_CONTENT_AND_SCALE','PRESENT','Rule + LLM','활동 2건, 15개사'],['DELIVERY_SYSTEM','PRESENT','Rule + LLM','기관명만 존재'],['EXPECTED_EFFECTS_AND_PERFORMANCE','PRESENT','Rule + LLM','효과·성과지표']];
+document.querySelector('#cpl').innerHTML=`<table><thead><tr><th>필드</th><th>상태</th><th>생산자</th><th>실제 결과</th></tr></thead><tbody>${cpl.map(x=>`<tr><td><code>${x[0]}</code></td><td><span class="tag ${x[1]==='PRESENT'?'ok':'warn'}">${x[1]}</span></td><td>${x[2]}</td><td>${x[3]}</td></tr>`).join('')}</tbody></table>`;
+const snapshot={source_file:'mockup_01_우수사례_AI바이오실증.hwpx',parser_name:'rhwp-python',parser_version:'0.8.1',status:'PARTIAL_SUCCESS',used_ocr:false,text_sha256_hex:'6a7fea3f8996da0390c9fc9849ccd9309cb50987c0624da67f94f2ef205ab8a2',extracted_text:raw,structured_content:{blocks:[{block_id:'body:0',block_type:'paragraph',text:'【 서식 1 】 사전협의 요청서 (우수 사례 1 (High Quality - 정합도 98%))',page_no:null},{block_id:'body:1',block_type:'paragraph',text:'중소기업지원사업 사전협의 요청서',page_no:null},{block_id:'body:2',block_type:'paragraph',text:'< 경상북도 >',page_no:null},{block_id:'body:3',block_type:'paragraph',text:'',page_no:null},{block_id:'body:4',block_type:'table',page_no:null,source_locator:{rows:8,cols:2,cells:cells.map(c=>({row:+c[0].split(',')[0],col:+c[0].split(',')[1],segments:c.slice(1).map((text,segment_index)=>({segment_index,text})),structure_status:unresolved.has(c[0])?'unresolved':null}))}}],partial:true,warnings:[...unresolved].map(x=>`TABLE_CELL_INLINE_SEGMENTS: body:4:cell:${x.replace(',',' :').replace(' ','')} preserved as segments; paragraph boundaries are not inferred`)}};
+document.querySelector('#download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'}));a.download='mockup_01_actual_parser_snapshot.json';a.click();URL.revokeObjectURL(a.href)};
+</script>
+</main></body></html>

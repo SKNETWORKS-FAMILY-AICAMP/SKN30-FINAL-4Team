@@ -1,0 +1,1846 @@
+{
+  "document_version": "v0.3",
+  "document_date": "2026-08-31",
+  "document_status": "DRAFT_NOT_IMPLEMENTED",
+  "description": "설명용 가상 예시 모음. 이 파일 전체가 서버 응답은 아닙니다. 각 success.body / errors[].body가 제안하는 실제 응답 본문입니다. 토큰·계정·판정·버전·ID·시각은 실제 실행 기록이 아닙니다.",
+  "companion_document": "Pre-review_API_공통응답_프론트전달안_v0.3_260831.md",
+  "common_response_fields": [
+    {
+      "field": "status_code",
+      "type": "number",
+      "rule": "실제 HTTP 상태 코드와 동일"
+    },
+    {
+      "field": "message",
+      "type": "string",
+      "rule": "사람이 읽는 안내. 동작 분기 기준으로 쓰지 않음"
+    },
+    {
+      "field": "code",
+      "type": "string",
+      "rule": "성공은 SUCCESS, 접수는 ACCEPTED, 실패는 error_codes 참조"
+    },
+    {
+      "field": "data",
+      "type": "object | null",
+      "rule": "API별 결과. 실패 또는 반환 데이터 없는 성공이면 null"
+    },
+    {
+      "field": "errors",
+      "type": "array",
+      "rule": "필드별 입력 오류. 없으면 항상 빈 배열"
+    }
+  ],
+  "error_item_fields": [
+    {
+      "field": "loc",
+      "type": "(string | number)[]",
+      "rule": "오류 위치. 예: body, content"
+    },
+    {
+      "field": "msg",
+      "type": "string",
+      "rule": "해당 입력 오류 설명"
+    },
+    {
+      "field": "type",
+      "type": "string",
+      "rule": "검증 오류 종류. missing, int_parsing 등"
+    }
+  ],
+  "front_error_handling": [
+    {
+      "match": "401",
+      "action": "로그인 실패 또는 재로그인 안내"
+    },
+    {
+      "match": "그 외 4xx",
+      "action": "message 표시. errors가 있으면 해당 입력란에도 표시"
+    },
+    {
+      "match": "5xx",
+      "action": "처리 불가 안내. 재시도 여부는 작업 성격에 따라 결정"
+    }
+  ],
+  "error_codes": [
+    {
+      "http_status": 400,
+      "code": "BAD_REQUEST",
+      "meaning": "요청 조건·내용 오류"
+    },
+    {
+      "http_status": 401,
+      "code": "UNAUTHORIZED",
+      "meaning": "로그인 또는 토큰 인증 실패"
+    },
+    {
+      "http_status": 404,
+      "code": "NOT_FOUND",
+      "meaning": "대상을 찾을 수 없거나 접근 가능한 대상이 아님"
+    },
+    {
+      "http_status": 409,
+      "code": "CONFLICT",
+      "meaning": "현재 상태에서 요청 처리 불가"
+    },
+    {
+      "http_status": 413,
+      "code": "PAYLOAD_TOO_LARGE",
+      "meaning": "파일 또는 업로드 요청 크기 초과"
+    },
+    {
+      "http_status": 415,
+      "code": "UNSUPPORTED_MEDIA_TYPE",
+      "meaning": "지원하지 않거나 유효하지 않은 파일 형식"
+    },
+    {
+      "http_status": 422,
+      "code": "VALIDATION_ERROR",
+      "meaning": "필수 입력·타입·길이 등 검증 실패"
+    },
+    {
+      "http_status": 500,
+      "code": "INTERNAL_ERROR",
+      "meaning": "예상하지 못한 서버 오류"
+    },
+    {
+      "http_status": 502,
+      "code": "LLM_INVALID_RESPONSE",
+      "meaning": "답변 모델의 응답 형식·근거 오류"
+    },
+    {
+      "http_status": 503,
+      "code": "SERVICE_UNAVAILABLE",
+      "meaning": "DB·PDF 등 서비스 이용 불가"
+    },
+    {
+      "http_status": 503,
+      "code": "LLM_UNAVAILABLE",
+      "meaning": "답변 모델 이용 불가"
+    },
+    {
+      "http_status": 503,
+      "code": "LLM_TIMEOUT",
+      "meaning": "답변 모델 응답 시간 초과"
+    }
+  ],
+  "analysis_status_values": [
+    {
+      "display": "분석 전",
+      "internal": [
+        "UPLOADED"
+      ],
+      "front_action": "분석 시작 버튼 표시"
+    },
+    {
+      "display": "분석 중",
+      "internal": [
+        "PARSING",
+        "CHECKING",
+        "RETRIEVING",
+        "REPORTING"
+      ],
+      "front_action": "상태 폴링"
+    },
+    {
+      "display": "분석 완료",
+      "internal": [
+        "COMPLETED"
+      ],
+      "front_action": "결과 조회"
+    },
+    {
+      "display": "분석 실패",
+      "internal": [
+        "FAILED"
+      ],
+      "front_action": "실패 안내·새 문서 업로드 안내"
+    }
+  ],
+  "common_error": {
+    "http_status": 500,
+    "content_type": "application/json",
+    "body": {
+      "status_code": 500,
+      "message": "서버에서 요청을 처리하지 못했습니다.",
+      "code": "INTERNAL_ERROR",
+      "data": null,
+      "errors": []
+    }
+  },
+  "apis": [
+    {
+      "id": 1,
+      "title": "로그인",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "authentication_required": false,
+      "request": {
+        "content_type": "application/json",
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": {
+          "login_id": "demo",
+          "password": "example-password"
+        },
+        "form_fields": [],
+        "constraints": [
+          "login_id: 1~255자",
+          "password: 1~128자"
+        ]
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "로그인되었습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "access_token": "example-token-not-valid",
+            "token_type": "bearer"
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "아이디·비밀번호 불일치 또는 사용할 수 없는 계정",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "body",
+                  "login_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "성공 시 data.access_token을 이후 인증 API의 Bearer 토큰으로 사용합니다.",
+        "이 API의 401은 재로그인이 아니라 로그인 실패 안내로 처리합니다."
+      ]
+    },
+    {
+      "id": 2,
+      "title": "내 정보 조회",
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "내 정보를 조회했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "id": 1,
+            "login_id": "demo"
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        }
+      ],
+      "notes": [
+        "보관 중인 토큰의 유효성 확인에도 사용할 수 있습니다."
+      ]
+    },
+    {
+      "id": 3,
+      "title": "비밀번호 변경",
+      "method": "POST",
+      "path": "/api/v1/auth/change-password",
+      "authentication_required": true,
+      "request": {
+        "content_type": "application/json",
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": {
+          "current_password": "example-old-password",
+          "new_password": "example-new-password"
+        },
+        "form_fields": [],
+        "constraints": [
+          "current_password: 1~128자",
+          "new_password: 12~128자",
+          "current_password와 new_password는 서로 달라야 함"
+        ]
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "비밀번호가 변경되었습니다.",
+          "code": "SUCCESS",
+          "data": null,
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 400,
+          "content_type": "application/json",
+          "when": "현재 비밀번호 불일치 또는 기존과 같은 새 비밀번호",
+          "body": {
+            "status_code": 400,
+            "message": "요청 내용을 확인해 주세요.",
+            "code": "BAD_REQUEST",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "필수 필드·타입·비밀번호 길이 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "body",
+                  "new_password"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "변경 성공 후 기존 토큰은 서버가 거부합니다. 저장된 토큰을 제거하고 다시 로그인해야 합니다.",
+        "새 토큰은 이 응답에 포함되지 않습니다.",
+        "400은 형식 오류가 아니라 현재 비밀번호 불일치 같은 업무 규칙 거절이며 errors는 비어 있습니다."
+      ]
+    },
+    {
+      "id": 4,
+      "title": "로그아웃",
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "로그아웃되었습니다.",
+          "code": "SUCCESS",
+          "data": null,
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        }
+      ],
+      "notes": [
+        "성공 후 프론트가 보관한 토큰을 제거합니다.",
+        "서버는 토큰 폐기 목록을 기록하지 않으므로 서버 측 즉시 무효화를 보장하지 않습니다."
+      ]
+    },
+    {
+      "id": 5,
+      "title": "문서 업로드·분석 건 생성",
+      "method": "POST",
+      "path": "/api/v1/cases",
+      "authentication_required": true,
+      "request": {
+        "content_type": "multipart/form-data",
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [
+          {
+            "name": "file",
+            "type": "file",
+            "required": true,
+            "count": 1
+          }
+        ],
+        "constraints": [
+          "파일 정확히 1개",
+          "HWP 또는 HWPX",
+          "52,428,800바이트(50 MiB) 이하",
+          "확장자와 실제 파일 형식을 모두 검사"
+        ]
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "문서가 업로드되었습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "case_id": 123,
+            "status": "UPLOADED"
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 400,
+          "content_type": "application/json",
+          "when": "여러 파일, 빈 파일, 잘못된 파일명 또는 multipart 요청 오류",
+          "body": {
+            "status_code": 400,
+            "message": "요청 내용을 확인해 주세요.",
+            "code": "BAD_REQUEST",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 413,
+          "content_type": "application/json",
+          "when": "파일 크기 초과 또는 전체 multipart 요청 크기 제한 초과",
+          "body": {
+            "status_code": 413,
+            "message": "업로드 허용 크기를 초과했습니다.",
+            "code": "PAYLOAD_TOO_LARGE",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 415,
+          "content_type": "application/json",
+          "when": "지원하지 않는 형식, 손상된 형식 또는 확장자와 실제 형식 불일치",
+          "body": {
+            "status_code": 415,
+            "message": "HWP 또는 HWPX 파일을 업로드해 주세요.",
+            "code": "UNSUPPORTED_MEDIA_TYPE",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "file 필드 누락 또는 파일 필드 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "body",
+                  "file"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "file 이외의 필드명으로 첨부한 추가 파일도 허용하지 않습니다.",
+        "FormData 사용 시 Content-Type은 브라우저가 boundary와 함께 설정하게 둡니다.",
+        "성공 시 data.case_id를 이후 API의 경로 파라미터로 사용합니다.",
+        "413은 파일 한 개의 크기와 multipart 요청 전체 크기 양쪽에서 발생할 수 있습니다."
+      ]
+    },
+    {
+      "id": 6,
+      "title": "최근 분석 이력 조회",
+      "method": "GET",
+      "path": "/api/v1/cases",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "분석 이력을 조회했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "cases": [
+              {
+                "case_id": 123,
+                "title": "예시_사전협의요청서.hwpx",
+                "status": "분석 완료",
+                "created_at": "2026-08-31T09:00:00+09:00"
+              }
+            ]
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        }
+      ],
+      "notes": [
+        "본인 분석 건만 최신순으로 최대 50건 반환합니다.",
+        "title은 원본 파일명이며 없으면 null입니다.",
+        "이력이 없어도 data는 null이 아니라 cases가 빈 배열인 객체입니다.",
+        "status는 8번과 같은 4개 값입니다."
+      ]
+    },
+    {
+      "id": 7,
+      "title": "분석 시작",
+      "method": "POST",
+      "path": "/api/v1/cases/{case_id}/analyze",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "type": "integer",
+            "required": true,
+            "description": "5번 업로드 응답의 data.case_id"
+          }
+        ],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 202,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 202,
+          "message": "분석 요청이 접수되었습니다.",
+          "code": "ACCEPTED",
+          "data": {
+            "case_id": 123,
+            "job_id": "example-job-123",
+            "status": "PARSING"
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 404,
+          "content_type": "application/json",
+          "when": "분석 건이 없거나 본인 소유가 아님",
+          "body": {
+            "status_code": 404,
+            "message": "요청한 대상을 찾을 수 없습니다.",
+            "code": "NOT_FOUND",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 409,
+          "content_type": "application/json",
+          "when": "현재 상태에서 분석 시작 불가: 이미 진행·완료·실패한 건 등",
+          "body": {
+            "status_code": 409,
+            "message": "현재 상태에서 분석 시작 불가: 이미 진행·완료·실패한 건 등",
+            "code": "CONFLICT",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "path",
+                  "case_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "202는 접수 성공이며 분석 완료가 아닙니다. 이어서 8번으로 상태를 확인합니다.",
+        "상태가 분석 전(내부 UPLOADED)일 때만 시작할 수 있습니다.",
+        "이미 실패한 건은 같은 건으로 재분석할 수 없고 409입니다. 5번으로 다시 업로드해 새 분석 건을 만들어야 합니다.",
+        "job_id는 불투명 문자열이며 별도 job 조회 API는 없습니다.",
+        "시작 여부 확인용으로 호출하지 않습니다. 202면 실제로 분석이 시작되고 409는 진행 중·완료·실패를 모두 덮습니다."
+      ]
+    },
+    {
+      "id": 8,
+      "title": "분석 상태 조회",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/status",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "type": "integer",
+            "required": true,
+            "description": "5번 업로드 응답의 data.case_id"
+          }
+        ],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "분석 상태를 조회했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "case_id": 123,
+            "status": "분석 중",
+            "failure_code": null,
+            "failure_message": null
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [
+        {
+          "name": "분석 전 조회",
+          "http_status": 200,
+          "content_type": "application/json",
+          "body": {
+            "status_code": 200,
+            "message": "분석 상태를 조회했습니다.",
+            "code": "SUCCESS",
+            "data": {
+              "case_id": 123,
+              "status": "분석 전",
+              "failure_code": null,
+              "failure_message": null
+            },
+            "errors": []
+          }
+        },
+        {
+          "name": "분석 완료 조회",
+          "http_status": 200,
+          "content_type": "application/json",
+          "body": {
+            "status_code": 200,
+            "message": "분석 상태를 조회했습니다.",
+            "code": "SUCCESS",
+            "data": {
+              "case_id": 123,
+              "status": "분석 완료",
+              "failure_code": null,
+              "failure_message": null
+            },
+            "errors": []
+          }
+        },
+        {
+          "name": "분석 실패 조회",
+          "http_status": 200,
+          "content_type": "application/json",
+          "body": {
+            "status_code": 200,
+            "message": "분석 상태를 조회했습니다.",
+            "code": "SUCCESS",
+            "data": {
+              "case_id": 123,
+              "status": "분석 실패",
+              "failure_code": "DOCUMENT_PARSE_FAILED",
+              "failure_message": "The uploaded document could not be parsed"
+            },
+            "errors": []
+          }
+        }
+      ],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 404,
+          "content_type": "application/json",
+          "when": "분석 건이 없거나 본인 소유가 아님",
+          "body": {
+            "status_code": 404,
+            "message": "요청한 대상을 찾을 수 없습니다.",
+            "code": "NOT_FOUND",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "path",
+                  "case_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "status는 분석 전, 분석 중, 분석 완료, 분석 실패 4개 중 하나입니다.",
+        "내부 상태 대응은 analysis_status_values를 따릅니다.",
+        "내부 진행 단계가 늘어나도 분석 중에 흡수되며 프론트는 4개 값만 처리합니다. 내부 상태 이름으로 분기하지 않습니다.",
+        "분석 실패를 정상 조회해도 HTTP는 200이고 code는 SUCCESS입니다.",
+        "failure_code·failure_message는 분석 자체의 실패이며 API 오류의 code·message와 구분합니다.",
+        "분석 전은 폴링 대상이 아니며 분석 시작 버튼을 표시합니다.",
+        "적용 전 주의: 현재 서버는 표시 상태가 3개이고 분석 전에 해당하는 건도 분석 중으로 내려옵니다."
+      ]
+    },
+    {
+      "id": 9,
+      "title": "분석 결과 조회",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/report",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "type": "integer",
+            "required": true,
+            "description": "5번 업로드 응답의 data.case_id"
+          }
+        ],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "분석 결과를 조회했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "schema_version": "alpha-report-v0.1",
+            "case": {
+              "case_id": 123,
+              "title": "예시_사전협의요청서.hwpx",
+              "created_at": "2026-08-31T09:00:00+09:00",
+              "completed_at": "2026-08-31T09:02:00+09:00"
+            },
+            "ui_status": "COMPLETED",
+            "self_check": {
+              "confirmed_count": 0,
+              "total_count": 13,
+              "confirmation_rate": 0,
+              "items": [
+                {
+                  "field_code": "REQUEST_TYPE",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "PURPOSE_GOAL",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "IMPLEMENTATION_PLAN",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "BUSINESS_PERIOD",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "NEW_OR_CHANGED_CONTENT",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "BUSINESS_NEED",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "LEGAL_BASIS",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "LINKED_POLICY",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "BUDGET",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "TARGET_AND_CONDITIONS",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "SUPPORT_CONTENT_AND_SCALE",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "DELIVERY_SYSTEM",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                },
+                {
+                  "field_code": "EXPECTED_EFFECTS_AND_PERFORMANCE",
+                  "status": "MISSING",
+                  "reason_code": "FIELD_NOT_FOUND",
+                  "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                  "occurrences": []
+                }
+              ],
+              "ruleset_version": "example-only",
+              "prompt_version": "example-only",
+              "model_profile": "example-only",
+              "warnings": []
+            },
+            "structural_consistency": {
+              "module_status": "AVAILABLE",
+              "score": {
+                "value": null,
+                "numerator": 0,
+                "denominator": 0,
+                "assessable_count": 0,
+                "total_count": 7,
+                "scoring_version": "example-only"
+              },
+              "relations": [
+                {
+                  "relation_id": "FIT-1",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "비교에 필요한 근거가 부족합니다.",
+                  "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                },
+                {
+                  "relation_id": "FIT-2",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "비교에 필요한 근거가 부족합니다.",
+                  "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                },
+                {
+                  "relation_id": "FIT-3",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "비교에 필요한 근거가 부족합니다.",
+                  "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                },
+                {
+                  "relation_id": "FIT-4",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "계층 비교 기준이 준비되지 않았습니다.",
+                  "reason_code": "HIERARCHY_COMPARISON_NOT_AVAILABLE",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                },
+                {
+                  "relation_id": "FIT-5",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "비교에 필요한 근거가 부족합니다.",
+                  "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                },
+                {
+                  "relation_id": "FIT-6",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "비교에 필요한 근거가 부족합니다.",
+                  "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                },
+                {
+                  "relation_id": "FIT-7",
+                  "status": "INSUFFICIENT",
+                  "score": null,
+                  "summary": "비교에 필요한 근거가 부족합니다.",
+                  "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                  "left_evidence": [],
+                  "right_evidence": [],
+                  "rule_version": "example-only",
+                  "prompt_version": "example-only"
+                }
+              ],
+              "ruleset_version": "example-only",
+              "prompt_version": "example-only",
+              "scoring_version": "example-only",
+              "model_profile": "example-only",
+              "warnings": []
+            },
+            "review_issues": [
+              {
+                "issue_id": "CPL:REQUEST_TYPE",
+                "source": "CPL",
+                "reference_id": "REQUEST_TYPE",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:PURPOSE_GOAL",
+                "source": "CPL",
+                "reference_id": "PURPOSE_GOAL",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:IMPLEMENTATION_PLAN",
+                "source": "CPL",
+                "reference_id": "IMPLEMENTATION_PLAN",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:BUSINESS_PERIOD",
+                "source": "CPL",
+                "reference_id": "BUSINESS_PERIOD",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:NEW_OR_CHANGED_CONTENT",
+                "source": "CPL",
+                "reference_id": "NEW_OR_CHANGED_CONTENT",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:BUSINESS_NEED",
+                "source": "CPL",
+                "reference_id": "BUSINESS_NEED",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:LEGAL_BASIS",
+                "source": "CPL",
+                "reference_id": "LEGAL_BASIS",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:LINKED_POLICY",
+                "source": "CPL",
+                "reference_id": "LINKED_POLICY",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:BUDGET",
+                "source": "CPL",
+                "reference_id": "BUDGET",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:TARGET_AND_CONDITIONS",
+                "source": "CPL",
+                "reference_id": "TARGET_AND_CONDITIONS",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:SUPPORT_CONTENT_AND_SCALE",
+                "source": "CPL",
+                "reference_id": "SUPPORT_CONTENT_AND_SCALE",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:DELIVERY_SYSTEM",
+                "source": "CPL",
+                "reference_id": "DELIVERY_SYSTEM",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "CPL:EXPECTED_EFFECTS_AND_PERFORMANCE",
+                "source": "CPL",
+                "reference_id": "EXPECTED_EFFECTS_AND_PERFORMANCE",
+                "status": "MISSING",
+                "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+                "reason_code": "FIELD_NOT_FOUND",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-1",
+                "source": "FIT",
+                "reference_id": "FIT-1",
+                "status": "INSUFFICIENT",
+                "summary": "비교에 필요한 근거가 부족합니다.",
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-2",
+                "source": "FIT",
+                "reference_id": "FIT-2",
+                "status": "INSUFFICIENT",
+                "summary": "비교에 필요한 근거가 부족합니다.",
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-3",
+                "source": "FIT",
+                "reference_id": "FIT-3",
+                "status": "INSUFFICIENT",
+                "summary": "비교에 필요한 근거가 부족합니다.",
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-4",
+                "source": "FIT",
+                "reference_id": "FIT-4",
+                "status": "INSUFFICIENT",
+                "summary": "계층 비교 기준이 준비되지 않았습니다.",
+                "reason_code": "HIERARCHY_COMPARISON_NOT_AVAILABLE",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-5",
+                "source": "FIT",
+                "reference_id": "FIT-5",
+                "status": "INSUFFICIENT",
+                "summary": "비교에 필요한 근거가 부족합니다.",
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-6",
+                "source": "FIT",
+                "reference_id": "FIT-6",
+                "status": "INSUFFICIENT",
+                "summary": "비교에 필요한 근거가 부족합니다.",
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                "evidence": []
+              },
+              {
+                "issue_id": "FIT:FIT-7",
+                "source": "FIT",
+                "reference_id": "FIT-7",
+                "status": "INSUFFICIENT",
+                "summary": "비교에 필요한 근거가 부족합니다.",
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                "evidence": []
+              }
+            ],
+            "similar_candidates": [],
+            "ben_references": [],
+            "differences": [],
+            "warnings": [],
+            "report_download_url": null
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 404,
+          "content_type": "application/json",
+          "when": "분석 건이 없거나 본인 소유가 아님",
+          "body": {
+            "status_code": 404,
+            "message": "요청한 대상을 찾을 수 없습니다.",
+            "code": "NOT_FOUND",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 409,
+          "content_type": "application/json",
+          "when": "보고서가 아직 준비되지 않았거나 조회 가능한 보고서가 없음",
+          "body": {
+            "status_code": 409,
+            "message": "보고서가 아직 준비되지 않았거나 조회 가능한 보고서가 없음",
+            "code": "CONFLICT",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "path",
+                  "case_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "결과 전체 예시와 타입 정의는 Pre-review_API_분석결과_전체예시_v0.2_260831.json 및 Pre-review_API_분석결과_데이터스키마_v0.2_260831.json을 참조합니다.",
+        "report_download_url은 PDF가 준비되기 전에는 null입니다.",
+        "CPL 13개 항목과 FIT 7개 관계는 항상 유지됩니다."
+      ]
+    },
+    {
+      "id": 10,
+      "title": "PDF 다운로드",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/report.pdf",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "type": "integer",
+            "required": true,
+            "description": "5번 업로드 응답의 data.case_id"
+          }
+        ],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/pdf",
+        "body_encoding": "binary",
+        "description": "실제 PDF 바이너리. 공통 JSON 객체를 보내지 않습니다."
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 404,
+          "content_type": "application/json",
+          "when": "분석 건이 없거나 본인 소유가 아님",
+          "body": {
+            "status_code": 404,
+            "message": "요청한 대상을 찾을 수 없습니다.",
+            "code": "NOT_FOUND",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 409,
+          "content_type": "application/json",
+          "when": "분석 또는 PDF가 아직 준비되지 않음",
+          "body": {
+            "status_code": 409,
+            "message": "분석 또는 PDF가 아직 준비되지 않음",
+            "code": "CONFLICT",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "path",
+                  "case_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        },
+        {
+          "http_status": 503,
+          "content_type": "application/json",
+          "when": "PDF 파일을 사용할 수 없음",
+          "body": {
+            "status_code": 503,
+            "message": "서비스를 일시적으로 사용할 수 없습니다.",
+            "code": "SERVICE_UNAVAILABLE",
+            "data": null,
+            "errors": []
+          }
+        }
+      ],
+      "notes": [
+        "성공만 PDF 바이너리이고 실패는 다른 API와 같은 공통 JSON입니다.",
+        "HTTP 상태와 Content-Type을 확인한 뒤 PDF는 Blob으로, 오류 JSON은 JSON으로 읽습니다.",
+        "Bearer 인증이 필요하므로 단순 링크 이동만으로는 Authorization 헤더가 붙지 않습니다.",
+        "Content-Disposition은 서버의 expose_headers 설정 덕분에 스크립트로 읽어 파일명을 얻을 수 있습니다."
+      ]
+    },
+    {
+      "id": 11,
+      "title": "대화 이력 조회",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/chat/messages",
+      "authentication_required": true,
+      "request": {
+        "content_type": null,
+        "path_parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "type": "integer",
+            "required": true,
+            "description": "5번 업로드 응답의 data.case_id"
+          }
+        ],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "대화 이력을 조회했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "case_id": 123,
+            "chat_session_id": null,
+            "messages": []
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [
+        {
+          "name": "대화가 있는 경우",
+          "http_status": 200,
+          "content_type": "application/json",
+          "body": {
+            "status_code": 200,
+            "message": "대화 이력을 조회했습니다.",
+            "code": "SUCCESS",
+            "data": {
+              "case_id": 123,
+              "chat_session_id": 10,
+              "messages": [
+                {
+                  "id": 1,
+                  "sequence_no": 1,
+                  "role": "USER",
+                  "content": "확인이 필요한 항목을 알려줘",
+                  "model_name": null,
+                  "model_version": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "evidence_refs": [],
+                  "created_at": "2026-08-31T09:03:00+09:00"
+                },
+                {
+                  "id": 2,
+                  "sequence_no": 2,
+                  "role": "ASSISTANT",
+                  "content": "자체 점검에서 확인하지 못한 항목을 확인해 주세요. 근거가 부족한 관계는 판단 불가로 표시됩니다.",
+                  "model_name": "example-only",
+                  "model_version": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "evidence_refs": [],
+                  "created_at": "2026-08-31T09:03:02+09:00"
+                }
+              ]
+            },
+            "errors": []
+          }
+        }
+      ],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 404,
+          "content_type": "application/json",
+          "when": "분석 건이 없거나 본인 소유가 아님",
+          "body": {
+            "status_code": 404,
+            "message": "요청한 대상을 찾을 수 없습니다.",
+            "code": "NOT_FOUND",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 409,
+          "content_type": "application/json",
+          "when": "조회 가능한 완료 보고서가 없어 대화 이용 불가",
+          "body": {
+            "status_code": 409,
+            "message": "조회 가능한 완료 보고서가 없어 대화 이용 불가",
+            "code": "CONFLICT",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "path",
+                  "case_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        }
+      ],
+      "notes": [
+        "보고서가 준비된 뒤에만 이용할 수 있습니다.",
+        "대화가 아직 없으면 chat_session_id는 null이고 messages는 빈 배열입니다.",
+        "messages는 sequence_no 오름차순입니다."
+      ]
+    },
+    {
+      "id": 12,
+      "title": "질문 전송",
+      "method": "POST",
+      "path": "/api/v1/cases/{case_id}/chat/messages",
+      "authentication_required": true,
+      "request": {
+        "content_type": "application/json",
+        "path_parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "type": "integer",
+            "required": true,
+            "description": "5번 업로드 응답의 data.case_id"
+          }
+        ],
+        "query_parameters": [],
+        "body": {
+          "content": "확인이 필요한 항목을 알려줘"
+        },
+        "form_fields": [],
+        "constraints": [
+          "content: 1~4000자"
+        ]
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "답변을 생성했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "case_id": 123,
+            "chat_session_id": 10,
+            "user_message": {
+              "id": 1,
+              "sequence_no": 1,
+              "role": "USER",
+              "content": "확인이 필요한 항목을 알려줘",
+              "model_name": null,
+              "model_version": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "evidence_refs": [],
+              "created_at": "2026-08-31T09:03:00+09:00"
+            },
+            "assistant_message": {
+              "id": 2,
+              "sequence_no": 2,
+              "role": "ASSISTANT",
+              "content": "자체 점검에서 확인하지 못한 항목을 확인해 주세요. 근거가 부족한 관계는 판단 불가로 표시됩니다.",
+              "model_name": "example-only",
+              "model_version": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "evidence_refs": [],
+              "created_at": "2026-08-31T09:03:02+09:00"
+            }
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 401,
+          "content_type": "application/json",
+          "when": "토큰 누락·만료·유효하지 않음",
+          "body": {
+            "status_code": 401,
+            "message": "인증 정보를 확인해 주세요.",
+            "code": "UNAUTHORIZED",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 404,
+          "content_type": "application/json",
+          "when": "분석 건이 없거나 본인 소유가 아님",
+          "body": {
+            "status_code": 404,
+            "message": "요청한 대상을 찾을 수 없습니다.",
+            "code": "NOT_FOUND",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 409,
+          "content_type": "application/json",
+          "when": "조회 가능한 완료 보고서가 없어 대화 이용 불가",
+          "body": {
+            "status_code": 409,
+            "message": "조회 가능한 완료 보고서가 없어 대화 이용 불가",
+            "code": "CONFLICT",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 422,
+          "content_type": "application/json",
+          "when": "입력 필드 또는 경로 값 검증 실패",
+          "body": {
+            "status_code": 422,
+            "message": "입력값을 확인해 주세요.",
+            "code": "VALIDATION_ERROR",
+            "data": null,
+            "errors": [
+              {
+                "loc": [
+                  "path",
+                  "case_id"
+                ],
+                "msg": "필드 값 또는 형식을 확인해 주세요.",
+                "type": "validation_error"
+              }
+            ]
+          }
+        },
+        {
+          "http_status": 502,
+          "content_type": "application/json",
+          "when": "모델 응답의 형식 또는 근거가 유효하지 않음",
+          "body": {
+            "status_code": 502,
+            "message": "사용 가능한 답변을 생성하지 못했습니다.",
+            "code": "LLM_INVALID_RESPONSE",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 503,
+          "content_type": "application/json",
+          "when": "모델을 사용할 수 없음",
+          "body": {
+            "status_code": 503,
+            "message": "답변 서비스를 일시적으로 사용할 수 없습니다.",
+            "code": "LLM_UNAVAILABLE",
+            "data": null,
+            "errors": []
+          }
+        },
+        {
+          "http_status": 503,
+          "content_type": "application/json",
+          "when": "모델 응답 시간 초과",
+          "body": {
+            "status_code": 503,
+            "message": "답변 생성 시간이 초과되었습니다.",
+            "code": "LLM_TIMEOUT",
+            "data": null,
+            "errors": []
+          }
+        }
+      ],
+      "notes": [
+        "필드명은 content이며 message가 아닙니다.",
+        "알 수 없는 추가 필드는 허용하지 않습니다.",
+        "공백만 있는 질문은 프론트에서 전송하지 않습니다.",
+        "답변은 현재 분석 결과에 근거합니다."
+      ]
+    },
+    {
+      "id": 13,
+      "title": "서버 생존 확인",
+      "method": "GET",
+      "path": "/health/live",
+      "authentication_required": false,
+      "request": {
+        "content_type": null,
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "서버가 응답 중입니다.",
+          "code": "SUCCESS",
+          "data": {
+            "status": "ok"
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [],
+      "notes": [
+        "서버가 요청에 응답하는지만 확인하며 DB·모델·분석 기능을 검사하지 않습니다.",
+        "프론트의 필수 호출 절차가 아닙니다."
+      ]
+    },
+    {
+      "id": 14,
+      "title": "서버 준비 상태 확인",
+      "method": "GET",
+      "path": "/health/ready",
+      "authentication_required": false,
+      "request": {
+        "content_type": null,
+        "path_parameters": [],
+        "query_parameters": [],
+        "body": null,
+        "form_fields": [],
+        "constraints": []
+      },
+      "success": {
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "서버가 요청을 처리할 준비가 되었습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "status": "ready"
+          },
+          "errors": []
+        }
+      },
+      "additional_success_examples": [],
+      "errors": [
+        {
+          "http_status": 503,
+          "content_type": "application/json",
+          "when": "DB 연결 실패 또는 필수 테이블이 없어 서버가 준비되지 않음",
+          "body": {
+            "status_code": 503,
+            "message": "서비스를 일시적으로 사용할 수 없습니다.",
+            "code": "SERVICE_UNAVAILABLE",
+            "data": null,
+            "errors": []
+          }
+        }
+      ],
+      "notes": [
+        "DB 연결과 필수 테이블(sims.app_user) 존재를 검사합니다.",
+        "LLM·스토리지·분석 전체의 정상 작동을 보장하지 않습니다."
+      ]
+    }
+  ]
+}

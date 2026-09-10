@@ -1,0 +1,400 @@
+{
+  "status_code": 200,
+  "message": "분석 결과를 조회했습니다.",
+  "code": "SUCCESS",
+  "data": {
+    "schema_version": "alpha-report-v0.1",
+    "case": {
+      "case_id": 123,
+      "title": "예시_사전협의요청서.hwpx",
+      "created_at": "2026-08-31T09:00:00+09:00",
+      "completed_at": "2026-08-31T09:02:00+09:00"
+    },
+    "ui_status": "COMPLETED",
+    "self_check": {
+      "confirmed_count": 0,
+      "total_count": 13,
+      "confirmation_rate": 0,
+      "items": [
+        {
+          "field_code": "REQUEST_TYPE",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "PURPOSE_GOAL",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "IMPLEMENTATION_PLAN",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "BUSINESS_PERIOD",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "NEW_OR_CHANGED_CONTENT",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "BUSINESS_NEED",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "LEGAL_BASIS",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "LINKED_POLICY",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "BUDGET",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "TARGET_AND_CONDITIONS",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "SUPPORT_CONTENT_AND_SCALE",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "DELIVERY_SYSTEM",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        },
+        {
+          "field_code": "EXPECTED_EFFECTS_AND_PERFORMANCE",
+          "status": "MISSING",
+          "reason_code": "FIELD_NOT_FOUND",
+          "explanation": "예시: 원문에서 항목을 확인하지 못했습니다.",
+          "occurrences": []
+        }
+      ],
+      "ruleset_version": "example-only",
+      "prompt_version": "example-only",
+      "model_profile": "example-only",
+      "warnings": []
+    },
+    "structural_consistency": {
+      "module_status": "AVAILABLE",
+      "score": {
+        "value": null,
+        "numerator": 0,
+        "denominator": 0,
+        "assessable_count": 0,
+        "total_count": 7,
+        "scoring_version": "example-only"
+      },
+      "relations": [
+        {
+          "relation_id": "FIT-1",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "비교에 필요한 근거가 부족합니다.",
+          "reason_code": "COMPARISON_EVIDENCE_MISSING",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        },
+        {
+          "relation_id": "FIT-2",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "비교에 필요한 근거가 부족합니다.",
+          "reason_code": "COMPARISON_EVIDENCE_MISSING",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        },
+        {
+          "relation_id": "FIT-3",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "비교에 필요한 근거가 부족합니다.",
+          "reason_code": "COMPARISON_EVIDENCE_MISSING",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        },
+        {
+          "relation_id": "FIT-4",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "계층 비교 기준이 준비되지 않았습니다.",
+          "reason_code": "HIERARCHY_COMPARISON_NOT_AVAILABLE",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        },
+        {
+          "relation_id": "FIT-5",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "비교에 필요한 근거가 부족합니다.",
+          "reason_code": "COMPARISON_EVIDENCE_MISSING",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        },
+        {
+          "relation_id": "FIT-6",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "비교에 필요한 근거가 부족합니다.",
+          "reason_code": "COMPARISON_EVIDENCE_MISSING",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        },
+        {
+          "relation_id": "FIT-7",
+          "status": "INSUFFICIENT",
+          "score": null,
+          "summary": "비교에 필요한 근거가 부족합니다.",
+          "reason_code": "COMPARISON_EVIDENCE_MISSING",
+          "left_evidence": [],
+          "right_evidence": [],
+          "rule_version": "example-only",
+          "prompt_version": "example-only"
+        }
+      ],
+      "ruleset_version": "example-only",
+      "prompt_version": "example-only",
+      "scoring_version": "example-only",
+      "model_profile": "example-only",
+      "warnings": []
+    },
+    "review_issues": [
+      {
+        "issue_id": "CPL:REQUEST_TYPE",
+        "source": "CPL",
+        "reference_id": "REQUEST_TYPE",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:PURPOSE_GOAL",
+        "source": "CPL",
+        "reference_id": "PURPOSE_GOAL",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:IMPLEMENTATION_PLAN",
+        "source": "CPL",
+        "reference_id": "IMPLEMENTATION_PLAN",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:BUSINESS_PERIOD",
+        "source": "CPL",
+        "reference_id": "BUSINESS_PERIOD",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:NEW_OR_CHANGED_CONTENT",
+        "source": "CPL",
+        "reference_id": "NEW_OR_CHANGED_CONTENT",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:BUSINESS_NEED",
+        "source": "CPL",
+        "reference_id": "BUSINESS_NEED",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:LEGAL_BASIS",
+        "source": "CPL",
+        "reference_id": "LEGAL_BASIS",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:LINKED_POLICY",
+        "source": "CPL",
+        "reference_id": "LINKED_POLICY",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:BUDGET",
+        "source": "CPL",
+        "reference_id": "BUDGET",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:TARGET_AND_CONDITIONS",
+        "source": "CPL",
+        "reference_id": "TARGET_AND_CONDITIONS",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:SUPPORT_CONTENT_AND_SCALE",
+        "source": "CPL",
+        "reference_id": "SUPPORT_CONTENT_AND_SCALE",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:DELIVERY_SYSTEM",
+        "source": "CPL",
+        "reference_id": "DELIVERY_SYSTEM",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "CPL:EXPECTED_EFFECTS_AND_PERFORMANCE",
+        "source": "CPL",
+        "reference_id": "EXPECTED_EFFECTS_AND_PERFORMANCE",
+        "status": "MISSING",
+        "summary": "예시: 원문에서 항목을 확인하지 못했습니다.",
+        "reason_code": "FIELD_NOT_FOUND",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-1",
+        "source": "FIT",
+        "reference_id": "FIT-1",
+        "status": "INSUFFICIENT",
+        "summary": "비교에 필요한 근거가 부족합니다.",
+        "reason_code": "COMPARISON_EVIDENCE_MISSING",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-2",
+        "source": "FIT",
+        "reference_id": "FIT-2",
+        "status": "INSUFFICIENT",
+        "summary": "비교에 필요한 근거가 부족합니다.",
+        "reason_code": "COMPARISON_EVIDENCE_MISSING",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-3",
+        "source": "FIT",
+        "reference_id": "FIT-3",
+        "status": "INSUFFICIENT",
+        "summary": "비교에 필요한 근거가 부족합니다.",
+        "reason_code": "COMPARISON_EVIDENCE_MISSING",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-4",
+        "source": "FIT",
+        "reference_id": "FIT-4",
+        "status": "INSUFFICIENT",
+        "summary": "계층 비교 기준이 준비되지 않았습니다.",
+        "reason_code": "HIERARCHY_COMPARISON_NOT_AVAILABLE",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-5",
+        "source": "FIT",
+        "reference_id": "FIT-5",
+        "status": "INSUFFICIENT",
+        "summary": "비교에 필요한 근거가 부족합니다.",
+        "reason_code": "COMPARISON_EVIDENCE_MISSING",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-6",
+        "source": "FIT",
+        "reference_id": "FIT-6",
+        "status": "INSUFFICIENT",
+        "summary": "비교에 필요한 근거가 부족합니다.",
+        "reason_code": "COMPARISON_EVIDENCE_MISSING",
+        "evidence": []
+      },
+      {
+        "issue_id": "FIT:FIT-7",
+        "source": "FIT",
+        "reference_id": "FIT-7",
+        "status": "INSUFFICIENT",
+        "summary": "비교에 필요한 근거가 부족합니다.",
+        "reason_code": "COMPARISON_EVIDENCE_MISSING",
+        "evidence": []
+      }
+    ],
+    "similar_candidates": [],
+    "ben_references": [],
+    "differences": [],
+    "warnings": [],
+    "report_download_url": null
+  },
+  "errors": []
+}

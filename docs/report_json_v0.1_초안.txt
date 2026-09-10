@@ -1,0 +1,599 @@
+================================================================================
+report_json v0.1 계약 초안
+================================================================================
+작성일   : 2026-08-27
+기준 HEAD: 42201af feat(sim): Top-5 후보 4축 구조 비교 구현
+용도     : Slice 10 구현 기준 + 프론트 필드명 합의
+
+근거 문서
+  구현기준서 §13.1        최상위 구조 (그대로 따름)
+  구현기준서 §13.2·§13.3  화면 매핑 · Evidence Trace
+  프론트 전달사항 §3~§10   블록별 표시 규칙
+  화면변경사항 §11         결과 화면 최종 블록
+  AGENTS.md §5            report_download_url · review_issues 규칙
+  실제 타입               CplResult · FitResult · SimComparisonResult
+
+설계 원칙
+  - 프론트가 실제로 렌더하는 필드만 넣는다. 있으면 좋을 것 같은 필드는 빼둔다.
+  - 상태는 코드값으로 준다. 한글 변환은 프론트가 매핑표로 한다.
+    (프론트 전달사항 §3.2 · §4.3 이 이미 매핑표를 갖고 있다)
+  - 퍼센트와 개수는 백엔드가 계산한다.
+    (프론트 전달사항 §3.4 "프론트가 직접 계산하지 않는다")
+  - 요약과 상세를 나누지 않고 한 JSON 에 담는다. 근거까지 다 넣어도
+    수십 KB 수준이고, PDF 가 같은 JSON 을 써야 하므로 분리 이득이 없다.
+    (프론트 전달사항 §10.2 "결과 화면과 PDF 가 같은 report_json 사용")
+
+
+================================================================================
+0. 저장본과 API 응답의 차이
+================================================================================
+
+  inspection_report.report_json   아래 구조에서 report_download_url 을 제외한 것
+  GET /cases/{id}/report          저장본 + report_download_url 을 동적으로 조립
+
+AGENTS.md §5 가 명시한다.
+
+    report_download_url 은 저장된 report_json 에 넣지 않고
+    결과 조회 API 에서 동적으로 조립한다.
+
+PDF 는 리포트 확정 이후 생성될 수 있으므로 불변 저장본에 넣으면 안 된다.
+inspection_report 는 DDL 트리거로 UPDATE 가 금지되어 있다.
+
+
+================================================================================
+1. 최상위 구조
+================================================================================
+
+구현기준서 §13.1 의 키를 그대로 쓴다. 순서도 유지한다.
+
+{
+  "schema_version": "alpha-report-v0.1",
+  "case": { ... },
+  "ui_status": "COMPLETED",
+  "self_check": { ... },
+  "structural_consistency": { ... },
+  "review_issues": [ ... ],
+  "similar_candidates": [ ... ],
+  "ben_references": [],
+  "differences": [ ... ],
+  "warnings": [ ... ],
+  "report_download_url": null
+}
+
+** ben_references 는 알파에서 항상 빈 배열이다. **
+구현기준서 §13.1 이 키를 명시하므로 자리는 유지한다.
+BEN 은 알파 범위에서 제외하기로 했다(기준서 §4.2 부분 구현 허용).
+프론트는 이 블록을 그리지 않는다.
+
+
+================================================================================
+2. case  —  분석 건 정보
+================================================================================
+
+화면변경사항 §11-1 · 프론트 전달사항 §10.1
+
+{
+  "case_id": 12,
+  "title": "사전협의요청서.hwpx",
+  "title_source": "FILENAME",
+  "created_at": "2026-08-27T10:12:33.451+09:00",
+  "completed_at": "2026-08-27T10:14:02.118+09:00"
+}
+
+  title         ADR-006. 요청서에서 추출한 사업명, 없으면 원본 파일명.
+                ** 알파는 파일명만 채운다. 사업명 추출 코드를 새로 만들지 않는다. **
+  title_source  "PROGRAM_NAME" | "FILENAME"
+                프론트가 "파일명으로 표시 중" 을 안내할지 정할 수 있게 한다.
+                사업명 추출이 붙어도 이 필드 하나로 구분된다.
+
+
+================================================================================
+3. ui_status  —  화면 상태
+================================================================================
+
+  "COMPLETED" | "FAILED"
+
+ADR-005 의 3상태 중 리포트가 존재하는 시점에는 "분석 중" 이 나올 수 없다.
+진행 중 상태는 GET /cases/{id}/status 가 담당한다.
+
+프론트 매핑은 전달사항 §8 의 표를 쓴다.
+
+
+================================================================================
+4. self_check  —  자체 점검도 (CPL)
+================================================================================
+
+프론트 전달사항 §3 · 화면변경사항 §11-2
+
+{
+  "confirmed_count": 10,
+  "total_count": 13,
+  "confirmation_rate": 76.9,
+  "status_counts": {
+    "PRESENT": 10, "MISSING": 1, "NEEDS_CONFIRMATION": 1,
+    "NOT_APPLICABLE": 1, "PARSE_FAILED": 0
+  },
+  "ruleset_version": "cpl-alpha-v0.2",
+  "prompt_version": "cpl-semantic-v0.2",
+  "items": [ CplReportItem x13 ]
+}
+
+  confirmation_rate  (PRESENT + NOT_APPLICABLE) / 13 x 100. 소수 첫째자리.
+                     사용자 확정 산식. 프론트는 계산하지 않고 그대로 표시한다.
+  status_counts      프론트 §3.3 의 상태별 개수 표시용. 5개 키를 항상 포함한다.
+  items              13개 고정. CplResult.items 순서를 그대로 유지한다.
+
+CplReportItem
+{
+  "field_code": "TARGET_AND_CONDITIONS",
+  "field_label": "지원대상·지원조건",
+  "status": "NEEDS_CONFIRMATION",
+  "reason_code": "SEMANTIC_REVIEW_REQUIRED",
+  "explanation": null,
+  "occurrences": [ Evidence x n ]
+}
+
+  field_label   checker.CPL_FIELD_LABELS 의 한글 라벨. 프론트가 목록을 갖지 않게 한다.
+  status        PRESENT | MISSING | NEEDS_CONFIRMATION | NOT_APPLICABLE | PARSE_FAILED
+  occurrences   대표값을 고르지 않고 전부 담는다(마스터플랜 §11.5).
+
+
+================================================================================
+5. structural_consistency  —  구조적 정합성 (FIT)
+================================================================================
+
+프론트 전달사항 §4 · 화면변경사항 §11-3
+
+{
+  "value": 66.7,
+  "assessable_count": 6,
+  "total_count": 7,
+  "status_counts": {
+    "FIT": 3, "NEEDS_REVIEW": 2, "CONFLICT": 1, "INSUFFICIENT": 1
+  },
+  "ruleset_version": "fit-v0.2",
+  "prompt_version": "fit-v0.2",
+  "scoring_version": "fit-alpha-v0.1",
+  "relations": [ FitReportRelation x7 ]
+}
+
+  value             판단 가능 관계의 가중평균. 전부 판단 불가면 null.
+  assessable_count  프론트 §4.5 의 "판단 가능 관계 6/7개" 표시용.
+
+FitReportRelation
+{
+  "relation_id": "FIT-7",
+  "relation_label": "지원내용 ↔ 지원규모",
+  "status": "NEEDS_REVIEW",
+  "score": 50,
+  "summary": "동일 지원 개념의 정량값이 문서 안에서 서로 다릅니다.",
+  "reason_code": "NUMERIC_MISMATCH",
+  "left_evidence": [ Evidence x n ],
+  "right_evidence": [ Evidence x n ]
+}
+
+  relation_label  프론트 §4.2 의 관계명. 프론트가 목록을 갖지 않게 한다.
+  score           INSUFFICIENT 면 null.
+
+
+================================================================================
+6. review_issues  —  식별된 검토 쟁점
+================================================================================
+
+프론트 전달사항 §5 · 화면변경사항 §11-4 · 구현기준서 §17.3
+
+** 백엔드가 집계한다. **
+기준서 §17.3: "중복 저장 테이블을 만들지 않고 불변 report_json.review_issues 에 집계한다"
+
+[
+  {
+    "issue_id": "CPL:TARGET_AND_CONDITIONS",
+    "source": "CPL",
+    "source_ref": "TARGET_AND_CONDITIONS",
+    "source_label": "CPL-10",
+    "title": "지원대상 기준 정보 부족",
+    "description": "기업 규모와 업력 조건이 명확하지 않습니다.",
+    "recommendation": "지원 가능한 기업의 규모·업력 조건을 확인하세요.",
+    "sort_rank": 3,
+    "evidence": [ Evidence x n ]
+  }
+]
+
+  source        "CPL" | "FIT" | "SIM"
+  source_label  화면 표시용 짧은 라벨. 프론트 §5.3 의 "출처: CPL-10" 형태.
+                SIM 은 "SIM / 후보 1번".
+  sort_rank     프론트 §5.4 정렬 순서를 백엔드가 계산해 넣는다.
+                  1  불일치        CONFLICT
+                  2  누락          MISSING
+                  3  검토 필요·정보 부족  NEEDS_REVIEW · NEEDS_CONFIRMATION
+                  4  판단 불가·파싱 실패  INSUFFICIENT · PARSE_FAILED
+                프론트는 sort_rank 오름차순 정렬만 하면 된다.
+
+** 심각도를 넣지 않는다. **
+프론트 §5.2 가 심각 T1 · 검토 T2 · 높음·중간·낮음을 전부 금지했다.
+사용자 표시 라벨은 전부 "검토 필요" 하나다.
+
+수집 대상
+  CPL   status ∈ {MISSING, NEEDS_CONFIRMATION, PARSE_FAILED}
+  FIT   status ∈ {CONFLICT, NEEDS_REVIEW, INSUFFICIENT}
+  SIM   후보별 축 status ∈ {PARTIAL, DIFFERENT} 중 differences 가 있는 것
+
+  ** NOT_APPLICABLE 은 쟁점이 아니다. **
+  프론트 §3.2: "누락, 정보 부족, 해당 없음은 분석 실패가 아니라 정상 결과"
+  다만 "해당 없음" 은 보완할 것이 없으므로 쟁점 목록에서 제외한다.
+
+
+================================================================================
+7. similar_candidates  —  유사사업 후보
+================================================================================
+
+프론트 전달사항 §6·§7 · 화면변경사항 §11-5
+
+[
+  {
+    "rank": 1,
+    "announcement_id": "PBLN_000000000098765",
+    "announcement_version_id": 812,
+    "title": "2026년 제조 중소기업 디지털 전환 지원사업",
+    "source_url": "https://www.bizinfo.go.kr/...",
+    "jurisdiction_name": "중소벤처기업부",
+    "executing_name": "중소기업기술정보진흥원",
+    "application_period": "20260301 ~ 20260430",
+    "search_status": "OPEN",
+    "semantic_similarity": 0.8912,
+    "semantic_similarity_display": 89,
+    "review_grade": "FOCUS_REVIEW",
+    "weighted_score": 76.7,
+    "assessable_axis_count": 3,
+    "axes": {
+      "purpose":  SimAxisReport,
+      "target":   SimAxisReport,
+      "content":  SimAxisReport,
+      "delivery": SimAxisReport
+    },
+    "comparison_summary": "...",
+    "warnings": [ "..." ]
+  }
+]
+
+  semantic_similarity          원본 코사인. 내부 보존용이며 화면에 쓰지 않는다.
+  semantic_similarity_display  round(clamp(cos,0,1) x 100). 화면에 쓰는 값.
+                               프론트 §6.3 이 "중복 확률" 표현을 금지한다.
+  search_status                "OPEN" | "UNKNOWN". CLOSED 는 후보에 없다.
+  review_grade                 FOCUS_REVIEW | GENERAL_REVIEW | LOW_PRIORITY | ON_HOLD
+
+SimAxisReport
+{
+  "axis_id": "SIM-2",
+  "status": "PARTIAL",
+  "score": 50,
+  "summary": "기업 유형은 유사하지만 지역 범위가 다릅니다.",
+  "reason_code": "REGION_SCOPE_DIFFERS",
+  "common_points": ["제조 중소기업"],
+  "differences": ["지역 범위 — 서울 소재 vs 전국"],
+  "request_evidence": [ Evidence x n ],
+  "candidate_evidence": [ Evidence x n ]
+}
+
+  ** 축별 가중치를 JSON 에 넣지 않는다. **
+  weighted_score 가 이미 반영된 값이고, 가중치는 sim_scoring.json 의 버전 정보다.
+
+
+================================================================================
+8. differences  —  확인된 차이
+================================================================================
+
+화면변경사항 §11-7
+
+[
+  {
+    "announcement_version_id": 812,
+    "rank": 1,
+    "items": ["지역 범위 — 서울 소재 vs 전국", "지원수단 — 보조금 vs 융자"]
+  }
+]
+
+similar_candidates 의 축별 differences 를 후보 단위로 모은 것이다.
+중복이지만 프론트가 별도 블록으로 그리므로 조립해서 준다.
+
+** 차별성 충분·부족을 판정하지 않는다. ** (프론트 §12 · 마스터플랜 §11.6)
+
+
+================================================================================
+9. warnings  —  경고
+================================================================================
+
+화면변경사항 §11-8 · 프론트 전달사항 §8
+
+[
+  {
+    "scope": "RETRIEVAL",
+    "target": null,
+    "code": "RETRIEVAL_UNAVAILABLE",
+    "message": "유사사업 검색을 완료하지 못했습니다."
+  },
+  {
+    "scope": "CANDIDATE",
+    "target": "announcement-version:812",
+    "code": "DETAIL_ATTACHMENT_NOT_PARSED",
+    "message": "공고 첨부를 파싱하지 못해 공고 개요만으로 비교했습니다."
+  }
+]
+
+  scope   "PARSE" | "CPL" | "FIT" | "RETRIEVAL" | "SIM" | "CANDIDATE" | "PDF"
+          프론트 §8.2 의 실패 지점별 화면 처리 표와 1:1 로 맞춘다.
+  target  후보별 경고일 때만 채운다.
+
+프론트는 scope 로 어느 블록에 경고를 붙일지 정한다.
+
+
+================================================================================
+10. Evidence  —  공통 근거 계약
+================================================================================
+
+구현기준서 §13.3 Evidence Trace
+
+{
+  "source_type": "REQUEST",
+  "source_id": "request-block:body:7",
+  "excerpt": "서울 소재 중소기업",
+  "axis_code": "TARGET_GROUP",
+  "normalized_value": {"text": "서울 소재 중소기업"},
+  "page_no": null,
+  "section_path": ["사업 개요", "지원대상"],
+  "source_locator": {"block_id": "body:7", "table_cell": {"row": 2, "col": 1}},
+  "extraction_method": "RULE",
+  "extraction_version": "cpl-alpha-v0.2"
+}
+
+  source_type        "REQUEST" | "ANNOUNCEMENT"
+  extraction_method  "RULE" | "LLM" | "SOURCE"
+                     SOURCE 는 공고 원문을 가공 없이 쓴 경우다.
+  page_no            현재 파서가 채우지 않아 항상 null 이다.
+                     프론트는 null 이면 페이지를 표시하지 않는다.
+
+프론트 §9 가 요구하는 "문서 종류 / 위치 / 원문 / 추출 방식" 이 이 하나로 채워진다.
+CPL·FIT·SIM 이 모두 같은 모양을 쓴다.
+
+
+================================================================================
+11. 알파에서 값이 비는 필드
+================================================================================
+
+계약은 지금 고정하고 값만 나중에 채운다. 프론트는 기다리지 않는다.
+
+  case.title              사업명 추출 없음 → 항상 파일명, title_source="FILENAME"
+  ben_references          BEN 알파 제외 → 항상 []
+  Evidence.page_no        파서가 채우지 않음 → 항상 null
+
+
+================================================================================
+12. ** Slice 10 전에 결정해야 할 문제 **
+================================================================================
+
+--------------------------------------------------------------------------------
+12-1. Retrieval 실패가 전체 분석 실패로 처리된다
+--------------------------------------------------------------------------------
+현재 코드:
+
+    analysis_pipeline._record_retrieval_failure()
+        UPDATE sims.inspection_case SET status = 'FAILED' ...
+
+그리고 임베딩 클라이언트가 없을 때도 이 경로를 탄다.
+
+    if client is None:
+        _record_retrieval_failure(engine, case_id, "RETRIEVAL_UNAVAILABLE")
+
+즉 ** OPENAI_API_KEY 없이 돌리면 모든 분석이 "분석 실패" 로 끝난다. **
+CPL 이 성공했어도 마찬가지다.
+
+이는 두 계약과 어긋난다.
+
+    ADR-005
+      문서 파싱 자체가 실패하면 분석 실패다.
+      CPL/FIT/SIM 중 일부만 실패하면 가능한 결과는 생성하고
+      전체는 분석 완료로 표시한다.
+
+    프론트 전달사항 §8.2
+      Retrieval 실패 → Top-5 카드에 분석 실패 경고.
+                      후보가 없으므로 SIM 도 판단 불가
+      (화면 전체는 "분석 완료")
+
+그리고 Slice 10 을 막는다.
+
+    inspection_report.retrieval_run_id  bigint NOT NULL
+
+리포트를 만들려면 retrieval_run 행이 있어야 하는데,
+임베딩이 실패하면 retrieve_top_five() 가 그 행을 만들기 전에 끊긴다.
+
+선택지
+  (a) Retrieval 실패 시 case 를 FAILED 로 만들지 않고 경고만 남긴다.
+      warnings 에 scope=RETRIEVAL 로 넣고 REPORTING 으로 진행한다.
+      DDL 의 retrieval_run_id NOT NULL 을 만족시키려면
+      실패해도 retrieval_run 행을 status=FAILED 로 먼저 만들어야 한다.
+  (b) DDL 을 바꿔 retrieval_run_id 를 nullable 로 한다.
+      ** AGENTS.md §5 가 DDL 완화를 금지하므로 사용자 확인 없이 하지 않는다. **
+
+(a) 를 권장한다. ADR-005 와 프론트 §8.2 를 둘 다 만족하고 DDL 을 안 건드린다.
+
+--------------------------------------------------------------------------------
+12-2. CPL 실패도 같은 문제가 있다
+--------------------------------------------------------------------------------
+    _record_cpl_failure()  →  status = 'FAILED'
+
+ADR-005 상 CPL 실패도 "분석 완료 + 해당 블록 판단 불가" 여야 한다.
+다만 inspection_report.missing_check_run_id 도 NOT NULL 이라
+CPL 이 저장되지 않으면 리포트를 만들 수 없다.
+
+알파 범위에서는 CPL 실패를 FAILED 로 두는 것도 방어적으로 타당하다.
+CPL 은 FIT·Retrieval·SIM 전부의 입력이므로 실패하면 남는 결과가 거의 없다.
+
+** 12-1 과 12-2 를 같이 결정한다. 사용자 확인 대상이다. **
+
+
+================================================================================
+13. 프론트에 물을 것  —  두 개뿐
+================================================================================
+
+  1. 상태값을 코드값으로 받는 것이 맞는가
+     이 초안은 PRESENT · MISSING · NEEDS_REVIEW 처럼 코드값을 준다.
+     프론트가 §3.2 · §4.3 의 매핑표로 한글로 바꾼다.
+     지금 GET /cases/{id}/status 는 한글("분석 중")을 주고 있어 표기가 섞여 있다.
+     통일할지 함께 정한다.
+
+  2. PDF 생성 전·중·완료를 화면이 구분하는가
+     구분한다면 report_download_url 외에 pdf_status 필드가 필요하다.
+     완료된 것만 링크가 뜨면 되면 null 여부로 충분하다.
+
+나머지는 문서에 근거가 있으므로 통보만 하면 된다.
+
+  - CPL 확인율 = (PRESENT + NOT_APPLICABLE) / 13     사용자 확정
+                 화면변경사항 §13-1 의 미확정 항목이 해소됐다
+  - 분석 건 삭제 알파 제외                            프론트 전달사항 §11
+                 화면변경사항 §9 · §12 의 삭제 항목은 폐기된 것이다
+  - BEN 참고정보 블록 알파 제외                       화면변경사항 §11-6 제외
+
+
+================================================================================
+14. 샘플 JSON  (값 일부 생략)
+================================================================================
+
+{
+  "schema_version": "alpha-report-v0.1",
+  "case": {
+    "case_id": 12,
+    "title": "사전협의요청서.hwpx",
+    "title_source": "FILENAME",
+    "created_at": "2026-08-27T10:12:33.451+09:00",
+    "completed_at": "2026-08-27T10:14:02.118+09:00"
+  },
+  "ui_status": "COMPLETED",
+  "self_check": {
+    "confirmed_count": 10,
+    "total_count": 13,
+    "confirmation_rate": 76.9,
+    "status_counts": {
+      "PRESENT": 10, "MISSING": 1, "NEEDS_CONFIRMATION": 1,
+      "NOT_APPLICABLE": 1, "PARSE_FAILED": 0
+    },
+    "ruleset_version": "cpl-alpha-v0.2",
+    "prompt_version": "cpl-semantic-v0.2",
+    "items": [
+      {
+        "field_code": "TARGET_AND_CONDITIONS",
+        "field_label": "지원대상·지원조건",
+        "status": "NEEDS_CONFIRMATION",
+        "reason_code": "SEMANTIC_REVIEW_REQUIRED",
+        "explanation": null,
+        "occurrences": [
+          {
+            "source_type": "REQUEST",
+            "source_id": "request-block:body:7",
+            "excerpt": "서울 소재 중소기업",
+            "axis_code": "TARGET_GROUP",
+            "normalized_value": {"text": "서울 소재 중소기업"},
+            "page_no": null,
+            "section_path": ["사업 개요", "지원대상"],
+            "source_locator": {"block_id": "body:7",
+                               "table_cell": {"row": 2, "col": 1}},
+            "extraction_method": "RULE",
+            "extraction_version": "cpl-alpha-v0.2"
+          }
+        ]
+      }
+    ]
+  },
+  "structural_consistency": {
+    "value": 66.7,
+    "assessable_count": 6,
+    "total_count": 7,
+    "status_counts": {"FIT": 3, "NEEDS_REVIEW": 2, "CONFLICT": 1, "INSUFFICIENT": 1},
+    "ruleset_version": "fit-v0.2",
+    "prompt_version": "fit-v0.2",
+    "scoring_version": "fit-alpha-v0.1",
+    "relations": [
+      {
+        "relation_id": "FIT-7",
+        "relation_label": "지원내용 ↔ 지원규모",
+        "status": "NEEDS_REVIEW",
+        "score": 50,
+        "summary": "동일 지원 개념의 정량값이 문서 안에서 서로 다릅니다.",
+        "reason_code": "NUMERIC_MISMATCH",
+        "left_evidence": [],
+        "right_evidence": []
+      }
+    ]
+  },
+  "review_issues": [
+    {
+      "issue_id": "FIT:FIT-7",
+      "source": "FIT",
+      "source_ref": "FIT-7",
+      "source_label": "FIT-7",
+      "title": "지원내용과 지원규모의 금액이 다름",
+      "description": "지원내용은 기업당 3천만원, 지원규모는 5천만원으로 기재되어 있습니다.",
+      "recommendation": "두 값 중 어느 것이 맞는지 확인하세요.",
+      "sort_rank": 3,
+      "evidence": []
+    }
+  ],
+  "similar_candidates": [
+    {
+      "rank": 1,
+      "announcement_id": "PBLN_000000000098765",
+      "announcement_version_id": 812,
+      "title": "2026년 제조 중소기업 디지털 전환 지원사업",
+      "source_url": "https://www.bizinfo.go.kr/...",
+      "jurisdiction_name": "중소벤처기업부",
+      "executing_name": "중소기업기술정보진흥원",
+      "application_period": "20260301 ~ 20260430",
+      "search_status": "OPEN",
+      "semantic_similarity": 0.8912,
+      "semantic_similarity_display": 89,
+      "review_grade": "FOCUS_REVIEW",
+      "weighted_score": 76.7,
+      "assessable_axis_count": 3,
+      "axes": {
+        "purpose": {"axis_id": "SIM-1", "status": "SIMILAR", "score": 100, "...": "..."},
+        "target": {"axis_id": "SIM-2", "status": "PARTIAL", "score": 50, "...": "..."},
+        "content": {"axis_id": "SIM-3", "status": "SIMILAR", "score": 100, "...": "..."},
+        "delivery": {"axis_id": "SIM-4", "status": "INSUFFICIENT", "score": null, "...": "..."}
+      },
+      "comparison_summary": "목적과 지원내용이 유사하며 지역 범위에서 차이가 있습니다.",
+      "warnings": ["공고 첨부를 파싱하지 못해 공고 개요만으로 비교했습니다."]
+    }
+  ],
+  "ben_references": [],
+  "differences": [
+    {
+      "announcement_version_id": 812,
+      "rank": 1,
+      "items": ["지역 범위 — 서울 소재 vs 전국"]
+    }
+  ],
+  "warnings": [
+    {
+      "scope": "CANDIDATE",
+      "target": "announcement-version:812",
+      "code": "DETAIL_ATTACHMENT_NOT_PARSED",
+      "message": "공고 첨부를 파싱하지 못해 공고 개요만으로 비교했습니다."
+    }
+  ],
+  "report_download_url": "/api/v1/cases/12/report.pdf"
+}
+
+
+================================================================================
+15. 구현 시 지킬 것
+================================================================================
+
+  - report_json 은 불변이다. inspection_report 에 UPDATE 금지 트리거가 있다.
+    재분석은 새 inspection_case 를 만든다(구현기준서 §8.2).
+  - report_download_url 은 저장하지 않는다(AGENTS.md §5).
+  - PDF 는 저장된 같은 report_json 으로 생성한다(프론트 §10.2).
+    PDF 를 위해 별도 데이터를 다시 조회하지 않는다.
+  - 버전 문자열은 DB 실행 레코드와 프로필에서 가져온다.
+    Composer 에서 새로 만들지 않는다(AGENTS.md §5).
+  - 금지 표현을 JSON 에 담지 않는다(프론트 §12).
+    심각도 · 중복 확률 · 적합/부적합 · 승인 가능성 · 차별성 판정
+================================================================================

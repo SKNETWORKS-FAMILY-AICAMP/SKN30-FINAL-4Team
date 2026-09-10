@@ -1,0 +1,150 @@
+{
+  "document_version": "v0.3",
+  "document_status": "DRAFT_NOT_IMPLEMENTED",
+  "common": "00_common.json",
+  "api": {
+    "id": 11,
+    "title": "대화 이력 조회",
+    "method": "GET",
+    "path": "/api/v1/cases/{case_id}/chat/messages",
+    "authentication_required": true,
+    "request": {
+      "content_type": null,
+      "path_parameters": [
+        {
+          "name": "case_id",
+          "in": "path",
+          "type": "integer",
+          "required": true,
+          "description": "5번 업로드 응답의 data.case_id"
+        }
+      ],
+      "query_parameters": [],
+      "body": null,
+      "form_fields": [],
+      "constraints": []
+    },
+    "success": {
+      "http_status": 200,
+      "content_type": "application/json",
+      "body": {
+        "status_code": 200,
+        "message": "대화 이력을 조회했습니다.",
+        "code": "SUCCESS",
+        "data": {
+          "case_id": 123,
+          "chat_session_id": null,
+          "messages": []
+        },
+        "errors": []
+      }
+    },
+    "additional_success_examples": [
+      {
+        "name": "대화가 있는 경우",
+        "http_status": 200,
+        "content_type": "application/json",
+        "body": {
+          "status_code": 200,
+          "message": "대화 이력을 조회했습니다.",
+          "code": "SUCCESS",
+          "data": {
+            "case_id": 123,
+            "chat_session_id": 10,
+            "messages": [
+              {
+                "id": 1,
+                "sequence_no": 1,
+                "role": "USER",
+                "content": "확인이 필요한 항목을 알려줘",
+                "model_name": null,
+                "model_version": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "evidence_refs": [],
+                "created_at": "2026-08-31T09:03:00+09:00"
+              },
+              {
+                "id": 2,
+                "sequence_no": 2,
+                "role": "ASSISTANT",
+                "content": "자체 점검에서 확인하지 못한 항목을 확인해 주세요. 근거가 부족한 관계는 판단 불가로 표시됩니다.",
+                "model_name": "example-only",
+                "model_version": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "evidence_refs": [],
+                "created_at": "2026-08-31T09:03:02+09:00"
+              }
+            ]
+          },
+          "errors": []
+        }
+      }
+    ],
+    "errors": [
+      {
+        "http_status": 401,
+        "content_type": "application/json",
+        "when": "토큰 누락·만료·유효하지 않음",
+        "body": {
+          "status_code": 401,
+          "message": "인증 정보를 확인해 주세요.",
+          "code": "UNAUTHORIZED",
+          "data": null,
+          "errors": []
+        }
+      },
+      {
+        "http_status": 404,
+        "content_type": "application/json",
+        "when": "분석 건이 없거나 본인 소유가 아님",
+        "body": {
+          "status_code": 404,
+          "message": "요청한 대상을 찾을 수 없습니다.",
+          "code": "NOT_FOUND",
+          "data": null,
+          "errors": []
+        }
+      },
+      {
+        "http_status": 409,
+        "content_type": "application/json",
+        "when": "조회 가능한 완료 보고서가 없어 대화 이용 불가",
+        "body": {
+          "status_code": 409,
+          "message": "조회 가능한 완료 보고서가 없어 대화 이용 불가",
+          "code": "CONFLICT",
+          "data": null,
+          "errors": []
+        }
+      },
+      {
+        "http_status": 422,
+        "content_type": "application/json",
+        "when": "입력 필드 또는 경로 값 검증 실패",
+        "body": {
+          "status_code": 422,
+          "message": "입력값을 확인해 주세요.",
+          "code": "VALIDATION_ERROR",
+          "data": null,
+          "errors": [
+            {
+              "loc": [
+                "path",
+                "case_id"
+              ],
+              "msg": "필드 값 또는 형식을 확인해 주세요.",
+              "type": "validation_error"
+            }
+          ]
+        }
+      }
+    ],
+    "notes": [
+      "보고서가 준비된 뒤에만 이용할 수 있습니다.",
+      "대화가 아직 없으면 chat_session_id는 null이고 messages는 빈 배열입니다.",
+      "messages는 sequence_no 오름차순입니다."
+    ]
+  }
+}

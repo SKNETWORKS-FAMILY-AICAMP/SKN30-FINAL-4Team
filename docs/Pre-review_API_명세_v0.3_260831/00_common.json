@@ -1,0 +1,290 @@
+{
+  "document_version": "v0.3",
+  "document_date": "2026-08-31",
+  "document_status": "DRAFT_NOT_IMPLEMENTED",
+  "description": "설명용 가상 예시 모음. 이 파일 전체가 서버 응답은 아닙니다. 각 success.body / errors[].body가 제안하는 실제 응답 본문입니다. 토큰·계정·판정·버전·ID·시각은 실제 실행 기록이 아닙니다.",
+  "companion_document": "Pre-review_API_공통응답_프론트전달안_v0.3_260831.md",
+  "usage": [
+    "API 하나당 파일 하나입니다. 파일명 앞 번호는 명세 문서의 API 번호와 같습니다.",
+    "각 API 파일의 api 키 안에 요청 규격·제약·성공·실패·주의사항이 모두 들어 있습니다.",
+    "공통 응답 5필드, 오류 코드, 분석 상태값은 이 파일에만 있습니다. API 파일에 중복해 넣지 않았습니다."
+  ],
+  "common_response_fields": [
+    {
+      "field": "status_code",
+      "type": "number",
+      "rule": "실제 HTTP 상태 코드와 동일"
+    },
+    {
+      "field": "message",
+      "type": "string",
+      "rule": "사람이 읽는 안내. 동작 분기 기준으로 쓰지 않음"
+    },
+    {
+      "field": "code",
+      "type": "string",
+      "rule": "성공은 SUCCESS, 접수는 ACCEPTED, 실패는 error_codes 참조"
+    },
+    {
+      "field": "data",
+      "type": "object | null",
+      "rule": "API별 결과. 실패 또는 반환 데이터 없는 성공이면 null"
+    },
+    {
+      "field": "errors",
+      "type": "array",
+      "rule": "필드별 입력 오류. 없으면 항상 빈 배열"
+    }
+  ],
+  "error_item_fields": [
+    {
+      "field": "loc",
+      "type": "(string | number)[]",
+      "rule": "오류 위치. 예: body, content"
+    },
+    {
+      "field": "msg",
+      "type": "string",
+      "rule": "해당 입력 오류 설명"
+    },
+    {
+      "field": "type",
+      "type": "string",
+      "rule": "검증 오류 종류. missing, int_parsing 등"
+    }
+  ],
+  "front_error_handling": [
+    {
+      "match": "401",
+      "action": "로그인 실패 또는 재로그인 안내"
+    },
+    {
+      "match": "그 외 4xx",
+      "action": "message 표시. errors가 있으면 해당 입력란에도 표시"
+    },
+    {
+      "match": "5xx",
+      "action": "처리 불가 안내. 재시도 여부는 작업 성격에 따라 결정"
+    }
+  ],
+  "error_codes": [
+    {
+      "http_status": 400,
+      "code": "BAD_REQUEST",
+      "meaning": "요청 조건·내용 오류"
+    },
+    {
+      "http_status": 401,
+      "code": "UNAUTHORIZED",
+      "meaning": "로그인 또는 토큰 인증 실패"
+    },
+    {
+      "http_status": 404,
+      "code": "NOT_FOUND",
+      "meaning": "대상을 찾을 수 없거나 접근 가능한 대상이 아님"
+    },
+    {
+      "http_status": 409,
+      "code": "CONFLICT",
+      "meaning": "현재 상태에서 요청 처리 불가"
+    },
+    {
+      "http_status": 413,
+      "code": "PAYLOAD_TOO_LARGE",
+      "meaning": "파일 또는 업로드 요청 크기 초과"
+    },
+    {
+      "http_status": 415,
+      "code": "UNSUPPORTED_MEDIA_TYPE",
+      "meaning": "지원하지 않거나 유효하지 않은 파일 형식"
+    },
+    {
+      "http_status": 422,
+      "code": "VALIDATION_ERROR",
+      "meaning": "필수 입력·타입·길이 등 검증 실패"
+    },
+    {
+      "http_status": 500,
+      "code": "INTERNAL_ERROR",
+      "meaning": "예상하지 못한 서버 오류"
+    },
+    {
+      "http_status": 502,
+      "code": "LLM_INVALID_RESPONSE",
+      "meaning": "답변 모델의 응답 형식·근거 오류"
+    },
+    {
+      "http_status": 503,
+      "code": "SERVICE_UNAVAILABLE",
+      "meaning": "DB·PDF 등 서비스 이용 불가"
+    },
+    {
+      "http_status": 503,
+      "code": "LLM_UNAVAILABLE",
+      "meaning": "답변 모델 이용 불가"
+    },
+    {
+      "http_status": 503,
+      "code": "LLM_TIMEOUT",
+      "meaning": "답변 모델 응답 시간 초과"
+    }
+  ],
+  "analysis_status_values": [
+    {
+      "display": "분석 전",
+      "internal": [
+        "UPLOADED"
+      ],
+      "front_action": "분석 시작 버튼 표시"
+    },
+    {
+      "display": "분석 중",
+      "internal": [
+        "PARSING",
+        "CHECKING",
+        "RETRIEVING",
+        "REPORTING"
+      ],
+      "front_action": "상태 폴링"
+    },
+    {
+      "display": "분석 완료",
+      "internal": [
+        "COMPLETED"
+      ],
+      "front_action": "결과 조회"
+    },
+    {
+      "display": "분석 실패",
+      "internal": [
+        "FAILED"
+      ],
+      "front_action": "실패 안내·새 문서 업로드 안내"
+    }
+  ],
+  "common_error": {
+    "http_status": 500,
+    "content_type": "application/json",
+    "body": {
+      "status_code": 500,
+      "message": "서버에서 요청을 처리하지 못했습니다.",
+      "code": "INTERNAL_ERROR",
+      "data": null,
+      "errors": []
+    }
+  },
+  "apis": [
+    {
+      "id": 1,
+      "title": "로그인",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "authentication_required": false,
+      "file": "01_login.json"
+    },
+    {
+      "id": 2,
+      "title": "내 정보 조회",
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "authentication_required": true,
+      "file": "02_me.json"
+    },
+    {
+      "id": 3,
+      "title": "비밀번호 변경",
+      "method": "POST",
+      "path": "/api/v1/auth/change-password",
+      "authentication_required": true,
+      "file": "03_change_password.json"
+    },
+    {
+      "id": 4,
+      "title": "로그아웃",
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "authentication_required": true,
+      "file": "04_logout.json"
+    },
+    {
+      "id": 5,
+      "title": "문서 업로드·분석 건 생성",
+      "method": "POST",
+      "path": "/api/v1/cases",
+      "authentication_required": true,
+      "file": "05_case_create.json"
+    },
+    {
+      "id": 6,
+      "title": "최근 분석 이력 조회",
+      "method": "GET",
+      "path": "/api/v1/cases",
+      "authentication_required": true,
+      "file": "06_case_list.json"
+    },
+    {
+      "id": 7,
+      "title": "분석 시작",
+      "method": "POST",
+      "path": "/api/v1/cases/{case_id}/analyze",
+      "authentication_required": true,
+      "file": "07_analyze_start.json"
+    },
+    {
+      "id": 8,
+      "title": "분석 상태 조회",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/status",
+      "authentication_required": true,
+      "file": "08_analyze_status.json"
+    },
+    {
+      "id": 9,
+      "title": "분석 결과 조회",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/report",
+      "authentication_required": true,
+      "file": "09_report.json"
+    },
+    {
+      "id": 10,
+      "title": "PDF 다운로드",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/report.pdf",
+      "authentication_required": true,
+      "file": "10_report_pdf.json"
+    },
+    {
+      "id": 11,
+      "title": "대화 이력 조회",
+      "method": "GET",
+      "path": "/api/v1/cases/{case_id}/chat/messages",
+      "authentication_required": true,
+      "file": "11_chat_list.json"
+    },
+    {
+      "id": 12,
+      "title": "질문 전송",
+      "method": "POST",
+      "path": "/api/v1/cases/{case_id}/chat/messages",
+      "authentication_required": true,
+      "file": "12_chat_send.json"
+    },
+    {
+      "id": 13,
+      "title": "서버 생존 확인",
+      "method": "GET",
+      "path": "/health/live",
+      "authentication_required": false,
+      "file": "13_health_live.json"
+    },
+    {
+      "id": 14,
+      "title": "서버 준비 상태 확인",
+      "method": "GET",
+      "path": "/health/ready",
+      "authentication_required": false,
+      "file": "14_health_ready.json"
+    }
+  ]
+}

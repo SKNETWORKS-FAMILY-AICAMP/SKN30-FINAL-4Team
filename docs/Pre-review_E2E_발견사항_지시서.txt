@@ -1,0 +1,360 @@
+================================================================================
+Pre-review — E2E 실행에서 나온 결함
+지시서 rev.2 / 2026-08-27
+================================================================================
+
+rev.1 에서 고친 것
+    - 요청사유 를 부수 발견에서 문제 1 로 올렸다. 확정 결함이다.
+    - source_role 설명이 틀렸다. LLM 근거에도 축에서 role 이 보충된다.
+      이에 따라 FIT-1 분석을 다시 썼다.
+    - SIM 로깅 예시가 예외를 바인딩하지 않아 동작하지 않았다.
+    - 토큰 로깅 커밋 상태를 정정했다.
+    - 이번 E2E 의 검증 범위를 한정했다.
+
+
+--------------------------------------------------------------------------------
+0. 이번 E2E 가 검증한 것과 검증하지 않은 것
+--------------------------------------------------------------------------------
+
+실행 조건
+
+    요청서    output/mock/사전협의요청서_우수사례.hwpx
+              스크립트로 생성한 목업. 중소벤처기업부 [서식 1] 24년도 구조와
+              안내자료 "작성 우수 사례" 내용을 따랐다.
+    공고      목업 6건. 실제 OpenAI 임베딩으로 벡터화했다.
+    LLM       gpt-4o-mini, 실제 호출.
+
+관측값
+
+    7단계     로그인 → 업로드 → 분석 → 폴링 → 리포트 → PDF → 채팅  전부 통과
+    확인율    7/13 = 53.8%
+    FIT       관계 7건 전부 INSUFFICIENT, score.value = None
+    후보      5건. Top-1 유사도 81. 순위는 의미 있게 정렬됐다.
+    경고      SIM semantic comparison incomplete: LLM_INVALID_RESPONSE
+    PDF       47,649 bytes. 한글 렌더링 정상.
+
+검증한 것        업로드부터 Chat 까지 기술 경로가 끊기지 않는다는 것.
+                 Walking Skeleton E2E 다.
+
+검증하지 않은 것  실제 사용자 요청서의 판정 품질.
+                 실제 공고 코퍼스(1,500여 건)에서의 검색 품질.
+
+따라서 "파이프라인 E2E 통과" 는 맞지만 "실물 품질 검증 완료" 는 아니다.
+비식별 실제 요청서 표본으로 한 번 더 확인해야 한다.
+
+아래는 이 실행에서 드러난 품질 결함이다.
+
+
+================================================================================
+문제 1  CPL 파서가 실제 서식 표기를 읽지 못한다   [확정 · 검증 완료]
+================================================================================
+
+두 건 모두 CPL Rule 의 표기 호환성 문제이므로 한 작업으로 묶는다.
+
+--------------------------------------------------------------------------------
+1-A. 괄호로 감싼 라벨
+--------------------------------------------------------------------------------
+
+backend/app/services/cpl/logic_validator.py:739 _label_match()
+
+    re.match(
+        rf"{_LINE_PREFIX}(?P<label>{alternatives})(?:\s*[:：])?\s*(?P<value>.*)$",
+        line,
+    )
+
+_LINE_PREFIX (147행)
+
+    r"^\s*(?:(?:[○◦●•※□■☑▣✓✔\-–—])|(?:\d+[.)]))*\s*"
+
+불릿 다음에 라벨이 곧바로 와야 매칭된다. 여는 괄호를 허용하지 않는다.
+
+    ○ 사업 기간 : 2024.1.1. ~ 2024.12.31.     매칭됨
+    ○ (사업기간) 21년 ~ 25년(5년)             매칭 실패
+
+왜 문제인가
+
+    중소벤처기업부가 안내자료에서 "작성 우수 사례" 로 제시한 문서가 괄호
+    표기를 쓴다. "작성 미흡 사례" 가 라벨:값 표기를 쓴다. 현재 규칙은
+    잘 작성된 문서일수록 불리하게 판정한다.
+
+검증한 수정안
+
+    rf"{_LINE_PREFIX}\(?\s*(?P<label>{alternatives})\s*\)?(?:\s*[:：])?\s*(?P<value>.*)$"
+
+    우수사례 문서에 evaluate_cpl_rules() 만 돌린 결과 (LLM 없음)
+
+                              전      후
+        Rule 근거             2      16
+        source_role 부여      1       8
+        PRESENT               0       3
+
+        LEGAL_BASIS      MISSING → PRESENT
+        LINKED_POLICY    MISSING → PRESENT
+        BUDGET           MISSING → PRESENT
+
+--------------------------------------------------------------------------------
+1-B. 요청사유 / 요청유형
+--------------------------------------------------------------------------------
+
+logic_validator.py:146
+
+    _REQUEST_TYPE_AREA_PATTERN = re.compile(r"(?:사전\s*협의\s*)?요청\s*유형")
+
+24년도 서식 [서식 1] 원문의 항목명은 "사전협의 요청사유" 다. "요청유형" 이
+아니다. 서식 원문에서 직접 확인했다.
+
+    C:\Users\playdata2\Downloads\사전협의_요청서_서식_24년도.docx
+
+그 결과 우수사례와 미흡사례 두 문서 모두 REQUEST_TYPE 이 MISSING 이었다.
+13개 항목 중 하나가 구조적으로 항상 실패하고 있었던 것이다.
+
+두 표현을 모두 받는다.
+
+    r"(?:사전\s*협의\s*)?요청\s*(?:유형|사유)"
+
+--------------------------------------------------------------------------------
+1-C. 지시
+--------------------------------------------------------------------------------
+
+먼저 확인할 것
+
+    - CPL 판별기준 원문에 라벨 표기 형식과 항목 명칭이 정의되어 있는지 본다.
+      중소기업지원사업_PreReview_CPL_판별기준_정리본_20260821.md 가 기준이다.
+      원문이 "요청유형" 이라는 명칭만 쓴다면 서식과 원문이 어긋난 것이므로
+      고치기 전에 사용자에게 보고한다.
+    - 괄호 안에 라벨이 아닌 문구가 들어간 줄이 오탐되지 않는지 확인한다.
+      예: "○ (참고) 상세 내용은 붙임 참조"
+    - 값이 닫는 괄호로 시작하지 않는지 확인한다.
+
+테스트
+
+    - "○ (사업기간) 21년 ~ 25년(5년)" 에서 라벨과 값이 분리되는지
+    - "○ 사업 기간 : 2024.1.1. ~ 2024.12.31." 가 여전히 통과하는지
+    - 괄호 안 비라벨 문구가 매칭되지 않는지
+    - "사전협의 요청사유" 와 "사전협의 요청유형" 이 모두 영역으로 인식되는지
+
+
+================================================================================
+문제 2  FIT 7건이 전부 INSUFFICIENT 다   [원인 재정리됨]
+================================================================================
+
+2-1. 현상
+
+    FIT-1  INSUFFICIENT  COMPARISON_EVIDENCE_MISSING
+    FIT-2  INSUFFICIENT  COMPARISON_EVIDENCE_MISSING
+    FIT-3  INSUFFICIENT  COMPARISON_EVIDENCE_MISSING
+    FIT-4  INSUFFICIENT  HIERARCHY_COMPARISON_NOT_AVAILABLE   ← 설계상 고정. 정상
+    FIT-5  INSUFFICIENT  NO_CONDITIONS_SPECIFIED
+    FIT-6  INSUFFICIENT  COMPARISON_EVIDENCE_MISSING
+    FIT-7  INSUFFICIENT  COMPARISON_EVIDENCE_MISSING
+
+    score = {value: None, numerator: 0, denominator: 0, assessable_count: 0}
+
+2-2. source_role 은 어떻게 부여되는가  [rev.1 정정]
+
+rev.1 은 "source_role 은 Rule 만 붙이고 LLM 은 축만 낸다" 고 썼다. 틀렸다.
+
+logic_validator.py:465-471, LLM 근거를 접지할 때
+
+    source_role = fragment.source_role
+    if (
+        source_role is None
+        and occurrence.axis_code not in _QUANTITATIVE_AXES
+        and occurrence.axis_code != CplAxisCode.PROGRAM_LEVEL_ABSENT
+    ):
+        source_role = _AXIS_SOURCE_ROLES.get(occurrence.axis_code)
+
+Rule 이 붙인 role 이 우선하고, 없으면 축에서 보충한다. 정량 축과
+PROGRAM_LEVEL_ABSENT 만 보충 대상에서 제외된다.
+
+_AXIS_SOURCE_ROLES 는 26개 축을 담는다. 다만 PURPOSE_* 축은 하나도 없다.
+따라서 사업목적 계열 근거는 Rule 이 라벨에서 붙여주지 않는 한 role 이 비고,
+그것은 설계된 동작이다.
+
+2-3. FIT-1 재분석  [rev.1 정정]
+
+fit_engine.py:54-65
+
+    좌  PURPOSE_GOAL           axis PURPOSE_TARGET_CONDITION   role frozenset({None})
+    우  TARGET_AND_CONDITIONS  axis TARGET_GROUP               role TARGET
+
+좌측 선택자는 role 로 None 을 요구한다. 즉 role 이 비어 있는 것이 정상이며
+FIT-1 실패는 role 과 무관하다.
+
+E2E 에서 사업목적에 붙은 축은 PURPOSE_SPECIFIC_OBJECTIVE 였다.
+FIT-1 이 보는 축은 PURPOSE_TARGET_CONDITION 이다. 순수한 축 불일치다.
+
+2-4. 지시
+
+순서를 지킬 것.
+
+  1) 문제 1 을 먼저 고친다.
+  2) 같은 문서로 E2E 를 다시 돌린다.
+  3) 그 후에도 남는 관계만 대상으로 판단한다.
+
+판단할 때 먼저 답할 것은 "문서에 그 축이 실제로 있는가" 이다.
+
+    문서에 정말 없다                → INSUFFICIENT 가 정답. 고칠 것 없음
+    있는데 LLM 이 다른 축을 붙였다   → cpl-v0.2.txt 의 축 설명 보완
+    FIT 선택자가 축을 과하게 좁혔다   → FIT 판별기준 원문과 대조 후 조정
+
+PURPOSE_SPECIFIC_OBJECTIVE 와 PURPOSE_TARGET_CONDITION 은 다른 축이다.
+FIT-1 이 부족하다는 이유만으로 전자를 FIT-1 선택자에 끼워 넣지 말 것.
+사업목적 문장에 대상 제한 조건이 실제로 없다면 INSUFFICIENT 가 옳은 판정이다.
+
+FIT 선택자를 손대려면 반드시 원문을 근거로 삼는다.
+중소기업지원사업_PreReview_FIT_판별기준_정리본_20260821.md 가 유일한 기준이다.
+구현기준서 10.1 은 요약이므로 근거로 쓰지 않는다.
+
+FIT-4 는 설계상 항상 INSUFFICIENT 다. 건드리지 않는다.
+
+
+================================================================================
+문제 3  SIM 실패 원인이 통째로 사라진다   [확정]
+================================================================================
+
+3-1. 현상
+
+Top-1 후보(유사도 81, 가장 유사한 공고)만 실패했다. 2~5위는 정상 판정됐다.
+
+    1위  ICT R&D    LLM_INVALID_RESPONSE  →  review_grade=ON_HOLD, weighted_score=None
+    2위  기술사업화  정상                  →  GENERAL_REVIEW, 50.0
+
+3-2. 왜 원인을 모르는가
+
+backend/app/services/sim/sim_engine.py:320-325
+
+    except LLMTimeoutError:
+        failure_code = "LLM_TIMEOUT"
+    except LLMUnavailableError:
+        failure_code = "LLM_UNAVAILABLE"
+    except (LLMInvalidResponseError, ValidationError, ValueError):
+        failure_code = "LLM_INVALID_RESPONSE"
+
+세 종류의 예외를 한 코드로 뭉갠다. 예외를 변수에 바인딩하지도 않는다.
+sim_engine.py 에는 logger 자체가 없다.
+
+더 중요한 것은 _ground_response() 가 try 블록 안에 있다는 점이다.
+_ground_response() 는 다음 여섯 경우에 ValueError 를 올린다.
+
+    SIM response contains duplicate request evidence
+    SIM response contains duplicate candidate evidence
+    SIM response contains invalid request evidence
+    SIM response contains invalid candidate evidence
+    Assessable SIM response requires evidence on both sides
+    Non-SIMILAR SIM response requires a reason code
+
+즉 LLM_INVALID_RESPONSE 라는 이름과 달리, 실제 원인이 LLM 응답 형식이 아니라
+근거 접지 실패일 수 있다. 여섯 메시지가 이미 구분되어 있는데 전부 버려진다.
+
+Top-1 후보가 가장 내용이 풍부해 LLM 이 근거를 많이 낸 결과 접지 검증에
+걸렸을 가능성이 있다. 가설이며 확인하지 못했다.
+
+3-3. 지시 — 최소 변경으로 진단만 먼저
+
+  (1) 예외를 바인딩하고 WARNING 으로 기록한다.
+
+        except (LLMInvalidResponseError, ValidationError, ValueError) as error:
+            failure_code = "LLM_INVALID_RESPONSE"
+            ...
+        logger.warning(
+            "SIM comparison failed rank=%s failure=%s error=%s: %s",
+            rank, failure_code, type(error).__name__, error,
+        )
+
+      예외 유형과 예외 메시지까지만 남긴다. 공고 본문, 요청서 원문, LLM
+      응답 본문은 남기지 않는다. 구현기준서 15 를 따른다.
+
+  (2) 같은 입력으로 재실행해 실제 원인을 확인한다.
+
+  (3) 원인이 접지 실패인지 스키마 오류인지 확인한 뒤에 고친다.
+      지금 단계에서 프롬프트나 접지 규칙을 추측으로 바꾸지 않는다.
+
+  (4) 접지 실패로 확인되면 재시도 여부와 reason_code 분리를 검토한다.
+      판단이 필요하므로 확인 결과를 사용자에게 보고한 뒤 결정한다.
+
+3-4. 전역 로깅 설정은 별건으로 둔다
+
+앱 로거의 logger.info 가 uvicorn 로그로 나오지 않는다. 이번 E2E 에서
+LLM 호출 로그가 0건이었다.
+
+다만 main.py 에서 무조건 logging.basicConfig() 를 부르는 방식은 uvicorn 의
+자체 로깅 설정과 충돌하거나 중복될 수 있다. 별도 검토 후 결정한다.
+문제 3 의 (1) 은 이 결정과 무관하게 먼저 넣을 수 있다.
+
+관련 사실
+    openai_embedding_client.py 의 토큰·응답시간 로깅은 cb23f35 에 커밋되어 있다.
+    openai_llm_client.py 의 같은 로깅은 아직 작업 트리에만 있고 미커밋이다.
+    둘 다 지금은 출력되지 않는다.
+
+
+================================================================================
+부수 발견
+================================================================================
+
+A. 두 자리 연도를 기간 패턴이 읽지 못한다
+
+   logic_validator.py:148 _PERIOD_PATTERN 이 (?P<start_year>20\d{2}) 를 쓴다.
+   서식 예시의 "21년 ~ 25년(5년)" 형태(연도 앞에 아포스트로피가 붙는 표기)가
+   매칭되지 않는다. 문제 1 을 고쳐 근거가 생긴 뒤에도 BUSINESS_PERIOD 가
+   PRESENT 로 가지 못한 원인이다.
+
+   판별기준 원문에 허용 표기가 정의되어 있는지 확인한 뒤 판단한다.
+
+B. IMPLEMENTATION_PLAN 에 사업기간이 배정됐다
+
+   LLM 이 "○ (사업기간) 21년 ~ 25년(5년)" 을 IMPLEMENTATION_PLAN 의
+   ANNUAL_PLAN_CONTENT 축으로 배정했다. 같은 시점에 BUSINESS_PERIOD 는
+   MISSING 이었다.
+
+   문제 1 수정 후 재실행에서 재현되는지 먼저 확인한다.
+   Rule 이 사업기간을 잡으면 해소될 수 있다.
+
+
+================================================================================
+검증 방법
+================================================================================
+
+DB 와 서버
+
+    scripts/e2e_up.sh               컨테이너 기동, 스키마 적용, demo 계정 생성
+    scripts/seed_announcements.py   목업 공고 6건 동기화·임베딩
+    cd backend && .venv/Scripts/python.exe -m uvicorn main:app --port 8000
+
+E2E
+
+    .venv/Scripts/python.exe scripts/e2e_run.py output/mock/사전협의요청서_우수사례.hwpx
+
+    같은 case 를 재분석할 수 없으므로 매번 새 case 가 생긴다.
+
+Rule 만 빠르게 보기
+
+    evaluate_cpl_rules(parsed_document) 를 직접 호출하면 LLM 없이 Rule 경로만
+    확인할 수 있다. 반복 확인에는 이쪽이 빠르고 비용이 없다.
+
+목업 문서 재생성
+
+    python scripts/make_mock_hwpx.py
+
+    목업을 고쳐 점수를 맞추지 말 것. 서식과 안내자료에 충실하게 만든
+    입력이고, 규칙이 따라가야 하는 쪽이다.
+
+scripts/ 와 output/ 의 처리
+
+    현재 둘 다 git 미추적이다. 개인 지침상 탐색용 임시 스크립트는 커밋하지
+    않는다. 계속 쓰려면 정식 smoke test 로 승격할지 로컬 진단용으로만 둘지
+    먼저 정해야 한다. 이 지시서의 범위 밖이며 사용자가 결정한다.
+
+
+================================================================================
+작업 순서
+================================================================================
+
+    1. 문제 1  CPL 파서 호환성 (괄호 라벨 + 요청사유) + 단위 테스트
+    2. 목업 E2E 재실행
+    3. 문제 3 (1)  SIM 진단 로그
+    4. SIM 실패 재현 후 원인 보고
+    5. 재실행 결과로 문제 2 판단
+    6. 부수 A, B 는 판별기준 원문 확인 후
+
+각 단계마다 커밋을 분리한다. 슬라이스 경계를 넘는 변경을 한 커밋에 섞지 않는다.

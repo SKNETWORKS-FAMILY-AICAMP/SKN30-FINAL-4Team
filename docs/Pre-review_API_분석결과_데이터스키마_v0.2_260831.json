@@ -1,0 +1,863 @@
+{
+  "$defs": {
+    "CplStatus": {
+      "enum": [
+        "PRESENT",
+        "MISSING",
+        "NOT_APPLICABLE",
+        "NEEDS_CONFIRMATION",
+        "PARSE_FAILED"
+      ],
+      "title": "CplStatus",
+      "type": "string"
+    },
+    "FitRelationId": {
+      "enum": [
+        "FIT-1",
+        "FIT-2",
+        "FIT-3",
+        "FIT-4",
+        "FIT-5",
+        "FIT-6",
+        "FIT-7"
+      ],
+      "title": "FitRelationId",
+      "type": "string"
+    },
+    "FitStatus": {
+      "enum": [
+        "FIT",
+        "NEEDS_REVIEW",
+        "CONFLICT",
+        "INSUFFICIENT"
+      ],
+      "title": "FitStatus",
+      "type": "string"
+    },
+    "ReportCase": {
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "title",
+        "created_at",
+        "completed_at"
+      ],
+      "title": "ReportCase",
+      "type": "object"
+    },
+    "ReportEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ref": {
+          "title": "Evidence Ref",
+          "type": "string"
+        },
+        "source_side": {
+          "enum": [
+            "REQUEST",
+            "ANNOUNCEMENT"
+          ],
+          "title": "Source Side",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "field_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Code"
+        },
+        "axis_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Axis Code"
+        },
+        "source_role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Role"
+        },
+        "excerpt": {
+          "title": "Excerpt",
+          "type": "string"
+        },
+        "normalized_value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Value"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block Id"
+        },
+        "page_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page No"
+        },
+        "section_path": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Section Path",
+          "type": "array"
+        },
+        "source_locator": {
+          "additionalProperties": true,
+          "title": "Source Locator",
+          "type": "object"
+        },
+        "extraction_method": {
+          "enum": [
+            "RULE",
+            "LLM",
+            "SOURCE"
+          ],
+          "title": "Extraction Method",
+          "type": "string"
+        },
+        "extraction_version": {
+          "title": "Extraction Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_ref",
+        "source_side",
+        "source_id",
+        "excerpt",
+        "extraction_method",
+        "extraction_version"
+      ],
+      "title": "ReportEvidence",
+      "type": "object"
+    },
+    "ReportSimAxes": {
+      "properties": {
+        "purpose": {
+          "$ref": "#/$defs/ReportSimAxis"
+        },
+        "target": {
+          "$ref": "#/$defs/ReportSimAxis"
+        },
+        "content": {
+          "$ref": "#/$defs/ReportSimAxis"
+        },
+        "delivery": {
+          "$ref": "#/$defs/ReportSimAxis"
+        }
+      },
+      "required": [
+        "purpose",
+        "target",
+        "content",
+        "delivery"
+      ],
+      "title": "ReportSimAxes",
+      "type": "object"
+    },
+    "ReportSimAxis": {
+      "properties": {
+        "axis_id": {
+          "enum": [
+            "SIM-1",
+            "SIM-2",
+            "SIM-3",
+            "SIM-4"
+          ],
+          "title": "Axis Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SimStatus"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "common_points": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Common Points",
+          "type": "array"
+        },
+        "differences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Differences",
+          "type": "array"
+        },
+        "request_evidence": {
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "title": "Request Evidence",
+          "type": "array"
+        },
+        "candidate_evidence": {
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "title": "Candidate Evidence",
+          "type": "array"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        }
+      },
+      "required": [
+        "axis_id",
+        "status",
+        "summary"
+      ],
+      "title": "ReportSimAxis",
+      "type": "object"
+    },
+    "ReportSimCandidate": {
+      "properties": {
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "announcement_id": {
+          "title": "Announcement Id",
+          "type": "string"
+        },
+        "announcement_version_id": {
+          "minimum": 1,
+          "title": "Announcement Version Id",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "source_url": {
+          "title": "Source Url",
+          "type": "string"
+        },
+        "semantic_similarity": {
+          "maximum": 1,
+          "minimum": -1,
+          "title": "Semantic Similarity",
+          "type": "number"
+        },
+        "semantic_similarity_display": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Semantic Similarity Display",
+          "type": "integer"
+        },
+        "weighted_score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weighted Score"
+        },
+        "assessable_axis_count": {
+          "maximum": 4,
+          "minimum": 0,
+          "title": "Assessable Axis Count",
+          "type": "integer"
+        },
+        "review_grade": {
+          "$ref": "#/$defs/SimReviewGrade"
+        },
+        "comparison_summary": {
+          "title": "Comparison Summary",
+          "type": "string"
+        },
+        "axes": {
+          "$ref": "#/$defs/ReportSimAxes"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "ruleset_version": {
+          "title": "Ruleset Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "scoring_version": {
+          "title": "Scoring Version",
+          "type": "string"
+        },
+        "model_profile": {
+          "title": "Model Profile",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rank",
+        "announcement_id",
+        "announcement_version_id",
+        "title",
+        "source_url",
+        "semantic_similarity",
+        "semantic_similarity_display",
+        "assessable_axis_count",
+        "review_grade",
+        "comparison_summary",
+        "axes",
+        "ruleset_version",
+        "prompt_version",
+        "scoring_version",
+        "model_profile"
+      ],
+      "title": "ReportSimCandidate",
+      "type": "object"
+    },
+    "ReviewIssue": {
+      "properties": {
+        "issue_id": {
+          "title": "Issue Id",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "CPL",
+            "FIT",
+            "SIM"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "reference_id": {
+          "title": "Reference Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "MISSING",
+            "NEEDS_CONFIRMATION",
+            "PARSE_FAILED",
+            "NEEDS_REVIEW",
+            "CONFLICT",
+            "INSUFFICIENT",
+            "FOCUS_REVIEW",
+            "GENERAL_REVIEW"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "issue_id",
+        "source",
+        "reference_id",
+        "status",
+        "summary"
+      ],
+      "title": "ReviewIssue",
+      "type": "object"
+    },
+    "SelfCheck": {
+      "properties": {
+        "confirmed_count": {
+          "title": "Confirmed Count",
+          "type": "integer"
+        },
+        "total_count": {
+          "const": 13,
+          "default": 13,
+          "title": "Total Count",
+          "type": "integer"
+        },
+        "confirmation_rate": {
+          "title": "Confirmation Rate",
+          "type": "number"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SelfCheckItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "ruleset_version": {
+          "title": "Ruleset Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "model_profile": {
+          "title": "Model Profile",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "confirmed_count",
+        "confirmation_rate",
+        "items",
+        "ruleset_version",
+        "prompt_version",
+        "model_profile"
+      ],
+      "title": "SelfCheck",
+      "type": "object"
+    },
+    "SelfCheckItem": {
+      "properties": {
+        "field_code": {
+          "title": "Field Code",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CplStatus"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explanation"
+        },
+        "occurrences": {
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "title": "Occurrences",
+          "type": "array"
+        }
+      },
+      "required": [
+        "field_code",
+        "status"
+      ],
+      "title": "SelfCheckItem",
+      "type": "object"
+    },
+    "SimReviewGrade": {
+      "enum": [
+        "FOCUS_REVIEW",
+        "GENERAL_REVIEW",
+        "LOW_PRIORITY",
+        "ON_HOLD"
+      ],
+      "title": "SimReviewGrade",
+      "type": "string"
+    },
+    "SimStatus": {
+      "enum": [
+        "SIMILAR",
+        "PARTIAL",
+        "DIFFERENT",
+        "INSUFFICIENT"
+      ],
+      "title": "SimStatus",
+      "type": "string"
+    },
+    "StructuralConsistency": {
+      "properties": {
+        "module_status": {
+          "enum": [
+            "AVAILABLE",
+            "UNAVAILABLE"
+          ],
+          "title": "Module Status",
+          "type": "string"
+        },
+        "score": {
+          "$ref": "#/$defs/StructuralScore"
+        },
+        "relations": {
+          "items": {
+            "$ref": "#/$defs/StructuralRelation"
+          },
+          "title": "Relations",
+          "type": "array"
+        },
+        "ruleset_version": {
+          "title": "Ruleset Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "scoring_version": {
+          "title": "Scoring Version",
+          "type": "string"
+        },
+        "model_profile": {
+          "title": "Model Profile",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "module_status",
+        "score",
+        "relations",
+        "ruleset_version",
+        "prompt_version",
+        "scoring_version",
+        "model_profile"
+      ],
+      "title": "StructuralConsistency",
+      "type": "object"
+    },
+    "StructuralRelation": {
+      "properties": {
+        "relation_id": {
+          "$ref": "#/$defs/FitRelationId"
+        },
+        "status": {
+          "$ref": "#/$defs/FitStatus"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "left_evidence": {
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "title": "Left Evidence",
+          "type": "array"
+        },
+        "right_evidence": {
+          "items": {
+            "$ref": "#/$defs/ReportEvidence"
+          },
+          "title": "Right Evidence",
+          "type": "array"
+        },
+        "rule_version": {
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relation_id",
+        "status",
+        "summary",
+        "rule_version",
+        "prompt_version"
+      ],
+      "title": "StructuralRelation",
+      "type": "object"
+    },
+    "StructuralScore": {
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "denominator": {
+          "minimum": 0,
+          "title": "Denominator",
+          "type": "integer"
+        },
+        "assessable_count": {
+          "maximum": 7,
+          "minimum": 0,
+          "title": "Assessable Count",
+          "type": "integer"
+        },
+        "total_count": {
+          "const": 7,
+          "default": 7,
+          "title": "Total Count",
+          "type": "integer"
+        },
+        "scoring_version": {
+          "title": "Scoring Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "numerator",
+        "denominator",
+        "assessable_count",
+        "scoring_version"
+      ],
+      "title": "StructuralScore",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "alpha-report-v0.1",
+      "default": "alpha-report-v0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "case": {
+      "$ref": "#/$defs/ReportCase"
+    },
+    "ui_status": {
+      "const": "COMPLETED",
+      "default": "COMPLETED",
+      "title": "Ui Status",
+      "type": "string"
+    },
+    "self_check": {
+      "$ref": "#/$defs/SelfCheck"
+    },
+    "structural_consistency": {
+      "$ref": "#/$defs/StructuralConsistency"
+    },
+    "review_issues": {
+      "items": {
+        "$ref": "#/$defs/ReviewIssue"
+      },
+      "title": "Review Issues",
+      "type": "array"
+    },
+    "similar_candidates": {
+      "items": {
+        "$ref": "#/$defs/ReportSimCandidate"
+      },
+      "title": "Similar Candidates",
+      "type": "array"
+    },
+    "ben_references": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Ben References",
+      "type": "array"
+    },
+    "differences": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Differences",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "report_download_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Download Url"
+    }
+  },
+  "required": [
+    "case",
+    "self_check",
+    "structural_consistency"
+  ],
+  "title": "ReportResponse",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "9번 분석 결과 조회 API의 data 타입. HTTP 공통 응답 바깥 구조는 명세 문서를 참고. 점수 의미와 CPL 13개/FIT 7개 등의 업무 규칙은 명세를 함께 적용."
+}

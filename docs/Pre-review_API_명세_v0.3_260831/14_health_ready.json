@@ -1,0 +1,52 @@
+{
+  "document_version": "v0.3",
+  "document_status": "DRAFT_NOT_IMPLEMENTED",
+  "common": "00_common.json",
+  "api": {
+    "id": 14,
+    "title": "서버 준비 상태 확인",
+    "method": "GET",
+    "path": "/health/ready",
+    "authentication_required": false,
+    "request": {
+      "content_type": null,
+      "path_parameters": [],
+      "query_parameters": [],
+      "body": null,
+      "form_fields": [],
+      "constraints": []
+    },
+    "success": {
+      "http_status": 200,
+      "content_type": "application/json",
+      "body": {
+        "status_code": 200,
+        "message": "서버가 요청을 처리할 준비가 되었습니다.",
+        "code": "SUCCESS",
+        "data": {
+          "status": "ready"
+        },
+        "errors": []
+      }
+    },
+    "additional_success_examples": [],
+    "errors": [
+      {
+        "http_status": 503,
+        "content_type": "application/json",
+        "when": "DB 연결 실패 또는 필수 테이블이 없어 서버가 준비되지 않음",
+        "body": {
+          "status_code": 503,
+          "message": "서비스를 일시적으로 사용할 수 없습니다.",
+          "code": "SERVICE_UNAVAILABLE",
+          "data": null,
+          "errors": []
+        }
+      }
+    ],
+    "notes": [
+      "DB 연결과 필수 테이블(sims.app_user) 존재를 검사합니다.",
+      "LLM·스토리지·분석 전체의 정상 작동을 보장하지 않습니다."
+    ]
+  }
+}

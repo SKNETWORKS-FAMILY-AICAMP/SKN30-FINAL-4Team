@@ -1,0 +1,538 @@
+<title>근거 회수 격차</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+
+<style>
+  :root {
+    --ground:      #F6F8F7;
+    --surface:     #FFFFFF;
+    --surface-alt: #ECF1EF;
+    --line:        #D5DEDA;
+    --line-soft:   #E6ECE9;
+    --ink:         #161D1A;
+    --ink-mid:     #4A5854;
+    --ink-soft:    #6F7F7A;
+
+    --accent:      #1E6B5A;
+    --accent-soft: #DCEDE7;
+
+    --want:        #1E6B5A;
+    --want-bg:     #E1EFEA;
+    --got:         #9C5A18;
+    --got-bg:      #F8EBDC;
+
+    --c-merge:     #9C5A18;
+    --c-merge-bg:  #F8EBDC;
+    --c-axis:      #5B4A9E;
+    --c-axis-bg:   #E9E5F7;
+    --c-span:      #1F5F86;
+    --c-span-bg:   #DEEBF3;
+
+    --sans: "IBM Plex Sans KR", system-ui, -apple-system, "Malgun Gothic", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    --measure: 66ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #101614;
+      --surface:     #171F1C;
+      --surface-alt: #1F2926;
+      --line:        #32403B;
+      --line-soft:   #242F2C;
+      --ink:         #E4EBE8;
+      --ink-mid:     #A8B7B2;
+      --ink-soft:    #7D8D88;
+
+      --accent:      #6BBFA7;
+      --accent-soft: #17342C;
+
+      --want:        #6BBFA7;
+      --want-bg:     #14302A;
+      --got:         #DFA262;
+      --got-bg:      #362512;
+
+      --c-merge:     #DFA262;
+      --c-merge-bg:  #362512;
+      --c-axis:      #A79BE4;
+      --c-axis-bg:   #262046;
+      --c-span:      #74B4D8;
+      --c-span-bg:   #16303F;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #101614;
+    --surface:     #171F1C;
+    --surface-alt: #1F2926;
+    --line:        #32403B;
+    --line-soft:   #242F2C;
+    --ink:         #E4EBE8;
+    --ink-mid:     #A8B7B2;
+    --ink-soft:    #7D8D88;
+
+    --accent:      #6BBFA7;
+    --accent-soft: #17342C;
+
+    --want:        #6BBFA7;
+    --want-bg:     #14302A;
+    --got:         #DFA262;
+    --got-bg:      #362512;
+
+    --c-merge:     #DFA262;
+    --c-merge-bg:  #362512;
+    --c-axis:      #A79BE4;
+    --c-axis-bg:   #262046;
+    --c-span:      #74B4D8;
+    --c-span-bg:   #16303F;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 54px 24px 92px;
+    display: flex;
+    flex-direction: column;
+    gap: 46px;
+  }
+
+  header.top {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-bottom: 30px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(28px, 5vw, 43px);
+    font-weight: 700;
+    letter-spacing: -0.022em;
+    line-height: 1.16;
+    text-wrap: balance;
+  }
+
+  .stand { margin: 0; max-width: var(--measure); color: var(--ink-mid); font-size: 17px; }
+
+  /* ---- 요약 ---- */
+
+  .totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--line-soft);
+    border: 1px solid var(--line-soft);
+  }
+  .totals div { background: var(--surface); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+  .totals .n { font-family: var(--mono); font-size: 27px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+  .totals .k { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+
+  /* ---- 필드별 막대 ---- */
+
+  .bars { display: flex; flex-direction: column; gap: 5px; }
+
+  .bar {
+    display: grid;
+    grid-template-columns: minmax(140px, 220px) 1fr 62px;
+    gap: 14px;
+    align-items: center;
+    font-size: 13.5px;
+  }
+  .bar .name { font-family: var(--mono); font-size: 12px; color: var(--ink-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .track { height: 13px; background: var(--surface-alt); position: relative; }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--want); }
+  .bar .fill.low { background: var(--got); }
+  .bar .num { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---- 섹션 ---- */
+
+  section { display: flex; flex-direction: column; gap: 18px; }
+
+  .sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .sec-head h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.012em; }
+  .sec-head .count { font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .chip-merge { background: var(--c-merge-bg); color: var(--c-merge); }
+  .chip-axis  { background: var(--c-axis-bg);  color: var(--c-axis); }
+  .chip-span  { background: var(--c-span-bg);  color: var(--c-span); }
+
+  p.lead { margin: 0; max-width: var(--measure); color: var(--ink-mid); }
+
+  /* ---- 기대 vs 실제 ---- */
+
+  .case { border: 1px solid var(--line); background: var(--surface); display: grid; grid-template-columns: 5px 1fr; }
+  .case .stripe { background: var(--ink-soft); }
+  .case[data-cause="merge"] .stripe { background: var(--c-merge); }
+  .case[data-cause="axis"]  .stripe { background: var(--c-axis); }
+  .case[data-cause="span"]  .stripe { background: var(--c-span); }
+
+  .case-body { padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 15px; min-width: 0; }
+  .case-body h3 { margin: 0; font-size: 15px; font-family: var(--mono); font-weight: 600; letter-spacing: 0.02em; color: var(--ink-mid); }
+
+  .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); }
+  .col { background: var(--surface); padding: 13px 15px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+
+  .col-head {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .col-want .col-head { color: var(--want); }
+  .col-got  .col-head { color: var(--got); }
+
+  .row { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .row .ax { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--ink-soft); }
+  .col-want .row .ax { color: var(--want); }
+  .col-got  .row .ax { color: var(--got); }
+  .row .tx { font-size: 13px; line-height: 1.5; color: var(--ink); word-break: break-word; }
+  .row .tx.dim { color: var(--ink-soft); font-style: italic; }
+
+  .why { display: grid; grid-template-columns: 58px 1fr; gap: 14px; align-items: start; }
+  .why .lbl { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); padding-top: 4px; }
+  .why p { margin: 0; max-width: var(--measure); font-size: 14.5px; }
+
+  code { font-family: var(--mono); font-size: 0.87em; background: var(--surface-alt); padding: 1px 5px; border-radius: 2px; word-break: break-word; }
+
+  .fix { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+  .fix strong { font-size: 14.5px; }
+  .fix p { margin: 0; font-size: 14.5px; max-width: var(--measure); }
+
+  footer { border-top: 1px solid var(--line); padding-top: 18px; font-size: 13px; color: var(--ink-soft); max-width: var(--measure); }
+
+  @media (max-width: 700px) {
+    .diff { grid-template-columns: 1fr; }
+    .bar { grid-template-columns: 1fr 52px; }
+    .bar .track { grid-column: 1 / -1; }
+    .why { grid-template-columns: 1fr; gap: 2px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <div class="eyebrow">
+      <span>mockup_08</span><span>case 431</span><span>golden 75건</span><span>2026-08-30</span>
+    </div>
+    <h1>근거 회수 격차</h1>
+    <p class="stand">
+      사람이 판독한 정답 75건과 파이프라인이 실제로 뽑은 60건을 맞춰봤다.
+      47건이 짝지어졌다. 못 짝지은 28건은 <strong>정보를 못 찾아서가 아니라
+      다르게 담아서</strong> 생긴 것이 대부분이다.
+    </p>
+  </header>
+
+  <div class="totals">
+    <div><span class="n">47/75</span><span class="k">근거 회수율 62.7%</span></div>
+    <div><span class="n">12/13</span><span class="k">필드 상태 일치</span></div>
+    <div><span class="n">22/22</span><span class="k">Rule 정규값 정확도</span></div>
+    <div><span class="n">60</span><span class="k">실제 출력 근거 수</span></div>
+  </div>
+
+  <section>
+    <div class="sec-head"><h2>필드별 회수</h2></div>
+    <div class="bars">
+      <div class="bar"><span class="name">REQUEST_TYPE</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="num">4/4</span></div>
+      <div class="bar"><span class="name">BUSINESS_PERIOD</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="num">1/1</span></div>
+      <div class="bar"><span class="name">LEGAL_BASIS</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="num">2/2</span></div>
+      <div class="bar"><span class="name">LINKED_POLICY</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="num">3/3</span></div>
+      <div class="bar"><span class="name">BUDGET</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="num">6/6</span></div>
+      <div class="bar"><span class="name">TARGET_AND_CONDITIONS</span><span class="track"><span class="fill" style="width:90%"></span></span><span class="num">9/10</span></div>
+      <div class="bar"><span class="name">BUSINESS_NEED</span><span class="track"><span class="fill" style="width:75%"></span></span><span class="num">3/4</span></div>
+      <div class="bar"><span class="name">EXPECTED_EFFECTS</span><span class="track"><span class="fill low" style="width:64%"></span></span><span class="num">7/11</span></div>
+      <div class="bar"><span class="name">PURPOSE_GOAL</span><span class="track"><span class="fill low" style="width:60%"></span></span><span class="num">3/5</span></div>
+      <div class="bar"><span class="name">SUPPORT_CONTENT_AND_SCALE</span><span class="track"><span class="fill low" style="width:36%"></span></span><span class="num">4/11</span></div>
+      <div class="bar"><span class="name">DELIVERY_SYSTEM</span><span class="track"><span class="fill low" style="width:31%"></span></span><span class="num">4/13</span></div>
+      <div class="bar"><span class="name">IMPLEMENTATION_PLAN</span><span class="track"><span class="fill low" style="width:25%"></span></span><span class="num">1/4</span></div>
+      <div class="bar"><span class="name">NEW_OR_CHANGED_CONTENT</span><span class="track"><span class="fill low" style="width:0%"></span></span><span class="num">0/1</span></div>
+    </div>
+    <p class="lead">
+      상위 5개는 전부 Rule 담당 필드다. 아래로 갈수록 LLM 의미 축 비중이 커진다.
+    </p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>원인 1 — 한 줄을 한 건으로 뭉친다</h2>
+      <span class="chip chip-merge">구간 뭉침</span>
+      <span class="count">28건 중 약 15건</span>
+    </div>
+    <p class="lead">
+      내용은 다 읽었는데 인용 구간을 쪼개지 않는다. 줄 전체를 인용하고 축만 바꿔 단다.
+      그래서 축은 맞는데 <strong>어느 값이 어느 항목의 것인지 표현되지 않는다.</strong>
+    </p>
+
+    <div class="case" data-cause="merge">
+      <div class="stripe"></div>
+      <div class="case-body">
+        <h3>EXPECTED_EFFECTS_AND_PERFORMANCE — 성과지표</h3>
+        <div class="diff">
+          <div class="col col-want">
+            <span class="col-head">이렇게 나와야</span>
+            <div class="row"><span class="ax">KPI_NAME</span><span class="tx">사업화 성공률</span></div>
+            <div class="row"><span class="ax">KPI_TARGET_VALUE</span><span class="tx">목표값 30%</span></div>
+            <div class="row"><span class="ax">KPI_BASE_YEAR</span><span class="tx">기준연도 2025년</span></div>
+            <div class="row"><span class="ax">KPI_TARGET_VALUE</span><span class="tx">목표값 90건</span></div>
+            <div class="row"><span class="ax">KPI_TARGET_VALUE</span><span class="tx">목표값 15%</span></div>
+          </div>
+          <div class="col col-got">
+            <span class="col-head">지금 나오는 것</span>
+            <div class="row"><span class="ax">KPI_NAME</span><span class="tx">사업화 성공률: 목표값 30%, 기준연도 2025년</span></div>
+            <div class="row"><span class="ax">KPI_TARGET_VALUE</span><span class="tx">사업화 성공률: 목표값 30%, 기준연도 2025년</span></div>
+            <div class="row"><span class="ax">KPI_NAME</span><span class="tx">기술이전 및 인증 획득: 목표값 90건</span></div>
+            <div class="row"><span class="ax">—</span><span class="tx dim">목표값 90건 · 목표값 15% 단독 인용 없음</span></div>
+          </div>
+        </div>
+        <div class="why">
+          <span class="lbl">원인</span>
+          <p>
+            같은 줄이 <code>KPI_NAME</code> 과 <code>KPI_TARGET_VALUE</code> 두 축으로
+            중복 인용된다. 지표가 4개인데 목표값 인용은 2건뿐이라
+            <code>목표값 90건</code>, <code>목표값 15%</code> 가 짝을 찾지 못한다.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="case" data-cause="merge">
+      <div class="stripe"></div>
+      <div class="case-body">
+        <h3>SUPPORT_CONTENT_AND_SCALE — 지원항목과 비율</h3>
+        <div class="diff">
+          <div class="col col-want">
+            <span class="col-head">이렇게 나와야</span>
+            <div class="row"><span class="ax">SUPPORT_ITEM</span><span class="tx">시제품 제작비</span></div>
+            <div class="row"><span class="ax">SUPPORT_ITEM</span><span class="tx">공인 시험인증비</span></div>
+            <div class="row"><span class="ax">SUPPORT_ITEM</span><span class="tx">판로개척 마케팅비</span></div>
+            <div class="row"><span class="ax">SUBSIDY_RATE</span><span class="tx">보조율: 80%</span></div>
+            <div class="row"><span class="ax">SELF_BURDEN_RATE</span><span class="tx">자부담률: 20%</span></div>
+          </div>
+          <div class="col col-got">
+            <span class="col-head">지금 나오는 것</span>
+            <div class="row"><span class="ax">SUPPORT_ACTIVITY</span><span class="tx">제조·정보통신 중소기업 120개사에 시제품 제작비, 공인 시험인증비, 판로개척 마케팅비를 지원</span></div>
+            <div class="row"><span class="ax">SUBSIDY_RATE</span><span class="tx">보조율: 80%, 자부담률: 20%</span></div>
+            <div class="row"><span class="ax">—</span><span class="tx dim">SUPPORT_ITEM · SELF_BURDEN_RATE 없음</span></div>
+          </div>
+        </div>
+        <div class="why">
+          <span class="lbl">원인</span>
+          <p>
+            지원항목 셋이 한 문장에 있는데 문장 하나를 <code>SUPPORT_ACTIVITY</code> 로만 잡는다.
+            보조율과 자부담률도 한 줄에 있어 <code>SUBSIDY_RATE</code> 한 건으로 뭉친다.
+            <strong>서로 다른 두 비율이 한 근거에 들어가 정규값이 하나만 남는다.</strong>
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>원인 2 — 축이 어긋나거나 안 붙는다</h2>
+      <span class="chip chip-axis">축 오분류</span>
+      <span class="count">약 9건</span>
+    </div>
+    <p class="lead">
+      구간은 맞는데 축이 다르거나, 근거는 남았는데 축이 <code>None</code> 이다.
+      이 경우 FIT 이 그 축을 찾지 못해 <strong>판정 자체가 불가능해진다.</strong>
+    </p>
+
+    <div class="case" data-cause="axis">
+      <div class="stripe"></div>
+      <div class="case-body">
+        <h3>IMPLEMENTATION_PLAN — 연차별 계획이 내역사업 계획으로</h3>
+        <div class="diff">
+          <div class="col col-want">
+            <span class="col-head">이렇게 나와야</span>
+            <div class="row"><span class="ax">ANNUAL_PLAN_CONTENT</span><span class="tx">1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사</span></div>
+            <div class="row"><span class="ax">ANNUAL_PLAN_CONTENT</span><span class="tx">2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사</span></div>
+            <div class="row"><span class="ax">SUBPROGRAM_PLAN_CONTENT</span><span class="tx">내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 …</span></div>
+          </div>
+          <div class="col col-got">
+            <span class="col-head">지금 나오는 것</span>
+            <div class="row"><span class="ax">SUBPROGRAM_PLAN_CONTENT</span><span class="tx">1단계(2026~2027년): …</span></div>
+            <div class="row"><span class="ax">SUBPROGRAM_PLAN_CONTENT</span><span class="tx">2단계(2028년): …</span></div>
+            <div class="row"><span class="ax">PROGRAM_LEVEL</span><span class="tx">내역사업</span></div>
+          </div>
+        </div>
+        <div class="why">
+          <span class="lbl">원인</span>
+          <p>
+            라벨이 <code>연차별·내역사업별 추진계획</code> 으로 둘을 겸해 구분이 흐리다.
+            연차 계획이 하나도 없다고 판정되어 <strong>필드 상태가 <code>MISSING</code> 으로 떨어진다.</strong>
+            근거가 3건 남아 있는데도 그렇다. 13필드 중 유일한 상태 불일치다.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="case" data-cause="axis">
+      <div class="stripe"></div>
+      <div class="case-body">
+        <h3>DELIVERY_SYSTEM — 단계별 역할에 축이 없다</h3>
+        <div class="diff">
+          <div class="col col-want">
+            <span class="col-head">이렇게 나와야</span>
+            <div class="row"><span class="ax">DELIVERY_STEP_ROLE</span><span class="tx">공고·선정은 부산광역시</span></div>
+            <div class="row"><span class="ax">DELIVERY_STEP_ROLE</span><span class="tx">접수·평가·협약·집행은 부산테크노파크</span></div>
+            <div class="row"><span class="ax">DELIVERY_STEP_ROLE</span><span class="tx">사후관리 및 성과조사는 부산상공회의소</span></div>
+          </div>
+          <div class="col col-got">
+            <span class="col-head">지금 나오는 것</span>
+            <div class="row"><span class="ax">축 없음</span><span class="tx">공고·선정은 부산광역시, 접수·평가·협약·집행은 부산테크노파크, 사후관리 및 성과조사는 부산상공회의소</span></div>
+            <div class="row"><span class="ax">DELIVERY_METHOD_TYPE</span><span class="tx">시 출연기관 위탁(보조)</span></div>
+            <div class="row"><span class="ax">DELIVERY_METHOD_TYPE</span><span class="tx">수행방식: 시 출연기관 위탁(보조)</span></div>
+          </div>
+        </div>
+        <div class="why">
+          <span class="lbl">원인</span>
+          <p>
+            역할 세 건이 한 줄에 있고 Rule 로만 잡혀 축이 붙지 않는다.
+            같은 사실이 라벨 포함 여부만 다르게 두 번 나오는 중복도 있다
+            (<code>시 출연기관 위탁(보조)</code>).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="case" data-cause="axis">
+      <div class="stripe"></div>
+      <div class="case-body">
+        <h3>TARGET_AND_CONDITIONS — 같은 줄에 축 두 개</h3>
+        <div class="diff">
+          <div class="col col-want">
+            <span class="col-head">이렇게 나와야</span>
+            <div class="row"><span class="ax">COND_INDUSTRY</span><span class="tx">한국표준산업분류 C(제조업), J(정보통신업)</span></div>
+            <div class="row"><span class="ax">COND_COMPANY_TYPE</span><span class="tx">「중소기업기본법」 제2조에 따른 중소기업</span></div>
+          </div>
+          <div class="col col-got">
+            <span class="col-head">지금 나오는 것</span>
+            <div class="row"><span class="ax">COND_INDUSTRY</span><span class="tx">업종: 한국표준산업분류 C(제조업), J(정보통신업)</span></div>
+            <div class="row"><span class="ax">COND_COMPANY_TYPE</span><span class="tx">업종: 한국표준산업분류 C(제조업), J(정보통신업)</span></div>
+          </div>
+        </div>
+        <div class="why">
+          <span class="lbl">원인</span>
+          <p>
+            업종 줄에 <code>COND_COMPANY_TYPE</code> 이 잘못 붙었다.
+            정작 기업규모 줄(<code>「중소기업기본법」 제2조</code>)에는 아무 축도 없다.
+            10개 조건 중 9개를 맞혔지만 이 하나가 어긋난다.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>원인 3 — 인용이 너무 넓다</h2>
+      <span class="chip chip-span">넓은 구간</span>
+      <span class="count">약 4건</span>
+    </div>
+
+    <div class="case" data-cause="span">
+      <div class="stripe"></div>
+      <div class="case-body">
+        <h3>PURPOSE_GOAL — 세 축이 같은 문장 전체를 가리킨다</h3>
+        <div class="diff">
+          <div class="col col-want">
+            <span class="col-head">이렇게 나와야</span>
+            <div class="row"><span class="ax">PURPOSE_TARGET_CONDITION</span><span class="tx">부산 관내 제조·정보통신 중소기업</span></div>
+            <div class="row"><span class="ax">PURPOSE_DIRECTION</span><span class="tx">기술경쟁력을 강화하고</span></div>
+            <div class="row"><span class="ax">PURPOSE_SPECIFIC_OBJECTIVE</span><span class="tx">시제품 사업화까지의 단계를 지원</span></div>
+            <div class="row"><span class="ax">PURPOSE_PROBLEM_DOMAIN</span><span class="tx">제조·정보통신 중소기업의 기술경쟁력</span></div>
+          </div>
+          <div class="col col-got">
+            <span class="col-head">지금 나오는 것</span>
+            <div class="row"><span class="ax">PURPOSE_TARGET_CONDITION</span><span class="tx">부산 관내 제조·정보통신 중소기업의 기술경쟁력을 강화하고 시제품 사업화까지의 단계를 …</span></div>
+            <div class="row"><span class="ax">PURPOSE_DIRECTION</span><span class="tx">기술경쟁력을 강화하고 시제품 사업화까지의 단계를 지원하여 지원기업 120개사의 매출 …</span></div>
+            <div class="row"><span class="ax">PURPOSE_SPECIFIC_OBJECTIVE</span><span class="tx">부산 관내 제조·정보통신 중소기업의 기술경쟁력을 강화하고 …</span></div>
+            <div class="row"><span class="ax">—</span><span class="tx dim">PURPOSE_PROBLEM_DOMAIN 없음</span></div>
+          </div>
+        </div>
+        <div class="why">
+          <span class="lbl">원인</span>
+          <p>
+            세 축이 사실상 같은 문장을 가리킨다. 축은 맞게 붙었지만
+            <strong>어느 부분이 대상 한정이고 어느 부분이 방향인지 구분되지 않는다.</strong>
+            네 번째 축은 아예 붙지 않았다.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>정리하면</h2></div>
+    <p class="lead">
+      못 짝지은 28건 중 <strong>정보를 아예 못 읽은 것은 거의 없다.</strong>
+      대부분은 읽고도 한 덩어리로 담았거나, 축을 다르게 붙였거나, 구간을 넓게 잡은 것이다.
+      Rule 이 담당하는 값 정규화는 짝지어진 22건이 모두 정확하다.
+    </p>
+
+    <div class="fix">
+      <strong>다음 수순</strong>
+      <p>
+        프롬프트가 지금 <em>같은 원문이 여러 축을 지지하면 축별로 반환하라</em> 고 지시한다.
+        모델은 이를 <em>줄 전체를 여러 축으로 반복 인용하라</em> 로 읽고 있다.
+        필요한 지시는 반대다 — <strong>축이 실제로 가리키는 최소 구간만 인용한다.</strong>
+      </p>
+      <p>
+        다만 프롬프트 문구 추가의 효과는 불확실하다. 같은 문서 8회 실행에서 회수율이
+        45.6% ~ 57.0% 로 흔들렸다. 바꾼 뒤 다시 8회 재서 <strong>폭이 줄어드는지</strong>
+        확인해야 판단할 수 있다.
+      </p>
+      <p>
+        근본 해결은 <code>occurrence</code> 에 묶음 키를 두어 지표 하나가 이름·목표값·기준연도를
+        갖는 구조를 표현하는 것이다. 계약 변경이라 알파 이후 사안이다.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    측정: <code>mockup_08_CPL전항목_스마트기술사업화.hwpx</code> · case 431 ·
+    골든 <code>samples/golden/mockup_08.json</code> 75건 ·
+    채점 <code>backend/app/services/cpl/golden_evaluator.py</code>.
+    골든에서 한 단어짜리 인용 4건(<code>EFFECT_SUBJECT</code>, <code>EFFECT_DIRECTION</code>)은
+    접지 가치가 없고 문서 여러 곳에 나타나 모호 인용으로 거부되므로 제외했다.
+  </footer>
+
+</div>

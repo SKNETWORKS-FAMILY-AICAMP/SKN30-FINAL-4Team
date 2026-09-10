@@ -1,0 +1,50 @@
+{
+  "document_version": "v0.3",
+  "document_status": "DRAFT_NOT_IMPLEMENTED",
+  "common": "00_common.json",
+  "api": {
+    "id": 4,
+    "title": "로그아웃",
+    "method": "POST",
+    "path": "/api/v1/auth/logout",
+    "authentication_required": true,
+    "request": {
+      "content_type": null,
+      "path_parameters": [],
+      "query_parameters": [],
+      "body": null,
+      "form_fields": [],
+      "constraints": []
+    },
+    "success": {
+      "http_status": 200,
+      "content_type": "application/json",
+      "body": {
+        "status_code": 200,
+        "message": "로그아웃되었습니다.",
+        "code": "SUCCESS",
+        "data": null,
+        "errors": []
+      }
+    },
+    "additional_success_examples": [],
+    "errors": [
+      {
+        "http_status": 401,
+        "content_type": "application/json",
+        "when": "토큰 누락·만료·유효하지 않음",
+        "body": {
+          "status_code": 401,
+          "message": "인증 정보를 확인해 주세요.",
+          "code": "UNAUTHORIZED",
+          "data": null,
+          "errors": []
+        }
+      }
+    ],
+    "notes": [
+      "성공 후 프론트가 보관한 토큰을 제거합니다.",
+      "서버는 토큰 폐기 목록을 기록하지 않으므로 서버 측 즉시 무효화를 보장하지 않습니다."
+    ]
+  }
+}
