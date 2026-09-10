@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from app.api.deps import CurrentUser
+from app.api.deps import CaseId, CurrentUser
 from app.api.v1.responses import (
     BAD_REQUEST,
     describe,
@@ -29,14 +29,14 @@ router = APIRouter(prefix="/api/v1/cases", tags=["분석"], responses=UNAUTHORIZ
 
 
 @router.get(
-    "/{case_id}/messages",
+    "/{analysis_case_id}/messages",
     response_model=ChatMessagesResponse,
     summary="이전 대화 불러오기",
     description="이전 대화를 20개씩 조회합니다. `next_cursor`가 있으면 더 이전 대화를 조회할 수 있습니다.",
     responses=describe({**UNAUTHORIZED, **NOT_FOUND, **CONFLICT}),
 )
 def chat_messages(
-    case_id: int,
+    case_id: CaseId,
     request: Request,
     user: CurrentUser,
     cursor: Annotated[
@@ -66,7 +66,7 @@ def chat_messages(
 
 
 @router.post(
-    "/{case_id}/messages",
+    "/{analysis_case_id}/messages",
     response_model=ChatTurnResponse,
     summary="AI 에게 질문",
     description="분석 결과에 대해 질문하고 AI 답변을 받습니다.",
@@ -78,7 +78,7 @@ def chat_messages(
     ),
 )
 async def send_chat_message(
-    case_id: int,
+    case_id: CaseId,
     payload: ChatMessageRequest,
     request: Request,
     user: CurrentUser,

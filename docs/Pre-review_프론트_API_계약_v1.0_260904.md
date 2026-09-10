@@ -133,12 +133,12 @@
 리턴:
 
 ```json
-{ "case_id": 2183 }
+{ "analysis_case_id": "3f8b1c42-9e07-4a51-8f2d-2b6d5c1a7e90" }
 ```
 
 | 코드 | 뜻 | 프론트 처리 |
 |---|---|---|
-| `200` | 업로드 성공 및 분석 시작 | `case_id`로 상태 조회 |
+| `200` | 업로드 성공 및 분석 시작 | `analysis_case_id`로 상태 조회 |
 | `400` | 파일 입력 오류 | 파일 확인 안내 |
 | `401` | 토큰 오류 또는 만료 | 로그인 화면 이동 |
 | `413` | 파일 용량 초과 | 50MB 이하 파일 안내 |
@@ -146,13 +146,13 @@
 
 ## 8. 분석 진행 상태
 
-`GET /api/v1/cases/{case_id}/status`
+`GET /api/v1/cases/{analysis_case_id}/status`
 
 파라미터:
 
 | 위치 | 필드 | 뜻 |
 |---|---|---|
-| path | `case_id` | 업로드 API에서 받은 분석 건 식별자 |
+| path | `analysis_case_id` | 업로드 API에서 받은 분석 건 식별자(UUID) |
 
 리턴:
 
@@ -188,7 +188,7 @@
 {
   "items": [
     {
-      "case_id": 2183,
+      "analysis_case_id": "3f8b1c42-9e07-4a51-8f2d-2b6d5c1a7e90",
       "title": "요청서.hwpx",
       "completed_at": "2026-09-03T12:46:06Z"
     }
@@ -199,7 +199,7 @@
 
 | 필드 | 뜻 |
 |---|---|
-| `items[].case_id` | 상세 조회에 사용할 분석 건 식별자 |
+| `items[].analysis_case_id` | 상세 조회에 사용할 분석 건 식별자(UUID) |
 | `items[].title` | 요청서 파일명 |
 | `items[].completed_at` | 분석 완료 시각 |
 | `next_cursor` | 다음 5건 조회값. `null`이면 마지막 |
@@ -212,13 +212,13 @@
 
 ## 10. 분석 상세
 
-`GET /api/v1/cases/{case_id}`
+`GET /api/v1/cases/{analysis_case_id}`
 
 파라미터:
 
 | 위치 | 필드 | 뜻 |
 |---|---|---|
-| path | `case_id` | 조회할 분석 건 식별자 |
+| path | `analysis_case_id` | 조회할 분석 건 식별자(UUID) |
 
 리턴 공통 구조:
 
@@ -348,7 +348,18 @@
 
 ```json
 {
-  "messages": [{ "id": 1, "role": "USER", "content": "질문" }],
+  "messages": [
+    { "id": 1, "role": "USER", "content": "질문", "references": [], "suggested_revision": null },
+    {
+      "id": 2,
+      "role": "ASSISTANT",
+      "content": "FIT 분석에서는 목적과 지원대상의 연결을 추가로 확인할 필요가 있습니다.",
+      "references": [
+        { "agent": "FIT", "item": "FIT-1", "evidence_id": "request:PURPOSE_GOAL:0" }
+      ],
+      "suggested_revision": "지원대상을 다음과 같이 구체화하는 방안을 검토할 수 있습니다."
+    }
+  ],
   "next_cursor": null
 }
 ```
@@ -357,6 +368,16 @@
 |---|---|
 | `USER` | 사용자 질문 |
 | `ASSISTANT` | AI 답변 |
+
+| 필드 | 뜻 |
+|---|---|
+| `references[].agent` | 답변이 사용한 분석 주체. `CPL` `FIT` `RETRIEVAL` `SIM` `MODEL_1` `MODEL_2` `MODEL_3` `SUMMARY` |
+| `references[].item` | 그 주체의 어떤 항목인지. CPL `field_code`, FIT `relation_id`, SIM 축·후보 제목, 모델 출력 이름 |
+| `references[].evidence_id` | 원문 근거 식별자. 문서 인용이 없는 결과(ML 예측값 등)는 `null` |
+| `suggested_revision` | 수정·보완 **제안**. 확정된 수정이 아니므로 답변과 구분해 표시한다. 제안이 없으면 `null` |
+
+`references` 와 `suggested_revision` 은 `USER` 말풍선에서는 항상 `[]` 와 `null` 이다.
+POST 응답과 GET 이력이 같은 모양이라, 새로고침해도 화면이 달라지지 않는다.
 
 | 코드 | 뜻 | 프론트 처리 |
 |---|---|---|
@@ -367,9 +388,9 @@
 
 ## 11. PDF 다운로드
 
-`GET /api/v1/cases/{case_id}/report`
+`GET /api/v1/cases/{analysis_case_id}/report`
 
-파라미터: path의 `case_id`
+파라미터: path의 `analysis_case_id`
 리턴: `application/pdf` 바이너리
 
 | 코드 | 뜻 | 프론트 처리 |
@@ -382,20 +403,31 @@
 
 ## 12. 이전 대화 조회
 
-`GET /api/v1/cases/{case_id}/messages`
+`GET /api/v1/cases/{analysis_case_id}/messages`
 
 파라미터:
 
 | 위치 | 필드 | 필수 | 뜻 |
 |---|---|---|---|
-| path | `case_id` | 예 | 분석 건 식별자 |
+| path | `analysis_case_id` | 예 | 분석 건 식별자(UUID) |
 | query | `cursor` | 아니요 | 이전 응답의 `next_cursor` |
 
 리턴:
 
 ```json
 {
-  "messages": [{ "id": 1, "role": "USER", "content": "질문" }],
+  "messages": [
+    { "id": 1, "role": "USER", "content": "질문", "references": [], "suggested_revision": null },
+    {
+      "id": 2,
+      "role": "ASSISTANT",
+      "content": "FIT 분석에서는 목적과 지원대상의 연결을 추가로 확인할 필요가 있습니다.",
+      "references": [
+        { "agent": "FIT", "item": "FIT-1", "evidence_id": "request:PURPOSE_GOAL:0" }
+      ],
+      "suggested_revision": "지원대상을 다음과 같이 구체화하는 방안을 검토할 수 있습니다."
+    }
+  ],
   "next_cursor": null
 }
 ```
@@ -409,7 +441,7 @@
 
 ## 13. AI 질문
 
-`POST /api/v1/cases/{case_id}/messages`
+`POST /api/v1/cases/{analysis_case_id}/messages`
 
 파라미터:
 
@@ -421,8 +453,17 @@
 
 ```json
 {
-  "user_message": { "id": 2, "role": "USER", "content": "질문" },
-  "assistant_message": { "id": 3, "role": "ASSISTANT", "content": "답변" }
+  "user_message": {
+    "id": 2, "role": "USER", "content": "질문",
+    "references": [], "suggested_revision": null
+  },
+  "assistant_message": {
+    "id": 3, "role": "ASSISTANT", "content": "답변",
+    "references": [
+      { "agent": "FIT", "item": "FIT-1", "evidence_id": "request:PURPOSE_GOAL:0" }
+    ],
+    "suggested_revision": null
+  }
 }
 ```
 

@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from app.api.deps import CurrentUser
+from app.api.deps import CaseId, CurrentUser
 from app.api.v1.responses import (
     CONFLICT,
     describe,
@@ -41,7 +41,7 @@ class CaseDetailResponse(BaseModel):
 
 
 @router.get(
-    "/{case_id}",
+    "/{analysis_case_id}",
     response_model=CaseDetailResponse,
     response_model_exclude_none=True,
     summary="분석 상세 조회",
@@ -52,7 +52,7 @@ class CaseDetailResponse(BaseModel):
     ),
 )
 def case_detail(
-    case_id: int,
+    case_id: CaseId,
     request: Request,
     user: CurrentUser,
 ) -> CaseDetailResponse:
@@ -75,7 +75,7 @@ def case_detail(
 
 
 @router.get(
-    "/{case_id}/report",
+    "/{analysis_case_id}/report",
     # 성공만 PDF 바이너리다. 기본값대로 두면 OpenAPI 가 JSON 이라고 말한다.
     response_class=StreamingResponse,
     summary="보고서 PDF 다운로드",
@@ -96,7 +96,7 @@ def case_detail(
     ),
 )
 async def report_pdf(
-    case_id: int,
+    case_id: CaseId,
     request: Request,
     user: CurrentUser,
 ) -> StreamingResponse:

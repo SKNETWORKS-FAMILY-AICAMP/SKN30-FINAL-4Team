@@ -26,6 +26,22 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = Field(default=3, ge=1)
     jwt_secret: SecretStr = Field(min_length=32)
     jwt_access_token_expire_minutes: int = Field(default=60, ge=1)
+    # --- Supabase Auth -------------------------------------------------------
+    # 로그인은 Supabase 가 맡고 FastAPI 는 그 토큰을 검증한다. 서명 방식은
+    # 프로젝트 설정에 따라 다르므로 둘 다 받아 두고 토큰의 alg 로 고른다.
+    #   공유 비밀(HS256)  -> SUPABASE_JWT_SECRET
+    #   비대칭 키(ES256…) -> SUPABASE_JWKS_URL, 없으면 SUPABASE_URL 에서 유도
+    # 둘 다 비어 있으면 Supabase 인증을 끈 것이고, 자체 발급 JWT 만 받는다.
+    supabase_url: AnyHttpUrl | None = None
+    supabase_jwt_secret: SecretStr | None = None
+    supabase_jwks_url: AnyHttpUrl | None = None
+    supabase_jwt_audience: str = Field(default="authenticated", min_length=1)
+    # Supabase 계정과 아직 연결되지 않은 기존 사용자를 첫 로그인 때 이메일로
+    # 이어 붙일지. 두 시스템의 사용자 명부가 같다는 전제가 있어야 켠다.
+    supabase_link_existing_user_by_email: bool = True
+    # 마이그레이션 기간 동안 자체 발급 JWT(POST /api/v1/auth/login)도 계속
+    # 받는다. Supabase 하나로 확정되면 끈다.
+    allow_internal_jwt: bool = True
     # 기동할 때 끊긴 분석을 실패로 정리할지. 분석이 프로세스 안의 태스크로만
     # 돌기 때문에 단일 프로세스에서는 켜 두는 것이 맞다. 서버를 여러 개
     # 띄우면 새로 뜬 쪽이 다른 쪽에서 처리 중인 건을 죽이므로 꺼야 한다.
@@ -97,10 +113,50 @@ class Settings(BaseSettings):
     # 사전협의요청서에 맞는 모집단이 어느 쪽인지는 아직 평가된 바 없다.
     ml_model2_cohort: str = Field(default="bizinfo", min_length=1)
     chat_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
-    chat_prompt_version: str = Field(default="chat-v0.1", min_length=1)
-    chat_prompt_path: Path = (
-        PROJECT_ROOT / "backend" / "config" / "prompts" / "chat-v0.1.txt"
-    )
+    # 챗봇 프롬프트는 설정이 아니라 코드다 — chatmessage/prompt.py 가 갖고
+    # 버전은 chatmessage.PROMPT_VERSION 이다. cpl/fit/sim 처럼 txt 파일로 빼지
+    # 않는 이유는, 프롬프트가 Context 구조(context_scope·evidence_ids)와 한 몸이라
+    # 따로 고치면 곧바로 어긋나기 때문이다.
+
+    @cached_property
+    def supabase_token_verifier(self) -> "SupabaseTokenVerifier":
+        """토큰 검증기 하나를 앱 수명 동안 재사용한다.
+
+        JWKS 클라이언트가 키를 캐시하기 때문에 매 요청 새로 만들면 로그인마다
+        원격 조회가 돈다.
+        """
+        from app.core.supabase_auth import SupabaseTokenVerifier
+
+        return SupabaseTokenVerifier(
+            jwt_secret=(
+                self.supabase_jwt_secret.get_secret_value()
+                if self.supabase_jwt_secret
+                else None
+            ),
+            jwks_url=self.resolved_supabase_jwks_url,
+            issuer=self.resolved_supabase_issuer,
+            audience=self.supabase_jwt_audience,
+        )
+
+    @property
+    def resolved_supabase_jwks_url(self) -> str | None:
+        """명시 설정이 우선. 없으면 프로젝트 URL 에서 표준 경로를 만든다."""
+        if self.supabase_jwks_url is not None:
+            return str(self.supabase_jwks_url)
+        if self.supabase_url is None:
+            return None
+        return f"{str(self.supabase_url).rstrip('/')}/auth/v1/.well-known/jwks.json"
+
+    @property
+    def resolved_supabase_issuer(self) -> str | None:
+        """프로젝트 URL 을 모르면 issuer 검증을 하지 않는다.
+
+        검증할 값이 없는데 아무 issuer 나 통과시키지 않고, 검증 항목에서 아예
+        빼는 쪽을 고른다 — 통과 조건을 조용히 느슨하게 만들지 않기 위해서다.
+        """
+        if self.supabase_url is None:
+            return None
+        return f"{str(self.supabase_url).rstrip('/')}/auth/v1"
 
     @cached_property
     def sim_scoring(self) -> SimScoringPolicy:
@@ -127,7 +183,8 @@ class Settings(BaseSettings):
 
     @field_validator(
         "bizinfo_api_key", "openai_api_key", "smtp_host", "smtp_username",
-        "smtp_password", "smtp_from_email", "password_reset_url", mode="before",
+        "smtp_password", "smtp_from_email", "password_reset_url",
+        "supabase_url", "supabase_jwt_secret", "supabase_jwks_url", mode="before",
     )
     @classmethod
     def empty_external_key_means_disabled(cls, value: object) -> object:
@@ -210,7 +267,6 @@ class Settings(BaseSettings):
         "fit_prompt_path",
         "sim_scoring_path",
         "sim_prompt_path",
-        "chat_prompt_path",
         mode="before",
     )
     @classmethod

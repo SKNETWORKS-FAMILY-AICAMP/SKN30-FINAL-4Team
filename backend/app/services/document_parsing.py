@@ -1,3 +1,4 @@
+from uuid import UUID
 import asyncio
 import base64
 import hashlib
@@ -65,7 +66,7 @@ MAX_HISTORY_LIMIT = 50
 
 @dataclass(frozen=True)
 class CaseSummary:
-    case_id: int
+    analysis_case_id: UUID
     title: str | None
     completed_at: datetime
 
@@ -325,7 +326,8 @@ def list_cases(
         rows = connection.execute(
             text(
                 """
-                SELECT c.id, c.completed_at, f.original_filename
+                SELECT c.id, c.analysis_case_id, c.completed_at,
+                       f.original_filename
                 FROM sims.inspection_case c
                 LEFT JOIN sims.uploaded_document d
                        ON d.inspection_case_id = c.id
@@ -357,15 +359,17 @@ def list_cases(
     # 않기로 해서 업로드한 파일명을 그대로 쓴다.
     items = [
         CaseSummary(
-            case_id=row["id"],
+            analysis_case_id=row["analysis_case_id"],
             title=row["original_filename"],
             completed_at=row["completed_at"],
         )
         for row in rows
     ]
+    # 커서는 서버가 만들고 서버만 읽는 불투명 값이라 내부 PK 로 이어 둔다.
+    # 키셋 정렬 기준이 (completed_at, c.id) 이므로 UUID 로 바꾸면 순서가 깨진다.
     next_cursor = (
-        _encode_cursor(items[-1].completed_at, items[-1].case_id)
-        if has_more and items
+        _encode_cursor(rows[-1]["completed_at"], rows[-1]["id"])
+        if has_more and rows
         else None
     )
     return CasePage(items=items, next_cursor=next_cursor)

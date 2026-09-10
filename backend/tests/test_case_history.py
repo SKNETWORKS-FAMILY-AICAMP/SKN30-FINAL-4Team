@@ -93,11 +93,15 @@ def make_case(
     status: str,
     created_at: datetime,
     filename: str | None,
-) -> int:
-    """Insert one inspection_case, optionally with its uploaded document."""
+) -> tuple[int, str]:
+    """Insert one inspection_case, optionally with its uploaded document.
+
+    내부 PK 와 외부 UUID 를 함께 돌려준다 — API 응답은 UUID 로 확인하고,
+    DB 상태는 내부 PK 로 확인한다.
+    """
     completed = status == "COMPLETED"
     with engine.begin() as connection:
-        case_id = connection.scalar(
+        created = connection.execute(
             text(
                 """
                 INSERT INTO sims.inspection_case (
@@ -108,7 +112,7 @@ def make_case(
                     :owner_user_id, :status, :created_at,
                     :completed_at, :completed_at
                 )
-                RETURNING id
+                RETURNING id, analysis_case_id
                 """
             ),
             {
@@ -117,10 +121,11 @@ def make_case(
                 "created_at": created_at,
                 "completed_at": created_at if completed else None,
             },
-        )
-        assert case_id is not None
+        ).one_or_none()
+        assert created is not None
+        case_id, analysis_case_id = int(created[0]), str(created[1])
         if filename is None:
-            return case_id
+            return case_id, analysis_case_id
 
         file_asset_id = connection.scalar(
             text(
@@ -155,7 +160,7 @@ def make_case(
             ),
             {"case_id": case_id, "file_asset_id": file_asset_id},
         )
-    return case_id
+    return case_id, analysis_case_id
 
 
 def history(
@@ -204,18 +209,18 @@ def test_history_is_owner_scoped(
     other_id = create_user(other_login)
     now = datetime.now(timezone.utc)
 
-    mine = make_case(
+    _, mine = make_case(
         engine, owner_id, status="COMPLETED", created_at=now, filename="mine.hwpx"
     )
-    theirs = make_case(
+    _, theirs = make_case(
         engine, other_id, status="COMPLETED", created_at=now, filename="theirs.hwpx"
     )
 
     owner_cases = items(client, bearer_for(client, owner_login))
-    assert [case["case_id"] for case in owner_cases] == [mine]
+    assert [case["analysis_case_id"] for case in owner_cases] == [mine]
 
     other_cases = items(client, bearer_for(client, other_login))
-    assert [case["case_id"] for case in other_cases] == [theirs]
+    assert [case["analysis_case_id"] for case in other_cases] == [theirs]
 
 
 def test_history_is_newest_first_and_uses_filename_as_title(
@@ -227,21 +232,21 @@ def test_history_is_newest_first_and_uses_filename_as_title(
     user_id = create_user(login_id)
     now = datetime.now(timezone.utc)
 
-    oldest = make_case(
+    _, oldest = make_case(
         engine,
         user_id,
         status="COMPLETED",
         created_at=now - timedelta(days=2),
         filename="oldest.hwpx",
     )
-    middle = make_case(
+    _, middle = make_case(
         engine,
         user_id,
         status="COMPLETED",
         created_at=now - timedelta(days=1),
         filename="middle.hwpx",
     )
-    newest = make_case(
+    _, newest = make_case(
         engine,
         user_id,
         status="COMPLETED",
@@ -250,7 +255,7 @@ def test_history_is_newest_first_and_uses_filename_as_title(
     )
 
     cases = items(client, bearer_for(client, login_id))
-    assert [case["case_id"] for case in cases] == [newest, middle, oldest]
+    assert [case["analysis_case_id"] for case in cases] == [newest, middle, oldest]
     assert [case["title"] for case in cases] == [
         "newest.hwpx",
         "middle.hwpx",
@@ -323,16 +328,16 @@ def test_history_pages_by_cursor_without_gaps_or_repeats(
             status="COMPLETED",
             created_at=now - timedelta(minutes=index),
             filename=f"case-{index}.hwpx",
-        )
+        )[1]
         for index in range(12)
     ]
 
     headers = bearer_for(client, login_id)
-    collected: list[int] = []
+    collected: list[str] = []
     cursor: str | None = None
     for _ in range(3):
         page = history(client, headers, limit=5, **({"cursor": cursor} if cursor else {}))
-        collected.extend(case["case_id"] for case in page["items"])
+        collected.extend(case["analysis_case_id"] for case in page["items"])
         cursor = page["next_cursor"]
         if cursor is None:
             break
@@ -375,7 +380,7 @@ def test_restart_marks_unfinished_analyses_as_failed(
     """
     login_id = f"history-interrupted-{uuid.uuid4().hex[:8]}"
     user_id = create_user(login_id)
-    case_id = make_case(
+    case_id, _ = make_case(
         engine,
         user_id,
         status=internal_status,
@@ -407,7 +412,7 @@ def test_restart_does_not_touch_finished_analyses(
 ) -> None:
     login_id = f"history-finished-{uuid.uuid4().hex[:8]}"
     user_id = create_user(login_id)
-    done = make_case(
+    done, _ = make_case(
         engine,
         user_id,
         status="COMPLETED",

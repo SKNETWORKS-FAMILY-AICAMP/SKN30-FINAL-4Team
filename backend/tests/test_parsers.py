@@ -99,6 +99,23 @@ def bearer_for(client: TestClient, login_id: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+def internal_case_id(engine: Engine, analysis_case_id: str) -> int:
+    """외부 UUID → 내부 PK. 테스트가 DB 상태를 직접 볼 때만 쓴다.
+
+    API 는 UUID 만 받는다. 내부 PK 가 필요한 것은 여기 검증 코드뿐이다.
+    """
+    with engine.connect() as connection:
+        case_id = connection.scalar(
+            text(
+                "SELECT id FROM sims.inspection_case "
+                "WHERE analysis_case_id = CAST(:analysis_case_id AS uuid)"
+            ),
+            {"analysis_case_id": analysis_case_id},
+        )
+    assert case_id is not None
+    return int(case_id)
+
+
 def wait_for_internal_status(
     engine: Engine,
     case_id: int,
@@ -375,12 +392,13 @@ def test_analysis_keeps_parse_snapshot_when_retrieval_is_unavailable(
         )
         # 업로드 응답이 곧 분석 시작이다. 별도의 분석 시작 호출은 없다.
         assert upload.status_code == 200
-        assert set(upload.json()) == {"case_id"}
-        case_id = upload.json()["case_id"]
+        assert set(upload.json()) == {"analysis_case_id"}
+        case_uuid = upload.json()["analysis_case_id"]
+        case_id = internal_case_id(engine, case_uuid)
 
         wait_for_internal_status(engine, case_id, "FAILED")
         public_status = client.get(
-            f"/api/v1/cases/{case_id}/status", headers=headers
+            f"/api/v1/cases/{case_uuid}/status", headers=headers
         )
         # 실패 사유는 내보내지 않는다. 화면은 실패 하나로만 다룬다.
         assert public_status.json() == {"status": "FAILED"}
@@ -439,10 +457,11 @@ def test_parser_failure_is_safe_and_terminal(
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
         assert upload.status_code == 200
-        case_id = upload.json()["case_id"]
+        case_uuid = upload.json()["analysis_case_id"]
+        case_id = internal_case_id(engine, case_uuid)
         wait_for_internal_status(engine, case_id, "FAILED")
         result = client.get(
-            f"/api/v1/cases/{case_id}/status", headers=headers
+            f"/api/v1/cases/{case_uuid}/status", headers=headers
         ).json()
 
     assert result == {"status": "FAILED"}
@@ -493,7 +512,8 @@ def test_changed_stored_source_is_rejected_before_parser(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_uuid = upload.json()["analysis_case_id"]
+        case_id = internal_case_id(engine, case_uuid)
         wait_for_internal_status(engine, case_id, "FAILED", "CHECKING")
 
         with engine.connect() as connection:
@@ -582,7 +602,8 @@ def test_cancelled_enqueue_does_not_leave_case_parsing(
             headers=headers,
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
-        case_id = upload.json()["case_id"]
+        case_uuid = upload.json()["analysis_case_id"]
+        case_id = internal_case_id(engine, case_uuid)
         # 업로드가 이미 분석을 시작했다. 취소 시나리오를 재현하려면 검사 건을
         # 시작 전 상태로 되돌린 뒤 다시 걸어야 한다.
         wait_for_internal_status(engine, case_id, "FAILED", "CHECKING", "COMPLETED")
@@ -649,12 +670,13 @@ def test_analysis_is_owner_scoped_and_cannot_start_twice(
             files={"file": ("request.hwpx", hwpx_bytes(), "application/hwp+zip")},
         )
         assert upload.status_code == 200
-        case_id = upload.json()["case_id"]
+        case_uuid = upload.json()["analysis_case_id"]
+        case_id = internal_case_id(engine, case_uuid)
 
         # 분석은 업로드가 시작한다. 남의 검사 건은 상태도 볼 수 없다.
         assert client.get(
-            f"/api/v1/cases/{case_id}/status", headers=stranger_headers
+            f"/api/v1/cases/{case_uuid}/status", headers=stranger_headers
         ).status_code == 404
         assert client.get(
-            f"/api/v1/cases/{case_id}/status", headers=owner_headers
+            f"/api/v1/cases/{case_uuid}/status", headers=owner_headers
         ).status_code == 200

@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -39,13 +40,17 @@ router = APIRouter(prefix="/api/v1/cases", tags=["분석"], responses=UNAUTHORIZ
 
 
 class CreateCaseResponse(BaseModel):
-    """업로드가 끝나면 분석이 이미 시작된 상태다."""
+    """업로드가 끝나면 분석이 이미 시작된 상태다.
 
-    case_id: int
+    내부 PK 가 아니라 외부 식별자를 준다 — 프론트는 이후 모든 API 를 이 값으로
+    부른다.
+    """
+
+    analysis_case_id: UUID
 
 
 class CaseSummaryResponse(BaseModel):
-    case_id: int
+    analysis_case_id: UUID
     title: str | None
     completed_at: datetime
 
@@ -160,4 +165,4 @@ async def create_case(
         user.id,
         created.case_id,
     )
-    return CreateCaseResponse(case_id=created.case_id)
+    return CreateCaseResponse(analysis_case_id=created.analysis_case_id)

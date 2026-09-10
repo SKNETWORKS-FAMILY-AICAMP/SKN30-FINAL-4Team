@@ -1,3 +1,4 @@
+from uuid import UUID
 import asyncio
 import hashlib
 import logging
@@ -46,6 +47,8 @@ class ValidatedUpload:
 @dataclass(frozen=True)
 class CreatedCase:
     case_id: int
+    # 외부 API 가 돌려줄 식별자. 내부 PK 는 응답에 나가지 않는다.
+    analysis_case_id: UUID
     created_at: datetime
     status: Literal["UPLOADED"] = "UPLOADED"
 
@@ -167,14 +170,14 @@ async def create_case_from_upload(
                     """
                     INSERT INTO sims.inspection_case (owner_user_id)
                     VALUES (:owner_user_id)
-                    RETURNING id, created_at
+                    RETURNING id, analysis_case_id, created_at
                     """
                 ),
                 {"owner_user_id": owner_user_id},
             ).one_or_none()
             if created is None:
                 raise RuntimeError("Failed to create inspection case")
-            case_id, created_at = created
+            case_id, analysis_case_id, created_at = created
 
             storage_key = (
                 f"users/{owner_user_id}/cases/{case_id}/"
@@ -255,4 +258,8 @@ async def create_case_from_upload(
                 logger.exception("Failed to compensate stored upload: %s", cleanup_key)
         raise
 
-    return CreatedCase(case_id=case_id, created_at=created_at)
+    return CreatedCase(
+        case_id=case_id,
+        analysis_case_id=analysis_case_id,
+        created_at=created_at,
+    )

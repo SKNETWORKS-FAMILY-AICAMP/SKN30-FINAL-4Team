@@ -2321,7 +2321,17 @@ def test_pipeline_persists_cpl_snapshot_and_all_occurrences(
         )
         # 업로드가 곧 분석 시작이다.
         assert uploaded.status_code == 200
-        case_id = uploaded.json()["case_id"]
+        # API 는 외부 UUID 만 준다. 아래 검증은 DB 를 직접 보므로 내부 PK 로 바꾼다.
+        case_uuid = uploaded.json()["analysis_case_id"]
+        with engine.connect() as connection:
+            case_id = connection.scalar(
+                text(
+                    "SELECT id FROM sims.inspection_case "
+                    "WHERE analysis_case_id = CAST(:value AS uuid)"
+                ),
+                {"value": case_uuid},
+            )
+        assert case_id is not None
 
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:

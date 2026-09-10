@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from app.api.deps import CurrentUser
+from app.api.deps import CaseId, CurrentUser
 from app.api.v1.responses import NOT_FOUND, UNAUTHORIZED, describe
 from app.services.document_parsing import (
     CaseNotFoundError,
@@ -20,7 +20,7 @@ class CaseStatusResponse(BaseModel):
 
 
 @router.get(
-    "/{case_id}/status",
+    "/{analysis_case_id}/status",
     response_model=CaseStatusResponse,
     summary="분석 진행 상태 (롱폴링)",
     description=(
@@ -33,7 +33,7 @@ class CaseStatusResponse(BaseModel):
     ),
 )
 async def case_status(
-    case_id: int,
+    case_id: CaseId,
     request: Request,
     user: CurrentUser,
 ) -> CaseStatusResponse:

@@ -35,6 +35,10 @@ CREATE TABLE sims.app_user (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     login_id            citext NOT NULL UNIQUE,
     email               citext NOT NULL UNIQUE,
+    -- Supabase Auth 의 auth.users.id. 로그인은 Supabase 가 맡고 FastAPI 는 그
+    -- 토큰을 검증하므로, 토큰의 sub 로 내부 사용자를 찾을 자리가 필요하다.
+    -- NULL 이 허용된다 — 아직 Supabase 계정과 연결되지 않은 기존 사용자다.
+    supabase_user_id    uuid,
     password_hash       text NOT NULL,
     password_changed_at timestamptz NOT NULL DEFAULT now(),
     is_active           boolean NOT NULL DEFAULT true,
@@ -48,6 +52,10 @@ CREATE TABLE sims.app_user (
     CONSTRAINT ck_app_user_password_hash_not_blank
         CHECK (btrim(password_hash) <> '')
 );
+
+CREATE UNIQUE INDEX uq_app_user_supabase_user_id
+    ON sims.app_user (supabase_user_id)
+    WHERE supabase_user_id IS NOT NULL;
 
 CREATE TRIGGER trg_app_user_updated_at
 BEFORE UPDATE ON sims.app_user
@@ -85,6 +93,9 @@ FOR EACH ROW EXECUTE FUNCTION sims.record_successful_password_change();
 
 CREATE TABLE sims.inspection_case (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    -- 외부 API 가 쓰는 식별자. 프론트는 내부 PK 를 알 필요가 없고, 순번 PK 를
+    -- URL 에 노출하면 남의 분석 건 번호를 훑을 수 있다.
+    analysis_case_id    uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     owner_user_id       bigint NOT NULL
                             REFERENCES sims.app_user(id) ON DELETE CASCADE,
     status              text NOT NULL DEFAULT 'UPLOADED',
@@ -110,6 +121,10 @@ CREATE TABLE sims.inspection_case (
     CONSTRAINT uq_inspection_case_id_owner
         UNIQUE (id, owner_user_id)
 );
+
+-- 외부 식별자로 들어온 요청은 항상 (analysis_case_id, owner_user_id) 로 찾는다.
+CREATE INDEX ix_inspection_case_public_owner
+    ON sims.inspection_case (analysis_case_id, owner_user_id);
 
 CREATE INDEX ix_inspection_case_owner_created
     ON sims.inspection_case (owner_user_id, created_at DESC);
@@ -1256,10 +1271,24 @@ CREATE TABLE sims.chat_message (
     model_version       text,
     input_tokens        integer,
     output_tokens       integer,
-    evidence_refs       jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- 답변이 어느 Agent·Model 의 어떤 결과에 기댔는가. 계약은 API 와 같다:
+    -- [{"agent": "FIT", "item": "FIT-1", "evidence_id": "..."|null}]
+    "references"        jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- 수정·보완 제안. 답변 본문과 분리해 둔다 — 확정된 조치가 아니라 사용자가
+    -- 검토할 안이라, 화면이 구분해 그릴 수 있어야 한다.
+    suggested_revision  text,
     created_at          timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_chat_message_sequence
         UNIQUE (chat_session_id, sequence_no),
+    CONSTRAINT ck_chat_message_references_shape
+        CHECK (jsonb_typeof("references") = 'array'),
+    -- 근거와 수정 제안은 답변에만 붙는다. 사용자 질문 행에 들어가면 화면이
+    -- 사용자가 제안한 것처럼 그린다.
+    CONSTRAINT ck_chat_message_user_has_no_answer_parts
+        CHECK (
+            role <> 'USER'
+            OR ("references" = '[]'::jsonb AND suggested_revision IS NULL)
+        ),
     CONSTRAINT ck_chat_message_sequence
         CHECK (sequence_no > 0),
     CONSTRAINT ck_chat_message_role

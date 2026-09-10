@@ -518,27 +518,38 @@ def test_finalize_persists_immutable_snapshot_pdf_and_owner_scoped_apis(
     assert row["template_version"] == "alpha-pdf-v0.1"
     assert (tmp_path / row["storage_key"]).stat().st_size == row["size_bytes"]
 
+    with engine.connect() as connection:
+        case_uuid = str(
+            connection.scalar(
+                text(
+                    "SELECT analysis_case_id FROM sims.inspection_case "
+                    "WHERE id = :case_id"
+                ),
+                {"case_id": case_id},
+            )
+        )
+
     with TestClient(create_app(runtime, pdf_renderer=FakePdfRenderer())) as client:
         owner_headers = bearer(client, owner_login)
         other_headers = bearer(client, other_login)
-        result = client.get(f"/api/v1/cases/{case_id}", headers=owner_headers)
+        result = client.get(f"/api/v1/cases/{case_uuid}", headers=owner_headers)
         assert result.status_code == 200
         # 보고서와 대화를 한 번에 준다. PDF 링크는 경로가 고정이라 담지 않는다.
         assert set(result.json()) == {"case", "report", "chat"}
         assert set(result.json()["case"]) == {"title", "completed_at"}
         assert result.json()["chat"]["messages"] == []
         download = client.get(
-            f"/api/v1/cases/{case_id}/report",
+            f"/api/v1/cases/{case_uuid}/report",
             headers=owner_headers,
         )
         assert download.status_code == 200
         assert download.headers["content-type"] == "application/pdf"
         assert download.content.startswith(b"%PDF-")
         assert client.get(
-            f"/api/v1/cases/{case_id}", headers=other_headers
+            f"/api/v1/cases/{case_uuid}", headers=other_headers
         ).status_code == 404
         assert client.get(
-            f"/api/v1/cases/{case_id}/report", headers=other_headers
+            f"/api/v1/cases/{case_uuid}/report", headers=other_headers
         ).status_code == 404
 
 

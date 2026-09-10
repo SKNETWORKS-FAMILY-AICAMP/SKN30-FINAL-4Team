@@ -1,12 +1,10 @@
 import json
+import logging
 from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
-
-import os
-import sys
 
 from app.core.config import Settings
 from app.ports.llm_client import (
@@ -20,63 +18,21 @@ from app.schemas.chat import (
     ChatAnswer,
     ChatMessageResponse,
     ChatMessagesResponse,
+    ChatReference,
     ChatTurnResponse,
 )
 from app.schemas.report import ReportJsonV01
-
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-try:
-    from chatmessage.context_loader import ChatContextLoader, INTENT_TO_KEY, _empty, _evidence_of
-except ImportError:
-    ChatContextLoader = object
-    INTENT_TO_KEY = {}
-    _empty = lambda s="not_available": {"status": s, "data": None, "evidence": []}
-    _evidence_of = lambda d, s: []
+from app.services.chat_bridge import (
+    PROMPT_VERSION,
+    SYSTEM_PROMPT,
+    build_chat_context,
+    build_user_prompt,
+    check_grounding,
+    context_evidence_ids,
+)
 
 
-class DbChatContextLoader(ChatContextLoader):
-    """실제 DB에 저장된 ReportJsonV01/models/dif 데이터를 chatmessage context 형태로 변환."""
-
-    def __init__(self, report_json: dict, document_text: str = ""):
-        self.report_json = report_json or {}
-        self.document_text = document_text
-
-    def get_context(self, analysis_id: str, intent: str, question: str) -> dict:
-        key = INTENT_TO_KEY.get(intent)
-        if key is None:
-            return _empty()
-
-        if key == "model_1":
-            models = self.report_json.get("models") or {}
-            data = models.get("model_1")
-        elif key == "model_2":
-            models = self.report_json.get("models") or {}
-            data = models.get("model_2")
-        elif key == "model_3":
-            data = self.report_json.get("dif")
-        elif key == "document":
-            data = {"text": self.document_text}
-        elif key == "report":
-            data = self.report_json
-        else:
-            data = None
-
-        if data is None:
-            return _empty()
-
-        if isinstance(data, dict) and "status" in data and "result" in data:
-            status = data.get("status")
-            if status != "success":
-                mapped = "insufficient_data" if status == "insufficient_data" else "not_available"
-                return {"status": mapped, "data": None, "evidence": [], "source_status": status}
-            payload = dict(data.get("result") or {})
-            payload["_model"] = data.get("model")
-            return {"status": "success", "data": payload, "evidence": _evidence_of(data, key)}
-
-        return {"status": "success", "data": data, "evidence": _evidence_of(data, key)}
+logger = logging.getLogger(__name__)
 
 
 CHAT_CONTEXT_MESSAGE_LIMIT = 20
@@ -113,13 +69,6 @@ class ChatGenerationError(RuntimeError):
         }[self.code]
 
 
-def load_chat_prompt(path) -> str:
-    prompt = path.read_text(encoding="utf-8").strip()
-    if not prompt:
-        raise ValueError("Chat prompt must not be blank")
-    return prompt
-
-
 def get_chat_history(
     engine: Engine,
     owner_user_id: int,
@@ -146,7 +95,8 @@ def get_chat_history(
         rows = connection.execute(
             text(
                 """
-                SELECT id, sequence_no, role, content
+                SELECT id, sequence_no, role, content,
+                       "references", suggested_revision
                 FROM sims.chat_message
                 WHERE chat_session_id = :session_id
                   AND (CAST(:cursor AS integer) IS NULL
@@ -163,14 +113,7 @@ def get_chat_history(
     oldest_sequence_no = rows[-1]["sequence_no"] if rows else None
     return ChatMessagesResponse(
         # 조회는 최신순이지만 화면은 시간순으로 그린다.
-        messages=[
-            ChatMessageResponse(
-                id=row["id"],
-                role=row["role"],
-                content=row["content"],
-            )
-            for row in reversed(rows)
-        ],
+        messages=[_to_message(row) for row in reversed(rows)],
         next_cursor=str(oldest_sequence_no) if has_more else None,
     )
 
@@ -193,22 +136,31 @@ async def answer_chat(
     if llm_client is None:
         raise ChatGenerationError("LLM_UNAVAILABLE")
 
+    context = build_chat_context(
+        report.model_dump(mode="json"),
+        question,
+        conversation=[
+            {"role": item.role, "content": item.content}
+            for item in history.messages[-CHAT_CONTEXT_MESSAGE_LIMIT:]
+        ],
+    )
     try:
         response = await llm_client.generate_structured(
             task_name="result_grounded_chat",
-            messages=_prompt_messages(
-                settings,
-                report,
-                history,
-                question,
-            ),
+            messages=_prompt_messages(context),
             response_schema=ChatAnswer,
             model_profile=settings.chat_model_profile,
         )
         if not isinstance(response, ChatAnswer):
             raise LLMInvalidResponseError("Unexpected structured response type")
-        allowed_refs = _report_evidence_refs(report)
-        if any(reference not in allowed_refs for reference in response.evidence_refs):
+        # 인용은 이번 질문에 실제로 실린 근거 안에서만 가능하다. 리포트 전체가
+        # 아니라 Context 를 기준으로 본다 — 상세로 싣지 않은 Agent 의 근거 id 를
+        # 답변이 가리키면, 그 답은 보지 않은 것을 인용한 것이다.
+        allowed = context_evidence_ids(context)
+        if any(
+            reference.evidence_id is not None and reference.evidence_id not in allowed
+            for reference in response.references
+        ):
             raise LLMInvalidResponseError("Chat response cited unknown evidence")
     except LLMTimeoutError:
         raise ChatGenerationError("LLM_TIMEOUT") from None
@@ -217,6 +169,17 @@ async def answer_chat(
     except (LLMInvalidResponseError, ValidationError, ValueError):
         raise ChatGenerationError("LLM_INVALID_RESPONSE") from None
 
+    # 근거 점검은 답을 막지 않는다. 오탐이 있어서다 — 무엇이 걸렸는지만 남기고
+    # 판단은 사람이 한다.
+    warnings = check_grounding(response.answer, context, question)
+    if warnings:
+        logger.warning(
+            "Chat answer grounding warnings case_id=%s scope=%s warnings=%s",
+            case_id,
+            ",".join(context["context_scope"]),
+            " | ".join(warnings),
+        )
+
     return _persist_chat_turn(
         engine,
         owner_user_id=owner_user_id,
@@ -224,6 +187,26 @@ async def answer_chat(
         question=question,
         answer=response,
         model_name=settings.chat_model_profile,
+    )
+
+
+def _to_message(row) -> ChatMessageResponse:
+    """DB 행 하나 → 말풍선 하나. POST 와 GET 이 같은 함수를 쓴다.
+
+    두 곳에서 따로 만들면 한쪽에만 필드를 더하는 일이 생긴다. 실제로 근거가
+    POST 응답에만 실려 새로고침하면 사라지던 것이 그 경우였다.
+    """
+    references = row["references"] if "references" in row.keys() else None
+    return ChatMessageResponse(
+        id=row["id"],
+        role=row["role"],
+        content=row["content"],
+        references=[
+            ChatReference.model_validate(item) for item in (references or [])
+        ],
+        suggested_revision=(
+            row["suggested_revision"] if "suggested_revision" in row.keys() else None
+        ),
     )
 
 
@@ -255,49 +238,11 @@ def _load_ready_report(
         raise ChatNotReadyError("Stored report is not a valid chat context") from error
 
 
-def _prompt_messages(
-    settings: Settings,
-    report: ReportJsonV01,
-    history: ChatMessagesResponse,
-    question: str,
-) -> list[Message]:
-    prior_messages = history.messages[-CHAT_CONTEXT_MESSAGE_LIMIT:]
-    payload = {
-        "question": question,
-        "conversation": [
-            {"role": item.role, "content": item.content}
-            for item in prior_messages
-        ],
-        "report_json": report.model_dump(mode="json"),
-    }
+def _prompt_messages(context: dict) -> list[Message]:
     return [
-        Message(
-            role="developer",
-            content=load_chat_prompt(settings.chat_prompt_path),
-        ),
-        Message(
-            role="user",
-            content=json.dumps(payload, ensure_ascii=False),
-        ),
+        Message(role="developer", content=SYSTEM_PROMPT),
+        Message(role="user", content=build_user_prompt(context)),
     ]
-
-
-def _report_evidence_refs(report: ReportJsonV01) -> set[str]:
-    values: set[str] = set()
-
-    def visit(value: object) -> None:
-        if isinstance(value, dict):
-            reference = value.get("evidence_ref")
-            if isinstance(reference, str):
-                values.add(reference)
-            for nested in value.values():
-                visit(nested)
-        elif isinstance(value, list):
-            for nested in value:
-                visit(nested)
-
-    visit(report.model_dump(mode="python"))
-    return values
 
 
 def _persist_chat_turn(
@@ -360,11 +305,11 @@ def _persist_chat_turn(
             text(
                 """
                 INSERT INTO sims.chat_message (
-                    chat_session_id, sequence_no, role, content, evidence_refs
+                    chat_session_id, sequence_no, role, content
                 ) VALUES (
-                    :session_id, :sequence_no, 'USER', :content, '[]'::jsonb
+                    :session_id, :sequence_no, 'USER', :content
                 )
-                RETURNING id, role, content
+                RETURNING id, role, content, "references", suggested_revision
                 """
             ),
             {
@@ -378,12 +323,13 @@ def _persist_chat_turn(
                 """
                 INSERT INTO sims.chat_message (
                     chat_session_id, sequence_no, role, content,
-                    model_name, evidence_refs
+                    model_name, model_version, "references", suggested_revision
                 ) VALUES (
                     :session_id, :sequence_no, 'ASSISTANT', :content,
-                    :model_name, CAST(:evidence_refs AS jsonb)
+                    :model_name, :prompt_version,
+                    CAST(:references AS jsonb), :suggested_revision
                 )
-                RETURNING id, role, content
+                RETURNING id, role, content, "references", suggested_revision
                 """
             ),
             {
@@ -391,11 +337,18 @@ def _persist_chat_turn(
                 "sequence_no": next_sequence + 1,
                 "content": answer.answer,
                 "model_name": model_name,
-                "evidence_refs": json.dumps(answer.evidence_refs),
+                # 어느 프롬프트에서 나온 답인지 남긴다. 프롬프트를 고친 뒤
+                # 답변 품질이 달라졌을 때 되짚을 수 있는 유일한 단서다.
+                "prompt_version": PROMPT_VERSION,
+                "references": json.dumps(
+                    [reference.model_dump() for reference in answer.references],
+                    ensure_ascii=False,
+                ),
+                "suggested_revision": answer.suggested_revision,
             },
         ).mappings().one()
 
     return ChatTurnResponse(
-        user_message=ChatMessageResponse.model_validate(user_row),
-        assistant_message=ChatMessageResponse.model_validate(assistant_row),
+        user_message=_to_message(user_row),
+        assistant_message=_to_message(assistant_row),
     )

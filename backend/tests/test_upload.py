@@ -314,9 +314,22 @@ def test_authenticated_upload_creates_owned_rows_and_unique_objects(
     ]
 
     assert [response.status_code for response in responses] == [200, 200]
-    assert all(set(response.json()) == {"case_id"} for response in responses)
-    case_ids = [response.json()["case_id"] for response in responses]
-    assert len(set(case_ids)) == 2
+    assert all(
+        set(response.json()) == {"analysis_case_id"} for response in responses
+    )
+    case_uuids = [response.json()["analysis_case_id"] for response in responses]
+    assert len(set(case_uuids)) == 2
+    with engine.connect() as connection:
+        case_ids = [
+            connection.scalar(
+                text(
+                    "SELECT id FROM sims.inspection_case "
+                    "WHERE analysis_case_id = CAST(:value AS uuid)"
+                ),
+                {"value": value},
+            )
+            for value in case_uuids
+        ]
 
     with engine.connect() as connection:
         rows = connection.execute(

@@ -62,10 +62,19 @@ def test_public_openapi_matches_frontend_response_contract() -> None:
     assert set(
         schema["components"]["schemas"]["ReportCaseDisplay"]["properties"]
     ) == {"title", "completed_at"}
+    # 근거와 수정 제안은 말풍선에 붙는다. POST 응답과 GET 이력이 같은 모양이라
+    # 새로고침해도 화면이 달라지지 않는다.
     assert set(schema["components"]["schemas"]["ChatMessageResponse"]["properties"]) == {
         "id",
         "role",
         "content",
+        "references",
+        "suggested_revision",
+    }
+    assert set(schema["components"]["schemas"]["ChatReference"]["properties"]) == {
+        "agent",
+        "item",
+        "evidence_id",
     }
     assert set(schema["components"]["schemas"]["CplDisplay"]["properties"]) == {
         "confirmed_count",
