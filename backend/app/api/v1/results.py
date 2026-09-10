@@ -87,8 +87,13 @@ class AnalysisSessionReadModel(_ReadModel):
     expires_at: datetime | None
 
 
-# 저장된 ML payload 는 공개 표면보다 넓다. status·reason_code·predicted_amount_won·
-# cause_axes 는 DB 와 챗봇 컨텍스트에 그대로 남고 프론트 응답에서만 뺀다.
+# 저장된 ML payload 는 공개 표면보다 넓다. 프론트에 내리는 것은 message 하나뿐이고
+# 나머지는 DB 와 챗봇 컨텍스트에 그대로 남는다.
+#
+# message 만 남기는 이유. 이 문구는 모델이 준 자유 문장이 아니라 _validate_reference
+# 가 검증한 구조값으로 서버가 조립한 문장이다(worker/ml_reference.py). 그래서
+# support_type·anomaly_level 은 같은 출처를 두 번 내리는 중복이고, message 는
+# status 가 무엇이든 항상 채워진다 — OK 면 조립한 문장, 아니면 reason_code 문구다.
 #
 # 지우지 않고 exclude 로 빼는 이유가 있다. extra="forbid" 가 confidence·percentile
 # 같은 내부 점수가 새는 것을 막는 가드인데, 필드를 선언에서 지우면 저장 payload 의
@@ -96,7 +101,7 @@ class AnalysisSessionReadModel(_ReadModel):
 # 받게 하고, 직렬화에서만 제외한다.
 class MlModel1ReadModel(_ReadModel):
     status: Literal["OK", "UNAVAILABLE", "FAILED"] = Field(exclude=True)
-    support_type: str | None
+    support_type: str | None = Field(exclude=True)
     message: str | None
     reason_code: str | None = Field(exclude=True)
 
@@ -110,7 +115,7 @@ class MlModel2ReadModel(_ReadModel):
 
 class MlModel3ReadModel(_ReadModel):
     status: Literal["OK", "UNAVAILABLE", "FAILED"] = Field(exclude=True)
-    anomaly_level: str | None
+    anomaly_level: str | None = Field(exclude=True)
     cause_axes: list[str] = Field(default_factory=list, exclude=True)
     message: str | None
     reason_code: str | None = Field(exclude=True)

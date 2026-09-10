@@ -159,12 +159,13 @@ def test_result_routes_return_bare_contract_payloads_and_never_accept_owner_ids(
             assert case.status_code == 200
             assert case.json()["case"]["analysis_case_id"] == CASE_ID
             ml = case.json()["ml"]
-            assert ml["model_1"]["support_type"] == "판로"
-            # 저장 payload 보다 좁은 공개 표면. status·reason_code 와 model_2 의
-            # predicted_amount_won, model_3 의 cause_axes 는 프론트에 안 내린다.
-            assert set(ml["model_1"]) == {"support_type", "message"}
+            # 공개 표면은 message 하나다. support_type·anomaly_level 은 서버가
+            # 그 문장을 조립한 출처라 같이 내리면 중복이고, status·reason_code·
+            # predicted_amount_won·cause_axes 는 저장 payload 에만 남는다.
+            assert set(ml["model_1"]) == {"message"}
             assert set(ml["model_2"]) == {"message"}
-            assert set(ml["model_3"]) == {"anomaly_level", "message"}
+            assert set(ml["model_3"]) == {"message"}
+            assert ml["model_1"]["message"] == "지원유형 참고 분류"
             assert "data" not in case.json()
 
             candidate = await client.get(
