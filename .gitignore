@@ -108,3 +108,14 @@ output/
 # 실행 로그·탐색용 중간 산출물
 /tmp/
 /backend/tmp/
+
+# pytest 캐시·임시 산출물 (디스크에는 남기고 Git에만 안 올림)
+**/.pytest_cache/
+**/.pytest-tmp-*/
+**/.pytest_tmp_*/
+
+# .env 백업본 (실제 비밀값 들어있음)
+.env.bak*
+
+# codex 병합 작업용 스냅샷 사본
+/.codex-merge-develop/
