@@ -1,5 +1,5 @@
 {
-  "_description": "현재 FastAPI 공개 API의 성공 응답 예시다. access/refresh token, Supabase key, Storage signed URL은 이 계약에 포함하지 않는다. UUID·일시·문구는 예시이며 필드명/배열/nullability가 계약이다. 결과의 고정 필드는 Swagger named schema와 이 파일이 함께 계약이며, CPL/FIT detail과 후보 axes.*만 확장 가능한 JSON object다. analysis_result.session.can_chat은 저장된 session 상태일 뿐 현재 채팅 API 제공 여부를 뜻하지 않는다.",
+  "_description": "현재 FastAPI 공개 API의 성공 응답 예시다. access/refresh token, Supabase key, Storage signed URL은 이 계약에 포함하지 않는다. UUID·일시·문구는 예시이며 필드명/배열/nullability가 계약이다. 결과의 고정 필드는 Swagger named schema와 이 파일이 함께 계약이며, CPL/FIT detail과 후보 axes.*만 확장 가능한 JSON object다. analysis_result.ml은 모델 1·2·3의 참고정보를 각각 message 한 필드로만 제공한다. 이 문구는 모델의 자유 문장이 아니라 검증된 구조값으로 서버가 조립한 것이며 status가 무엇이든 항상 채워진다. support_type·anomaly_level·predicted_amount_won·cause_axes와 status·reason_code는 저장 payload와 챗봇 컨텍스트에는 남아 있으나 공개 표면이 아니고, 확률·신뢰도·점수·백분위와 internal 값도 공개하지 않는다. analysis_result.session.can_chat이 true이면 비동기 메시지 API를 사용할 수 있다.",
   "auth_sign_in": {
     "user": {
       "id": "11111111-1111-1111-1111-111111111111",
@@ -72,6 +72,17 @@
         }
       ]
     },
+    "ml": {
+      "model_1": {
+        "message": "유사 사업의 지원유형 참고 분류는 '판로' 계열이다."
+      },
+      "model_2": {
+        "message": "비교군 기준 참고 예측 지원액은 853만원 수준이다."
+      },
+      "model_3": {
+        "message": "비교군 대비 과거 사업 패턴과 차이가 큼 — 관련 축: 기업(과제)당 지원한도."
+      }
+    },
     "report": {
       "status": "generating",
       "can_download": false,
@@ -93,6 +104,50 @@
         "excerpt": "요청유형: 신설"
       }
     ]
+  },
+  "conversation_turn_accepted": {
+    "user_message_id": "88888888-8888-8888-8888-888888888888",
+    "assistant_message_id": "99999999-9999-9999-9999-999999999999",
+    "analysis_session_id": "22222222-2222-2222-2222-222222222222",
+    "status": "generating",
+    "retry_count": 0
+  },
+  "conversation_messages": [
+    {
+      "message_id": "88888888-8888-8888-8888-888888888888",
+      "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+      "role": "user",
+      "sequence_no": 1,
+      "content": "지원규모가 높은 편이야?",
+      "status": "completed",
+      "reply_to_message_id": null,
+      "retry_count": 0,
+      "error_code": null,
+      "error_message": null,
+      "created_at": "2026-09-10T03:31:00Z",
+      "updated_at": "2026-09-10T03:31:00Z"
+    },
+    {
+      "message_id": "99999999-9999-9999-9999-999999999999",
+      "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+      "role": "assistant",
+      "sequence_no": 2,
+      "content": null,
+      "status": "generating",
+      "reply_to_message_id": "88888888-8888-8888-8888-888888888888",
+      "retry_count": 0,
+      "error_code": null,
+      "error_message": null,
+      "created_at": "2026-09-10T03:31:00Z",
+      "updated_at": "2026-09-10T03:31:00Z"
+    }
+  ],
+  "conversation_retry_accepted": {
+    "user_message_id": "88888888-8888-8888-8888-888888888888",
+    "assistant_message_id": "99999999-9999-9999-9999-999999999999",
+    "analysis_session_id": "22222222-2222-2222-2222-222222222222",
+    "status": "generating",
+    "retry_count": 1
   },
   "sim_candidate_detail": {
     "sim_candidate_id": "55555555-5555-5555-5555-555555555555",

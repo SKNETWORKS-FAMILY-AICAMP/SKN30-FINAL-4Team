@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEFAULT_TARGET="$REPOSITORY_ROOT/.runtime/supabase-dev"
 PINNED_SUPABASE_REF="self-hosted/v0.8.0"
-PINNED_SUPABASE_COMMIT="e1af732589cd468edb49500ebc04e4367d4c56ad"
+PINNED_SUPABASE_COMMIT="241bb11c0627f2981746d37033f57dbfa81d29b0"
 OFFICIAL_REPOSITORY_URL="https://github.com/supabase/supabase.git"
 
 usage() {

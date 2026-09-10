@@ -22,8 +22,8 @@ worker/execution_log.py
 worker/jobs.py
 worker/kb_ingest.py
 worker/kb_store.py
-worker/ml_reference.py
+# Active ML boundary modules are retained in the worker image.  Their complete
+# source/artifact root is mounted separately through PREREVIEW_ML_ROOT.
 worker/persistence.py
 worker/queue.py
 worker/report_pdf.py
-worker/adapters/ml_subprocess.py
