@@ -1,4 +1,4 @@
-"""One-shot child entry point for the team's Model 2 and Model 3 serving code.
+"""One-shot child entry point for the team's Model 1, 2, and 3 serving code.
 
 The serving modules use bare imports and mutate ``sys.path``.  Keeping them in
 this process boundary lets the backend remain free of the model runtime while
@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import math
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -51,6 +52,9 @@ QUANTITY_CONTEXT = {
     "support_period": "지원기간",
     "total_budget": "총사업비",
 }
+
+MODEL1_SERVING_DIR_ENV = "ML_MODEL1_SERVING_DIR"
+MODEL1_FIELDS = ("title", "purpose", "content", "target_text")
 
 
 def _ensure_layout() -> None:
@@ -140,6 +144,74 @@ def _adapt_for_model3(payload: Mapping[str, Any]) -> dict[str, Any]:
     return adapter.adapt(text, base=_base(payload))
 
 
+def _model1_entry() -> Path:
+    """Resolve the external Model 1 serving wrapper from an injected path."""
+
+    raw_root = os.environ.get(MODEL1_SERVING_DIR_ENV)
+    if not raw_root or not raw_root.strip():
+        raise RuntimeError(f"{MODEL1_SERVING_DIR_ENV} is not set")
+    root = Path(raw_root).expanduser()
+    candidates = [root / "model1" / "inference.py"]
+    if root.name.lower() == "model1":
+        candidates.append(root / "inference.py")
+    for entry in candidates:
+        if entry.is_file():
+            return entry
+    raise FileNotFoundError(
+        f"Model 1 inference.py was not found under {root}"
+    )
+
+
+def _prepare_model1_import_path() -> Path:
+    """Expose the repository's unchanged ``dl07_m1_apply`` module to serving."""
+
+    pipeline_dir = ML_ROOT / "pipelines" / "model1"
+    module_path = pipeline_dir / "dl07_m1_apply.py"
+    if not module_path.is_file():
+        raise FileNotFoundError(
+            f"Model 1 preprocessing module was not found: {module_path}"
+        )
+    path = str(pipeline_dir)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    # The external wrapper also mutates sys.path.  Preload the exact file so a
+    # same-named module elsewhere cannot win the bare import in inference.py.
+    if "dl07_m1_apply" not in sys.modules:
+        _load_module("dl07_m1_apply", module_path)
+    return module_path
+
+
+def _model1_text(payload: Mapping[str, Any]) -> str:
+    """Join the four training fields in the frozen training order."""
+
+    parts: list[str] = []
+    for field in MODEL1_FIELDS:
+        value = payload.get(field, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            raise ValueError(f"model1 {field} must be a string")
+        value = value.strip()
+        if value:
+            parts.append(value)
+    if not parts:
+        raise ValueError("model1 input fields are all empty")
+    return "\n".join(parts)
+
+
+def _run_model1(payload: Mapping[str, Any]) -> dict[str, Any]:
+    entry = _model1_entry()
+    _prepare_model1_import_path()
+    model = _load_module("team_model1_inference", entry)
+    result = model.predict([_model1_text(payload)], already_cleaned=True)
+    if not isinstance(result, list) or len(result) != 1:
+        raise ValueError("model1 predict result must contain one row")
+    row = result[0]
+    if not isinstance(row, Mapping):
+        raise ValueError("model1 predict row must be an object")
+    return dict(row)
+
+
 def _run_model2(payload: Mapping[str, Any]) -> Any:
     entry = ML_ROOT / "serving" / "model2" / "predict.py"
     model = _load_module("team_model2_predict", entry)
@@ -189,7 +261,9 @@ def _jsonable(value: Any) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="team ML one-shot child")
-    parser.add_argument("--model", choices=("model2", "model3"), required=True)
+    parser.add_argument(
+        "--model", choices=("model1", "model2", "model3"), required=True
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -203,8 +277,12 @@ def main(argv: list[str] | None = None) -> int:
         # ``sys.path`` changes made by the serving package.
         with contextlib.redirect_stdout(io.StringIO()):
             _ensure_layout()
-            result = (_run_model2(request) if args.model == "model2"
-                      else _run_model3(request))
+            if args.model == "model1":
+                result = _run_model1(request)
+            elif args.model == "model2":
+                result = _run_model2(request)
+            else:
+                result = _run_model3(request)
         response = _jsonable(result)
         sys.stdout.write(json.dumps(
             response, ensure_ascii=False, allow_nan=False, separators=(",", ":")

@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # 짧아도 된다. URL 자체가 자격증명이라 길면 그만큼 위험하다.
     report_download_ttl_seconds: int = Field(default=60, ge=10, le=600)
     embedding_batch_size: int = Field(default=100, ge=1, le=2048)
+    ml_model1_serving_dir: Path | None = None
     cpl_model_profile: str = Field(default="gpt-4o-mini", min_length=1)
     cpl_prompt_version: str = Field(default="cpl-semantic-v0.9", min_length=1)
     cpl_ruleset_version: str = Field(default="cpl-alpha-v0.3", min_length=1)
@@ -204,6 +205,7 @@ class Settings(BaseSettings):
         "sim_scoring_path",
         "sim_prompt_path",
         "chat_prompt_path",
+        "ml_model1_serving_dir",
         mode="before",
     )
     @classmethod

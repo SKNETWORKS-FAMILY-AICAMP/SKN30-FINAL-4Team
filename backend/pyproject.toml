@@ -40,6 +40,10 @@ ml-classical = [
     "scipy==1.17.1",
     "xgboost==3.4.1",
 ]
+ml-model1 = [
+    "torch==2.13.0",
+    "transformers==5.13.0",
+]
 
 [tool.uv]
 package = false

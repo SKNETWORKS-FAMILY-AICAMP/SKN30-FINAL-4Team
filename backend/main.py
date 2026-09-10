@@ -34,6 +34,16 @@ from app.services.password_reset import ResetRateLimiter
 from app.services.analysis_pipeline import run_analysis_pipeline
 from app.services.document_parsing import fail_interrupted_analyses
 from worker.analysis import analyse_case
+from worker.adapters.ml_subprocess import (
+    MODEL1_SERVING_DIR_ENV,
+    Model1SubprocessMlModel,
+    Model2SubprocessMlModel,
+    Model3SubprocessMlModel,
+    model1_command,
+    model2_command,
+    model3_command,
+)
+from worker.contracts.ml_result import MlModelId
 from worker.dispatcher import QueueJobDispatcher
 
 
@@ -145,6 +155,27 @@ def create_app(
                 EmbeddingClient | None,
                 embedding_client,
             )
+        active_ml_models = {
+            MlModelId.MODEL_1_SUPPORT_TYPE: (
+                Model1SubprocessMlModel(
+                    model1_command(),
+                    environment={
+                        MODEL1_SERVING_DIR_ENV: str(
+                            runtime_settings.ml_model1_serving_dir
+                        )
+                    },
+                    artifact_version="model1-klue-bert-v1.0",
+                )
+                if runtime_settings.ml_model1_serving_dir is not None
+                else None
+            ),
+            MlModelId.MODEL_2_AMOUNT: Model2SubprocessMlModel(
+                model2_command(), artifact_version="model2-m82-p3"
+            ),
+            MlModelId.MODEL_3_ANOMALY: Model3SubprocessMlModel(
+                model3_command(), artifact_version="model3-team-frozen"
+            ),
+        }
         async def legacy_run_analysis(case_id: int) -> None:
             await run_analysis_pipeline(
                 engine,
@@ -167,6 +198,7 @@ def create_app(
                 cpl_model_profile=runtime_settings.cpl_model_profile,
                 fit_model_profile=runtime_settings.fit_model_profile,
                 sim_model_profile=runtime_settings.sim_model_profile,
+                ml_models=active_ml_models,
             )
 
         # 큐는 DB 행이다 (workspace.analysis_run). 여기 넘기는 콜러블은 큐가

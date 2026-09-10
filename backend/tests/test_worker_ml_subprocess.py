@@ -26,12 +26,16 @@ from worker.ml_reference import (
     run_ml_reference,
 )
 from worker.adapters.ml_subprocess import (
+    MODEL1_SERVING_DIR_ENV,
+    Model1SubprocessMlModel,
     Model2SubprocessMlModel,
     Model3SubprocessMlModel,
     SubprocessJsonRunner,
     SubprocessModelError,
+    model1_command,
     model2_command,
     model3_command,
+    normalize_model1_output,
     normalize_model2_output,
     normalize_model3_output,
 )
@@ -95,6 +99,107 @@ def test_model2_child_response_is_unwrapped_to_l1_shape(tmp_path):
     }
     assert model.model_id is MlModelId.MODEL_2_AMOUNT
     assert model.artifact_version == "m82-test"
+
+
+def test_model1_child_response_is_normalized_to_l1_shape(tmp_path):
+    command = _child(
+        tmp_path,
+        "print(json.dumps({'support_type_pred': '판로', 'confidence': 0.91, "
+        "'status': '신뢰'}, ensure_ascii=False))",
+    )
+    model = Model1SubprocessMlModel(command, artifact_version="m1-test")
+
+    output = model.predict(
+        {
+            "title": "제목",
+            "purpose": "목적",
+            "content": "내용",
+            "target_text": "대상",
+        }
+    )
+
+    assert output == {
+        "support_type_pred": "판로",
+        "confidence": 0.91,
+        "status": "신뢰",
+    }
+    assert model.model_id is MlModelId.MODEL_1_SUPPORT_TYPE
+    assert model.artifact_version == "m1-test"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {},
+        {"support_type_pred": "판로", "confidence": 0.9},
+        {"support_type_pred": "판로", "confidence": 2, "status": "신뢰"},
+        {"support_type_pred": "판로", "confidence": 0.9, "status": "unknown"},
+        {"support_type_pred": "", "confidence": 0.9, "status": "신뢰"},
+    ],
+)
+def test_model1_output_contract_is_rejected_when_malformed(raw):
+    with pytest.raises(SubprocessModelError):
+        normalize_model1_output(raw)
+
+
+def test_model1_child_joins_training_fields_and_uses_cleaned_contract(
+    monkeypatch, tmp_path
+):
+    calls = {}
+    entry = tmp_path / "inference.py"
+    entry.write_text("# fake serving entry\n", encoding="utf-8")
+
+    class TeamModel1:
+        @staticmethod
+        def predict(texts, *, already_cleaned):
+            calls.update(texts=texts, already_cleaned=already_cleaned)
+            return [{
+                "support_type_pred": "사업화",
+                "confidence": 0.8,
+                "status": "신뢰",
+            }]
+
+    monkeypatch.setattr(ml_child, "_prepare_model1_import_path", lambda: entry)
+    monkeypatch.setattr(ml_child, "_model1_entry", lambda: entry)
+    monkeypatch.setattr(
+        ml_child,
+        "_load_module",
+        lambda name, path: TeamModel1,
+    )
+
+    payload = {
+        "title": "제목",
+        "purpose": "목적",
+        "content": "내용",
+        "target_text": "대상",
+    }
+
+    assert ml_child._run_model1(payload) == {
+        "support_type_pred": "사업화",
+        "confidence": 0.8,
+        "status": "신뢰",
+    }
+    assert calls == {
+        "texts": ["제목\n목적\n내용\n대상"],
+        "already_cleaned": True,
+    }
+
+
+def test_model1_serving_directory_is_environment_injected(monkeypatch, tmp_path):
+    serving = tmp_path / "serving"
+    (serving / "model1").mkdir(parents=True)
+    entry = serving / "model1" / "inference.py"
+    entry.write_text("# fake serving entry\n", encoding="utf-8")
+    monkeypatch.setenv(MODEL1_SERVING_DIR_ENV, str(serving))
+
+    assert ml_child._model1_entry() == entry
+
+
+def test_model1_child_does_not_default_to_a_user_path(monkeypatch):
+    monkeypatch.delenv(MODEL1_SERVING_DIR_ENV, raising=False)
+
+    with pytest.raises(RuntimeError, match=MODEL1_SERVING_DIR_ENV):
+        ml_child._model1_entry()
 
 
 @pytest.mark.parametrize(
@@ -419,10 +524,12 @@ def test_model3_l1_quantities_are_reassembled_as_team_adapter_evidence(monkeypat
 
 
 def test_model_commands_are_direct_argv_without_shell_interpolation():
+    model1 = model1_command(python_executable="python312")
     model2 = model2_command(python_executable="python312")
     model3 = model3_command(python_executable="python312")
 
-    assert model2[0] == model3[0] == "python312"
+    assert model1[0] == model2[0] == model3[0] == "python312"
+    assert model1[-2:] == ("--model", "model1")
     assert model2[-2:] == ("--model", "model2")
     assert model3[-2:] == ("--model", "model3")
     assert model2[1].endswith("backend\\worker\\adapters\\ml_child.py")

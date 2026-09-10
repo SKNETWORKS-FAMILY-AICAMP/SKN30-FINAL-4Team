@@ -19,6 +19,7 @@ from app.ports.llm_client import LLMUnavailableError
 from app.schemas.sim import SimAxis, SimReviewGrade, SimStatus
 from app.infrastructure.local_object_storage import LocalObjectStorage
 from worker import analysis
+from worker.contracts.ml_result import MlModelId, MlReferenceResult
 from worker.contracts.profile_snapshot import CommonIrArtifact, ProfileSnapshot
 from worker.contracts.sim_result import (
     InternalRanking,
@@ -163,6 +164,39 @@ def test_run_analysis_keeps_cpl_fit_when_embedding_is_disabled():
         diagnostic.reason_code == "RETRIEVAL_NOT_READY"
         for diagnostic in result.sim.diagnostics
     )
+
+
+def test_run_analysis_injects_ml_models_and_keeps_the_result(monkeypatch):
+    seen: dict[str, Any] = {}
+    expected = MlReferenceResult(results=[])
+    models = {MlModelId.MODEL_1_SUPPORT_TYPE: None}
+
+    def fake_run_ml_reference(profile, injected_models, **kwargs):
+        seen.update(
+            profile=profile,
+            models=injected_models,
+            cpl_result=kwargs["cpl_result"],
+            common_ir=kwargs["common_ir"],
+            title=kwargs["title"],
+        )
+        return expected
+
+    monkeypatch.setattr(analysis, "run_ml_reference", fake_run_ml_reference)
+
+    result = analysis.run_analysis(
+        _request_profile(),
+        None,
+        cast(Engine, object()),
+        None,
+        embedding_profile_id=None,
+        ml_models=models,
+    )
+
+    assert result.ml is expected
+    assert seen["profile"] == _request_profile()
+    assert seen["models"] is models
+    assert seen["cpl_result"] is result.cpl
+    assert seen["common_ir"] is None
 
 
 def test_run_analysis_keeps_candidate_failure_local(monkeypatch):

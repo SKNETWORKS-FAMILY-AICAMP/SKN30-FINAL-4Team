@@ -50,6 +50,7 @@ from app.schemas.sim import SimAxis
 
 from .contracts.cpl_result import CplEvidence, CplResult, cpl_axis_code
 from .contracts.fit_result import FitResult, fit_axis_code
+from .contracts.ml_result import MlReferenceResult
 from .contracts.sim_result import (
     SimAxisResult,
     SimCommonProfile,
@@ -81,12 +82,14 @@ class AnalysisResults:
     있어서, 원문·Common IR 블록은 비교에 쓰인 공통 프로파일에만 있다. 키는
     ``source_profile_id`` 이고 요청서·후보 프로파일을 함께 담는다.
 
-    ``MlReferenceResult`` 자리는 만들지 않았다. 이번 범위가 아니다.
+    ``ml``은 CPL 결과를 입력으로 삼은 참고정보다. 현재 DB DDL에는
+    전용 저장 자리가 없으므로 결과 조립과 실행 진단에만 보존한다.
     """
 
     cpl: CplResult | None = None
     fit: FitResult | None = None
     sim: SimComparisonResult | None = None
+    ml: MlReferenceResult | None = None
     sim_profiles: Mapping[str, SimCommonProfile] = field(default_factory=dict)
     # Result 화면 복원을 위한 입력 스냅샷. 값이 구조화 프로필에 없으면
     # None으로 남기며 파일명·heading에서 추측하지 않는다.

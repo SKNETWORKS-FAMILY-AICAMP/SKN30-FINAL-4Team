@@ -65,6 +65,7 @@ from .sim import SIM_COMPARISON_PROMPT_VERSION, SIM_SCORING_VERSION
 from .sim_inputs import SIM_RULESET_VERSION, build_common_profile
 from .cpl import build_cpl_result
 from .fit import analyze_fit
+from .ml_reference import MlModel, MlModelId, run_ml_reference
 
 __all__ = ["analyse_case", "run_analysis"]
 
@@ -310,6 +311,7 @@ def run_analysis(
     cpl_model_profile: str | None = None,
     fit_model_profile: str | None = None,
     sim_model_profile: str | None = None,
+    ml_models: Mapping[MlModelId, MlModel | None] | None = None,
 ) -> AnalysisResults:
     """한 검사의 분석 결과를 조립한다.
 
@@ -338,6 +340,13 @@ def run_analysis(
     # 이 단계는 결정적이고, 입력 프로파일이 이미 검증됐다는 전제에서 예외를
     # 만들지 않는다.
     cpl = build_cpl_result(profile)
+    ml = run_ml_reference(
+        profile,
+        ml_models or {},
+        cpl_result=cpl,
+        common_ir=common_ir if isinstance(common_ir, CommonIrArtifact) else None,
+        title=_request_program_name(profile),
+    )
 
     try:
         fit = analyze_fit(
@@ -381,7 +390,7 @@ def run_analysis(
             model_profile=sim_model_profile,
             diagnostics=diagnostics,
         )
-        return AnalysisResults(cpl=cpl, fit=fit, sim=sim)
+        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, ml=ml)
 
     # persistence.py는 요청서 SIM 근거를 request_profile_id로 찾는다. 실제
     # id가 없는 입력도 빈 키로 보존해 ``None``을 다른 후보 근거로 빌리지 않는다.
@@ -400,7 +409,7 @@ def run_analysis(
             model_profile=sim_model_profile,
             diagnostics=[*request_common.diagnostics, *diagnostics],
         )
-        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, sim_profiles=sim_profiles)
+        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, ml=ml, sim_profiles=sim_profiles)
 
     query_text = profile_search_text(profile)
     if not query_text.strip():
@@ -416,7 +425,7 @@ def run_analysis(
             model_profile=sim_model_profile,
             diagnostics=[*request_common.diagnostics, *diagnostics],
         )
-        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, sim_profiles=sim_profiles)
+        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, ml=ml, sim_profiles=sim_profiles)
 
     try:
         candidates = search_candidates(
@@ -436,7 +445,7 @@ def run_analysis(
             model_profile=sim_model_profile,
             diagnostics=[*request_common.diagnostics, *diagnostics],
         )
-        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, sim_profiles=sim_profiles)
+        return AnalysisResults(cpl=cpl, fit=fit, sim=sim, ml=ml, sim_profiles=sim_profiles)
 
     try:
         comparisons = compare_kb_candidates(
@@ -535,6 +544,7 @@ def run_analysis(
         cpl=cpl,
         fit=fit,
         sim=sim,
+        ml=ml,
         sim_profiles=sim_profiles,
     )
 
@@ -591,6 +601,7 @@ def analyse_case(
     cpl_model_profile: str | None = None,
     fit_model_profile: str | None = None,
     sim_model_profile: str | None = None,
+    ml_models: Mapping[MlModelId, MlModel | None] | None = None,
 ) -> AnalysisResults:
     """업로드된 요청서 한 건을 원본 → Common IR → 프로파일 → 결과로 잇는다.
 
@@ -709,6 +720,7 @@ def analyse_case(
         cpl_model_profile=cpl_model_profile,
         fit_model_profile=fit_model_profile,
         sim_model_profile=sim_model_profile,
+        ml_models=ml_models,
         top_k=top_k,
         max_repairs=max_repairs,
     )
