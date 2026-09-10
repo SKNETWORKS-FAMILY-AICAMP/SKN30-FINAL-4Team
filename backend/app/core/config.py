@@ -1,7 +1,14 @@
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pydantic import AnyHttpUrl, Field, PostgresDsn, SecretStr, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    Field,
+    PostgresDsn,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +55,9 @@ class Settings(BaseSettings):
     bizinfo_timeout_seconds: int = Field(default=30, ge=1)
     openai_api_key: SecretStr | None = None
     openai_base_url: AnyHttpUrl = "https://api.openai.com/v1"
+    # 임베딩을 별도 자체 운영 엔드포인트로 보낼 수 있다. 기존 설정과의
+    # 호환을 위해 비워 두면 LLM/OpenAI 기본 주소를 그대로 사용한다.
+    embedding_base_url: AnyHttpUrl | None = None
     embedding_model_name: str = Field(
         default="text-embedding-3-small", min_length=1
     )
@@ -104,6 +114,17 @@ class Settings(BaseSettings):
     @classmethod
     def empty_external_key_means_disabled(cls, value: object) -> object:
         return None if value == "" else value
+
+    @field_validator("embedding_base_url", mode="before")
+    @classmethod
+    def empty_embedding_url_means_fallback(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @model_validator(mode="after")
+    def default_embedding_base_url(self) -> "Settings":
+        if self.embedding_base_url is None:
+            self.embedding_base_url = self.openai_base_url
+        return self
 
     @field_validator("password_reset_url")
     @classmethod

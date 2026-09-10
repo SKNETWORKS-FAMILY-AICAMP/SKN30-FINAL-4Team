@@ -31,7 +31,7 @@ async def main() -> None:
             engine,
             OpenAIEmbeddingClient(
                 api_key=settings.openai_api_key.get_secret_value(),
-                base_url=str(settings.openai_base_url),
+                base_url=str(settings.embedding_base_url),
                 model_name=settings.embedding_model_name,
                 timeout_seconds=settings.embedding_timeout_seconds,
             ),

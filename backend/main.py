@@ -136,7 +136,7 @@ def create_app(
             if runtime_settings.openai_api_key is not None:
                 active_embedding_client = OpenAIEmbeddingClient(
                     api_key=runtime_settings.openai_api_key.get_secret_value(),
-                    base_url=str(runtime_settings.openai_base_url),
+                    base_url=str(runtime_settings.embedding_base_url),
                     model_name=runtime_settings.embedding_model_name,
                     timeout_seconds=runtime_settings.embedding_timeout_seconds,
                 )
