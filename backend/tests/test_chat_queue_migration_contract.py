@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-MIGRATION = Path(__file__).parents[1] / "supabase" / "migrations" / "26_chat_worker_queue.sql"
+MIGRATION = Path(__file__).parents[1] / "supabase" / "migrations" / "27_chat_worker_queue.sql"
 
 
 def test_chat_queue_is_private_and_has_one_dispatch_row_per_assistant() -> None:

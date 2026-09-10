@@ -5,7 +5,7 @@ MIGRATION = (
     Path(__file__).resolve().parents[1]
     / "supabase"
     / "migrations"
-    / "25_ml_result_contract.sql"
+    / "26_ml_result_contract.sql"
 )
 
 
