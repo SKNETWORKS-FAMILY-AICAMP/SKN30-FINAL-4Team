@@ -91,6 +91,7 @@ FastAPI base URL과 허용된 프론트 origin만 받으면 된다.
    `credentials: "include"`를 설정한다.
 4. 로그인은 `POST /auth/sign-in`, 업로드는 `POST /analysis-runs`, 상태는
    `GET /analysis-runs/{id}` polling, 성공 결과는 `GET /analysis-cases/{id}` 순서로 연결한다.
+   업로드마다 프론트가 UUID v4 `Idempotency-Key`를 만들고 동일 요청 재시도에는 같은 값을 쓴다.
 
 Supabase URL/key, service-role key, PostgreSQL URL, OpenAI key를 프론트에 전달하지
 않는다. 현재 frontend에는 API base 환경변수나 실제 API service가 아직 없으므로, 이

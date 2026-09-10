@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Security, UploadFile, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Security, UploadFile, status
+from pydantic import BaseModel, UUID4
 
 from app.models.pipeline import PipelineKind
 from app.pipelines.formats import FormatError, validate_format
@@ -148,6 +148,13 @@ async def _bounded_content(request: Request, upload: UploadFile, filename: str) 
 async def create_analysis_run(
     request: Request,
     file: Annotated[UploadFile, File(...)],
+    idempotency_key: Annotated[
+        UUID4,
+        Header(
+            alias="Idempotency-Key",
+            description="재시도에서도 동일하게 보내는 클라이언트 생성 UUID",
+        ),
+    ],
     principal: PrincipalDep,
     _: TrustedOriginDep,
     service: AnalysisRunServiceDep,
@@ -156,6 +163,7 @@ async def create_analysis_run(
     content = await _bounded_content(request, file, filename)
     try:
         record = await service.create(
+            analysis_run_id=str(idempotency_key),
             owner_id=principal.user_id,
             filename=filename,
             content=content,

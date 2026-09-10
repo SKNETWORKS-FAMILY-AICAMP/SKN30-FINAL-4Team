@@ -147,7 +147,10 @@ async def _run(source: Path) -> dict[str, object]:
 
         uploaded = await client.post(
             "/api/v1/analysis-runs",
-            headers={"Origin": TEST_ORIGIN},
+            headers={
+                "Origin": TEST_ORIGIN,
+                "Idempotency-Key": str(uuid4()),
+            },
             files={
                 "file": (
                     source.name,

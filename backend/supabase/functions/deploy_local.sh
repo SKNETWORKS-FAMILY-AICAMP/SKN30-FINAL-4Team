@@ -5,6 +5,12 @@
 # does not deploy these functions. See functions/README.md before any use.
 set -euo pipefail
 
+if [[ "${PREREVIEW_ENABLE_LEGACY_EDGE_FUNCTIONS:-}" != "I_ACKNOWLEDGE_UNSUPPORTED_EDGE_RUNTIME" ]]; then
+  echo "Refusing to deploy inactive Edge Functions." >&2
+  echo "The supported runtime is FastAPI + PostgreSQL polling worker; see functions/README.md." >&2
+  exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_ROOT="${1:?usage: deploy_local.sh /path/to/supabase-dev/volumes/functions}"
 

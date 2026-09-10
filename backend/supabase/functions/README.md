@@ -39,7 +39,8 @@ CONVERSATION_WORKER_DISPATCH_TOKEN
 
 `deploy_local.sh`와 `../docker-compose.worker.override.yml.example`도 같은 레거시 묶음이다.
 파일이 실행 가능하거나 구체적인 URL/토큰 변수를 담고 있다는 사실은 지원되는 배포 절차를
-뜻하지 않는다.
+뜻하지 않는다. `deploy_local.sh`는 실수로 이 이중 경로를 다시 노출하지 않도록 기본 실행을
+거부하며, 소스 보존 목적의 명시적 확인 문자열 없이는 어떤 파일도 복사하지 않는다.
 
 ## 향후 재도입 시
 

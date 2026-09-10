@@ -51,7 +51,7 @@ Cookie 상태 변경 요청은 허용 origin 목록으로 검사한다. CORS도 
 | `POST /auth/refresh` | refresh Cookie로 세션 갱신 |
 | `POST /auth/sign-out` | Supabase logout, Cookie 삭제 |
 | `POST /auth/password-reset`, `update-password`, `GET /auth/me` | Auth 보조 흐름/현재 사용자 검증 |
-| `POST /analysis-runs` | 파일 검사 → `request-temp` 업로드 → run/dispatch/source artifact 생성 |
+| `POST /analysis-runs` | `Idempotency-Key` → DB `uploading` 예약 → Storage → artifact+`queued` 원자 확정 |
 | `GET /analysis-runs/{id}` | 소유자 상태 polling |
 | 결과/후보/세션/이력 GET | `api` views/RPC를 서버 PostgreSQL 연결로 owner-scoped 조회 |
 

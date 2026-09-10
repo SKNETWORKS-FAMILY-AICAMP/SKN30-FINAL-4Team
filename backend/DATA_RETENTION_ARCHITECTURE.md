@@ -120,9 +120,12 @@ PostgreSQL이 Redis/RQ 없이 durable queue 역할을 한다. worker는
 성공으로 바꾸던 과거 `complete_analysis_run` 함수를 제거한다. stale worker의 token은
 `NULL`을 받고 결과를 변경하지 못한다.
 
-현재 FastAPI 업로드 경로는 Storage write 뒤 queue row를 만드는 구조다. 다음 작업에서
-DB `uploading` 예약 → Storage upload → `queued` finalize, 모호한 commit의 read-back,
-stale `uploading` 복구/GC로 전환해야 한다.
+요청 원본은 DB `uploading` 예약 → Storage upload → source artifact와 `queued`의 원자
+finalize 순서로 저장한다. `Idempotency-Key` UUID가 run 식별자이며 모호한 DB commit은
+read-back한다. Storage 쓰기 결과가 모호하면 exact object의 byte SHA-256·길이·MIME을
+재검증하고, 확인되지 않은 객체는 보상 삭제하지 않는다. 15분이 지난 `uploading`과 실패한
+정확 경로 삭제는 다음 업로드가 제한된 batch로 재시도한다. 전체 보존기한을 보장하는 독립
+scheduler는 아직 별도 과제다.
 
 ## 벡터 검색
 

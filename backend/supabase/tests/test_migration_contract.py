@@ -56,6 +56,7 @@ class MigrationContractTest:
         "22_fenced_analysis_result_ingest.sql",
         "23_result_read_retention_and_candidate_evidence.sql",
         "24_retire_legacy_worker_completion.sql",
+        "25_queued_source_invariant.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -431,6 +432,118 @@ class MigrationContractTest:
             "workspace.complete_analysis_run(UUID, UUID, UUID)"
         ) in retirement
         assert "persist_analysis_result_core" in retirement
+
+    def test_queued_source_invariant_contract(self):
+        """Only a complete immutable source reservation may become queued."""
+        invariant = (
+            self.MIGRATIONS_DIR / "25_queued_source_invariant.sql"
+        ).read_text()
+
+        # One run has at most one authoritative source artifact. Existing
+        # duplicates are not silently deleted or relabelled during migration.
+        assert "DUPLICATE_SOURCE_ARTIFACTS_REQUIRE_REPAIR" in invariant
+        assert (
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_workspace_source_artifact_one_source_per_run" in invariant
+        )
+        assert "WHERE artifact_type = 'source'" in invariant
+
+        # Existing unsafe queued rows and their live attempts are failed in the
+        # same writer-drained migration transaction. Dispatch leases are
+        # cleared, while source provenance is retained for reconciliation.
+        assert invariant.count("LOCK TABLE workspace.analysis_run,") == 2
+        assert "IN SHARE ROW EXCLUSIVE MODE" in invariant
+        assert (
+            "workspace.quarantine_invalid_queued_analysis_runs()" in invariant
+        )
+        assert "UPDATE ops.processing_run AS processing_attempt" in invariant
+        assert "processing_attempt.status IN ('queued', 'running')" in invariant
+        assert "UPDATE workspace.analysis_run_dispatch AS dispatch" in invariant
+        assert "UPDATE workspace.analysis_run AS ar" in invariant
+        assert "QUEUED_SOURCE_INVARIANT_VIOLATION" in invariant
+
+        assert (
+            "CREATE OR REPLACE FUNCTION "
+            "workspace.enforce_queued_source_invariant()" in invariant
+        )
+        assert "SECURITY DEFINER" in invariant
+        assert "SET search_path = pg_catalog" in invariant
+        assert "BEFORE INSERT OR UPDATE OF status" in invariant
+        assert "dispatch.source_content_sha256 IS NOT NULL" in invariant
+        for exact_match in (
+            "source.storage_bucket = dispatch.source_bucket",
+            "source.storage_object_key = dispatch.source_object_key",
+            "source.content_sha256 = dispatch.source_content_sha256",
+            "source.size_bytes = NEW.declared_size_bytes",
+        ):
+            assert exact_match in invariant
+        for empty_lease_field in (
+            "dispatch.processing_run_pk IS NULL",
+            "dispatch.claimed_by IS NULL",
+            "dispatch.claimed_at IS NULL",
+            "dispatch.heartbeat_at IS NULL",
+            "dispatch.lease_expires_at IS NULL",
+        ):
+            assert empty_lease_field in invariant
+        assert (
+            "REVOKE ALL ON FUNCTION workspace.enforce_queued_source_invariant()"
+            in invariant
+        )
+        assert "RUNNING_ANALYSIS_REQUIRES_LIVE_FENCE" in invariant
+        assert "dispatch.lease_expires_at > clock_timestamp()" in invariant
+
+        # Every cross-table source/dispatch/ops write serializes through the
+        # same analysis_run row. Source identity is immutable, and initial
+        # source rows may be created only while the reservation is uploading.
+        for protection_function in (
+            "workspace.protect_active_source_artifact()",
+            "workspace.protect_active_dispatch_source()",
+            "workspace.protect_active_source_size()",
+            "workspace.enforce_dispatch_fence()",
+            "workspace.serialize_analysis_processing_attempt()",
+            "workspace.enforce_live_processing_attempt_fence()",
+        ):
+            assert f"CREATE OR REPLACE FUNCTION {protection_function}" in invariant
+            assert f"REVOKE ALL ON FUNCTION {protection_function}" in invariant
+        assert invariant.count("FOR UPDATE;") >= 3
+        assert "BEFORE INSERT OR UPDATE OR DELETE\nON workspace.source_artifact" in invariant
+        assert "SOURCE_ARTIFACT_REQUIRES_UPLOAD_RESERVATION" in invariant
+        assert "SOURCE_ARTIFACT_IMMUTABLE" in invariant
+        assert "ACTIVE_SOURCE_ARTIFACT_IMMUTABLE" in invariant
+        assert "BEFORE INSERT OR UPDATE OR DELETE\nON workspace.analysis_run_dispatch" in invariant
+        assert "DISPATCH_SOURCE_REQUIRES_UPLOAD_RESERVATION" in invariant
+        assert "DISPATCH_SOURCE_IMMUTABLE" in invariant
+        assert "ACTIVE_DISPATCH_SOURCE_IMMUTABLE" in invariant
+        assert "workspace.assert_analysis_run_fence(UUID)" in invariant
+        assert "CREATE CONSTRAINT TRIGGER trg_workspace_enforce_dispatch_fence" in invariant
+        assert "NON_RUNNING_ANALYSIS_HAS_LIVE_FENCE" in invariant
+        assert "BEFORE UPDATE OF declared_size_bytes" in invariant
+        assert "SOURCE_SIZE_IMMUTABLE" in invariant
+
+        # A live ops row cannot race a queued transition or commit unless it is
+        # the exact, unexpired processing fence for a running dispatch.
+        assert "LIVE_PROCESSING_ATTEMPT_REQUIRES_ACTIVE_RUN" in invariant
+        assert "PROCESSING_ATTEMPT_RUN_IMMUTABLE" in invariant
+        assert (
+            "CREATE CONSTRAINT TRIGGER "
+            "trg_ops_enforce_live_processing_attempt_fence" in invariant
+        )
+        assert "DEFERRABLE INITIALLY DEFERRED" in invariant
+        assert "LIVE_PROCESSING_ATTEMPT_FENCE_INVARIANT_VIOLATION" in invariant
+
+        runtime = (
+            self.MIGRATIONS_DIR.parent / "tests" / "analysis_worker_queue_runtime.sql"
+        ).read_text()
+        for negative_case in (
+            "invalid legacy queued row was not quarantined",
+            "mismatched source tuple case",
+            "second source artifact was accepted",
+            "queued transition with an occupied lease was accepted",
+            "queued dispatch accepted a post-publication lease",
+            "unfenced running transition was accepted",
+            "unfenced live processing attempt was accepted",
+        ):
+            assert negative_case in runtime
 
     def test_result_read_retention_and_candidate_evidence_contract(self):
         """Result reads hide expired history and expose only linked SIM evidence."""

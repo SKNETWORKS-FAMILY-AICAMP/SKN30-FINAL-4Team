@@ -12,6 +12,7 @@ import pytest
 SUPABASE_ROOT = Path(__file__).resolve().parents[1]
 PREPARE = SUPABASE_ROOT / "prepare_selfhosted.sh"
 INSTALL = SUPABASE_ROOT / "install_selfhosted_local.sh"
+LEGACY_EDGE_DEPLOY = SUPABASE_ROOT / "functions" / "deploy_local.sh"
 
 
 def _write_config(
@@ -51,8 +52,29 @@ def _run_prepare(config: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_selfhosted_shell_scripts_have_valid_syntax() -> None:
-    for script in (PREPARE, INSTALL):
+    for script in (PREPARE, INSTALL, LEGACY_EDGE_DEPLOY):
         subprocess.run(["bash", "-n", str(script)], check=True)
+
+
+def test_legacy_edge_deploy_is_fail_closed_by_default(tmp_path: Path) -> None:
+    target = tmp_path / "functions"
+    target.mkdir()
+
+    result = subprocess.run(
+        ["bash", str(LEGACY_EDGE_DEPLOY), str(target)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            key: value
+            for key, value in os.environ.items()
+            if key != "PREREVIEW_ENABLE_LEGACY_EDGE_FUNCTIONS"
+        },
+    )
+
+    assert result.returncode == 2
+    assert "Refusing to deploy inactive Edge Functions" in result.stderr
+    assert list(target.iterdir()) == []
 
 
 def test_prepare_preserves_existing_data_directory_modes(tmp_path: Path) -> None:

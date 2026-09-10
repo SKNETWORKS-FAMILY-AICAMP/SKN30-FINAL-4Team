@@ -22,7 +22,7 @@ Frontend (HttpOnly Cookie)
 
 - `POST /api/v1/auth/sign-in`, `sign-up`, `refresh`, `sign-out`, `password-reset`, `update-password`
 - `GET /api/v1/auth/me`
-- `POST /api/v1/analysis-runs` — HWP/HWPX 요청서 업로드와 queued run 생성
+- `POST /api/v1/analysis-runs` — 필수 UUID v4 `Idempotency-Key`, HWP/HWPX 업로드와 queued run 생성
 - `GET /api/v1/analysis-runs/{analysis_run_id}` — 작업 상태 폴링
 - `GET /api/v1/analysis-cases/{analysis_case_id}`
 - `GET /api/v1/sim-candidates/{sim_candidate_id}`
@@ -80,7 +80,7 @@ docker compose ps
 
 ## Worker queue
 
-PostgreSQL polling queue와 원자적 결과 저장·legacy 완료 경로 폐기는 migration 21~24가
+PostgreSQL polling queue와 원자적 결과 저장·legacy 완료 경로 폐기·queued 원본 무결성은 migration 21~25가
 정의한다.
 
 - `workspace.analysis_run`: 브라우저에 보이는 작은 상태 레코드

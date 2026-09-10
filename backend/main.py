@@ -62,7 +62,7 @@ def create_app() -> FastAPI:
         allow_origins=sorted(app.state.auth_allowed_origins),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-        allow_headers=["Content-Type", "X-CSRF-Token"],
+        allow_headers=["Content-Type", "Idempotency-Key", "X-CSRF-Token"],
     )
 
     @app.exception_handler(StarletteHTTPException)

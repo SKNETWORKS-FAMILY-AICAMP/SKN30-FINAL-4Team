@@ -34,7 +34,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 다음 조건이 먼저 충족되어야 한다.
 
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
-- `backend/supabase/migrations/01`부터 `24`까지 적용되어 있다.
+- `backend/supabase/migrations/01`부터 `25`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
 - Existing Profile과 `retrieval.existing_profile_embedding` 데이터가 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
@@ -204,7 +204,8 @@ HTTPS 서비스에서는 `PREREVIEW_AUTH_COOKIE_SECURE=true`를 사용한다. �
 서로 다른 site라면 `SameSite=none`과 HTTPS가 함께 필요하다. 어떤 경우에도
 `PREREVIEW_AUTH_ALLOWED_ORIGINS`에는 스킴과 포트를 포함한 실제 프론트 origin을 정확히
 기록하고 `*`를 사용하지 않는다. 프론트의 모든 인증·업로드·조회 요청에는
-`credentials: "include"`가 필요하다.
+`credentials: "include"`가 필요하다. 분석 업로드는 브라우저에서 UUID
+`Idempotency-Key`도 보내므로 reverse proxy와 CORS에서 이 헤더를 제거하면 안 된다.
 
 ## 4. 최초 빌드와 기동
 
@@ -412,7 +413,7 @@ Cookie Secure를 반드시 활성화한다.
 | 로그인 응답은 200인데 다음 요청이 401 | 프론트 `credentials: include`, Cookie Secure/SameSite, HTTP/HTTPS 불일치 |
 | Auth가 503 | 컨테이너에서 `SUPABASE_URL` 접근 가능 여부와 anon key |
 | 업로드가 503 | service-role/secret key, `request-temp`, DB 연결과 migration |
-| 요청이 계속 `queued` | worker 컨테이너·로그, DB URL, migration 21~24, queue claim |
+| 요청이 계속 `queued` | worker 컨테이너·로그, DB URL, migration 21~25, queue claim |
 | worker가 바로 종료 | 필수 환경변수 이름 누락; worker는 설정 오류 시 exit code 2 |
 | HWP/HWPX parser가 `FT_Palette_Data_Get` 오류 | 이미지 재빌드와 `PREREVIEW_FREETYPE_LIB` 경로 |
 | 후보가 없거나 embedding 오류 | Existing embedding 적재 여부, active model ID·1,536차원 일치 |

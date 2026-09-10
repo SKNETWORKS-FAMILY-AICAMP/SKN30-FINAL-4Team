@@ -109,3 +109,19 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         "/api/v1/auth/update-password",
     ):
         assert "content" not in _operation(schema, path, "post")["responses"]["204"]
+
+
+def test_openapi_exposes_required_upload_idempotency_header() -> None:
+    operation = _operation(
+        create_app().openapi(),
+        "/api/v1/analysis-runs",
+        "post",
+    )
+    parameters = {
+        parameter["name"]: parameter
+        for parameter in operation["parameters"]
+    }
+    idempotency = parameters["Idempotency-Key"]
+    assert idempotency["in"] == "header"
+    assert idempotency["required"] is True
+    assert idempotency["schema"]["format"] == "uuid4"

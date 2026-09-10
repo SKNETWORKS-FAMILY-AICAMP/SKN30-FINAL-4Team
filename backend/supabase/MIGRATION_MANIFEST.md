@@ -1,7 +1,7 @@
 # Supabase migration manifest
 
 마지막 감사: 2026-09-10
-현재 버전: v0.9
+현재 버전: v0.10
 
 이 manifest는 `backend/supabase/migrations`의 순차 SQL과 현재
 Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조를 설명한다.
@@ -9,12 +9,12 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 
 ## 현재 수량
 
-- 순차 migration: 24개 (`01`~`24`)
-- SQL 물리 행 수: 4,293 (`wc -l`, 주석/빈 줄 포함)
+- 순차 migration: 25개 (`01`~`25`)
+- SQL 물리 행 수: 4,962 (`wc -l`, 주석/빈 줄 포함)
 - 애플리케이션 table: 60개
 - data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
 - contract schema: 1개 (`api`, table 없이 View/RPC)
-- `CREATE [UNIQUE] INDEX` 정의: 72개
+- `CREATE [UNIQUE] INDEX` 정의: 73개
 
 `auth`, `storage`, role(`anon`, `authenticated`, `service_role`)은 공식 Supabase stack이 먼저
 제공해야 한다. migration 19 전에 pgvector가 포함된 호환 PostgreSQL image가 실행 중이어야
@@ -48,8 +48,9 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | 22 | `22_fenced_analysis_result_ingest.sql` | 194 | 0 | 0 | fenced atomic result ingest, unfenced writer 폐기 |
 | 23 | `23_result_read_retention_and_candidate_evidence.sql` | 449 | 0 | 0 | live-retention reads, exact candidate version/evidence |
 | 24 | `24_retire_legacy_worker_completion.sql` | 10 | 0 | 0 | 결과 없는 성공 전이를 허용한 과거 완료 함수 제거 |
+| 25 | `25_queued_source_invariant.sql` | 669 | 0 | 1 | queued source artifact·dispatch·lease·processing fence 무결성 강제 |
 
-합계는 60 table, 72 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
+합계는 60 table, 73 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
 스키마 정확성을 대신하는 검증이 아니다.
 
 ## Schema와 활성 계약
@@ -67,7 +68,7 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 활성 분석 lifecycle은 다음과 같다.
 
 ```text
-FastAPI private upload + queued run
+FastAPI uploading 예약 → private Storage upload → source artifact + queued 원자 전이
   → workspace.claim_next_analysis_run (FOR UPDATE SKIP LOCKED)
   → heartbeat/lease + processing_run_pk fence
   → artifact/Request Profile + ephemeral request embedding
@@ -91,7 +92,7 @@ migration은 append-only 이력이라 다음 객체가 물리적으로 남아 �
 - migration 18의 Edge worker read 함수와 unfenced ingest 함수
 
 migration 22가 `api.ingest_comparison_result_core`의 `service_role` 실행 권한을 회수한다.
-현재 worker는 migration 21~24의 DB queue/fenced path만 사용한다. browser JavaScript에는
+현재 worker는 migration 21~25의 DB queue/fenced path만 사용한다. browser JavaScript에는
 Supabase key나 token 응답을 전달하지 않고 access/refresh token은 HttpOnly Cookie에만 둔다.
 FastAPI만 공개 업무 API로 사용한다.
 
@@ -128,7 +129,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-이 script에는 migration ledger가 없으며 매번 `01`~`24`를 모두 실행한다. 각 파일은 독립
+이 script에는 migration ledger가 없으며 매번 `01`~`25`를 모두 실행한다. 각 파일은 독립
 transaction이라 중간 실패 전 파일은 이미 commit된다. reset/delete는 하지 않지만 모든
 부분 적용·재실행 상태가 안전하다고 보장하지도 않는다. 실패 시 무작정 재실행하지 말고
 적용된 객체와 오류 migration을 확인한 뒤 backup restore 또는 검증된 repair 절차를 따른다.
@@ -155,7 +156,7 @@ SUPABASE_DIR=/path/to/supabase-compose \
   ./supabase/run_worker_queue_validation.sh
 ```
 
-배포 gate에는 별도로 migration 01~24 fresh apply, 실제 private Storage put/get/delete,
+배포 gate에는 별도로 migration 01~25 fresh apply, 실제 private Storage put/get/delete,
 FastAPI Cookie auth/upload/poll/result, HWP/HWPX parser와 OpenAI를 포함한 worker E2E가 필요하다.
 
 ## 관련 문서

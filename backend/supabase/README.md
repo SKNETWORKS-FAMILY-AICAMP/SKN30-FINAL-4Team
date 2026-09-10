@@ -74,7 +74,7 @@ checksum manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~24·same-server worker와 묶어 검증된 위 스크립트만 사용한다.
+override·migration 01~25·same-server worker와 묶어 검증된 위 스크립트만 사용한다.
 
 ## 데이터 위치
 
@@ -97,7 +97,7 @@ Profile만 `purpose`, `target`, `support`, `combined` 네 scope로 영속화한�
 
 ## DB queue
 
-migration 21~24는 Redis/RQ 없이 PostgreSQL을 durable queue와 fenced 결과 저장 경계로 쓴다.
+migration 21~25는 Redis/RQ 없이 PostgreSQL을 durable queue와 fenced 결과 저장 경계로 쓴다.
 
 | 영역 | 역할 |
 |---|---|
@@ -111,6 +111,8 @@ worker는 `workspace.claim_next_analysis_run()`을 polling한다. `FOR UPDATE SK
 `workspace.persist_analysis_result_core()`로만 수행한다. 이 함수는 live
 `processing_run_pk` fence를 검증한 뒤 결과 materialisation과 run 성공 전이를 한
 transaction으로 처리한다. stale worker는 `NULL`을 받아 결과를 바꾸지 못한다.
+`queued` 전환은 같은 run의 source artifact와 dispatch에 기록된 bucket·object key·SHA-256·
+크기가 정확히 일치할 때만 허용하며, active run의 source identity는 이후 변경할 수 없다.
 SIM 후보는 논리 `source_profile_id`뿐 아니라 retrieval에서 실제 읽은
 `profile_version_pk`도 완료 payload에 포함한다. 분석 중 KB의 current version이
 바뀌어도 DB는 비교한 exact version에 결과·metadata·evidence를 연결한다.
@@ -191,7 +193,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`24` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`25` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤

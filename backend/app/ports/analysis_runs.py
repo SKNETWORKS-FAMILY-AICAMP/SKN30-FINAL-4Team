@@ -19,8 +19,20 @@ class AnalysisRunPersistenceUnavailable(AnalysisRunError):
     """The internal database cannot currently serve the request."""
 
 
+class AnalysisRunFinalizationRejected(AnalysisRunPersistenceUnavailable):
+    """The upload finalization transaction is known not to have committed."""
+
+
+class AnalysisRunFinalizationUncertain(AnalysisRunPersistenceUnavailable):
+    """The database could not prove whether upload finalization committed."""
+
+
 class ObjectStorageUnavailable(AnalysisRunError):
     """The private object store cannot currently serve the request."""
+
+
+class ObjectStorageWriteUncertain(ObjectStorageUnavailable):
+    """The object store could not prove whether an upload was persisted."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,14 +57,52 @@ class SourceObject:
     size_bytes: int
 
 
+@dataclass(frozen=True, slots=True)
+class UploadCleanupObject:
+    analysis_run_id: str
+    bucket: str
+    object_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class UploadReservation:
+    record: AnalysisRunRecord
+    cleanup_objects: tuple[UploadCleanupObject, ...] = ()
+    replayed: bool = False
+
+
 class AnalysisRunRepository(Protocol):
-    async def create_queued(
+    async def reserve_uploading(
+        self,
+        *,
+        analysis_run_id: str,
+        owner_id: str,
+        source: SourceObject,
+    ) -> UploadReservation: ...
+
+    async def finalize_queued(
         self,
         *,
         analysis_run_id: str,
         owner_id: str,
         source: SourceObject,
     ) -> AnalysisRunRecord: ...
+
+    async def mark_upload_cleanup_pending(
+        self,
+        *,
+        analysis_run_id: str,
+        owner_id: str,
+        source: SourceObject,
+        error_code: str,
+        error_message: str,
+    ) -> UploadCleanupObject | None: ...
+
+    async def complete_upload_cleanup(
+        self,
+        *,
+        analysis_run_id: str,
+    ) -> bool: ...
 
     async def get_for_owner(
         self,

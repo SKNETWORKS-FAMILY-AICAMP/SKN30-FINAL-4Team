@@ -18,7 +18,7 @@ Supabase HTTP service key와 PostgreSQL DSN/role은 서로 다른 자격증명�
 - `retrieval.embedding_configuration` read와 Existing 후보 match function
 - 위 SECURITY INVOKER function 내부에서 접근하는 `workspace`, `result`, `ops`, `kb` 객체
 
-migration 17, 19, 21~24의 명시적 worker function/table grant와 과거 완료 함수 폐기 계약을
+migration 17, 19, 21~25의 명시적 worker function/table grant와 과거 완료 함수 폐기 계약을
 적용한다. 활성 함수의 grant 대상은 `service_role`이다.
 배포 DSN은 staging runtime validation을 통과한 trusted DB role을 사용하고 PostgreSQL 포트를
 인터넷에 공개하지 않는다.

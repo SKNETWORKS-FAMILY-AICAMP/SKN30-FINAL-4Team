@@ -25,7 +25,7 @@ Browser
 
 | 영역 | 현재 구현 | 기준 파일 |
 |---|---|---|
-| FastAPI upload | HWP/HWPX MIME·magic·50 MiB 검사, private Storage upload, run/dispatch/source artifact를 생성하고 DB 실패 시 Storage 보상 삭제 | `app/api/v1/analysis_runs.py`, `app/services/analysis_runs.py` |
+| FastAPI upload | HWP/HWPX MIME·magic·50 MiB 검사, `Idempotency-Key` 기반 `uploading` 예약, private Storage upload, source artifact+`queued` 원자 확정, stale cleanup 재시도 | `app/api/v1/analysis_runs.py`, `app/services/analysis_runs.py` |
 | queue | PostgreSQL `FOR UPDATE SKIP LOCKED`, 30초 heartbeat, 120초 lease, 최대 2 attempts | `supabase/migrations/21_analysis_worker_queue.sql`, `worker/postgres_repository.py` |
 | worker runtime | 상주 polling, SIGTERM graceful stop, 별도 DB connection heartbeat, stale fence 차단 | `worker/runtime.py`, `worker/main.py` |
 | source/profile | private Storage download/hash 확인, Common IR·Request Profile upload, source → Common IR → Profile lineage와 request projection 등록 | `worker/analysis_job.py`, `worker/postgres_analysis_store.py`, `worker/supabase_storage.py` |
@@ -40,12 +40,12 @@ worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table
 
 ## 검증 완료 범위
 
-- backend 회귀: 103 tests
+- backend 회귀: 173 tests
 - 합성 HWPX 5건: ZIP/manifest SHA-256/Common IR provenance/본문 보존/request type preflight
   모두 통과
 - 실제 1건: Supabase Auth → FastAPI upload → queue → HWPX/Common IR/Request Profile →
   OpenAI embedding/pgvector → CPL/FIT/SIM → fenced result → FastAPI polling/read 성공
-- Docker build 및 network 없는 container의 103개 회귀·합성 parser 실행 성공
+- Docker build 및 network 없는 container의 173개 회귀·합성 parser 실행 성공
 
 합성 HWPX는 양식을 흉내 낸 파일로 현재 파서에서 각 2개 텍스트 블록으로 평탄화된다.
 실제 Hancom 작성 문서, malformed/timeout 문서는 아직 별도 E2E 범위다.
@@ -63,7 +63,8 @@ worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table
 
 - password recovery link를 HttpOnly Cookie 세션으로 교환하는 callback/PKCE
 - reverse proxy/ASGI의 multipart 전체 body·part 수 제한과 streaming upload
-- `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사
+- `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사. 업로드 요청에 묶인
+  stale lazy reaper는 별도 scheduler·cleanup lease로 분리
 - worker heartbeat/queue lag를 포함한 readiness
 - `ops.model_invocation` 단위 OpenAI 호출 감사
 - 일부 purpose/target/support 축이 비었을 때 fail 대신 insufficient 결과로 처리할 정책

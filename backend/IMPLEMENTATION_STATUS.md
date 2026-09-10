@@ -24,8 +24,11 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 - Existing 100건 data pack의 ZIP/manifest 안전 검증, batch import, 공고별 DB transaction,
   멱등 재실행과 private Storage 실물 검증 절차
 - FastAPI Supabase Auth proxy와 HttpOnly access/refresh Cookie 경계
-- FastAPI HWP/HWPX 업로드: MIME/내용/50 MiB 검사, private Storage upload,
-  `analysis_run`/dispatch/source artifact 생성, 보상 삭제
+- FastAPI HWP/HWPX 업로드: MIME/내용/50 MiB 검사, 필수 `Idempotency-Key`, DB
+  `uploading` 예약 → private Storage → source artifact+`queued` 원자 확정
+- commit 결과 read-back, Storage 중복·응답 유실 시 원본 byte/hash 재검증, 불명확한
+  upload/finalize 시 원본 보존, `cleanup_pending` 기반 fenced 정확 경로 삭제,
+  15분 만료 stale upload의 제한 batch lazy reaper
 - FastAPI 상태 polling과 owner-scoped 결과·후보·활성 세션·이력 읽기 endpoint
 - Swagger/OpenAPI 15개 경로의 named 성공 응답, 주요 오류 응답과 HttpOnly Cookie
   security scheme
@@ -35,6 +38,8 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 - migration 23: retention 만료 결과를 read model에서 차단하고 SIM 후보별 evidence를 반환
 - migration 24: 결과 materialisation 없이 성공 상태만 기록할 수 있던 legacy worker 완료
   함수를 제거
+- migration 25: `queued` 전환 전에 동일 run의 source artifact와 dispatch source identity가
+  일치하도록 강제하고, active source·dispatch의 핵심 메타데이터 변경을 차단
 - same-server polling worker 조립과 CLI/Docker service
 - source 다운로드 → HWP/HWPX → Common IR → Request Profile → 3축 임베딩 검색 →
   CPL/FIT/SIM → fenced 결과 저장
@@ -46,43 +51,50 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 
 ## 2026-09-10 검증 결과
 
-- 전체 backend 회귀 테스트: `111 passed`
-- Supabase migration·self-hosted 설치/경로 안전성 계약 테스트: `16 passed`
+- 전체 backend 회귀 테스트: `173 passed`
+- Supabase migration·self-hosted 설치/경로 안전성 계약 테스트: `17 passed`
 - 합성 HWPX 5건 offline parser/preflight: `5/5 passed`
   - ZIP·manifest SHA-256·Common IR provenance·본문 보존
   - 각 2 Common IR blocks, `detail_program_new` 판정
 - 실제 Luna Request Profile 생성: 성공, exact candidate-pack span `6/6`
-- migration 01~24 실DB 적용: 성공
+- migration 01~25 실DB 적용: 성공
 - queue runtime rollback 계약: 성공
 - 실제 1건 E2E: 성공
   - Supabase Auth → FastAPI upload → private Storage/PostgreSQL queue
   - HWPX/Common IR/Request Profile → OpenAI embedding/pgvector → CPL/FIT/SIM
   - FastAPI polling/result read
-  - CPL 13, FIT 7, SIM 후보 1, evidence 54
+  - CPL 13, FIT 7, SIM 후보 1, evidence 47
 - E2E DB 후검증: source/Common IR/Profile artifact 3개, lineage edge 2개,
-  Request Profile 1개, request fact 14개, result axis 20개, processing attempt 1개
+  Request Profile 1개, request fact 13개, result axis 20개, processing attempt 1개
 - Existing 100건 live verifier: `valid`
   - Profile 100/100, embedding 100/100 × 4 scope
   - artifact 500개와 lineage 400개, Profile artifact FK 모두 불일치 0
   - private Storage 실제 객체 500/500의 byte SHA-256·크기 일치
   - 과거 importer가 누락한 delivery role 38행·기관 occurrence 48행 backfill 완료
 - Docker 이미지 build: 성공. 최신 이미지의 `--network none` 컨테이너에서 전체 회귀
-  테스트 111건과 합성 HWPX parser 5/5 성공
+  테스트 173건과 합성 HWPX parser 5/5 성공
   (`rhwp-python` native runtime에 `libexpat1`, `libfreetype6` 필요)
 - `cl100k_base` tokenizer cache를 이미지에 포함해 retrieval token 계산이 런타임
   인터넷 연결에 의존하지 않음
-- 실행 중 API/worker 확인: 두 컨테이너 `Up`, live/ready 200
+- 최신 이미지로 API/worker 강제 재생성 후 확인: 두 컨테이너 `Up`, API는
+  `0.0.0.0:8001`에 publish, live/ready 각각 200
 - 실행 중 OpenAPI 확인: 15 paths/15 operations, access·refresh Cookie security scheme,
-  결과 조회 named response schema, `X-PreReview-Dev-*` 노출 0건
+  결과 조회 named response schema, `POST /analysis-runs`의 필수 UUID v4
+  `Idempotency-Key`, `X-PreReview-Dev-*` 노출 0건
 
 실행 전 DB custom-format backup은
 `/tmp/pre_review_before_worker_migrations_20260910.dump`에 생성했다. `/tmp` 파일이므로
 장기 보관이 필요하면 별도 영속 위치로 복사해야 한다. Existing delivery-role backfill 직전
 백업은 `/tmp/pre_review_before_existing_role_backfill_20260910.dump`이며 mode `600`,
 SHA-256은 `01b6c8d98d163e3e494cc99a3e0ea16f76d951d37c348cc0d66bdd02bfb2c241`다.
-legacy worker 완료 함수 제거 직전의 최신 백업은
+legacy worker 완료 함수 제거 직전 백업은
 `/tmp/pre_review_before_migration_24_20260910.dump`이며 mode `600`, 크기 4,348,849 bytes,
 SHA-256은 `a6f54439e3402e201fea3731c732c426ee20ca081bf71a356d941fa994f1afe6`다.
+migration 25 최종 적용 직전의 최신 백업은
+`/tmp/pre_review_before_migration_25_final_20260910_01.dump`이며 mode `600`,
+크기 4,354,891 bytes, SHA-256은
+`265d0c3d5a060c2ed717139ed7e6f2459572f71e9efbe50d0997eb11936b48db`다.
+DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 
 PDF/OCR은 현재 요청 처리 범위에서 제외한다. 채팅과 PDF 생성은 데이터 모델은 있지만
 별도 queue/API 구현 전이라 E2E 완료 범위가 아니다.
@@ -95,11 +107,11 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 ## 남은 작업
 
-- 요청 업로드를 DB의 `uploading` 예약 → Storage 업로드 → 원자적 `queued` finalize로
-  전환하고, 모호한 DB commit 결과의 read-back과 stale `uploading` 복구/GC 구현
 - password recovery link를 HttpOnly session cookie로 교환하는 callback/PKCE 흐름
 - reverse proxy/ASGI 경계의 multipart 전체 body·part 수 제한과 streaming upload
-- `request-temp` 및 90일 만료 결과의 reference-aware cleanup/감사 작업
+- `request-temp` 및 90일 만료 결과의 reference-aware cleanup/감사 작업. 현재 요청 경로의
+  stale lazy reaper는 별도 scheduler·cleanup lease로 분리해 업로드 지연을 제거해야 함
+- terminal idempotency replay의 HTTP 상태(`200`/`202`) 정규화
 - purpose/target/support 중 일부가 없는 요청을 실패 대신 insufficient 결과로 내리는 정책
 - worker heartbeat/queue lag를 포함한 배포 readiness
 - OpenAI 호출 단위 `ops.model_invocation` 감사 기록 연결

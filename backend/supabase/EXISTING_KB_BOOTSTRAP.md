@@ -64,7 +64,7 @@ SHA-256·Common IR/candidate-pack 계보·Fact exact span 일치는 schema만으
 ## 사전 조건
 
 1. 공식 Supabase bundle과 pgvector override를 포함해 컨테이너가 healthy여야 한다.
-2. migration 01~24를 적용해 private `existing-kb` bucket과 `kb`, `retrieval` schema를
+2. migration 01~25를 적용해 private `existing-kb` bucket과 `kb`, `retrieval` schema를
    만들어야 한다.
 3. `backend/.venv`를 준비한다.
 4. `backend/.env`에 서버 전용 `SUPABASE_URL`, service/secret key,
