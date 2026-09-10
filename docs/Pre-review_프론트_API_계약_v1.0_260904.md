@@ -1,5 +1,19 @@
 # Pre-review 프론트 API 계약 v1.0
 
+기준 백엔드: `develop` 병합 커밋 `277b908`
+
+검증: 백엔드 전체 테스트 `300 passed, 6 skipped`
+
+## 공통 규칙
+
+- 로그인과 비밀번호 재설정 요청·확인을 제외한 API는 `Authorization: Bearer <access_token>` 헤더가 필요합니다.
+- 성공 응답은 공통 래퍼 없이 아래에 적힌 JSON을 그대로 반환합니다.
+- 실패 응답은 다음 구조로 반환합니다. 화면 문구는 HTTP 상태 코드를 기준으로 정합니다.
+
+```json
+{ "message": "오류 안내" }
+```
+
 ## 1. 로그인
 
 `POST /api/v1/auth/login`
@@ -27,6 +41,8 @@
 
 파라미터: 없음
 
+리턴:
+
 ```json
 { "access_token": "..." }
 ```
@@ -41,6 +57,8 @@
 `GET /api/v1/auth/me`
 
 파라미터: 없음
+
+리턴:
 
 ```json
 { "name": "demo" }
@@ -64,6 +82,8 @@
 ```json
 { "current_password": "현재 비밀번호", "new_password": "새 비밀번호" }
 ```
+
+`new_password`는 영문·숫자·특수문자를 각각 하나 이상 포함한 8~128자입니다.
 
 리턴:
 
@@ -108,6 +128,8 @@
 ```json
 { "token": "메일 링크의 token 값", "new_password": "새 비밀번호" }
 ```
+
+`new_password`는 영문·숫자·특수문자를 각각 하나 이상 포함한 8~128자입니다.
 
 리턴:
 
