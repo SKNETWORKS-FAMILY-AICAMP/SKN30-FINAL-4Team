@@ -87,26 +87,33 @@ class AnalysisSessionReadModel(_ReadModel):
     expires_at: datetime | None
 
 
+# 저장된 ML payload 는 공개 표면보다 넓다. status·reason_code·predicted_amount_won·
+# cause_axes 는 DB 와 챗봇 컨텍스트에 그대로 남고 프론트 응답에서만 뺀다.
+#
+# 지우지 않고 exclude 로 빼는 이유가 있다. extra="forbid" 가 confidence·percentile
+# 같은 내부 점수가 새는 것을 막는 가드인데, 필드를 선언에서 지우면 저장 payload 의
+# 그 키들이 "모르는 키" 가 되어 가드가 통째로 무력해진다. 선언은 남겨 검증을 계속
+# 받게 하고, 직렬화에서만 제외한다.
 class MlModel1ReadModel(_ReadModel):
-    status: Literal["OK", "UNAVAILABLE", "FAILED"]
+    status: Literal["OK", "UNAVAILABLE", "FAILED"] = Field(exclude=True)
     support_type: str | None
     message: str | None
-    reason_code: str | None
+    reason_code: str | None = Field(exclude=True)
 
 
 class MlModel2ReadModel(_ReadModel):
-    status: Literal["OK", "UNAVAILABLE", "FAILED"]
-    predicted_amount_won: int | None
+    status: Literal["OK", "UNAVAILABLE", "FAILED"] = Field(exclude=True)
+    predicted_amount_won: int | None = Field(exclude=True)
     message: str | None
-    reason_code: str | None
+    reason_code: str | None = Field(exclude=True)
 
 
 class MlModel3ReadModel(_ReadModel):
-    status: Literal["OK", "UNAVAILABLE", "FAILED"]
+    status: Literal["OK", "UNAVAILABLE", "FAILED"] = Field(exclude=True)
     anomaly_level: str | None
-    cause_axes: list[str] = Field(default_factory=list)
+    cause_axes: list[str] = Field(default_factory=list, exclude=True)
     message: str | None
-    reason_code: str | None
+    reason_code: str | None = Field(exclude=True)
 
 
 class MlReferenceReadModel(_ReadModel):

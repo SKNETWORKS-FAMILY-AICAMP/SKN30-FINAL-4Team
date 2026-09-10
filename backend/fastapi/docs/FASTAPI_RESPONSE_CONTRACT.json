@@ -1,5 +1,5 @@
 {
-  "_description": "현재 FastAPI 공개 API의 성공 응답 예시다. access/refresh token, Supabase key, Storage signed URL은 이 계약에 포함하지 않는다. UUID·일시·문구는 예시이며 필드명/배열/nullability가 계약이다. 결과의 고정 필드는 Swagger named schema와 이 파일이 함께 계약이며, CPL/FIT detail과 후보 axes.*만 확장 가능한 JSON object다. analysis_result.ml은 모델 1·2·3의 참고정보만 제공하며 model2의 예측 금액 외 확률·신뢰도·점수·백분위와 internal 값은 공개하지 않는다. analysis_result.session.can_chat이 true이면 비동기 메시지 API를 사용할 수 있다.",
+  "_description": "현재 FastAPI 공개 API의 성공 응답 예시다. access/refresh token, Supabase key, Storage signed URL은 이 계약에 포함하지 않는다. UUID·일시·문구는 예시이며 필드명/배열/nullability가 계약이다. 결과의 고정 필드는 Swagger named schema와 이 파일이 함께 계약이며, CPL/FIT detail과 후보 axes.*만 확장 가능한 JSON object다. analysis_result.ml은 모델 1·2·3의 참고정보만 제공한다. model_1은 support_type과 message, model_2는 message, model_3은 anomaly_level과 message만 내려간다. status·reason_code·predicted_amount_won·cause_axes는 저장 payload와 챗봇 컨텍스트에는 남아 있으나 공개 표면이 아니고, 확률·신뢰도·점수·백분위와 internal 값도 공개하지 않는다. analysis_result.session.can_chat이 true이면 비동기 메시지 API를 사용할 수 있다.",
   "auth_sign_in": {
     "user": {
       "id": "11111111-1111-1111-1111-111111111111",
@@ -74,23 +74,15 @@
     },
     "ml": {
       "model_1": {
-        "status": "OK",
         "support_type": "판로",
-        "message": "유사 사업의 지원유형 참고 분류는 '판로' 계열이다.",
-        "reason_code": null
+        "message": "유사 사업의 지원유형 참고 분류는 '판로' 계열이다."
       },
       "model_2": {
-        "status": "OK",
-        "predicted_amount_won": 8534969,
-        "message": "비교군 기준 참고 예측 지원액은 853만원 수준이다.",
-        "reason_code": null
+        "message": "비교군 기준 참고 예측 지원액은 853만원 수준이다."
       },
       "model_3": {
-        "status": "OK",
         "anomaly_level": "과거 사업 패턴과 차이가 큼",
-        "cause_axes": ["기업(과제)당 지원한도"],
-        "message": "비교군 대비 과거 사업 패턴과 차이가 큼 — 관련 축: 기업(과제)당 지원한도.",
-        "reason_code": null
+        "message": "비교군 대비 과거 사업 패턴과 차이가 큼 — 관련 축: 기업(과제)당 지원한도."
       }
     },
     "report": {
