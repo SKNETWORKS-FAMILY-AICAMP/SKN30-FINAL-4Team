@@ -1,177 +1,114 @@
-"""챗봇 계약 — Supabase PoC 스키마(`result.conversation_message`)에 맞춘 모양.
+"""챗봇 계약 — 답변 하나의 모양.
 
-DB 가 이미 정한 것을 그대로 따른다
---------------------------------
-대화는 단순 로그가 아니라 **비동기 생성 상태를 가진 행**이다. 질문이 들어오면
-assistant 행을 `generating` + `content NULL` 로 먼저 만들고, 워커가 채운다.
-테이블 제약이 그 모양을 강제한다.
+이 패키지는 **DB 도 HTTP 도 모른다.** 분석 리포트(dict)와 질문을 받아 프롬프트
+Context 를 만들고, LLM 이 돌려준 답을 검사하는 것까지가 전부다. 저장과 전송은
+호출부(FastAPI)가 갖는다 — chatmessage 쪽이 DB 커넥션을 들면 의존 방향이
+거꾸로 선다.
 
-    CHECK (
-      (role='user'      AND message_status='completed'
-                        AND content IS NOT NULL AND reply_to_message_pk IS NULL)
-      OR
-      (role='assistant' AND reply_to_message_pk IS NOT NULL)
-    )
-
-그래서 이 패키지는 요청 하나를 응답 하나로 바꾸지 않는다. **행 payload 를
-만들어 돌려주고 저장은 호출부(Edge Function / 워커)가 한다** — ml 쪽이 DB
-커넥션을 들면 의존 방향이 거꾸로 선다(SIM-R 때와 같은 이유).
-
-식별자는 전부 UUID다. 스키마에 별도 분석번호나 합성 PK 가 없다.
+`ChatAnswer` 는 그대로 LLM 의 structured output 스키마로 쓰인다. 그래서 기본값을
+두지 않는다 — OpenAI structured output 이 `strict: true` 면 모든 필드가
+required 여야 하고, 기본값이 있는 필드는 required 에서 빠져 스키마가 거절된다.
+값이 없을 때는 `references: []`, `suggested_revision: null` 로 **명시해서** 받는다.
 """
-import uuid
-from typing import Any, Dict, List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-IntentType = Literal[
-    "MODEL_1", "MODEL_2", "MODEL_3", "REPORT", "DOCUMENT", "UNKNOWN",
+
+# 답변이 인용할 수 있는 출처. **분석 단계에서 이미 실행된** Agent·Model 의
+# 이름이다. 챗봇이 이것들을 다시 부르지는 않는다 — 저장된 결과를 인용할 때
+# "어느 것이 낸 값인가" 를 밝히는 내부 식별자다.
+#
+# 이 이름은 references(내부 참조·디버그 정보)에만 쓴다. 사용자에게 보이는
+# 답변 본문은 업무 언어로 쓴다("요청서의 필수 항목과 구조를 확인한 결과…").
+ChatReferenceAgent = Literal[
+    "CPL",
+    "FIT",
+    "RETRIEVAL",
+    "SIM",
+    "MODEL_1",
+    "MODEL_2",
+    "MODEL_3",
+    "SUMMARY",
 ]
-INTENTS: tuple = ("MODEL_1", "MODEL_2", "MODEL_3", "REPORT", "DOCUMENT",
-                  "UNKNOWN")
-
-MessageRole = Literal["user", "assistant"]
-# result.conversation_message.message_status
-MessageStatus = Literal["generating", "completed", "failed"]
-# result.analysis_session.status
-SessionStatus = Literal["active", "closed"]
-
-# 답을 만들지 못한 이유. message_status='failed' 일 때 error_code 에 들어간다.
-ERROR_CODES = (
-    "UNSUPPORTED_QUESTION",          # 지원하지 않는 질문(UNKNOWN)
-    "ANALYSIS_RESULT_NOT_AVAILABLE",  # 근거로 쓸 결과가 없음
-    "ANALYSIS_RESULT_INSUFFICIENT",   # 결과는 있으나 근거 부족
-    "CHAT_LLM_FAILED",               # LLM 장애 — 재시도가 의미 있다
-    "SESSION_NOT_ACTIVE",            # 세션이 닫혔거나 만료됨
+AGENT_KEYS: tuple[str, ...] = (
+    "CPL",
+    "FIT",
+    "RETRIEVAL",
+    "SIM",
+    "MODEL_1",
+    "MODEL_2",
+    "MODEL_3",
+    "SUMMARY",
 )
-# 워커가 다시 시도해 볼 만한 것. 나머지는 재시도해도 같은 결과다.
-RETRYABLE_CODES = ("CHAT_LLM_FAILED",)
+
+# 저장된 분석 결과의 섹션 이름. `context_scope` 가 고르는 대상이고,
+# Chat Context 의 `report` 아래 키다.
+#
+# **섹션을 고르는 것이지 Agent 를 실행하는 것이 아니다.** CPL·FIT·SIM·Model
+# 1·2·3 은 분석 단계에서 이미 돌았고, 챗봇은 그 결과 중 이번 질문에 필요한
+# 것만 상세로 싣는다.
+SECTION_KEYS: tuple[str, ...] = (
+    "cpl",
+    "fit",
+    "retrieval",
+    "sim",
+    "model1",
+    "model2",
+    "model3",
+    "summary",
+)
+
+# 섹션 이름 ↔ references 의 agent 이름. Context 는 소문자 섹션 키를 쓰고,
+# 응답 계약은 대문자 열거값을 쓴다. 두 이름을 한 곳에서 잇는다.
+CONTEXT_SECTION_BY_AGENT: dict[str, str] = {
+    "CPL": "cpl",
+    "FIT": "fit",
+    "RETRIEVAL": "retrieval",
+    "SIM": "sim",
+    "MODEL_1": "model1",
+    "MODEL_2": "model2",
+    "MODEL_3": "model3",
+    "SUMMARY": "summary",
+}
+
+AGENT_BY_CONTEXT_SECTION: dict[str, str] = {
+    section: agent for agent, section in CONTEXT_SECTION_BY_AGENT.items()
+}
 
 
-def new_uuid() -> str:
-    return str(uuid.uuid4())
+class ChatReference(BaseModel):
+    """답변 한 건이 가리키는 분석 결과 한 조각.
 
+    `evidence_id` 는 report_json 의 `evidence_ref` 다. 근거 원문이 없는
+    결과(ML 예측값처럼 문서 인용이 아닌 것)도 있어 null 을 허용한다 — 필수로
+    두면 LLM 이 자리를 채우려고 없는 id 를 만든다.
+    """
 
-class ChatEvidence(BaseModel):
-    """근거 한 조각. `evidence_snapshot_pk` 는 result.evidence_snapshot 참조."""
-    source: str
-    field: Optional[str] = None
-    value: Any = None
-    evidence_snapshot_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class ChatIntent(BaseModel):
-    type: IntentType
-
-
-class SessionState(BaseModel):
-    """대화를 이어도 되는 상태인가. 만료·종료 판정에 필요한 것만 담는다."""
     model_config = ConfigDict(extra="forbid")
 
-    analysis_session_id: str
-    analysis_case_id: str
-    status: SessionStatus = "active"
-    expired: bool = False
-    case_status: Literal["processing", "ready", "failed"] = "ready"
+    agent: ChatReferenceAgent
+    item: str = Field(min_length=1, max_length=200)
+    evidence_id: str | None
+
+
+class ChatAnswer(BaseModel):
+    """LLM 이 돌려주는 답 하나. provider 와 무관한 계약이다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str = Field(min_length=1, max_length=12_000)
+    references: list[ChatReference] = Field(max_length=30)
+    # 수정·보완 제안. 제안일 뿐 확정 수정이 아니라서 answer 안에 섞지 않고
+    # 자리를 따로 둔다 — 화면이 "제안" 으로 구분해 그릴 수 있어야 사용자가
+    # 확정 판정으로 읽지 않는다.
+    suggested_revision: str | None = Field(max_length=4_000)
 
     @property
-    def usable(self) -> bool:
-        # 결과가 준비되지 않았으면 근거가 없어 답할 수 없다.
-        return (self.status == "active" and not self.expired
-                and self.case_status == "ready")
-
-
-class TurnRequest(BaseModel):
-    """사용자가 보낸 질문 하나."""
-    model_config = ConfigDict(extra="forbid")
-
-    analysis_session_id: str
-    analysis_case_id: str
-    content: str
-
-    @field_validator("analysis_session_id", "analysis_case_id", "content")
-    @classmethod
-    def _not_blank(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("빈 값은 허용하지 않는다")
-        return v.strip()
-
-
-class MessageRow(BaseModel):
-    """`result.conversation_message` 한 행. 컬럼명을 그대로 쓴다."""
-    model_config = ConfigDict(extra="forbid")
-
-    message_pk: str = Field(default_factory=new_uuid)
-    analysis_session_pk: str
-    role: MessageRole
-    sequence_no: int = Field(ge=1)
-    content: Optional[str] = None
-    message_status: MessageStatus = "completed"
-    reply_to_message_pk: Optional[str] = None
-    retry_count: int = Field(default=0, ge=0)
-    error_code: Optional[str] = None
-
-    @field_validator("sequence_no")
-    @classmethod
-    def _positive(cls, v: int) -> int:
-        if v < 1:
-            raise ValueError("sequence_no 는 1 이상이다")
-        return v
-
-    def check_table_shape(self) -> None:
-        """DB CHECK 제약을 여기서 먼저 건다 — 잘못된 행을 만들어 보내면
-        insert 가 거절되는데, 그때는 어느 단계가 틀렸는지 알기 어렵다."""
-        if self.role == "user":
-            if (self.message_status != "completed" or not self.content
-                    or self.reply_to_message_pk is not None):
-                raise ValueError(
-                    "user 행은 completed · content 필수 · reply_to 없음이어야 한다")
-        else:
-            if self.reply_to_message_pk is None:
-                raise ValueError("assistant 행은 reply_to_message_pk 가 있어야 한다")
-
-
-class QueueJob(BaseModel):
-    """`ops.processing_run` 에 넣을 채팅 작업.
-
-    assistant_message_pk 에 부분 UNIQUE 인덱스가 걸려 있어 한 메시지에 작업이
-    두 번 등록되지 않는다. 여기서는 그 행 모양만 만든다.
-    """
-    model_config = ConfigDict(extra="forbid")
-
-    run_type: str = "chat"
-    status: Literal["queued"] = "queued"
-    analysis_case_pk: str
-    assistant_message_pk: str
-
-
-class CreatedTurn(BaseModel):
-    """질문 접수 결과 — 저장할 행 둘과 큐 작업 하나.
-
-    `edge-conversation-create-message` 가 이 셋을 한 트랜잭션으로 쓴다.
-    """
-    model_config = ConfigDict(extra="forbid")
-
-    user_message: MessageRow
-    assistant_message: MessageRow
-    job: QueueJob
-
-
-class CompletedTurn(BaseModel):
-    """워커가 assistant 행에 적용할 변경분.
-
-    행을 통째로 돌려주지 않고 바꿀 칸만 준다 — 워커가 UPDATE 로 쓴다.
-    """
-    model_config = ConfigDict(extra="forbid")
-
-    message_pk: str
-    message_status: MessageStatus
-    content: Optional[str] = None
-    error_code: Optional[str] = None
-    retryable: bool = False
-
-    intent: ChatIntent
-    evidence: List[ChatEvidence] = Field(default_factory=list)
-    # 근거 점검 결과. 답변을 막지 않고 무엇이 걸렸는지만 남긴다.
-    warnings: List[str] = Field(default_factory=list)
+    def evidence_ids(self) -> list[str]:
+        """인용된 근거 id 만 순서대로. 중복은 접는다."""
+        seen: list[str] = []
+        for reference in self.references:
+            if reference.evidence_id and reference.evidence_id not in seen:
+                seen.append(reference.evidence_id)
+        return seen

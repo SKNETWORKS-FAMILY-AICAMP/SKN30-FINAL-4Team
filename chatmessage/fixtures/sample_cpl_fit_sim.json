@@ -1,0 +1,1614 @@
+{
+  "case": {
+    "case_id": 42,
+    "title": "기술개발 지원사업",
+    "created_at": "2026-09-10T00:00:00Z",
+    "completed_at": "2026-09-10T00:00:00Z"
+  },
+  "self_check": {
+    "confirmed_count": 11,
+    "total_count": 13,
+    "confirmation_rate": 84.6,
+    "items": [
+      {
+        "field_code": "REQUEST_TYPE",
+        "status": "MISSING",
+        "reason_code": "NO_MATCH",
+        "explanation": "근거 문장을 찾지 못했습니다.",
+        "occurrences": [
+          {
+            "evidence_ref": "request:REQUEST_TYPE:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "PURPOSE_GOAL",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "IMPLEMENTATION_PLAN",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:IMPLEMENTATION_PLAN:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "BUSINESS_PERIOD",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:BUSINESS_PERIOD:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "NEW_OR_CHANGED_CONTENT",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:NEW_OR_CHANGED_CONTENT:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "BUSINESS_NEED",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:BUSINESS_NEED:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "LEGAL_BASIS",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:LEGAL_BASIS:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "LINKED_POLICY",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:LINKED_POLICY:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "BUDGET",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:BUDGET:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "TARGET_AND_CONDITIONS",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "SUPPORT_CONTENT_AND_SCALE",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:SUPPORT_CONTENT_AND_SCALE:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "DELIVERY_SYSTEM",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:DELIVERY_SYSTEM:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      },
+      {
+        "field_code": "EXPECTED_EFFECTS_AND_PERFORMANCE",
+        "status": "PRESENT",
+        "reason_code": null,
+        "explanation": null,
+        "occurrences": [
+          {
+            "evidence_ref": "request:EXPECTED_EFFECTS_AND_PERFORMANCE:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ]
+      }
+    ],
+    "ruleset_version": "v1",
+    "prompt_version": "cpl-v0.9",
+    "model_profile": "gpt-4o-mini"
+  },
+  "structural_consistency": {
+    "module_status": "AVAILABLE",
+    "score": {
+      "value": 71.0,
+      "numerator": 5,
+      "denominator": 7,
+      "assessable_count": 7,
+      "total_count": 7,
+      "scoring_version": "v1"
+    },
+    "relations": [
+      {
+        "relation_id": "FIT-1",
+        "status": "FIT",
+        "score": 90,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-1:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      },
+      {
+        "relation_id": "FIT-2",
+        "status": "CONFLICT",
+        "score": 40,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-2:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      },
+      {
+        "relation_id": "FIT-3",
+        "status": "FIT",
+        "score": 90,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-3:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      },
+      {
+        "relation_id": "FIT-4",
+        "status": "FIT",
+        "score": 90,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-4:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      },
+      {
+        "relation_id": "FIT-5",
+        "status": "FIT",
+        "score": 90,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-5:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      },
+      {
+        "relation_id": "FIT-6",
+        "status": "FIT",
+        "score": 90,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-6:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      },
+      {
+        "relation_id": "FIT-7",
+        "status": "FIT",
+        "score": 90,
+        "summary": "목적과 지원대상의 연결이 확인되지 않습니다.",
+        "left_evidence": [
+          {
+            "evidence_ref": "request:PURPOSE_GOAL:0",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "right_evidence": [
+          {
+            "evidence_ref": "fit:FIT-7:R",
+            "source_side": "REQUEST",
+            "source_id": "SRC-1",
+            "field_code": null,
+            "axis_code": null,
+            "source_role": null,
+            "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+            "normalized_value": null,
+            "block_id": null,
+            "page_no": 3,
+            "section_path": [
+              "II. 사업개요",
+              "2. 지원대상"
+            ],
+            "source_locator": {
+              "offset": 1024,
+              "length": 48
+            },
+            "extraction_method": "RULE",
+            "extraction_version": "v1"
+          }
+        ],
+        "rule_version": "v1",
+        "prompt_version": "fit-v0.5"
+      }
+    ],
+    "ruleset_version": "v1",
+    "prompt_version": "fit-v0.5",
+    "scoring_version": "v1",
+    "model_profile": "gpt-4o-mini"
+  },
+  "similar_candidates": [
+    {
+      "rank": 1,
+      "announcement_id": "ANN-1",
+      "announcement_version_id": 1,
+      "title": "중소기업 기술혁신 지원사업",
+      "source_url": "https://example.test/ann-1",
+      "semantic_similarity": 0.81,
+      "semantic_similarity_display": 81,
+      "weighted_score": 74.0,
+      "assessable_axis_count": 4,
+      "review_grade": "FOCUS_REVIEW",
+      "comparison_summary": "지원대상과 지원내용이 상당 부분 겹칩니다.",
+      "axes": {
+        "purpose": {
+          "axis_id": "SIM-1",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:1:purpose:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "target": {
+          "axis_id": "SIM-2",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:1:target:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "content": {
+          "axis_id": "SIM-3",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:1:content:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "delivery": {
+          "axis_id": "SIM-4",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:1:delivery:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        }
+      },
+      "ruleset_version": "v1",
+      "prompt_version": "sim-v0.3",
+      "scoring_version": "v1",
+      "model_profile": "gpt-4o-mini"
+    },
+    {
+      "rank": 2,
+      "announcement_id": "ANN-2",
+      "announcement_version_id": 1,
+      "title": "지역 중소기업 R&D 바우처",
+      "source_url": "https://example.test/ann-2",
+      "semantic_similarity": 0.81,
+      "semantic_similarity_display": 81,
+      "weighted_score": 74.0,
+      "assessable_axis_count": 4,
+      "review_grade": "GENERAL_REVIEW",
+      "comparison_summary": "지원대상은 비슷하나 지원 방식이 다릅니다.",
+      "axes": {
+        "purpose": {
+          "axis_id": "SIM-1",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:2:purpose:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "target": {
+          "axis_id": "SIM-2",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:2:target:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "content": {
+          "axis_id": "SIM-3",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:2:content:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "delivery": {
+          "axis_id": "SIM-4",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:2:delivery:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        }
+      },
+      "ruleset_version": "v1",
+      "prompt_version": "sim-v0.3",
+      "scoring_version": "v1",
+      "model_profile": "gpt-4o-mini"
+    },
+    {
+      "rank": 3,
+      "announcement_id": "ANN-3",
+      "announcement_version_id": 1,
+      "title": "창업기업 사업화 지원",
+      "source_url": "https://example.test/ann-3",
+      "semantic_similarity": 0.81,
+      "semantic_similarity_display": 81,
+      "weighted_score": 74.0,
+      "assessable_axis_count": 4,
+      "review_grade": "GENERAL_REVIEW",
+      "comparison_summary": "목적은 유사하나 대상 기업 범위가 좁습니다.",
+      "axes": {
+        "purpose": {
+          "axis_id": "SIM-1",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:3:purpose:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "target": {
+          "axis_id": "SIM-2",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:3:target:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "content": {
+          "axis_id": "SIM-3",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:3:content:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        },
+        "delivery": {
+          "axis_id": "SIM-4",
+          "status": "SIMILAR",
+          "score": 80,
+          "summary": "유사합니다.",
+          "common_points": [
+            "중소기업 대상"
+          ],
+          "differences": [
+            "지원 규모가 다릅니다."
+          ],
+          "request_evidence": [
+            {
+              "evidence_ref": "request:TARGET_AND_CONDITIONS:0",
+              "source_side": "REQUEST",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ],
+          "candidate_evidence": [
+            {
+              "evidence_ref": "sim:3:delivery:cand",
+              "source_side": "ANNOUNCEMENT",
+              "source_id": "SRC-1",
+              "field_code": null,
+              "axis_code": null,
+              "source_role": null,
+              "excerpt": "중소기업을 대상으로 기술개발 과제를 지원하며, 지원규모는 과제당 최대 3억원으로 한다.",
+              "normalized_value": null,
+              "block_id": null,
+              "page_no": 3,
+              "section_path": [
+                "II. 사업개요",
+                "2. 지원대상"
+              ],
+              "source_locator": {
+                "offset": 1024,
+                "length": 48
+              },
+              "extraction_method": "RULE",
+              "extraction_version": "v1"
+            }
+          ]
+        }
+      },
+      "ruleset_version": "v1",
+      "prompt_version": "sim-v0.3",
+      "scoring_version": "v1",
+      "model_profile": "gpt-4o-mini"
+    }
+  ],
+  "module_summary": {
+    "all_success": false
+  },
+  "review_issues": [
+    {
+      "issue_id": "ISS-1",
+      "source": "CPL",
+      "reference_id": "REQUEST_TYPE",
+      "status": "MISSING",
+      "summary": "항목을 확인하지 못했습니다.",
+      "evidence": []
+    }
+  ],
+  "quality": "PARTIAL",
+  "warnings": [
+    "ML model 3 unavailable"
+  ],
+  "_fixture_note": "ML 저장 구조가 아직 없는 현재 상태 — model1/2/3 은 not_available"
+}
