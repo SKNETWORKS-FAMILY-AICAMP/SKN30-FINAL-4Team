@@ -94,8 +94,17 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/sim-candidates/{sim_candidate_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-sessions/active", "get"): {"401", "403", "422", "500", "503"},
         ("/api/v1/analysis-history", "get"): {"401", "403", "422", "500", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/messages", "post"): {"401", "403", "404", "409", "422", "500", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/messages", "get"): {"401", "403", "404", "422", "500", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry", "post"): {"401", "403", "404", "409", "422", "500", "503"},
     }
-    assert len(schema["paths"]) == len(expected_errors)
+    actual_operations = {
+        (path, method)
+        for path, path_item in schema["paths"].items()
+        for method in path_item
+        if method in {"get", "post", "put", "patch", "delete"}
+    }
+    assert actual_operations == set(expected_errors)
     for (path, method), status_codes in expected_errors.items():
         operation = _operation(schema, path, method)
         for status_code in status_codes:

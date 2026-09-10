@@ -84,8 +84,9 @@ legacy worker 완료 함수 제거 직전의 최신 백업은
 `/tmp/pre_review_before_migration_24_20260910.dump`이며 mode `600`, 크기 4,348,849 bytes,
 SHA-256은 `a6f54439e3402e201fea3731c732c426ee20ca081bf71a356d941fa994f1afe6`다.
 
-PDF/OCR은 현재 요청 처리 범위에서 제외한다. 채팅과 PDF 생성은 데이터 모델은 있지만
-별도 queue/API 구현 전이라 E2E 완료 범위가 아니다.
+PDF/OCR은 현재 요청 처리 범위에서 제외한다. 채팅은 별도 queue/API/worker와
+결과 근거 제한 로직까지 구현했으며, migration 26 적용 후 실제 LLM E2E를 확인해야 한다.
+PDF 생성은 데이터 모델은 있지만 별도 queue/API 구현 전이라 E2E 완료 범위가 아니다.
 
 현재 이 체크아웃에는 mode `600`인 `backend/.env`가 준비되어 있고 API·worker가 online으로
 실행 중이다. 새 checkout/서버에서는 Supabase migration, Existing KB bootstrap과
