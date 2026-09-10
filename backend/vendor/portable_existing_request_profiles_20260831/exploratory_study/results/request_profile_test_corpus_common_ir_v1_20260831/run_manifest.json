@@ -1,0 +1,61 @@
+{
+  "schema_version": "common_ir_v1",
+  "adapter": {
+    "generator": "semantic_structuring.request_markdown_common_ir_v1",
+    "generator_version": "1.0.0",
+    "parser": "markdown_fixture_parser",
+    "parser_version": "1.0.0"
+  },
+  "input_root": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input",
+  "allowed_inputs": [
+    "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_01_scale_period.input.md",
+    "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_02_target_eligibility.input.md",
+    "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+    "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_04_new_program.input.md",
+    "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_05_component_change.input.md",
+    "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_manifest.json"
+  ],
+  "declared_constraints": {
+    "llm_called": false,
+    "ocr_called": false,
+    "pdf_processed": false,
+    "gold_or_scoring_input_used": false
+  },
+  "validation": {
+    "request:PREREVIEW-TEST-2027-01": {
+      "schema_errors": [],
+      "dangling_references": 0,
+      "source_span_round_trip_errors": 0,
+      "gold_or_scoring_input_used": false,
+      "table_summary": []
+    },
+    "request:PREREVIEW-TEST-2027-02": {
+      "schema_errors": [],
+      "dangling_references": 0,
+      "source_span_round_trip_errors": 0,
+      "gold_or_scoring_input_used": false,
+      "table_summary": []
+    },
+    "request:PREREVIEW-TEST-2027-03": {
+      "schema_errors": [],
+      "dangling_references": 0,
+      "source_span_round_trip_errors": 0,
+      "gold_or_scoring_input_used": false,
+      "table_summary": []
+    },
+    "request:PREREVIEW-TEST-2027-04": {
+      "schema_errors": [],
+      "dangling_references": 0,
+      "source_span_round_trip_errors": 0,
+      "gold_or_scoring_input_used": false,
+      "table_summary": []
+    },
+    "request:PREREVIEW-TEST-2027-05": {
+      "schema_errors": [],
+      "dangling_references": 0,
+      "source_span_round_trip_errors": 0,
+      "gold_or_scoring_input_used": false,
+      "table_summary": []
+    }
+  }
+}

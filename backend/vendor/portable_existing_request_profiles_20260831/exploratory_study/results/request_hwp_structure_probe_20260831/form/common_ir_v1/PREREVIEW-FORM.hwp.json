@@ -1,0 +1,1544 @@
+{
+  "schema_version": "common_ir_v1",
+  "document": {
+    "document_id": "hwp:PREREVIEW-FORM",
+    "source_kind": "hwp",
+    "artifact_role": "production",
+    "page_count": 1,
+    "raw_artifact_ids": [
+      "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json"
+    ],
+    "provenance": {
+      "method": "rhwp",
+      "page": null,
+      "bbox": null,
+      "coordinate_space": null,
+      "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서양식.hwp",
+      "source_sha256": "28c03655a2f82c40240b75549979d14441653b00c895ad28c0940e2e8e8ba90b",
+      "generator": "common_ir_v1_adapters",
+      "generator_version": "1.0.1",
+      "schema_version": "common_ir_v1",
+      "parser": "rhwp",
+      "parser_version": "0.8.1",
+      "parser_core_version": "0.7.17"
+    }
+  },
+  "blocks": [
+    {
+      "block_id": "hwp:b2",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "< 기 관 명 >",
+      "text_occurrence_ids": [
+        "occ:rhwp:p2"
+      ],
+      "reading_order": 0,
+      "page": null,
+      "section_path": "section[0]/para[2]",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:p2",
+          "role": "rhwp_text",
+          "text": "< 기 관 명 >",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/2"
+          }
+        }
+      ],
+      "boundary_markers": [],
+      "source_block_label": "paragraph",
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/2"
+      }
+    },
+    {
+      "block_id": "hwp:t4",
+      "kind": "table",
+      "structure_status": "explicit",
+      "text": "사전협의 요청사유\n□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설\n□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)\n사업명\n(세부) \n(내역) 세부사업 신설 시 미기재\n(내내역) 세부사업·내역사업 신설 시 미기재\n신설·변경 필요성(사유)\n◦\n신설·변경 주요내용\n◦\n◦\n기대효과\n◦\n◦\n타 제도 협의·심사여부\n(해당 시)\n제 도 명\n협의부처\n협의일시\n협의결과\n사업담당자\n(부처, 기관)\n담당부서\n직급\n성명\n연락처\n전자메일",
+      "text_occurrence_ids": [
+        "occ:rhwp:t4"
+      ],
+      "reading_order": 1,
+      "page": null,
+      "section_path": "section[0]/para[3]",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:t4",
+          "role": "rhwp_text",
+          "text": "사전협의 요청사유\n□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설\n□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)\n사업명\n(세부) \n(내역) 세부사업 신설 시 미기재\n(내내역) 세부사업·내역사업 신설 시 미기재\n신설·변경 필요성(사유)\n◦\n신설·변경 주요내용\n◦\n◦\n기대효과\n◦\n◦\n타 제도 협의·심사여부\n(해당 시)\n제 도 명\n협의부처\n협의일시\n협의결과\n사업담당자\n(부처, 기관)\n담당부서\n직급\n성명\n연락처\n전자메일",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c0",
+          "role": "rhwp_cell",
+          "text": "사전협의 요청사유",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/0"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c1",
+          "role": "rhwp_cell",
+          "text": "□ 세부사업 신설   □ 내역사업 신설  □ 내내역사업 신설\n□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/1"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c2",
+          "role": "rhwp_cell",
+          "text": "사업명",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/2"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c3",
+          "role": "rhwp_cell",
+          "text": "(세부) ",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/3"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c4",
+          "role": "rhwp_cell",
+          "text": "(내역) 세부사업 신설 시 미기재",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/4"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5",
+          "role": "rhwp_cell",
+          "text": "(내내역) 세부사업·내역사업 신설 시 미기재",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/5"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c6",
+          "role": "rhwp_cell",
+          "text": "신설·변경 필요성(사유)",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/6"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7",
+          "role": "rhwp_cell",
+          "text": "◦",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c8",
+          "role": "rhwp_cell",
+          "text": "신설·변경 주요내용",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/8"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9",
+          "role": "rhwp_cell",
+          "text": "◦\n◦",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c10",
+          "role": "rhwp_cell",
+          "text": "기대효과",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/10"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c11",
+          "role": "rhwp_cell",
+          "text": "◦\n◦",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c12",
+          "role": "rhwp_cell",
+          "text": "타 제도 협의·심사여부\n(해당 시)",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/12"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13",
+          "role": "rhwp_cell",
+          "text": "제 도 명",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/13"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c14",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/14"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c15",
+          "role": "rhwp_cell",
+          "text": "협의부처",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/15"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c16",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/16"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c17",
+          "role": "rhwp_cell",
+          "text": "협의일시",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/17"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c18",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/18"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c19",
+          "role": "rhwp_cell",
+          "text": "협의결과",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/19"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c20",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/20"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c21",
+          "role": "rhwp_cell",
+          "text": "사업담당자\n(부처, 기관)",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/21"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c22",
+          "role": "rhwp_cell",
+          "text": "담당부서",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/22"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c23",
+          "role": "rhwp_cell",
+          "text": "직급",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/23"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c24",
+          "role": "rhwp_cell",
+          "text": "성명",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/24"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c25",
+          "role": "rhwp_cell",
+          "text": "연락처",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/25"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c26",
+          "role": "rhwp_cell",
+          "text": "전자메일",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/26"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c27",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/27"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c28",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/28"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c29",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/29"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c30",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/30"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c31",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/31"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c32",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/32"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c33",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/33"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c34",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/34"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c35",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/35"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c36",
+          "role": "rhwp_cell",
+          "text": "",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/36"
+          }
+        }
+      ],
+      "cells": [
+        {
+          "cell_id": "hwp:t4:c0",
+          "evidence_ids": [
+            "occ:rhwp:t4:c0"
+          ],
+          "row_index": 0,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c0"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/0"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c1",
+          "evidence_ids": [
+            "occ:rhwp:t4:c1"
+          ],
+          "row_index": 0,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c1"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/1"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c2",
+          "evidence_ids": [
+            "occ:rhwp:t4:c2"
+          ],
+          "row_index": 1,
+          "col_index": 0,
+          "row_span": 3,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c2"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/2"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c3",
+          "evidence_ids": [
+            "occ:rhwp:t4:c3"
+          ],
+          "row_index": 1,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c3"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/3"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c4",
+          "evidence_ids": [
+            "occ:rhwp:t4:c4"
+          ],
+          "row_index": 2,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c4"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/4"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c5",
+          "evidence_ids": [
+            "occ:rhwp:t4:c5"
+          ],
+          "row_index": 3,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c5"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/5"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c6",
+          "evidence_ids": [
+            "occ:rhwp:t4:c6"
+          ],
+          "row_index": 4,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c6"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/6"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c7",
+          "evidence_ids": [
+            "occ:rhwp:t4:c7"
+          ],
+          "row_index": 4,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c7"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c8",
+          "evidence_ids": [
+            "occ:rhwp:t4:c8"
+          ],
+          "row_index": 5,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c8"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/8"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c9",
+          "evidence_ids": [
+            "occ:rhwp:t4:c9"
+          ],
+          "row_index": 5,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c9"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c10",
+          "evidence_ids": [
+            "occ:rhwp:t4:c10"
+          ],
+          "row_index": 6,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c10"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/10"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c11",
+          "evidence_ids": [
+            "occ:rhwp:t4:c11"
+          ],
+          "row_index": 6,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 7,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c11"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c12",
+          "evidence_ids": [
+            "occ:rhwp:t4:c12"
+          ],
+          "row_index": 7,
+          "col_index": 0,
+          "row_span": 3,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c12"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/12"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c13",
+          "evidence_ids": [
+            "occ:rhwp:t4:c13"
+          ],
+          "row_index": 7,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c13"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/13"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c14",
+          "evidence_ids": [
+            "occ:rhwp:t4:c14"
+          ],
+          "row_index": 7,
+          "col_index": 2,
+          "row_span": 1,
+          "col_span": 6,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c14"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/14"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c15",
+          "evidence_ids": [
+            "occ:rhwp:t4:c15"
+          ],
+          "row_index": 8,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c15"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/15"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c16",
+          "evidence_ids": [
+            "occ:rhwp:t4:c16"
+          ],
+          "row_index": 8,
+          "col_index": 2,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c16"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/16"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c17",
+          "evidence_ids": [
+            "occ:rhwp:t4:c17"
+          ],
+          "row_index": 8,
+          "col_index": 4,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c17"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/17"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c18",
+          "evidence_ids": [
+            "occ:rhwp:t4:c18"
+          ],
+          "row_index": 8,
+          "col_index": 6,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c18"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/18"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c19",
+          "evidence_ids": [
+            "occ:rhwp:t4:c19"
+          ],
+          "row_index": 9,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c19"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/19"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c20",
+          "evidence_ids": [
+            "occ:rhwp:t4:c20"
+          ],
+          "row_index": 9,
+          "col_index": 2,
+          "row_span": 1,
+          "col_span": 6,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c20"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/20"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c21",
+          "evidence_ids": [
+            "occ:rhwp:t4:c21"
+          ],
+          "row_index": 10,
+          "col_index": 0,
+          "row_span": 3,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c21"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/21"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c22",
+          "evidence_ids": [
+            "occ:rhwp:t4:c22"
+          ],
+          "row_index": 10,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c22"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/22"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c23",
+          "evidence_ids": [
+            "occ:rhwp:t4:c23"
+          ],
+          "row_index": 10,
+          "col_index": 2,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c23"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/23"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c24",
+          "evidence_ids": [
+            "occ:rhwp:t4:c24"
+          ],
+          "row_index": 10,
+          "col_index": 3,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c24"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/24"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c25",
+          "evidence_ids": [
+            "occ:rhwp:t4:c25"
+          ],
+          "row_index": 10,
+          "col_index": 5,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c25"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/25"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c26",
+          "evidence_ids": [
+            "occ:rhwp:t4:c26"
+          ],
+          "row_index": 10,
+          "col_index": 7,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c26"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/26"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c27",
+          "evidence_ids": [
+            "occ:rhwp:t4:c27"
+          ],
+          "row_index": 11,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c27"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/27"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c28",
+          "evidence_ids": [
+            "occ:rhwp:t4:c28"
+          ],
+          "row_index": 11,
+          "col_index": 2,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c28"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/28"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c29",
+          "evidence_ids": [
+            "occ:rhwp:t4:c29"
+          ],
+          "row_index": 11,
+          "col_index": 3,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c29"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/29"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c30",
+          "evidence_ids": [
+            "occ:rhwp:t4:c30"
+          ],
+          "row_index": 11,
+          "col_index": 5,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c30"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/30"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c31",
+          "evidence_ids": [
+            "occ:rhwp:t4:c31"
+          ],
+          "row_index": 11,
+          "col_index": 7,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c31"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/31"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c32",
+          "evidence_ids": [
+            "occ:rhwp:t4:c32"
+          ],
+          "row_index": 12,
+          "col_index": 1,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c32"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/32"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c33",
+          "evidence_ids": [
+            "occ:rhwp:t4:c33"
+          ],
+          "row_index": 12,
+          "col_index": 2,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c33"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/33"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c34",
+          "evidence_ids": [
+            "occ:rhwp:t4:c34"
+          ],
+          "row_index": 12,
+          "col_index": 3,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c34"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/34"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c35",
+          "evidence_ids": [
+            "occ:rhwp:t4:c35"
+          ],
+          "row_index": 12,
+          "col_index": 5,
+          "row_span": 1,
+          "col_span": 2,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c35"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/35"
+          }
+        },
+        {
+          "cell_id": "hwp:t4:c36",
+          "evidence_ids": [
+            "occ:rhwp:t4:c36"
+          ],
+          "row_index": 12,
+          "col_index": 7,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c36"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/36"
+          }
+        }
+      ],
+      "boundary_markers": [],
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4"
+      }
+    },
+    {
+      "block_id": "hwp:t4.c7.b2",
+      "kind": "table",
+      "structure_status": "explicit",
+      "text": "◈ (작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술\n◈ (필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)",
+      "text_occurrence_ids": [
+        "occ:rhwp:t4.c7.b2"
+      ],
+      "reading_order": 2,
+      "page": null,
+      "section_path": "section[0]/para[3]",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:t4.c7.b2",
+          "role": "rhwp_text",
+          "text": "◈ (작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술\n◈ (필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7/blocks/2"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4.c7.b2:c0",
+          "role": "rhwp_cell",
+          "text": "◈ (작성방법) 경제여건 변화, 사회적 수요 반영, 핵심 정책 추진 등에 따른 신설변경 사유 및 필요성을 기술\n◈ (필수 기재항목) 사업목적, 사업필요성, 지원근거, 연계정책(국정과제, 관계부처 기본계획 등)",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7/blocks/2/cells/0"
+          }
+        }
+      ],
+      "cells": [
+        {
+          "cell_id": "hwp:t4.c7.b2:c0",
+          "evidence_ids": [
+            "occ:rhwp:t4.c7.b2:c0"
+          ],
+          "row_index": 0,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4.c7.b2:c0"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7/blocks/2/cells/0"
+          }
+        }
+      ],
+      "boundary_markers": [],
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7/blocks/2"
+      }
+    },
+    {
+      "block_id": "hwp:t4.c9.b2",
+      "kind": "table",
+      "structure_status": "explicit",
+      "text": "◈ (작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술\n◈ (필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관",
+      "text_occurrence_ids": [
+        "occ:rhwp:t4.c9.b2"
+      ],
+      "reading_order": 3,
+      "page": null,
+      "section_path": "section[0]/para[3]",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:t4.c9.b2",
+          "role": "rhwp_text",
+          "text": "◈ (작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술\n◈ (필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9/blocks/2"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4.c9.b2:c0",
+          "role": "rhwp_cell",
+          "text": "◈ (작성방법) 사업목적, 지원내용, 지원대상, 사업추진방식 등 ‘23년도 사업계획서 대비 ’24년도에 신설·변경되는 주요사항을 요약 기술\n◈ (필수 기재항목) 사업기간, 사업예산, 지원대상, 지원조건(업종, 종사자, 매출액, 인증기업 등), 지원내용(지원기업수, 단가 등), 수행기관",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9/blocks/2/cells/0"
+          }
+        }
+      ],
+      "cells": [
+        {
+          "cell_id": "hwp:t4.c9.b2:c0",
+          "evidence_ids": [
+            "occ:rhwp:t4.c9.b2:c0"
+          ],
+          "row_index": 0,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4.c9.b2:c0"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9/blocks/2/cells/0"
+          }
+        }
+      ],
+      "boundary_markers": [],
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9/blocks/2"
+      }
+    },
+    {
+      "block_id": "hwp:t4.c11.b3",
+      "kind": "table",
+      "structure_status": "explicit",
+      "text": "◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술\n◈ (필수 기재항목) 파급효과, 성과지표",
+      "text_occurrence_ids": [
+        "occ:rhwp:t4.c11.b3"
+      ],
+      "reading_order": 4,
+      "page": null,
+      "section_path": "section[0]/para[3]",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:t4.c11.b3",
+          "role": "rhwp_text",
+          "text": "◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술\n◈ (필수 기재항목) 파급효과, 성과지표",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11/blocks/3"
+          }
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4.c11.b3:c0",
+          "role": "rhwp_cell",
+          "text": "◈ (작성방법) 신설변경에 따라 성과달성 개선사항 등을 기술\n◈ (필수 기재항목) 파급효과, 성과지표",
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11/blocks/3/cells/0"
+          }
+        }
+      ],
+      "cells": [
+        {
+          "cell_id": "hwp:t4.c11.b3:c0",
+          "evidence_ids": [
+            "occ:rhwp:t4.c11.b3:c0"
+          ],
+          "row_index": 0,
+          "col_index": 0,
+          "row_span": 1,
+          "col_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4.c11.b3:c0"
+          ],
+          "provenance": {
+            "method": "rhwp",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": null,
+            "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11/blocks/3/cells/0"
+          }
+        }
+      ],
+      "boundary_markers": [],
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11/blocks/3"
+      }
+    }
+  ],
+  "conflicts": [],
+  "relations": [
+    {
+      "relation_id": "relation:table_contains:hwp:t4:c7:hwp:t4.c7.b2",
+      "kind": "table_contains",
+      "from_id": "hwp:t4:c7",
+      "to_id": "hwp:t4.c7.b2",
+      "evidence_ids": [
+        "occ:rhwp:t4:c7"
+      ],
+      "inferred": false,
+      "structure_status": "explicit",
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/7/blocks/2"
+      }
+    },
+    {
+      "relation_id": "relation:table_contains:hwp:t4:c9:hwp:t4.c9.b2",
+      "kind": "table_contains",
+      "from_id": "hwp:t4:c9",
+      "to_id": "hwp:t4.c9.b2",
+      "evidence_ids": [
+        "occ:rhwp:t4:c9"
+      ],
+      "inferred": false,
+      "structure_status": "explicit",
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/9/blocks/2"
+      }
+    },
+    {
+      "relation_id": "relation:table_contains:hwp:t4:c11:hwp:t4.c11.b3",
+      "kind": "table_contains",
+      "from_id": "hwp:t4:c11",
+      "to_id": "hwp:t4.c11.b3",
+      "evidence_ids": [
+        "occ:rhwp:t4:c11"
+      ],
+      "inferred": false,
+      "structure_status": "explicit",
+      "provenance": {
+        "method": "rhwp",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": null,
+        "source_location": "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json#/ir/body/4/cells/11/blocks/3"
+      }
+    }
+  ]
+}

@@ -1,458 +1,115 @@
-# Pre-review 백엔드 실행 안내
+# PreReview backend
 
-중소기업 지원사업 사전협의 요청서(HWP/HWPX)를 분석해 다음 결과를 만드는 FastAPI 백엔드다.
-
-- CPL: 필수 항목 작성 여부
-- FIT: 요청서 내부 내용의 정합성
-- SIM: 기존 지원사업과의 유사·중복 가능성
-- 결과 JSON, PDF, 결과 기반 채팅
-
-이 문서는 **Windows + VS Code + Command Prompt(cmd)** 기준이다. 아래 명령은 별도 표시가 없으면 저장소 루트에서 실행한다.
+현재 런타임의 공개 경계는 FastAPI다. 브라우저는 FastAPI만 호출하며, Supabase의
+Auth·PostgreSQL/pgvector·private Storage는 서버 내부 인프라로 사용한다.
 
 ```text
-SKN30-FINAL-4Team\
-├─ backend\
-│  ├─ pyproject.toml
-│  └─ uv.lock
-├─ scripts\
-├─ .env.example
-└─ README.md
+Frontend (HttpOnly Cookie)
+  → FastAPI /api/v1
+      ├─ Supabase Auth
+      ├─ Postgres / pgvector / private Storage
+      └─ workspace.analysis_run (queued)
+                                      ↓
+                         same-server polling worker
+                         claim → parse → OpenAI → persist result
 ```
 
-## 0. 먼저 읽는다
+- Redis/RQ, 브라우저의 Supabase 직접 호출, 현재 런타임의 Edge Function dispatch/callback은 사용하지 않는다.
+- 분석 진행 상황은 `GET /api/v1/analysis-runs/{id}` 폴링으로 조회한다. SSE/WebSocket은 현재 구현 범위가 아니다.
+- worker는 신뢰된 서버 프로세스이며 PostgreSQL과 private Storage에만 내부 자격증명으로 접근한다. 브라우저 Cookie·사용자 token은 worker에 전달하지 않는다.
 
-필요한 절이 경우마다 다르다.
+## 현재 API
 
-| 하려는 일 | 읽을 곳 |
-|---|---|
-| API 를 호출하는 화면을 만든다 | 백엔드에게 API 명세를 받아 보고, 서버는 아래 절차로 띄운다. Swagger 는 `http://127.0.0.1:8000/docs` |
-| 팀 Supabase 에 붙여 백엔드를 돌린다 | 1~5, 8절. **6·7절은 건너뛴다** |
-| 로컬 PostgreSQL 로 처음부터 세팅한다 | 1~8절 전부 |
-| 전체 테스트를 돌린다 | 6절로 DB 를 띄운 뒤 13절 |
+- `POST /api/v1/auth/sign-in`, `sign-up`, `refresh`, `sign-out`, `password-reset`, `update-password`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/analysis-runs` — 필수 UUID v4 `Idempotency-Key`, HWP/HWPX 업로드와 queued run 생성
+- `GET /api/v1/analysis-runs/{analysis_run_id}` — 작업 상태 폴링
+- `GET /api/v1/analysis-cases/{analysis_case_id}`
+- `GET /api/v1/sim-candidates/{sim_candidate_id}`
+- `GET /api/v1/analysis-sessions/active`
+- `GET /api/v1/analysis-history`
 
-응답은 성공·실패 모두 `code`·`message`·`data`·`errors` 네 필드로 온다. 자세한 계약은 API 명세에 있다.
+메시지·PDF 생성 API는 데이터 모델은 있으나 아직 이 공개 경계에 구현하지 않았다.
 
-## 1. 준비물
+## 로컬 실행
 
-1. Python 3.12
-2. [uv](https://docs.astral.sh/uv/) — Python 패키지와 가상환경을 관리한다
-3. Git for Windows
-4. VS Code
-5. Docker Desktop — **선택.** 로컬 PostgreSQL(6절)이나 전체 테스트(13절)를 돌릴 때만 필요하다
-6. OpenAI API 키 — **선택.** 없어도 서버는 뜨고 로그인·업로드·이력·결과 조회·PDF 는 모두 동작한다. 새 분석 시작과 채팅에만 필요하며 사용료가 발생한다
-
-`JWT_SECRET`과 PostgreSQL 계정은 외부에서 발급받지 않는다.
-
-`uv`가 없다면 CMD에서 다음 명령을 실행하고 터미널을 다시 연다.
-
-```cmd
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```bash
+uv sync --frozen --extra dev
+uv run uvicorn main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-## 2. VS Code에서 CMD 열기
+환경 파일 없이 실행하면 기본은 offline-safe 모드다. 이 실행은 OpenAPI와 정적 계약
+확인용이며 실제 Supabase/worker 분석을 수행하지 않는다. online Compose 모드에는
+`.env.example`의 Supabase·PostgreSQL 설정과 허용할 프론트 origin이 필요하다. 실제
+비밀값은 커밋하지 않는다.
 
-VS Code에서 프로젝트 폴더를 연다.
+```bash
+# 저장소 루트 .env와 .runtime/supabase-dev/.env가 이미 준비된 로컬 환경
+chmod 600 ../.env ../.runtime/supabase-dev/.env
+uv run python scripts/prepare_local_backend_env.py
 
-각자 clone하거나 내려받은 `SKN30-FINAL-4Team` 폴더를 선택한다.
-
-`Terminal → New Terminal`을 누르고 터미널 오른쪽 화살표에서 `Command Prompt`를 선택한다.
-
-현재 위치가 다르면 저장소 루트로 이동한다.
-
-```cmd
-cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
+# 또는 .env.example을 복사하고 운영값을 직접 설정
+# cp .env.example .env && chmod 600 .env
 ```
 
-```cmd
-dir
-```
+환경 생성기는 비밀값을 출력하지 않고 mode `600`인 새 `.env`만 만들며 기존 파일은
+절대 덮어쓰지 않는다. Docker 컨테이너에서 같은 호스트의 Supabase gateway(8000)와
+PostgreSQL pooler(5432)를 사용하도록 주소와 URL encoding까지 처리한다. LAN 프론트
+origin 추가 옵션을 포함한 상세 절차는 아래 운영 가이드를 따른다. 이 자동 생성 파일은
+Docker Compose용이다. 호스트 Python으로 직접 실행할 때 필요한 `127.0.0.1` 주소 설정은
+운영 가이드의 별도 절차를 따른다.
 
-`backend`, `scripts`, `.env.example`이 보이면 정상이다.
+API와 same-server worker를 Docker Compose로 함께 기동할 때는 worker가 기본 service로
+포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만 호스트 포트로 publish하지 않는다.
 
-## 3. 설치 확인
-
-```cmd
-python --version
-uv --version
-git --version
-docker --version
-docker ps
-```
-
-Python은 `3.12.x`가 권장된다. `docker ps`에서 연결 오류가 나면 Docker Desktop을 실행한 후 다시 시도한다.
-
-## 4. Python 가상환경과 패키지
-
-최초 한 번만 실행한다.
-
-```cmd
-uv sync --directory backend
-```
-
-`backend\uv.lock`에 고정된 버전으로 `backend\.venv`가 만들어진다.
-
-설치 확인:
-
-```cmd
-backend\.venv\Scripts\python.exe -c "import fastapi; print(fastapi.__version__)"
-```
-
-FastAPI 버전이 출력되면 정상이다.
-
-## 5. 환경설정
-
-`.env`가 아직 없다면 예제 파일을 복사한다.
-
-```cmd
-copy .env.example .env
-```
-
-이미 `.env`가 있다면 덮어쓰지 않는다. VS Code에서 연다.
-
-```cmd
-code .env
-```
-
-### JWT_SECRET
-
-`JWT_SECRET`은 가입해서 받는 키가 아니다. 다음 명령으로 직접 만든다.
-
-```cmd
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-출력된 문자열을 `.env`에 넣는다.
-
-```dotenv
-JWT_SECRET=출력된_긴_문자열
-```
-
-### OpenAI API 키
-
-`.env`의 다음 줄을:
-
-```dotenv
-# OPENAI_API_KEY=replace-me
-```
-
-다음처럼 바꾼다.
-
-```dotenv
-OPENAI_API_KEY=sk-본인의_API_키
-```
-
-최소 설정:
-
-```dotenv
-DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-DATABASE_CONNECT_TIMEOUT_SECONDS=3
-JWT_SECRET=직접_생성한_긴_문자열
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-OPENAI_API_KEY=sk-본인의_API_키
-```
-
-`.env`에는 비밀키가 들어가므로 커밋하거나 공유하지 않는다.
-
-## 6. 로컬 PostgreSQL 실행 (선택)
-
-> **팀 Supabase 를 쓰면 이 절을 건너뛴다.** 스키마와 목업 공고가 이미 들어가 있고, `.env`의 `DATABASE_URL`만 Supabase 주소로 두면 된다.
-> 이 절이 필요한 경우는 둘이다 — 로컬에서 독립된 DB 로 개발하거나, 13절의 전체 테스트를 돌릴 때다.
-
-팀 Supabase를 사용할 때도 `demo / demo-password-1234`로 로그인할 수 있다. 다만 이 계정은 현재 팀 Supabase에 적재되어 있는 계정이며, `.env`의 `DATABASE_URL`이 같은 팀 Supabase를 가리킬 때만 사용할 수 있다. 다른 Supabase나 자체 로컬 DB에는 계정이 없을 수 있으므로, 해당 DB의 계정을 사용하거나 로컬 DB는 아래 스크립트로 `demo` 계정을 생성한다.
-
-Docker Desktop이 실행 중인지 확인한다.
-
-```cmd
-docker ps
-```
-
-DB 준비 스크립트는 Bash 파일이다. CMD에서는 Git for Windows에 포함된 Bash를 호출한다.
-
-```cmd
-"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_up.sh
-```
-
-스크립트가 자동으로 수행하는 작업:
-
-1. PostgreSQL 15 + pgvector 컨테이너 실행
-2. PostgreSQL 준비 대기
-3. `backend/app/db/schema.sql` 적용
-4. 데모 로그인 계정 생성
-
-DB 접속 정보:
-
-```text
-컨테이너: sims-e2e-pg
-주소:      127.0.0.1
-포트:      55433
-DB:        sims
-DB 사용자: postgres
-DB 암호:   simstest
-```
-
-서비스 로그인 계정은 DB 계정과 다르다.
-
-```text
-로그인 ID: demo
-비밀번호:  demo-password-1234
-```
-
-상태 확인:
-
-```cmd
-docker ps
-docker exec sims-e2e-pg pg_isready -U postgres -d sims
-```
-
-`accepting connections`가 나오면 정상이다.
-
-## 7. 목업 지원사업 공고 입력 (선택)
-
-> **팀 Supabase 를 쓰면 건너뛴다.** 공고 6건이 이미 들어가 있다. 다시 실행하면 OpenAI 임베딩 비용만 더 든다.
-
-```cmd
-backend\.venv\Scripts\python.exe scripts\seed_announcements.py
-```
-
-테스트용 지원사업 공고 6건을 실제 DB에 넣고 OpenAI API로 임베딩을 생성한다. 공공데이터포털 키 없이 전체 흐름을 확인하기 위한 데이터다.
-
-업로드한 요청서의 CPL과 FIT은 실제 문서를 분석한다. SIM 로직도 실제로 실행되지만 비교 대상은 목업 공고 6건이므로 공식 결과나 전체 실제 공고 기준 결과는 아니다.
-
-## 8. 백엔드 서버 실행
-
-```cmd
+```bash
 cd backend
-.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+# 위 절차로 .env 준비
+docker compose up -d --build
+docker compose ps
 ```
 
-정상 로그:
+환경변수별 의미, 같은 호스트/WSL/EC2 주소 설정, 재기동과 장애 확인은
+[FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)에 정리되어 있다.
 
-```text
-Uvicorn running on http://127.0.0.1:8000
+`api`만 떠 있고 worker가 없으면 요청은 `queued`에 머문다. 배포 확인 시 `/health/ready`
+만 보지 말고 `docker compose ps worker`와 최근 `ops.processing_run`도 함께 확인한다.
+
+`/health/live`는 프로세스 생존만, `/health/ready`는 online 의존성 설정 여부를
+나타낸다.
+
+## Worker queue
+
+PostgreSQL polling queue와 원자적 결과 저장·legacy 완료 경로 폐기·queued 원본 무결성은 migration 21~25가
+정의한다.
+
+- `workspace.analysis_run`: 브라우저에 보이는 작은 상태 레코드
+- `workspace.analysis_run_dispatch`: source 위치, claim, lease, heartbeat 같은 worker 전용 상태
+- `ops.processing_run`: 실행 시도 이력. `processing_run_pk`가 fencing token이다.
+- `workspace.claim_next_analysis_run()`: `FOR UPDATE SKIP LOCKED`로 claim
+- `workspace.persist_analysis_result_core()`: 유효한 fence를 확인한 뒤 결과와 terminal 상태를 한 transaction으로 반영
+
+기본값은 heartbeat 30초, lease 120초, 전체 최대 두 번의 시도다. 오래된 worker는
+새 worker의 결과를 덮어쓸 수 없다.
+
+parser는 기본 120초 hard deadline을 사용하며 timeout 시 process group 전체를
+종료·회수한다. HWPX의 선언된 압축 해제 크기에도 상한을 두고, parser subprocess에는
+DB·Storage·OpenAI 비밀값을 전달하지 않는다.
+
+Docker 이미지에는 `rhwp-python`이 요구하는 `libexpat1`과 `libfreetype6`를 함께
+설치한다. 또한 `cl100k_base` tokenizer cache를 build 단계에서 검증해 이미지에
+포함하므로 retrieval token 계산을 위해 런타임에 외부 파일을 받지 않는다. 이미지
+parser smoke는 다음처럼 네트워크 없이 재현할 수 있다.
+
+```bash
+docker run --rm --network none \
+  -e PREREVIEW_FREETYPE_LIB=/usr/lib/x86_64-linux-gnu/libfreetype.so.6 \
+  -v "$PWD/../docs/pre_review_request_e2e_5_20260909_v1/generated:/fixtures:ro" \
+  backend-api:latest \
+  python scripts/validate_synthetic_hwpx_fixtures.py --fixture-dir /fixtures
 ```
 
-브라우저에서 Swagger를 연다.
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-이 터미널은 서버가 사용하므로 닫지 않는다. 다른 명령은 VS Code에서 CMD 터미널을 하나 더 열어 실행한다.
-
-### 프론트 CORS 설정
-
-기본 허용 프론트 주소는 `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, `http://127.0.0.1:5173`이다. 앞의 둘은 Next.js, 뒤의 둘은 Vite 의 기본 개발 포트다. 다른 주소를 쓰면 `.env`에 JSON 배열로 지정하고 백엔드를 재시작한다. 설정값은 기본 목록을 대체한다.
-
-```dotenv
-CORS_ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
-```
-
-운영에서는 운영 프론트 주소 또는 `[]`(교차 출처 허용 안 함)를 명시한다. 주소에 경로나 후행 `/`을 붙이지 않으며 `*`는 허용하지 않는다. 프론트는 기존 Bearer 토큰을 `Authorization` 헤더로 보내고 `credentials: "include"`는 사용하지 않는다. PDF 파일명용 `Content-Disposition` 헤더도 읽을 수 있다.
-
-CORS 설정은 로그인 화면이나 API 호출 코드를 만드는 기능이 아니다. 상세 범위와 오류 응답 처리는 [CORS 연동 계약](../docs/CORS_연동계약_v0.1_260831.md)을 참고한다.
-
-## 9. Swagger로 실제 문서 분석
-
-서버가 켜진 상태에서 `http://127.0.0.1:8000/docs`를 열고 다음 순서로 실행한다. 모든 API는 Swagger의 **Try it out** 뒤 **Execute**로 호출한다.
-
-1. `POST /api/v1/auth/login`에서 아래 데모 계정으로 로그인한다.
-
-   ```json
-   {
-     "login_id": "demo",
-     "password": "demo-password-1234"
-   }
-   ```
-
-2. 응답 `data.access_token`을 복사한다. Swagger 상단 **Authorize**에 `Bearer 실제_토큰값`을 입력한다. `< >`는 넣지 않는다.
-3. `POST /api/v1/cases`에서 **Choose File**로 HWP/HWPX 요청서 한 개를 올린다. 성공 응답의 `data.case_id`를 기록한다.
-4. `POST /api/v1/cases/{case_id}/analyze`의 `{case_id}`를 실제 값으로 바꿔 실행한다. `202`와 `PARSING`은 분석 시작을 뜻한다.
-5. `GET /api/v1/cases/{case_id}/status`를 실행해 `분석 완료`인지 확인한다.
-6. `GET /api/v1/cases/{case_id}/report`로 분석 결과를 확인한다. PDF는 `GET /api/v1/cases/{case_id}/report.pdf`로 받는다.
-7. `POST /api/v1/cases/{case_id}/chat/messages`에 질문을 넣어 결과 기반 채팅을 한다.
-
-   ```json
-   {
-     "content": "이 문서에서 보완이 필요한 항목을 요약해줘."
-   }
-   ```
-
-   이전 채팅은 `GET /api/v1/cases/{case_id}/chat/messages`에서 확인한다.
-
-유효한 HWP/HWPX 사전협의 요청서를 넣으면 실제 파싱·CPL·FIT·SIM·리포트·PDF 코드가 실행된다. 다만 현재 환경은 로컬 개발용이고 SIM 비교 공고는 목업 데이터다. 결과는 팀 내부 알파 기준의 사전 검토 결과이며 공식 행정 판정이 아니다.
-
-## 10. 전체 E2E 확인
-
-새 CMD 터미널에서 저장소 루트로 이동한다.
-
-```cmd
-cd /d C:\YOUR_PATH\SKN30-FINAL-4Team
-```
-
-저장소에 포함된 목업 HWPX로 전체 흐름을 실행한다. `mockup_08` 은 CPL 13개 항목이 모두 들어 있어 확인 범위가 가장 넓다.
-
-```cmd
-backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
-```
-
-다른 사례를 실행하려면 파일 경로만 바꾼다.
-
-```cmd
-backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\사전협의요청서_미흡사례.hwpx
-```
-
-목업 파일은 다음 위치에 버전 관리한다.
-
-```text
-samples\hwpx\사전협의요청서_우수사례.hwpx
-samples\hwpx\사전협의요청서_미흡사례.hwpx
-samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
-samples\hwpx\mockup_02_우수사례_뿌리산업스마트제조.hwpx
-samples\hwpx\mockup_03_보통사례_청년로컬크리에이터.hwpx
-samples\hwpx\mockup_04_보통사례_친환경그린에너지.hwpx
-samples\hwpx\mockup_05_저급사례_AI바우처_모순충돌.hwpx
-samples\hwpx\mockup_06_저급사례_해외수출_목적내용불일치.hwpx
-samples\hwpx\mockup_07_우수사례_서식기준_딥테크스케일업.hwpx
-samples\hwpx\mockup_08_CPL전항목_스마트기술사업화.hwpx
-```
-
-`scripts\make_mock_hwpx.py`는 샘플을 다시 만들거나 생성 근거를 확인할 때만 사용한다. 일반적인 E2E 실행에는 필요하지 않다.
-
-다른 목업을 실행할 때는 `e2e_run.py` 뒤의 파일 경로만 원하는 샘플로 바꾼다.
-
-```cmd
-backend\.venv\Scripts\python.exe scripts\e2e_run.py samples\hwpx\mockup_01_우수사례_AI바이오실증.hwpx
-```
-
-E2E 호출 순서:
-
-```text
-로그인
-→ 요청서 업로드
-→ 분석 시작
-→ 파싱
-→ CPL
-→ FIT
-→ 유사 공고 검색
-→ SIM
-→ 결과 JSON
-→ PDF 다운로드
-→ 채팅
-```
-
-위 11단계가 모두 통과하면 백엔드 핵심 흐름이 정상이다.
-
-## 11. 다음 날 다시 실행
-
-가상환경 생성, 패키지 설치, `.env` 작성, 공고 입력은 보통 다시 하지 않아도 된다.
-
-```cmd
-docker start sims-e2e-pg
-cd backend
-.venv\Scripts\python.exe -m uvicorn main:app --port 8000
-```
-
-이미 컨테이너가 실행 중이라는 메시지가 나오면 그대로 진행한다.
-
-## 12. 종료와 초기화
-
-서버 종료는 서버 터미널에서 `Ctrl+C`를 누른다.
-
-DB 데이터를 유지하고 컨테이너만 중지:
-
-```cmd
-docker stop sims-e2e-pg
-```
-
-DB 컨테이너와 내부 데이터를 모두 삭제:
-
-```cmd
-"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_down.sh
-```
-
-`e2e_down.sh`를 실행하면 데모 계정, 목업 공고, 업로드 기록, 분석 결과가 사라진다. 다시 시작하려면 6번과 7번을 다시 수행한다.
-
-## 13. 전체 테스트
-
-**테스트 전용 DB 가 필요하다.** 6절로 로컬 PostgreSQL 을 띄운 뒤 실행한다. 테스트는 데이터를 만들고 지우므로 **팀 Supabase 를 `TEST_DATABASE_URL` 로 쓰지 않는다.**
-
-저장소 루트의 CMD에서 실행한다.
-
-```cmd
-set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-backend\.venv\Scripts\python.exe -m pytest backend\tests -q
-```
-
-목업 공고가 들어간 DB는 테스트 데이터와 충돌할 수 있다. 데이터 삭제에 동의한 경우에만 DB를 초기화한 뒤 전체 테스트한다.
-
-```cmd
-"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_down.sh
-"%ProgramFiles%\Git\bin\bash.exe" scripts/e2e_up.sh
-set TEST_DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-backend\.venv\Scripts\python.exe -m pytest backend\tests -q
-```
-
-## 14. 자주 발생하는 문제
-
-### Docker 연결 오류
-
-Docker Desktop을 실행한 뒤 확인한다.
-
-```cmd
-docker ps
-```
-
-### `bash.exe`를 찾지 못함
-
-```cmd
-where git
-```
-
-Git이 기본 위치가 아니라면 실제 설치 폴더의 `bin\bash.exe`를 사용한다.
-
-### `OPENAI_API_KEY is required`
-
-`.env`에서 키 앞의 `#`을 제거했는지 확인한다.
-
-```dotenv
-OPENAI_API_KEY=sk-본인의_API_키
-```
-
-### DB 연결 실패
-
-```cmd
-docker ps
-docker exec sims-e2e-pg pg_isready -U postgres -d sims
-```
-
-```dotenv
-DATABASE_URL=postgresql+psycopg://postgres:simstest@127.0.0.1:55433/sims
-```
-
-### `No module named ...`
-
-시스템 Python이 아니라 프로젝트 가상환경 Python으로 실행한다.
-
-```cmd
-backend\.venv\Scripts\python.exe
-```
-
-
-## 15. 현재 실행 범위
-
-실제로 동작하는 것:
-
-- PostgreSQL/pgvector 저장과 검색
-- HWP/HWPX 파싱
-- CPL/FIT/SIM 로직
-- OpenAI API 호출
-- 결과 JSON과 PDF 생성
-- 분석 결과 기반 채팅
-
-로컬 개발용인 것:
-
-- `postgres / simstest` DB 계정
-- `demo / demo-password-1234` 서비스 계정
-- 목업 공고 6건
-- 로컬 파일 저장소
-- 서버 프로세스 내부 백그라운드 작업
+상세 계약은 [FastAPI 문서](fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md),
+[worker 저장 계약](fastapi/docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md),
+[Supabase 운영 안내](supabase/README.md),
+[Existing KB bootstrap](supabase/EXISTING_KB_BOOTSTRAP.md)을 따른다.

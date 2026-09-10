@@ -1,6 +1,6 @@
-# 이 파일을 self-hosted Supabase Compose 디렉터리에
-# docker-compose.pre-review-worker.yml 이름으로 복사한다.
-# 값은 해당 Compose 디렉터리의 .env에서 읽는다.
+# LEGACY / INACTIVE: 과거 Edge Function → 외부 HTTP worker dispatch 설정이다.
+# 현재 FastAPI + same-server PostgreSQL polling worker 배포에는 복사하거나 적용하지 않는다.
+# 보존 이유와 재도입 조건은 functions/README.md를 확인한다.
 services:
   functions:
     environment:

@@ -1,0 +1,29 @@
+.git
+.pytest_cache
+__pycache__
+*.py[cod]
+.venv
+venv
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+handover
+
+# Retired pre-rebuild worker paths.  They depend on deleted app.db/app.ports/
+# app.schemas modules and are not reachable from the supported worker.main
+# entrypoint.  Keep those incomplete compatibility modules out of the runtime
+# image while their source history remains available in the working tree.
+worker/analysis.py
+worker/dispatcher.py
+worker/execution_log.py
+worker/jobs.py
+worker/kb_ingest.py
+worker/kb_store.py
+worker/ml_reference.py
+worker/persistence.py
+worker/queue.py
+worker/report_pdf.py
+worker/adapters/ml_subprocess.py

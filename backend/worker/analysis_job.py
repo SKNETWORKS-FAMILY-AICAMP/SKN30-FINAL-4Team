@@ -1,0 +1,591 @@
+"""Real DB-polling analysis job orchestration.
+
+The handler is worker-local: it accepts no browser token and imports no
+FastAPI application code.  Network, database, parsing, and comparison edges
+are explicit ports, allowing the same orchestration to run in an offline fake
+E2E test and in the trusted worker process.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from hashlib import sha256
+import json
+import math
+from pathlib import Path
+import tempfile
+from typing import Any, Protocol
+
+from .contracts.cpl_result import CplResult
+from .contracts.fit_result import FitResult
+from .contracts.profile_snapshot import CommonIrArtifact
+from .contracts.sim_result import SimComparisonResult, SimCommonProfile
+from .cpl import build_cpl_result
+from .fit import analyze_fit
+from .ports.embedding import EmbeddingClient
+from .ports.llm import LLMClient
+from .profiles import (
+    DEFAULT_PARSE_TIMEOUT_SECONDS,
+    build_pack,
+    make_vllm_selector,
+    parse_to_common_ir,
+    structure_request_profile,
+)
+from .result_payload import build_result_payload
+from .retrieval_inputs import assemble_inputs, pool
+from .runtime import ClaimedJob
+from .sim import compare_candidates
+from .sim_inputs import build_common_profile
+
+
+SOURCE_MAX_BYTES = 50 * 1024 * 1024
+DERIVED_MAX_BYTES = 200 * 1024 * 1024
+REQUEST_PROFILE_SCHEMA = "pre_review_request_profile/v0.1"
+EMBEDDING_ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
+
+
+class AnalysisJobContractError(RuntimeError):
+    """A claimed job or persisted artifact violates the trusted contract."""
+
+
+class AnalysisJobUnavailable(RuntimeError):
+    """A worker dependency is temporarily unavailable."""
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactRef:
+    bucket: str
+    object_key: str
+    content_sha256: str
+    artifact_type: str
+    mime_type: str
+    size_bytes: int
+    schema_version: str | None = None
+    logical_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CachedRequestProfile:
+    common_ir: ArtifactRef
+    structured_profile: ArtifactRef
+
+
+@dataclass(frozen=True, slots=True)
+class ProducedRequestProfile:
+    common_ir: Mapping[str, Any]
+    profile: Mapping[str, Any]
+    common_ir_content: bytes
+    profile_content: bytes
+    common_ir_logical_id: str
+    profile_logical_id: str
+    common_ir_schema: str
+    profile_schema: str
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingConfiguration:
+    configuration_id: str
+    provider: str
+    model_id: str
+    dimensions: int
+    max_input_tokens: int
+    assembly_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExistingCandidate:
+    profile_version_id: str
+    source_profile_id: str
+    notice_id: str
+    average_similarity: float
+    purpose_similarity: float
+    target_similarity: float
+    support_similarity: float
+    profile_artifact: ArtifactRef
+    title: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExistingProfileDocument:
+    candidate: ExistingCandidate
+    profile: Mapping[str, Any]
+
+
+class WorkerObjectStorage(Protocol):
+    def get(self, *, bucket: str, object_key: str, max_bytes: int) -> bytes: ...
+
+    def put_if_absent(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        content: bytes,
+        content_type: str,
+    ) -> bool: ...
+
+    def delete(self, *, bucket: str, object_key: str) -> None: ...
+
+
+class AnalysisStore(Protocol):
+    def cached_request_profile(self, *, analysis_run_id: str) -> CachedRequestProfile | None: ...
+
+    def register_request_profile(
+        self,
+        *,
+        analysis_run_id: str,
+        processing_run_id: str,
+        source_bucket: str,
+        source_object_key: str,
+        common_ir: ArtifactRef,
+        structured_profile: ArtifactRef,
+        profile: Mapping[str, Any],
+    ) -> None: ...
+
+    def active_embedding_configuration(self) -> EmbeddingConfiguration: ...
+
+    def match_existing_profiles(
+        self,
+        *,
+        configuration_id: str,
+        purpose: Sequence[float],
+        target: Sequence[float],
+        support: Sequence[float],
+        limit: int,
+    ) -> list[ExistingCandidate]: ...
+
+
+class RequestProfileProducer(Protocol):
+    def produce(
+        self,
+        *,
+        source_path: Path,
+        source_kind: str,
+        analysis_run_id: str,
+        run_dir: Path,
+    ) -> ProducedRequestProfile: ...
+
+
+class AnalysisEngine(Protocol):
+    def build_payload(
+        self,
+        *,
+        profile: Mapping[str, Any],
+        common_ir: Mapping[str, Any],
+        candidates: Sequence[ExistingProfileDocument],
+    ) -> Mapping[str, Any]: ...
+
+
+class VendoredRequestProfileProducer:
+    """Run the current HWP/HWPX → Common IR → Request Profile pipeline."""
+
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        *,
+        model_profile: str,
+        model_id: str,
+        max_repairs: int = 1,
+        parse_timeout_seconds: float = DEFAULT_PARSE_TIMEOUT_SECONDS,
+    ) -> None:
+        self._llm = llm_client
+        self._model_profile = model_profile
+        self._model_id = model_id
+        self._max_repairs = max_repairs
+        if parse_timeout_seconds <= 0:
+            raise ValueError("parse timeout must be positive")
+        self._parse_timeout_seconds = float(parse_timeout_seconds)
+
+    def produce(
+        self,
+        *,
+        source_path: Path,
+        source_kind: str,
+        analysis_run_id: str,
+        run_dir: Path,
+    ) -> ProducedRequestProfile:
+        common = parse_to_common_ir(
+            input_path=source_path,
+            notice_id=analysis_run_id,
+            source_kind=source_kind,
+            run_dir=run_dir,
+            timeout_seconds=self._parse_timeout_seconds,
+        )
+        pack = build_pack(common.document)
+        profile_id = f"request:{analysis_run_id}"
+        selector = make_vllm_selector(
+            self._llm,
+            model_profile=self._model_profile,
+            pack=pack,
+            document=common.document,
+            profile_id=profile_id,
+        )
+        snapshot = structure_request_profile(
+            document=common.document,
+            pack=pack,
+            profile_id=profile_id,
+            selector=selector,
+            model_id=self._model_id,
+            max_repairs=self._max_repairs,
+            common_ir=common,
+        )
+        if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
+            reasons = sorted(
+                {
+                    row.reason_code
+                    for row in snapshot.diagnostics
+                    if row.reason_code
+                }
+            )
+            suffix = f" ({','.join(reasons)})" if reasons else ""
+            raise AnalysisJobContractError(f"request profile materialisation failed{suffix}")
+        return ProducedRequestProfile(
+            common_ir=common.document,
+            profile=snapshot.profile,
+            common_ir_content=_json_bytes(common.document),
+            profile_content=_json_bytes(snapshot.profile),
+            common_ir_logical_id=common.common_ir_document_id,
+            profile_logical_id=profile_id,
+            common_ir_schema=str(common.document.get("schema_version") or "common_ir_v1"),
+            profile_schema=str(snapshot.profile.get("schema_version") or ""),
+        )
+
+
+class CoreAnalysisEngine:
+    """Compose the current worker-owned CPL/FIT/SIM implementations."""
+
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        *,
+        fit_model_profile: str,
+        sim_model_profile: str,
+        max_repairs: int = 1,
+    ) -> None:
+        self._llm = llm_client
+        self._fit_model_profile = fit_model_profile
+        self._sim_model_profile = sim_model_profile
+        self._max_repairs = max_repairs
+
+    def build_payload(
+        self,
+        *,
+        profile: Mapping[str, Any],
+        common_ir: Mapping[str, Any],
+        candidates: Sequence[ExistingProfileDocument],
+    ) -> Mapping[str, Any]:
+        request = dict(profile)
+        cpl: CplResult = build_cpl_result(request)
+        fit: FitResult = analyze_fit(
+            request,
+            self._llm,
+            model_profile=self._fit_model_profile,
+            max_repairs=self._max_repairs,
+        )
+        request_common = build_common_profile(
+            request, self._llm, model_profile=self._sim_model_profile
+        )
+        candidate_commons: list[SimCommonProfile] = []
+        sim_profiles: dict[str, SimCommonProfile] = {
+            request_common.source_profile_id or "": request_common
+        }
+        titles: dict[str, str | None] = {}
+        similarities: dict[str, float] = {}
+        profile_version_ids: dict[str, str] = {}
+        for document in candidates:
+            candidate_common = build_common_profile(
+                dict(document.profile),
+                self._llm,
+                model_profile=self._sim_model_profile,
+            )
+            if not candidate_common.source_profile_id:
+                raise AnalysisJobContractError("existing profile has no source_profile_id")
+            if candidate_common.source_profile_id != document.candidate.source_profile_id:
+                raise AnalysisJobContractError("existing profile identity does not match its DB lineage")
+            candidate_commons.append(candidate_common)
+            sim_profiles[candidate_common.source_profile_id] = candidate_common
+            titles[candidate_common.source_profile_id] = document.candidate.title
+            similarities[candidate_common.source_profile_id] = document.candidate.average_similarity
+            profile_version_ids[candidate_common.source_profile_id] = (
+                document.candidate.profile_version_id
+            )
+
+        sim: SimComparisonResult = compare_candidates(
+            request_common,
+            candidate_commons,
+            self._llm,
+            model_profile=self._sim_model_profile,
+            max_repairs=self._max_repairs,
+        )
+        sim = replace(
+            sim,
+            candidates=[
+                replace(row, title=titles.get(row.candidate_profile_id or ""))
+                for row in sim.candidates
+            ],
+        )
+        return build_result_payload(
+            profile=request,
+            cpl=cpl,
+            fit=fit,
+            sim=sim,
+            sim_profiles=sim_profiles,
+            retrieval_similarities=similarities,
+            profile_version_ids=profile_version_ids,
+        )
+
+
+class AnalysisJobHandler:
+    """Handle one leased analysis run and return fenced-result JSON."""
+
+    def __init__(
+        self,
+        *,
+        storage: WorkerObjectStorage,
+        store: AnalysisStore,
+        producer: RequestProfileProducer,
+        embedding_client: EmbeddingClient,
+        analysis_engine: AnalysisEngine,
+        top_k: int = 5,
+        request_bucket: str = "request-temp",
+    ) -> None:
+        if not 1 <= top_k <= 100:
+            raise ValueError("top_k must be between 1 and 100")
+        self._storage = storage
+        self._store = store
+        self._producer = producer
+        self._embedding = embedding_client
+        self._engine = analysis_engine
+        self._top_k = top_k
+        self._request_bucket = request_bucket
+
+    def handle(self, job: ClaimedJob) -> Mapping[str, Any]:
+        run_id = str(job.job_pk)
+        processing_id = str(job.processing_run_pk)
+        bucket, object_key, expected_sha, source_kind = self._source_claim(job)
+        cached = self._store.cached_request_profile(analysis_run_id=run_id)
+        if cached is None:
+            source = self._storage.get(
+                bucket=bucket, object_key=object_key, max_bytes=SOURCE_MAX_BYTES
+            )
+            _verify_content(source, expected_sha, "source")
+            with tempfile.TemporaryDirectory(prefix="pre-review-worker-") as directory:
+                root = Path(directory)
+                source_path = root / f"source.{source_kind}"
+                source_path.write_bytes(source)
+                produced = self._producer.produce(
+                    source_path=source_path,
+                    source_kind=source_kind,
+                    analysis_run_id=run_id,
+                    run_dir=root / "pipeline",
+                )
+            profile, common_ir = self._publish_profile(
+                run_id=run_id,
+                processing_id=processing_id,
+                source_bucket=bucket,
+                source_object_key=object_key,
+                produced=produced,
+            )
+        else:
+            common_ir = self._load_json_artifact(cached.common_ir)
+            profile = self._load_json_artifact(cached.structured_profile)
+        _validate_profile_lineage(
+            profile=profile,
+            common_ir=common_ir,
+            run_id=run_id,
+            source_sha256=expected_sha,
+        )
+
+        configuration = self._store.active_embedding_configuration()
+        vectors = self._embed(profile, configuration)
+        matches = self._store.match_existing_profiles(
+            configuration_id=configuration.configuration_id,
+            purpose=vectors["purpose"],
+            target=vectors["target"],
+            support=vectors["support"],
+            limit=self._top_k,
+        )
+        candidates = [
+            ExistingProfileDocument(
+                candidate=match,
+                profile=self._load_json_artifact(match.profile_artifact),
+            )
+            for match in matches
+        ]
+        result = self._engine.build_payload(
+            profile=profile,
+            common_ir=common_ir,
+            candidates=candidates,
+        )
+        if not isinstance(result, Mapping):
+            raise AnalysisJobContractError("analysis engine returned a non-object result")
+        return dict(result)
+
+    def _source_claim(self, job: ClaimedJob) -> tuple[str, str, str, str]:
+        bucket = job.payload.get("source_bucket")
+        key = job.payload.get("source_object_key")
+        digest = job.payload.get("source_content_sha256")
+        if not all(isinstance(value, str) and value.strip() for value in (bucket, key, digest)):
+            raise AnalysisJobContractError("claim has incomplete source coordinates")
+        assert isinstance(bucket, str) and isinstance(key, str) and isinstance(digest, str)
+        if bucket != self._request_bucket:
+            raise AnalysisJobContractError("claim source bucket is not allowed")
+        if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+            raise AnalysisJobContractError("claim source SHA-256 is invalid")
+        suffix = Path(key).suffix.lower().removeprefix(".")
+        if suffix not in {"hwp", "hwpx"}:
+            raise AnalysisJobContractError("claim source format is not supported")
+        return bucket, key, digest.lower(), suffix
+
+    def _publish_profile(
+        self,
+        *,
+        run_id: str,
+        processing_id: str,
+        source_bucket: str,
+        source_object_key: str,
+        produced: ProducedRequestProfile,
+    ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+        if produced.profile_schema != REQUEST_PROFILE_SCHEMA:
+            raise AnalysisJobContractError("request profile schema is not supported by the DB")
+        common_ref = _derived_ref(
+            run_id, "common_ir", produced.common_ir_content,
+            "application/json", produced.common_ir_schema, produced.common_ir_logical_id,
+        )
+        profile_ref = _derived_ref(
+            run_id, "structured_profile", produced.profile_content,
+            "application/json", produced.profile_schema, produced.profile_logical_id,
+        )
+        for artifact, content in (
+            (common_ref, produced.common_ir_content),
+            (profile_ref, produced.profile_content),
+        ):
+            self._storage.put_if_absent(
+                bucket=artifact.bucket,
+                object_key=artifact.object_key,
+                content=content,
+                content_type=artifact.mime_type,
+            )
+
+        # These keys are content-addressed and can be observed by a newer
+        # processing attempt after this attempt loses its lease.  Deleting
+        # them as compensation would race that newer attempt and could leave
+        # its committed source_artifact rows dangling.  Registration is the
+        # commit point; unreferenced objects are reclaimed by retention/GC.
+        self._store.register_request_profile(
+            analysis_run_id=run_id,
+            processing_run_id=processing_id,
+            source_bucket=source_bucket,
+            source_object_key=source_object_key,
+            common_ir=common_ref,
+            structured_profile=profile_ref,
+            profile=produced.profile,
+        )
+        return produced.profile, produced.common_ir
+
+    def _load_json_artifact(self, artifact: ArtifactRef) -> Mapping[str, Any]:
+        content = self._storage.get(
+            bucket=artifact.bucket,
+            object_key=artifact.object_key,
+            max_bytes=DERIVED_MAX_BYTES,
+        )
+        _verify_content(content, artifact.content_sha256, artifact.artifact_type)
+        try:
+            value = json.loads(content)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise AnalysisJobContractError("persisted JSON artifact is invalid") from None
+        if not isinstance(value, dict):
+            raise AnalysisJobContractError("persisted JSON artifact is not an object")
+        return value
+
+    def _embed(
+        self, profile: Mapping[str, Any], configuration: EmbeddingConfiguration
+    ) -> dict[str, list[float]]:
+        if configuration.provider != "openai":
+            raise AnalysisJobContractError("active embedding provider is unsupported")
+        if configuration.assembly_version != EMBEDDING_ASSEMBLY_VERSION:
+            raise AnalysisJobContractError(
+                "active embedding assembly version is unsupported"
+            )
+        inputs = assemble_inputs(
+            profile,
+            model=configuration.model_id,
+            max_input_tokens=configuration.max_input_tokens,
+        )
+        output: dict[str, list[float]] = {}
+        for scope in ("purpose", "target", "support"):
+            item = inputs[scope]
+            batch = asyncio.run(self._embedding.embed([chunk.text for chunk in item.chunks]))
+            if batch.model_name != configuration.model_id:
+                raise AnalysisJobContractError("embedding response model does not match DB configuration")
+            vector = pool(batch.vectors, [chunk.token_count for chunk in item.chunks])
+            if len(vector) != configuration.dimensions or any(
+                not math.isfinite(value) for value in vector
+            ):
+                raise AnalysisJobContractError("embedding dimension does not match DB configuration")
+            output[scope] = vector
+        return output
+
+
+def _json_bytes(value: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+
+
+def _verify_content(content: bytes, expected: str, label: str) -> None:
+    if sha256(content).hexdigest() != expected.lower():
+        raise AnalysisJobContractError(f"{label} content hash does not match its lineage")
+
+
+def _derived_ref(
+    run_id: str,
+    artifact_type: str,
+    content: bytes,
+    mime_type: str,
+    schema_version: str,
+    logical_id: str,
+) -> ArtifactRef:
+    digest = sha256(content).hexdigest()
+    return ArtifactRef(
+        bucket="request-temp",
+        object_key=f"{run_id}/{artifact_type}/{digest}.json",
+        content_sha256=digest,
+        artifact_type=artifact_type,
+        mime_type=mime_type,
+        size_bytes=len(content),
+        schema_version=schema_version,
+        logical_id=logical_id,
+    )
+
+
+def _validate_profile_lineage(
+    *,
+    profile: Mapping[str, Any],
+    common_ir: Mapping[str, Any],
+    run_id: str,
+    source_sha256: str,
+) -> None:
+    if common_ir.get("schema_version") != "common_ir_v1":
+        raise AnalysisJobContractError("Common IR schema is unsupported")
+    document = common_ir.get("document")
+    if not isinstance(document, Mapping):
+        raise AnalysisJobContractError("Common IR document identity is missing")
+    document_id = document.get("document_id")
+    provenance = document.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    if provenance.get("source_sha256") != source_sha256:
+        raise AnalysisJobContractError("Common IR source hash does not match the claim")
+
+    if profile.get("schema_version") != REQUEST_PROFILE_SCHEMA:
+        raise AnalysisJobContractError("request profile schema is unsupported")
+    expected_id = f"request:{run_id}"
+    if profile.get("profile_id") != expected_id:
+        raise AnalysisJobContractError("request profile identity does not match its analysis run")
+    metadata = profile.get("processing_metadata")
+    metadata = metadata if isinstance(metadata, Mapping) else {}
+    if metadata.get("common_ir_document_id") != document_id:
+        raise AnalysisJobContractError("request profile Common IR identity is inconsistent")
+    if metadata.get("common_ir_source_sha256") != source_sha256:
+        raise AnalysisJobContractError("request profile source hash is inconsistent")

@@ -1,0 +1,139 @@
+{
+  "_description": "현재 FastAPI 공개 API의 성공 응답 예시다. access/refresh token, Supabase key, Storage signed URL은 이 계약에 포함하지 않는다. UUID·일시·문구는 예시이며 필드명/배열/nullability가 계약이다. 결과의 고정 필드는 Swagger named schema와 이 파일이 함께 계약이며, CPL/FIT detail과 후보 axes.*만 확장 가능한 JSON object다. analysis_result.session.can_chat은 저장된 session 상태일 뿐 현재 채팅 API 제공 여부를 뜻하지 않는다.",
+  "auth_sign_in": {
+    "user": {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "email": "user@example.com"
+    }
+  },
+  "auth_me": {
+    "user": {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "email": "user@example.com"
+    }
+  },
+  "auth_sign_up": {
+    "email_confirmation_required": true
+  },
+  "auth_password_reset": {
+    "message": "If an account exists, password reset instructions have been sent."
+  },
+  "analysis_run_created": {
+    "analysis_run_id": "44444444-4444-4444-4444-444444444444",
+    "status": "queued"
+  },
+  "analysis_run_status": {
+    "analysis_run_id": "44444444-4444-4444-4444-444444444444",
+    "status": "running",
+    "analysis_case_id": null,
+    "error_code": null,
+    "error_message": null
+  },
+  "active_analysis_session": {
+    "analysis_session_id": "22222222-2222-2222-2222-222222222222",
+    "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+    "program_name": "지역 중소기업 디지털 전환 지원",
+    "original_filename": "요청서.hwpx",
+    "session_expires_at": "2026-09-08T03:30:00Z"
+  },
+  "analysis_result": {
+    "case": {
+      "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+      "program_name": "지역 중소기업 디지털 전환 지원",
+      "original_filename": "요청서.hwpx",
+      "completed_at": "2026-09-08T03:00:00Z"
+    },
+    "cpl": {
+      "items": [
+        {
+          "code": "CPL-01",
+          "status": "confirmed",
+          "summary": "요청유형이 확인되었습니다.",
+          "detail": { "reason": null }
+        }
+      ]
+    },
+    "fit": {
+      "items": [
+        {
+          "code": "FIT-1",
+          "status": "FIT",
+          "summary": "사업 목적과 목표의 연결이 확인되었습니다.",
+          "detail": { "comparison_performed": true, "reason": null }
+        }
+      ]
+    },
+    "sim": {
+      "candidates": [
+        {
+          "sim_candidate_id": "55555555-5555-5555-5555-555555555555",
+          "rank": 1,
+          "title": "2025년 디지털 전환 지원사업"
+        }
+      ]
+    },
+    "report": {
+      "status": "generating",
+      "can_download": false,
+      "can_regenerate": false,
+      "retry_count": 0
+    },
+    "session": {
+      "analysis_session_id": "22222222-2222-2222-2222-222222222222",
+      "is_active": true,
+      "can_chat": true,
+      "expires_at": "2026-09-08T03:30:00Z"
+    },
+    "evidences": [
+      {
+        "evidence_id": "66666666-6666-6666-6666-666666666666",
+        "side": "request",
+        "field_name": "request_type",
+        "raw_value": "신설",
+        "excerpt": "요청유형: 신설"
+      }
+    ]
+  },
+  "sim_candidate_detail": {
+    "sim_candidate_id": "55555555-5555-5555-5555-555555555555",
+    "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+    "rank": 1,
+    "title": "2025년 디지털 전환 지원사업",
+    "issuing_organization": "○○테크노파크",
+    "source_url": "https://example.com/notice/123",
+    "notice_status": "closed",
+    "status": "similar",
+    "summary": "주요 내용이 유사합니다.",
+    "comparable_axes": ["purpose", "target", "support"],
+    "axes": {
+      "purpose": { "status": "similar", "summary": "목적이 유사합니다." },
+      "target": { "status": "similar", "summary": "대상이 유사합니다." },
+      "support": { "status": "partial", "summary": "지원 방식에 차이가 있습니다." },
+      "delivery": { "status": "insufficient", "summary": "수행체계 비교 정보가 부족합니다." }
+    },
+    "evidences": [
+      {
+        "evidence_id": "77777777-7777-7777-7777-777777777777",
+        "side": "existing",
+        "axis_type": "FIT",
+        "field_name": "support_methods",
+        "raw_value": "전주기 통합지원",
+        "excerpt": "지원 방식 근거"
+      }
+    ]
+  },
+  "analysis_history": [
+    {
+      "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+      "program_name": "지역 중소기업 디지털 전환 지원",
+      "original_filename": "요청서.hwpx",
+      "completed_at": "2026-09-08T03:00:00Z",
+      "report_status": "ready",
+      "report_completed_at": "2026-09-08T03:00:10Z"
+    }
+  ],
+  "error": {
+    "code": "UNSUPPORTED_FILE_FORMAT",
+    "message": "Request upload accepts .hwp and .hwpx"
+  }
+}

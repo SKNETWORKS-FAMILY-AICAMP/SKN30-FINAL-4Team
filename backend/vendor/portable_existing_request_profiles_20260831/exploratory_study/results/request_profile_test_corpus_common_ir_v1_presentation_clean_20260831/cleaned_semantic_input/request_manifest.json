@@ -1,0 +1,50 @@
+{
+  "corpus_version": "v0.1",
+  "documents": [
+    {
+      "doc_id": "PREREVIEW-TEST-2027-01",
+      "input_file": "request_01_scale_period.input.md",
+      "reference_notice_id": "bizinfo:PBLN_000000000125016",
+      "target_fiscal_year": 2027,
+      "is_synthetic_fixture": true
+    },
+    {
+      "doc_id": "PREREVIEW-TEST-2027-02",
+      "input_file": "request_02_target_eligibility.input.md",
+      "reference_notice_id": "bizinfo:PBLN_000000000125056",
+      "target_fiscal_year": 2027,
+      "is_synthetic_fixture": true
+    },
+    {
+      "doc_id": "PREREVIEW-TEST-2027-03",
+      "input_file": "request_03_support_content.input.md",
+      "reference_notice_id": "bizinfo:PBLN_000000000125612",
+      "target_fiscal_year": 2027,
+      "is_synthetic_fixture": true
+    },
+    {
+      "doc_id": "PREREVIEW-TEST-2027-04",
+      "input_file": "request_04_new_program.input.md",
+      "reference_notice_id": null,
+      "target_fiscal_year": 2027,
+      "is_synthetic_fixture": true
+    },
+    {
+      "doc_id": "PREREVIEW-TEST-2027-05",
+      "input_file": "request_05_component_change.input.md",
+      "reference_notice_id": "bizinfo:PBLN_000000000125056",
+      "target_fiscal_year": 2027,
+      "is_synthetic_fixture": true
+    }
+  ],
+  "presentation_cleaning": {
+    "enabled": true,
+    "version": "markdown_inline_presentation_clean_v1",
+    "purpose": "remove inline Markdown presentation markers from semantic text",
+    "original_input_root": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input",
+    "rules": [
+      "remove ** and __ inline strong delimiters",
+      "preserve heading/list/table syntax"
+    ]
+  }
+}

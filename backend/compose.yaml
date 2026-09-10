@@ -1,0 +1,61 @@
+services:
+  api:
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      # 기본은 host loopback 전용이다. LAN HTTP PoC는 .env에서 bind 주소와
+      # Cookie Secure 예외를 둘 다 명시해야 한다.
+      - "${PREREVIEW_API_BIND_ADDRESS:-127.0.0.1}:${PREREVIEW_API_PORT:-8001}:8000"
+    environment:
+      # Compose는 LAN에 publish될 수 있으므로 인증 우회가 없는 값을 기본으로 한다.
+      # offline 계약 검증은 호스트에서 명시적으로 true로 실행한다.
+      PREREVIEW_OFFLINE_MODE: "${PREREVIEW_OFFLINE_MODE:-false}"
+      PREREVIEW_UPLOAD_MAX_BYTES: "${PREREVIEW_UPLOAD_MAX_BYTES:-52428800}"
+      PREREVIEW_AUTH_ALLOWED_ORIGINS: "${PREREVIEW_AUTH_ALLOWED_ORIGINS:-}"
+      PREREVIEW_AUTH_COOKIE_SECURE: "${PREREVIEW_AUTH_COOKIE_SECURE:-true}"
+      PREREVIEW_AUTH_COOKIE_SAMESITE: "${PREREVIEW_AUTH_COOKIE_SAMESITE:-lax}"
+      PREREVIEW_AUTH_COOKIE_DOMAIN: "${PREREVIEW_AUTH_COOKIE_DOMAIN:-}"
+      PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE: "${PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE:-2592000}"
+      PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO: "${PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO:-}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY:-}"
+      SUPABASE_KEY: "${SUPABASE_KEY:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # 신뢰된 내부 polling worker. 포트는 열지 않으며, 브라우저/Edge callback을
+  # 경유하지 않고 PostgreSQL queue와 private Storage만 사용한다.
+  worker:
+    build:
+      context: .
+    command: ["python", "-m", "worker.main"]
+    restart: unless-stopped
+    # SIGTERM 후 현재 claim을 정리할 시간을 준다. 배포 전 queue drain이 우선이다.
+    stop_grace_period: 10m
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_LLM_MODEL: "${OPENAI_LLM_MODEL:-}"
+      OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-60}"
+      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-1}"
+      PREREVIEW_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_WORKER_HEARTBEAT_SECONDS:-30}"
+      PREREVIEW_WORKER_LEASE_SECONDS: "${PREREVIEW_WORKER_LEASE_SECONDS:-120}"
+      PREREVIEW_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_WORKER_IDLE_POLL_SECONDS:-1}"
+      PREREVIEW_WORKER_TOP_K: "${PREREVIEW_WORKER_TOP_K:-5}"
+      PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS:-30}"
+      PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+      PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS:-120}"
+      # rhwp의 native FreeType 호환성은 parser subprocess에만 적용된다.
+      PREREVIEW_FREETYPE_LIB: "${PREREVIEW_FREETYPE_LIB:-/usr/lib/x86_64-linux-gnu/libfreetype.so.6}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

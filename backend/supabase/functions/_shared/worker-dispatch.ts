@@ -11,12 +11,17 @@ export type AnalysisWorkerJob = {
   source: {
     bucket: string
     object_key: string
+    /** Short-lived URL minted by Edge; the worker never receives Storage credentials. */
+    download_url: string
     original_filename: string
     content_type: string | null
     size_bytes: number
   }
   callback: {
     ingest_request_profile_url: string
+    ingest_comparison_result_url: string
+    existing_candidates_url: string
+    existing_profile_url: string
     callback_token: string
   }
   requested_at: string

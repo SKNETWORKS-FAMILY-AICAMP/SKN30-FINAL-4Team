@@ -1,0 +1,45 @@
+{
+  "corpus_version": "v0.1",
+  "entries": [
+    {
+      "document_id": "request:PREREVIEW-TEST-2027-01",
+      "common_ir_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_profile_test_corpus_common_ir_v1_20260831/common_ir/PREREVIEW-TEST-2027-01.common_ir_v1.json",
+      "source_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_01_scale_period.input.md",
+      "source_sha256": "7aee21cac79b035541f68526c1430b4a62f9cfaf8d4d0a8fac10ea04a766cd4a",
+      "reference_notice_id": "bizinfo:PBLN_000000000125016",
+      "is_synthetic_fixture": true
+    },
+    {
+      "document_id": "request:PREREVIEW-TEST-2027-02",
+      "common_ir_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_profile_test_corpus_common_ir_v1_20260831/common_ir/PREREVIEW-TEST-2027-02.common_ir_v1.json",
+      "source_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_02_target_eligibility.input.md",
+      "source_sha256": "82f5c08867afe8e6b6b6a5d132dbd54b659f3ef5f37d6ba43ae63331c3db7923",
+      "reference_notice_id": "bizinfo:PBLN_000000000125056",
+      "is_synthetic_fixture": true
+    },
+    {
+      "document_id": "request:PREREVIEW-TEST-2027-03",
+      "common_ir_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_profile_test_corpus_common_ir_v1_20260831/common_ir/PREREVIEW-TEST-2027-03.common_ir_v1.json",
+      "source_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+      "source_sha256": "c912a35510bdc3e7a588acc692123578f0fb8f28afcfafae9083d6af8a9c64de",
+      "reference_notice_id": "bizinfo:PBLN_000000000125612",
+      "is_synthetic_fixture": true
+    },
+    {
+      "document_id": "request:PREREVIEW-TEST-2027-04",
+      "common_ir_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_profile_test_corpus_common_ir_v1_20260831/common_ir/PREREVIEW-TEST-2027-04.common_ir_v1.json",
+      "source_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_04_new_program.input.md",
+      "source_sha256": "be6dd8e126d7b01537dd0d4899d3378222ee212c8af79b745a80e53744f9290d",
+      "reference_notice_id": null,
+      "is_synthetic_fixture": true
+    },
+    {
+      "document_id": "request:PREREVIEW-TEST-2027-05",
+      "common_ir_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_profile_test_corpus_common_ir_v1_20260831/common_ir/PREREVIEW-TEST-2027-05.common_ir_v1.json",
+      "source_path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_05_component_change.input.md",
+      "source_sha256": "6a97e6eaa97a4dc8e29cfbe5347fe04e152d8c128e768469af0303798e75d2d0",
+      "reference_notice_id": "bizinfo:PBLN_000000000125056",
+      "is_synthetic_fixture": true
+    }
+  ]
+}

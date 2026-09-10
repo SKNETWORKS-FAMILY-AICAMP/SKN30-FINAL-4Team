@@ -1,184 +1,354 @@
-from datetime import datetime
+"""Supabase Auth proxy endpoints with an HttpOnly-cookie session boundary."""
 
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from __future__ import annotations
 
-from app.api.deps import CurrentUser, unauthorized
-from app.api.v1.responses import BAD_REQUEST, UNAUTHORIZED, describe
-from app.core.password_policy import (
-    PASSWORD_MAX_LENGTH,
-    PASSWORD_MIN_LENGTH,
-    validate_new_password,
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+
+from ..auth import (
+    ACCESS_COOKIE,
+    REFRESH_COOKIE,
+    AuthCookieConfig,
+    SupabaseClientDep,
+    access_cookie_scheme,
+    refresh_cookie_scheme,
+    require_trusted_origin,
 )
-from app.core.security import create_access_token
-from app.services.auth import (
-    InvalidCredentialsError,
-    PasswordUnchangedError,
-    change_password,
-    login,
-)
-from app.services.password_reset import InvalidEmailError, normalize_email
+from .openapi_models import error_responses
 
 
-router = APIRouter(prefix="/api/v1/auth", tags=["인증"], responses=UNAUTHORIZED)
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-class LoginRequest(BaseModel):
+class CredentialsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: str = Field(min_length=3, max_length=254)
-    password: SecretStr = Field(min_length=1, max_length=128)
+    password: SecretStr = Field(min_length=1, max_length=1024)
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, value: str) -> str:
-        try:
-            return normalize_email(value)
-        except InvalidEmailError as error:
-            raise ValueError("Invalid email address") from error
+    def normalize_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("A valid email address is required")
+        return normalized
 
 
-class TokenResponse(BaseModel):
-    """토큰만 반환한다.
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    token_type 은 값이 늘 bearer 로 고정이라 정보가 없고, Bearer 사용법은
-    OpenAPI 보안 스킴이 이미 문서화한다.
-    """
+    email: str = Field(min_length=3, max_length=254)
 
-    access_token: str
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: SecretStr = Field(min_length=1, max_length=128)
-    new_password: SecretStr = Field(
-        min_length=PASSWORD_MIN_LENGTH,
-        max_length=PASSWORD_MAX_LENGTH,
-    )
-
-    @field_validator("new_password")
+    @field_validator("email")
     @classmethod
-    def validate_new_password_policy(cls, value: SecretStr) -> SecretStr:
-        validate_new_password(value.get_secret_value())
-        return value
+    def normalize_email(cls, value: str) -> str:
+        return CredentialsRequest.normalize_email(value)
 
 
-class MeResponse(BaseModel):
-    """화면 사용자 영역에 쓸 이름 하나."""
+class UpdatePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    name: str
+    password: SecretStr = Field(min_length=8, max_length=1024)
 
 
-def _issue_token(
-    request: Request,
-    user_id: int,
-    password_changed_at: datetime,
-) -> TokenResponse:
-    """토큰에 지금의 비밀번호 버전을 함께 담는다.
+class AuthUserResponse(BaseModel):
+    """The only identity shape returned across the browser Auth boundary."""
 
-    인증은 이 값이 DB 의 현재 값과 같은지만 본다. 비밀번호가 바뀌면 값이
-    달라져 그 전에 발급된 토큰이 전부 무효가 된다.
-    """
-    settings = request.app.state.settings
-    return TokenResponse(
-        access_token=create_access_token(
-            user_id,
-            settings.jwt_secret.get_secret_value(),
-            settings.jwt_access_token_expire_minutes * 60,
-            password_changed_at.timestamp(),
-        )
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    email: str
+
+
+class AuthUserEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user: AuthUserResponse
+
+
+class SignUpResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email_confirmation_required: bool
+    # The provider can require confirmation and omit a session/user payload.
+    user: AuthUserResponse | None = None
+
+
+class PasswordResetResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str
+
+
+def _public_user(payload: object) -> dict[str, str] | None:
+    if not isinstance(payload, dict):
+        return None
+    user = payload.get("user", payload)
+    if not isinstance(user, dict):
+        return None
+    user_id = user.get("id")
+    email = user.get("email")
+    if not isinstance(user_id, str) or not user_id or not isinstance(email, str) or not email:
+        return None
+    return {"id": user_id, "email": email}
+
+
+def _session(payload: object) -> tuple[str, str, int | None]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid session")
+    access = payload.get("access_token")
+    refresh = payload.get("refresh_token")
+    if not isinstance(access, str) or not access or not isinstance(refresh, str) or not refresh:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid session")
+    expires_in = payload.get("expires_in")
+    # Access cookies naturally become session cookies if the provider omits an
+    # expiry. Never accept a non-positive or unreasonably large provider value.
+    if isinstance(expires_in, bool) or not isinstance(expires_in, int) or not 0 < expires_in <= 60 * 60 * 24 * 7:
+        expires_in = None
+    return access, refresh, expires_in
+
+
+def _set_session_cookies(response: Response, request: Request, payload: object) -> None:
+    access, refresh, access_max_age = _session(payload)
+    config = AuthCookieConfig.from_request(request)
+    response.set_cookie(ACCESS_COOKIE, access, **config.attributes(max_age=access_max_age))
+    response.set_cookie(REFRESH_COOKIE, refresh, **config.attributes(max_age=config.refresh_max_age))
+
+
+def _clear_session_cookies(response: Response, request: Request) -> None:
+    config = AuthCookieConfig.from_request(request)
+    response.delete_cookie(ACCESS_COOKIE, **config.attributes())
+    response.delete_cookie(REFRESH_COOKIE, **config.attributes())
+
+
+def _private(response: Response) -> Response:
+    """Prevent browsers and intermediaries from caching session responses."""
+
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _cleared_auth_error(
+    request: Request, *, status_code: int, code: str, message: str
+) -> JSONResponse:
+    response = JSONResponse(
+        status_code=status_code,
+        content={"code": code, "message": message},
     )
+    _clear_session_cookies(response, request)
+    return _private(response)
+
+
+def _provider_failure(response_status: int, *, invalid_status: int = status.HTTP_401_UNAUTHORIZED) -> None:
+    if response_status >= 500:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Supabase authentication is unavailable")
+    if response_status in {400, 401, 403}:
+        raise HTTPException(status_code=invalid_status, detail="Authentication request was rejected")
+    if response_status == 429:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Authentication request was rate limited")
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an unexpected response")
+
+
+async def trusted_origin(request: Request) -> None:
+    require_trusted_origin(request)
+
+
+TrustedOriginDep = Annotated[None, Depends(trusted_origin)]
 
 
 @router.post(
-    "/login",
-    response_model=TokenResponse,
-    summary="로그인",
-    description="이메일과 비밀번호로 인증하고 토큰을 발급합니다.",
-    responses=describe(UNAUTHORIZED, _401="이메일 또는 비밀번호를 확인해 주세요."),
+    "/sign-in",
+    response_model=AuthUserEnvelope,
+    responses=error_responses(401, 403, 422, 429, 500, 502, 503),
 )
-def login_user(request: Request, body: LoginRequest) -> TokenResponse:
+async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
+    response = await supabase.request(
+        "POST",
+        "/token",
+        params={"grant_type": "password"},
+        json={"email": body.email, "password": body.password.get_secret_value()},
+    )
+    if response.status_code != status.HTTP_200_OK:
+        _provider_failure(response.status_code)
     try:
-        user = login(
-            request.app.state.database_engine,
-            body.email,
-            body.password.get_secret_value(),
-        )
-    except InvalidCredentialsError:
-        raise unauthorized() from None
+        payload: Any = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
+    user = _public_user(payload)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid user")
+    result = JSONResponse(status_code=status.HTTP_200_OK, content={"user": user})
+    _set_session_cookies(result, request, payload)
+    return _private(result)
 
-    return _issue_token(request, user.id, user.password_changed_at)
+
+@router.post(
+    "/sign-up",
+    response_model=SignUpResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses=error_responses(400, 403, 422, 429, 500, 502, 503),
+)
+async def sign_up(request: Request, body: CredentialsRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
+    response = await supabase.request(
+        "POST",
+        "/signup",
+        json={"email": body.email, "password": body.password.get_secret_value()},
+    )
+    if response.status_code not in {status.HTTP_200_OK, status.HTTP_201_CREATED}:
+        _provider_failure(response.status_code, invalid_status=status.HTTP_400_BAD_REQUEST)
+    try:
+        payload: Any = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
+    result_payload: dict[str, object] = {"email_confirmation_required": not (isinstance(payload, dict) and payload.get("access_token") and payload.get("refresh_token"))}
+    user = _public_user(payload)
+    if user:
+        result_payload["user"] = user
+    result = JSONResponse(status_code=status.HTTP_201_CREATED, content=result_payload)
+    if not result_payload["email_confirmation_required"]:
+        _set_session_cookies(result, request, payload)
+    return _private(result)
 
 
 @router.post(
     "/refresh",
-    response_model=TokenResponse,
-    summary="세션 연장",
-    description="만료되지 않은 토큰으로 세션을 1시간 연장합니다. 만료된 경우 다시 로그인해야 합니다.",
-    responses=describe(UNAUTHORIZED, _401="토큰 오류 또는 만료입니다."),
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(refresh_cookie_scheme)],
+    responses=error_responses(401, 403, 422, 429, 500, 502, 503),
 )
-def refresh_token(request: Request, user: CurrentUser) -> TokenResponse:
-    """만료되지 않은 토큰으로만 세션을 연장한다.
+async def refresh(request: Request, _: TrustedOriginDep, supabase: SupabaseClientDep) -> Response:
+    refresh_token = request.cookies.get(REFRESH_COOKIE, "")
+    result = Response(status_code=status.HTTP_204_NO_CONTENT)
+    if not refresh_token:
+        return _cleared_auth_error(
+            request,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="UNAUTHORIZED",
+            message="Refresh cookie is required",
+        )
+    response = await supabase.request("POST", "/token", params={"grant_type": "refresh_token"}, json={"refresh_token": refresh_token})
+    if response.status_code != status.HTTP_200_OK:
+        if response.status_code >= 500:
+            return _cleared_auth_error(
+                request,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="SERVICE_UNAVAILABLE",
+                message="Supabase authentication is unavailable",
+            )
+        if response.status_code == 429:
+            return _cleared_auth_error(
+                request,
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                code="HTTP_ERROR",
+                message="Authentication request was rate limited",
+            )
+        return _cleared_auth_error(
+            request,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="UNAUTHORIZED",
+            message="Authentication request was rejected",
+        )
+    try:
+        payload: Any = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
+    _set_session_cookies(result, request, payload)
+    return _private(result)
 
-    요청마다 자동으로 늘리지 않는다. 연장 시점은 프론트가 정하며, 남은
-    시간은 프론트가 토큰의 exp 를 직접 읽어 계산한다.
-    """
-    return _issue_token(request, user.id, user.password_changed_at)
+
+@router.post(
+    "/sign-out",
+    status_code=status.HTTP_204_NO_CONTENT,
+    # Sign-out is intentionally idempotent when the cookie is already absent,
+    # so do not declare it as a required security scheme.
+    responses=error_responses(403, 422, 500, 503),
+)
+async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClientDep) -> Response:
+    # Cookie deletion is authoritative locally, including for an already-expired
+    # Supabase session. Do not reveal whether a remote session existed.
+    access_token = request.cookies.get(ACCESS_COOKIE, "")
+    if access_token:
+        response = await supabase.request("POST", "/logout", token=access_token)
+        if response.status_code >= 500:
+            return _cleared_auth_error(
+                request,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="SERVICE_UNAVAILABLE",
+                message="Supabase authentication is unavailable",
+            )
+    result = Response(status_code=status.HTTP_204_NO_CONTENT)
+    _clear_session_cookies(result, request)
+    return _private(result)
+
+
+@router.post(
+    "/password-reset",
+    response_model=PasswordResetResponse,
+    responses=error_responses(403, 422, 500, 503),
+)
+async def password_reset(request: Request, response: Response, body: PasswordResetRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> PasswordResetResponse:
+    payload = {"email": body.email}
+    redirect_to = str(getattr(request.app.state, "auth_password_reset_redirect_to", "") or "").strip()
+    params = {"redirect_to": redirect_to} if redirect_to else None
+    provider_response = await supabase.request(
+        "POST", "/recover", json=payload, params=params
+    )
+    if provider_response.status_code >= 500:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Supabase authentication is unavailable")
+    # Supabase normally returns 200 for unknown accounts. Treat every provider
+    # 4xx identically to preserve that non-enumeration boundary.
+    response.headers["Cache-Control"] = "no-store"
+    return PasswordResetResponse(
+        message="If an account exists, password reset instructions have been sent."
+    )
+
+
+@router.post(
+    "/update-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(access_cookie_scheme)],
+    responses=error_responses(401, 403, 422, 429, 500, 502, 503),
+)
+async def update_password(request: Request, body: UpdatePasswordRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> Response:
+    access_token = request.cookies.get(ACCESS_COOKIE, "")
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication cookie is required")
+    response = await supabase.request("PUT", "/user", token=access_token, json={"password": body.password.get_secret_value()})
+    if response.status_code != status.HTTP_200_OK:
+        _provider_failure(response.status_code)
+    result = Response(status_code=status.HTTP_204_NO_CONTENT)
+    # Some Supabase configurations rotate sessions after a password change.
+    try:
+        payload: Any = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict) and payload.get("access_token") and payload.get("refresh_token"):
+        _set_session_cookies(result, request, payload)
+    return _private(result)
 
 
 @router.get(
     "/me",
-    response_model=MeResponse,
-    summary="로그인 사용자 확인",
-    description=(
-        "사이드바 사용자를 표시할 때 쓰입니다. 계정 이메일의 `@` 앞부분입니다. "
-        "새로고침 후 로그인 상태를 확인할 때도 쓰입니다."
-    ),
+    response_model=AuthUserEnvelope,
+    dependencies=[Security(access_cookie_scheme)],
+    responses=error_responses(401, 429, 500, 502, 503),
 )
-def me(user: CurrentUser) -> MeResponse:
-    """이메일의 @ 앞부분만 이름으로 준다. 전체 주소는 내보내지 않는다."""
-    return MeResponse(name=user.email.split("@", 1)[0])
-
-
-@router.post(
-    "/password/change",
-    response_model=TokenResponse,
-    summary="비밀번호 변경 (로그인 상태)",
-    description=(
-        "로그인 상태에서 새 비밀번호로 바꿉니다. 응답의 새 토큰으로 교체하면 "
-        "이 브라우저는 로그인이 유지되고, 다른 기기에 남아 있던 세션은 끊깁니다. "
-        "비밀번호 확인란 일치는 화면에서 검사하며 서버는 새 비밀번호 하나만 받습니다."
-    ),
-    responses=describe(
-        {**UNAUTHORIZED, **BAD_REQUEST},
-        _400="현재 비밀번호 또는 새 비밀번호 입력을 확인해 주세요.",
-    ),
-)
-def update_password(
-    request: Request,
-    body: ChangePasswordRequest,
-    user: CurrentUser,
-) -> TokenResponse:
-    """변경 후에도 이 브라우저의 로그인을 유지한다.
-
-    비밀번호가 바뀌면 DB 트리거가 password_changed_at 을 갱신하고 인증이
-    그보다 먼저 발급된 토큰을 거부한다. 다른 기기의 세션을 끊는 이 성질은
-    그대로 두고, 변경을 요청한 쪽에만 새 토큰을 돌려준다.
-    """
+async def me(request: Request, response: Response, supabase: SupabaseClientDep) -> AuthUserEnvelope:
+    access_token = request.cookies.get(ACCESS_COOKIE, "")
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication cookie is required")
+    provider_response = await supabase.request("GET", "/user", token=access_token)
+    if provider_response.status_code != status.HTTP_200_OK:
+        _provider_failure(provider_response.status_code)
     try:
-        changed_at = change_password(
-            request.app.state.database_engine,
-            user.id,
-            body.current_password.get_secret_value(),
-            body.new_password.get_secret_value(),
-        )
-    except InvalidCredentialsError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password does not match",
-        ) from None
-    except PasswordUnchangedError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must differ from the current password",
-        ) from None
-
-    # 앱 시계가 DB 보다 뒤져도 방금 만든 토큰이 거부되지 않도록 DB 시각을 쓴다.
-    return _issue_token(request, user.id, changed_at)
+        user = _public_user(provider_response.json())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid user")
+    response.headers["Cache-Control"] = "no-store"
+    return AuthUserEnvelope(user=AuthUserResponse.model_validate(user))

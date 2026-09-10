@@ -1,0 +1,6 @@
+services:
+  db:
+    # PostgreSQL 17.6 + pgvector 0.8.2가 포함된 공식 Supabase 이미지다.
+    # digest를 고정해 모든 배포 환경에서 같은 이미지를 사용한다.
+    # 기존 db volumes 설정은 기본 docker-compose.yml에서 그대로 상속한다.
+    image: ${SUPABASE_POSTGRES_PGVECTOR_IMAGE:-supabase/postgres:17.6.1.169@sha256:101127f6bebdf312e7877971855f37eb130e9bd12b7ec80ab7831497147cbc1a}
