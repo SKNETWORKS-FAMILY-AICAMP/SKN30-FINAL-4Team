@@ -43,6 +43,17 @@ from worker.supabase_storage import SupabaseWorkerStorage
 LOGGER = logging.getLogger(__name__)
 
 
+# These SDKs can include request details in DEBUG records.  The worker sends
+# uploaded notice text to OpenAI, so a process-wide DEBUG setting must not turn
+# an operator log into another copy of the source document.
+_SENSITIVE_TRANSPORT_LOGGERS = (
+    "openai",
+    "openai._base_client",
+    "httpx",
+    "httpcore",
+)
+
+
 class WorkerConfigurationError(RuntimeError):
     """A missing or invalid deployment setting, never containing its value."""
 
@@ -224,6 +235,14 @@ def make_worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:12]}"
 
 
+def configure_runtime_logging(*, level: str | int) -> None:
+    """Configure operator logging without enabling provider request tracing."""
+
+    logging.basicConfig(level=level)
+    for logger_name in _SENSITIVE_TRANSPORT_LOGGERS:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
 def run_worker(
     repository: JobRepository,
     handler: JobHandler,
@@ -253,7 +272,7 @@ def main() -> int:
     """Run the worker without ever printing deployment secrets."""
 
     load_dotenv(override=False)
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+    configure_runtime_logging(level=os.getenv("LOG_LEVEL", "INFO").upper())
     try:
         composition = build_worker()
     except (WorkerConfigurationError, MissingConfigError) as error:
@@ -284,6 +303,7 @@ __all__ = [
     "WorkerConfigurationError",
     "WorkerSettings",
     "build_worker",
+    "configure_runtime_logging",
     "main",
     "make_worker_id",
     "run_worker",

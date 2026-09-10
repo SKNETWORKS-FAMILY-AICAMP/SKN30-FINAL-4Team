@@ -12,15 +12,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Callable, Mapping
 import json
 import os
 from pathlib import Path
 import sys
+from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
 
 import httpx
+import psycopg
 from dotenv import dotenv_values
+from psycopg.rows import dict_row
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -38,10 +42,229 @@ DEFAULT_SOURCE = (
 DEFAULT_BACKEND_ENV = BACKEND_ROOT / ".env"
 DEFAULT_SUPABASE_ENV = REPOSITORY_ROOT / ".runtime" / "supabase-dev" / ".env"
 TEST_ORIGIN = "http://e2e.local"
+SOURCE_MIME_TYPES = {
+    ".hwp": "application/x-hwp",
+    ".hwpx": "application/vnd.hancom.hwpx",
+}
+MAX_WORKER_ATTEMPTS = 2
+
+# Keep every other non-terminal row locked in a separate transaction while the
+# normal migration-21 claim function runs.  That function uses SKIP LOCKED, so
+# this local one-shot can exercise exactly the run it created without consuming
+# an attempt from an older queued request.  Locking live rows too closes the
+# edge where another run's lease expires between a preflight query and claim.
+_LOCK_OTHER_ACTIVE_RUNS_SQL = """
+SELECT ar.analysis_run_pk
+FROM workspace.analysis_run AS ar
+JOIN workspace.analysis_run_dispatch AS dispatch
+  ON dispatch.analysis_run_pk = ar.analysis_run_pk
+WHERE ar.analysis_run_pk <> %s::uuid
+  AND ar.status IN ('uploading', 'queued', 'running', 'cleanup_pending')
+ORDER BY ar.created_at, ar.analysis_run_pk
+FOR UPDATE OF ar, dispatch
+"""
+_CLAIM_NEXT_RUN_SQL = """
+SELECT
+    analysis_run_pk,
+    source_bucket,
+    source_object_key,
+    source_content_sha256,
+    processing_run_pk,
+    attempt_count,
+    lease_expires_at,
+    heartbeat_interval_seconds
+FROM workspace.claim_next_analysis_run(%s, %s)
+"""
+_E2E_QUEUE_ADVISORY_LOCK = 7_612_330_025
 
 
 class E2EFailure(RuntimeError):
     """A safe stage-level failure that never contains credentials or content."""
+
+
+class _UnexpectedClaim(E2EFailure):
+    """The guarded queue function selected a run other than this E2E's run."""
+
+
+def _claim_value(row: Mapping[str, Any], key: str) -> Any:
+    value = row.get(key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise E2EFailure("Local E2E queue returned an incomplete claim")
+    return value
+
+
+def _acquire_target_claim_guard(cursor: Any, target_run_id: str) -> None:
+    """Acquire the short-lived transaction guard for one operator E2E claim.
+
+    Only this setup is an *isolation acquisition* step.  The caller executes
+    ``claim_next_analysis_run`` after this function returns, so a database
+    error from the claim itself is not incorrectly reported as a failure to
+    acquire the guard.  The transaction deliberately ends immediately after
+    the target row is claimed; it must not hold queue row locks while the
+    worker performs long-running parsing or LLM work.
+    """
+
+    try:
+        # Connection timeout does not bound waits after connecting.  Fail
+        # clearly instead of leaving this operator command hung behind another
+        # worker or an abandoned transaction.
+        cursor.execute("SET LOCAL lock_timeout = '5s'")
+        cursor.execute("SET LOCAL statement_timeout = '15s'")
+        # Serialise concurrent copies of this operator-only script.  A regular
+        # worker need not know about this lock: the row locks below make it
+        # skip non-target work for the brief claim call.
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(%s)",
+            (_E2E_QUEUE_ADVISORY_LOCK,),
+        )
+        cursor.execute(_LOCK_OTHER_ACTIVE_RUNS_SQL, (target_run_id,))
+        cursor.fetchall()
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E queue isolation is unavailable") from None
+
+
+def _claim_target_analysis_run(
+    database_url: str,
+    target_run_id: str,
+    *,
+    worker_id: str,
+    lease_seconds: int,
+) -> Any:
+    """Claim and verify the E2E run before the claim transaction commits."""
+
+    # Import after this script has added BACKEND_ROOT to sys.path.  Keeping the
+    # concrete queue value local avoids broadening the production repository
+    # protocol with an operator-only targeted-claim method.
+    from worker.runtime import ClaimedJob
+
+    try:
+        connection = psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        )
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E queue isolation is unavailable") from None
+
+    try:
+        with connection:
+            with connection.cursor() as cursor:
+                _acquire_target_claim_guard(cursor, target_run_id)
+                # This is intentionally outside the guard-acquisition
+                # exception boundary.  A failed claim/commit is not evidence
+                # that queue isolation was unavailable, so it receives its
+                # own safe stage classification below.
+                cursor.execute(_CLAIM_NEXT_RUN_SQL, (worker_id, lease_seconds))
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                if not isinstance(row, Mapping):
+                    raise E2EFailure("Local E2E queue returned an invalid claim")
+                job_pk = _claim_value(row, "analysis_run_pk")
+                if str(job_pk) != target_run_id:
+                    # Raising before the connection context exits rolls back
+                    # claim_next_analysis_run's attempt/status mutations.
+                    raise _UnexpectedClaim(
+                        "Local E2E worker claimed an unexpected analysis run"
+                    )
+                attempt_count = _claim_value(row, "attempt_count")
+                if not isinstance(attempt_count, int) or isinstance(
+                    attempt_count, bool
+                ):
+                    raise E2EFailure("Local E2E queue returned an invalid claim")
+                return ClaimedJob(
+                    job_pk=job_pk,
+                    processing_run_pk=_claim_value(row, "processing_run_pk"),
+                    payload={
+                        "source_bucket": _claim_value(row, "source_bucket"),
+                        "source_object_key": _claim_value(
+                            row, "source_object_key"
+                        ),
+                        "source_content_sha256": _claim_value(
+                            row, "source_content_sha256"
+                        ),
+                        "attempt_count": attempt_count,
+                        "lease_expires_at": _claim_value(
+                            row, "lease_expires_at"
+                        ),
+                        "heartbeat_interval_seconds": _claim_value(
+                            row, "heartbeat_interval_seconds"
+                        ),
+                    },
+                )
+    except E2EFailure:
+        raise
+    except (psycopg.Error, OSError):
+        # WorkerRuntime logs repository exceptions.  Replace driver details
+        # before that boundary so a DSN or SQL fragment can never reach the
+        # operator log, while keeping this distinct from guard acquisition.
+        raise E2EFailure("Local E2E queue claim failed") from None
+
+
+class _TargetRunRepository:
+    """Restrict a normal worker runtime to one E2E-created analysis run."""
+
+    def __init__(
+        self,
+        delegate: Any,
+        *,
+        target_run_id: str,
+        database_url: str,
+        claim_target: Callable[..., Any] | None = None,
+    ) -> None:
+        self._delegate = delegate
+        self._target_run_id = target_run_id
+        self._claim_target = claim_target or (
+            lambda **values: _claim_target_analysis_run(
+                database_url,
+                target_run_id,
+                **values,
+            )
+        )
+        self.target_claims = 0
+        self.unexpected_claim = False
+        self.claim_error: E2EFailure | None = None
+
+    def claim(self, *, worker_id: str, lease_seconds: int) -> Any:
+        try:
+            job = self._claim_target(
+                worker_id=worker_id,
+                lease_seconds=lease_seconds,
+            )
+        except E2EFailure as error:
+            # WorkerRuntime deliberately converts repository exceptions into
+            # an unavailable outcome.  Retain only this safe stage-level
+            # message so the operator sees the actual isolation failure.
+            self.claim_error = error
+            if isinstance(error, _UnexpectedClaim):
+                self.unexpected_claim = True
+            raise
+        if job is None:
+            return None
+        if str(job.job_pk) != self._target_run_id:
+            # A custom/in-memory claim implementation still gets the same
+            # fail-closed boundary.  The default PostgreSQL implementation has
+            # already performed this check before committing its transaction.
+            self.unexpected_claim = True
+            raise E2EFailure("Local E2E worker claimed an unexpected analysis run")
+        self.target_claims += 1
+        return job
+
+    def heartbeat(self, **kwargs: Any) -> bool:
+        return self._delegate.heartbeat(**kwargs)
+
+    def complete(self, **kwargs: Any) -> bool:
+        return self._delegate.complete(**kwargs)
+
+    def fail(self, **kwargs: Any) -> bool:
+        return self._delegate.fail(**kwargs)
+
+
+def _source_mime_type(source: Path) -> str:
+    try:
+        return SOURCE_MIME_TYPES[source.suffix.lower()]
+    except KeyError:
+        raise E2EFailure("--file must be an HWP or HWPX file") from None
 
 
 def _required(values: dict[str, str | None], name: str) -> str:
@@ -121,12 +344,76 @@ async def _create_confirmed_test_user() -> tuple[str, str, str]:
     return user_id, email, password
 
 
+async def _analysis_state(client: httpx.AsyncClient, run_id: str) -> dict[str, object]:
+    response = await client.get(f"/api/v1/analysis-runs/{run_id}")
+    if response.status_code != 200:
+        raise E2EFailure(
+            f"FastAPI status polling failed with HTTP {response.status_code}"
+        )
+    try:
+        state = response.json()
+    except ValueError:
+        raise E2EFailure("FastAPI status polling response is invalid") from None
+    if not isinstance(state, dict) or state.get("analysis_run_id") != run_id:
+        raise E2EFailure("FastAPI status polling response is invalid")
+    return state
+
+
+async def _run_target_until_terminal(
+    *,
+    runtime: Any,
+    repository: _TargetRunRepository,
+    client: httpx.AsyncClient,
+    run_id: str,
+) -> tuple[dict[str, object], str, int]:
+    """Drive at most the database queue's two attempts for one target run."""
+
+    last_outcome = "not_started"
+    for expected_attempt in range(1, MAX_WORKER_ATTEMPTS + 1):
+        outcome = await asyncio.to_thread(runtime.run_once)
+        last_outcome = str(getattr(outcome, "value", outcome))
+        if getattr(repository, "claim_error", None) is not None:
+            raise repository.claim_error
+        if repository.unexpected_claim:
+            raise E2EFailure("Local E2E queue isolation failed")
+        if repository.target_claims != expected_attempt:
+            raise E2EFailure(
+                "Local E2E worker did not claim the requested analysis run"
+            )
+
+        state = await _analysis_state(client, run_id)
+        run_status = state.get("status")
+        if run_status == "succeeded":
+            return state, last_outcome, expected_attempt
+        if run_status == "failed":
+            raise E2EFailure(
+                f"worker reached terminal failure after {expected_attempt} attempt(s)"
+            )
+        if run_status == "queued" and last_outcome == "failed":
+            if expected_attempt < MAX_WORKER_ATTEMPTS:
+                continue
+            raise E2EFailure(
+                "worker retry budget was exhausted without a terminal state"
+            )
+        raise E2EFailure(
+            f"worker left the target run in an unexpected state: "
+            f"outcome={last_outcome}, status={run_status}"
+        )
+
+    raise E2EFailure("worker retry loop ended without a terminal state")
+
+
 async def _run(source: Path) -> dict[str, object]:
     # Import only after the environment is complete: both composition roots
     # intentionally read their deployment configuration at construction time.
     from main import create_app
-    from worker.main import build_worker
+    from worker.main import build_worker, configure_runtime_logging
     from worker.runtime import WorkerRuntime
+
+    # OPENAI_LOG=debug can make the SDK log its full request options, including
+    # the uploaded document text.  Apply the same transport-logger floor as the
+    # long-running worker before any provider call in this operator entrypoint.
+    configure_runtime_logging(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
     user_id, email, password = await _create_confirmed_test_user()
     app = create_app()
@@ -155,7 +442,7 @@ async def _run(source: Path) -> dict[str, object]:
                 "file": (
                     source.name,
                     source.read_bytes(),
-                    "application/vnd.hancom.hwpx",
+                    _source_mime_type(source),
                 )
             },
         )
@@ -169,27 +456,25 @@ async def _run(source: Path) -> dict[str, object]:
             raise E2EFailure("FastAPI upload response contract is invalid")
 
         composition = build_worker()
-        runtime = WorkerRuntime(
+        target_repository = _TargetRunRepository(
             composition.repository,
+            target_run_id=run_id,
+            database_url=os.environ["DATABASE_URL"],
+        )
+        runtime = WorkerRuntime(
+            target_repository,
             composition.handler,
             worker_id=f"local-e2e-{uuid4().hex[:12]}",
             heartbeat_seconds=composition.settings.heartbeat_seconds,
             lease_seconds=composition.settings.lease_seconds,
             idle_poll_seconds=composition.settings.idle_poll_seconds,
         )
-        worker_outcome = await asyncio.to_thread(runtime.run_once)
-
-        polled = await client.get(f"/api/v1/analysis-runs/{run_id}")
-        if polled.status_code != 200:
-            raise E2EFailure(
-                f"FastAPI status polling failed with HTTP {polled.status_code}"
-            )
-        state = polled.json()
-        if state.get("status") != "succeeded":
-            raise E2EFailure(
-                f"worker did not complete the run: outcome={worker_outcome.value}, "
-                f"status={state.get('status')}"
-            )
+        state, worker_outcome, worker_attempts = await _run_target_until_terminal(
+            runtime=runtime,
+            repository=target_repository,
+            client=client,
+            run_id=run_id,
+        )
         case_id = state.get("analysis_case_id")
         if not isinstance(case_id, str) or not case_id:
             raise E2EFailure("completed run has no analysis case id")
@@ -205,7 +490,8 @@ async def _run(source: Path) -> dict[str, object]:
             "test_user_id": user_id,
             "analysis_run_id": run_id,
             "analysis_case_id": case_id,
-            "worker_outcome": worker_outcome.value,
+            "worker_outcome": worker_outcome,
+            "worker_attempts": worker_attempts,
             "cpl_items": len(body.get("cpl", {}).get("items", [])),
             "fit_items": len(body.get("fit", {}).get("items", [])),
             "sim_candidates": len(body.get("sim", {}).get("candidates", [])),
@@ -226,8 +512,9 @@ def main() -> int:
     )
     parser.add_argument("--supabase-env", type=Path, default=DEFAULT_SUPABASE_ENV)
     args = parser.parse_args()
-    if not args.file.is_file() or args.file.suffix.lower() != ".hwpx":
-        raise E2EFailure("--file must be an existing HWPX file")
+    if not args.file.is_file():
+        raise E2EFailure("--file must be an existing HWP or HWPX file")
+    _source_mime_type(args.file)
     _configure_environment(args.backend_env, args.supabase_env)
     result = asyncio.run(_run(args.file.resolve()))
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))

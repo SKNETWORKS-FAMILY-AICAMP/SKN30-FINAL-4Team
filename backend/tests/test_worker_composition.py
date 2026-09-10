@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from worker.analysis_job import AnalysisJobHandler
-from worker.main import WorkerConfigurationError, WorkerSettings, build_worker
+from worker.main import (
+    WorkerConfigurationError,
+    WorkerSettings,
+    build_worker,
+    configure_runtime_logging,
+)
 from worker.postgres_repository import PostgresJobRepository
 
 
@@ -94,6 +101,41 @@ def test_build_worker_connects_only_trusted_server_adapters(
     assert "never-print" not in rendered
 
 
+def test_debug_mode_never_enables_provider_or_transport_request_logging(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Document text must not enter logs through OpenAI/httpx DEBUG tracing."""
+
+    logger_names = ("openai", "openai._base_client", "httpx", "httpcore")
+    loggers = [logging.getLogger(name) for name in logger_names]
+    original_levels = [logger.level for logger in loggers]
+    root_logger = logging.getLogger()
+    original_root_level = root_logger.level
+    sentinel = "do-not-log-uploaded-notice-text"
+    try:
+        # Simulate a dependency that had previously enabled a child logger.
+        for logger in loggers:
+            logger.setLevel(logging.DEBUG)
+
+        configure_runtime_logging(level="DEBUG")
+
+        assert logging.getLogger("openai").getEffectiveLevel() == logging.WARNING
+        assert logging.getLogger("openai._base_client").getEffectiveLevel() == logging.WARNING
+        assert logging.getLogger("httpx").getEffectiveLevel() == logging.WARNING
+        assert logging.getLogger("httpcore").getEffectiveLevel() == logging.WARNING
+
+        # pytest already installs a root handler, so basicConfig intentionally
+        # leaves its level alone.  Simulate a production DEBUG root explicitly.
+        root_logger.setLevel(logging.DEBUG)
+        for logger in loggers:
+            logger.debug("provider request payload=%s", sentinel)
+        assert sentinel not in caplog.text
+    finally:
+        root_logger.setLevel(original_root_level)
+        for logger, original_level in zip(loggers, original_levels, strict=True):
+            logger.setLevel(original_level)
+
+
 def test_compose_starts_worker_by_module_without_publishing_a_port() -> None:
     compose = (
         __import__("pathlib").Path(__file__).resolve().parents[1] / "compose.yaml"
@@ -163,3 +205,12 @@ def test_runtime_image_excludes_unimportable_retired_worker_modules() -> None:
         "worker/report_pdf.py",
         "worker/adapters/ml_subprocess.py",
     } <= set(dockerignore)
+
+    # Existing KB의 지원 writer는 scripts/ingest_existing_profile.py다. 이
+    # compatibility path가 supported worker image에 다시 들어오면 migration
+    # activation의 writer boundary가 불명확해진다.
+    main_source = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "worker" / "main.py"
+    ).read_text(encoding="utf-8")
+    assert "kb_store" not in main_source

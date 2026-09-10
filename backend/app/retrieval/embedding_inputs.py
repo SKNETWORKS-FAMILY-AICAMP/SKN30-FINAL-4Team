@@ -1,9 +1,10 @@
 """Build reproducible embedding inputs without generative summarisation.
 
-Only approved facts are copied from a structured profile.  The source JSON is
-the lossless record; this module normalises whitespace solely for retrieval.
-Inputs longer than the OpenAI embedding limit are split without truncation and
-their vectors can be token-weighted into the one-vector-per-scope DB contract.
+Only approved facts and structural ``support_components[].name_raw`` values
+are copied from a structured profile.  The source JSON is the lossless record;
+this module normalises whitespace solely for retrieval.  Inputs longer than
+the OpenAI embedding limit are split without truncation and their vectors can
+be token-weighted into the one-vector-per-scope DB contract.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 1536
 MAX_INPUT_TOKENS = 8192
 DEFAULT_BATCH_SIZE = 100
+EMBEDDING_ASSEMBLY_VERSION = "approved-facts-components-role-aware-v2"
 
 ALLOWED_STATUSES = frozenset({"identified", "partial", "partially_identified"})
 
@@ -36,6 +38,7 @@ TARGET_FIELDS = (
     "participation_requirements",
 )
 SUPPORT_FIELDS = (
+    "support_components",
     "support_activities",
     "support_methods",
     "support_items",
@@ -108,14 +111,25 @@ def _iter_profile_facts(profile: Mapping[str, Any]) -> Iterable[Mapping[str, Any
         for component in components:
             if not isinstance(component, Mapping):
                 continue
+            name = _clean(component.get("name_raw"))
+            if name:
+                source = component.get("value_source")
+                source = source if isinstance(source, Mapping) else {
+                    "source_block_id": component.get("name_source_block_id")
+                }
+                yield {
+                    "field_name": "support_components",
+                    "value_raw": name,
+                    "status": component.get("name_status") or "identified",
+                    "value_source": source,
+                }
             rows = component.get("facts")
             if isinstance(rows, list):
                 yield from (row for row in rows if isinstance(row, Mapping))
 
 
 def _facts_by_field(profile: Mapping[str, Any]) -> dict[str, list[_Fact]]:
-    grouped: dict[str, list[_Fact]] = {}
-    seen: set[tuple[str, str, str]] = set()
+    unique: dict[tuple[str, str, str], _Fact] = {}
     for encounter, fact in enumerate(_iter_profile_facts(profile)):
         if _clean(fact.get("status")).lower() not in ALLOWED_STATUSES:
             continue
@@ -125,17 +139,17 @@ def _facts_by_field(profile: Mapping[str, Any]) -> dict[str, list[_Fact]]:
         if not field_name or not value:
             continue
         key = (field_name, role, value)
-        if key in seen:
-            continue
-        seen.add(key)
-        grouped.setdefault(field_name, []).append(
-            _Fact(
-                field_name=field_name,
-                value=value,
-                role=role,
-                order=_source_order(fact, encounter),
-            )
+        candidate = _Fact(
+            field_name=field_name,
+            value=value,
+            role=role,
+            order=_source_order(fact, encounter),
         )
+        if key not in unique or candidate.order < unique[key].order:
+            unique[key] = candidate
+    grouped: dict[str, list[_Fact]] = {}
+    for fact in unique.values():
+        grouped.setdefault(fact.field_name, []).append(fact)
     for facts in grouped.values():
         facts.sort(key=lambda item: item.order)
     return grouped
@@ -146,11 +160,22 @@ def _render_value(fact: _Fact) -> str:
 
 
 def _render_axis(
-    grouped: Mapping[str, Sequence[_Fact]], fields: Sequence[str], *, headers: bool
+    grouped: Mapping[str, Sequence[_Fact]],
+    fields: Sequence[str],
+    *,
+    headers: bool,
+    deduplicate_values: bool = False,
 ) -> str:
     sections: list[str] = []
+    seen_values: set[tuple[str, str]] = set()
     for field_name in fields:
-        values = [_render_value(fact) for fact in grouped.get(field_name, ())]
+        values: list[str] = []
+        for fact in grouped.get(field_name, ()):
+            semantic_value = (fact.role, fact.value)
+            if deduplicate_values and semantic_value in seen_values:
+                continue
+            seen_values.add(semantic_value)
+            values.append(_render_value(fact))
         if not values:
             continue
         body = "\n".join(values)
@@ -263,7 +288,9 @@ def assemble_embedding_inputs(
     texts = {
         "purpose": _render_axis(grouped, PURPOSE_FIELDS, headers=False),
         "target": _render_axis(grouped, TARGET_FIELDS, headers=True),
-        "support": _render_axis(grouped, SUPPORT_FIELDS, headers=True),
+        "support": _render_axis(
+            grouped, SUPPORT_FIELDS, headers=True, deduplicate_values=True
+        ),
     }
     missing = [scope for scope, text in texts.items() if not text]
     if missing:

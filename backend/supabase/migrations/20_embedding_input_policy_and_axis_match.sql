@@ -30,12 +30,19 @@ BEGIN
 END
 $$;
 
--- The old generic configuration is retained for provenance but is no longer
--- active. No Existing embeddings had been written when this policy was fixed.
+-- The original generic configuration is retained for provenance but is no
+-- longer active.  Do not deactivate a later recognised configuration here:
+-- apply_migrations.sh replays this migration, and a verified v2 must survive
+-- that replay.  Restrict this cleanup to the known pre-policy legacy row so
+-- future assembly versions are not silently demoted either.
 UPDATE retrieval.embedding_configuration
 SET is_active = FALSE
 WHERE is_active
-  AND assembly_version <> 'approved-facts-role-aware-v1';
+  AND provider = 'openai'
+  AND model_id = 'text-embedding-3-small'
+  AND dimensions = 1536
+  AND distance_metric = 'cosine'
+  AND assembly_version = 'existing-profile-v1';
 
 INSERT INTO retrieval.embedding_configuration (
     provider,
@@ -55,13 +62,30 @@ VALUES (
     'approved-facts-role-aware-v1',
     8192,
     'fact-boundary-token-weighted-mean-v1',
-    TRUE
+    FALSE
 )
 ON CONFLICT (provider, model_id, dimensions, distance_metric, assembly_version)
 DO UPDATE SET
     max_input_tokens = EXCLUDED.max_input_tokens,
-    chunking_strategy = EXCLUDED.chunking_strategy,
-    is_active = TRUE;
+    chunking_strategy = EXCLUDED.chunking_strategy;
+
+-- Bootstrap v1 only when the generic cleanup left no active configuration.
+-- This is deliberately separate from the UPSERT: an existing active v2 must
+-- remain active on replay, and an INSERT must not violate the one-active
+-- partial unique index while another configuration is active.
+UPDATE retrieval.embedding_configuration AS v1
+SET is_active = TRUE
+WHERE v1.provider = 'openai'
+  AND v1.model_id = 'text-embedding-3-small'
+  AND v1.dimensions = 1536
+  AND v1.distance_metric = 'cosine'
+  AND v1.assembly_version = 'approved-facts-role-aware-v1'
+  AND NOT v1.is_active
+  AND NOT EXISTS (
+      SELECT 1
+      FROM retrieval.embedding_configuration AS active_config
+      WHERE active_config.is_active
+  );
 
 CREATE OR REPLACE FUNCTION retrieval.match_existing_profiles_three_axis(
     p_query_purpose extensions.vector(1536),

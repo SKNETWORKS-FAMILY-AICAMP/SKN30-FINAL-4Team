@@ -282,8 +282,8 @@ def _request_program_name(profile: Mapping[str, Any]) -> str | None:
     """읽을 수 있는 프로필 식별자만 결과 스냅샷으로 옮긴다.
 
     Request Profile v0.1.2의 ``identity.title_raw``가 사업명 후보 위치다.
-    현재 생산기는 이 값을 ``None``으로 두므로, 계층 노드·첫 heading·파일명으로
-    보완하지 않는다. 사업명 추출은 별도 파서/프로필 계약의 후속 범위다.
+    생산기는 명시 ``사업명`` 표 또는 유일한 detail-program 원문 node에서만 이
+    값을 정한다. 여기서는 heading·파일명으로 추가 추측하지 않는다.
     """
 
     identity = profile.get("identity")

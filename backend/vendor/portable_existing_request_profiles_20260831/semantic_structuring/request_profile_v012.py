@@ -29,7 +29,7 @@ from .profile_v02 import ValueSource, find_all_occurrences, materialize_value_so
 
 
 REQUEST_SCHEMA_VERSION = "pre_review_request_profile/v0.1"
-REQUEST_PIPELINE_VERSION = "request_profile_v0.1.2_scaffold"
+REQUEST_PIPELINE_VERSION = "request_profile_v0.1.3"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
 
 SHARED_COMPARISON_FIELDS = (
@@ -45,6 +45,62 @@ REQUEST_CONTEXT_FIELDS = (
     "expected_effect", "performance_indicator",
 )
 ALL_FACT_FIELDS = SHARED_COMPARISON_FIELDS + REQUEST_CONTEXT_FIELDS
+
+_EXPLICIT_PROCEDURE_HEADERS = frozenset({"추진절차", "사업추진절차"})
+_EXACT_PROGRAM_PERIOD_LABEL = re.compile(
+    r"(?<![가-힣A-Za-z0-9])사업기간(?![가-힣A-Za-z0-9])"
+)
+# A date range by itself has no stable meaning in a pre-review request: an
+# adjacent application/receipt period is not the programme period.  Keep this
+# list deliberately small and use it only to determine which *preceding*
+# label owns a date candidate in the same source block.
+_PERIOD_LABEL = re.compile(
+    r"(?<![가-힣A-Za-z0-9])"
+    r"(?P<label>사업기간|접수기간|신청기간|모집기간|지원기간|공고기간|수행기간|협약기간)"
+    r"(?![가-힣A-Za-z0-9])"
+)
+_NON_SUBSTANTIVE_PROCEDURE_CELLS = frozenset({
+    "", "-", "--", "—", "미정", "없음", "해당없음", "해당 없음", "n/a", "N/A",
+})
+# Exact column headers which may legitimately sit beside a 추진절차 caption in
+# a two-column procedure table.  Do not broaden this with fuzzy matching: an
+# arbitrary substantive c+1 cell remains a key/value-row signal.
+_PROCEDURE_HEADER_COMPANION_CELLS = frozenset({
+    "주요내용", "주요 내용", "내용", "일정", "추진일정", "추진 일정",
+    "담당기관", "수행주체", "담당", "주체", "비고",
+})
+# Some forms put a merged procedure caption on row 0 and a separate exact
+# column-header row (for example ``단계 | 주요내용 | 일정``) on row 1.  These
+# are never procedure steps.  This remains an exact, intentionally short
+# vocabulary; descriptive phrases are still eligible body evidence.
+_PROCEDURE_BODY_HEADER_CELLS = (
+    _PROCEDURE_HEADER_COMPANION_CELLS
+    | frozenset({"단계", "절차", "구분", "사업단계", "사업 단계", "세부내용", "세부 내용", "기간"})
+)
+_SEMANTIC_TEXT = re.compile(r"[가-힣A-Za-z]")
+
+
+MaterializedEvidenceKey = tuple[str | int, ...]
+
+
+class RequestCompletenessError(ValueError):
+    """A fully valid materialization omitted source-visible required coverage.
+
+    Messages and attributes contain only contract labels and immutable source
+    identifiers.  Source text is deliberately excluded because this exception
+    is copied into worker diagnostics and operator logs.
+    """
+
+    error_classification = "request_completeness_failed"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        materialized_evidence_keys: frozenset[MaterializedEvidenceKey],
+    ) -> None:
+        super().__init__(message)
+        self.materialized_evidence_keys = materialized_evidence_keys
 
 
 class StrictModel(BaseModel):
@@ -128,6 +184,11 @@ _STAGE_BOUNDARY_FIELDS = frozenset({
 # remain ineligible for a program_period Fact.
 _DATE_RANGE_SEPARATOR = r"\s*(?:~|∼|–|—|-)\s*"
 _DATE_KOREAN_YEAR_MONTH = r"(?:[’'`]\s*)?\d{2,4}\s*년\s*\d{1,2}\s*월"
+_DATE_KOREAN_YEAR = r"(?:[’'`]\s*)?\d{2,4}\s*년"
+# HWP forms frequently abbreviate an official programme year as ``’24`` or
+# ```24``.  Keep the marker mandatory for a year without ``년`` so generic
+# numeric ranges cannot become programme periods by accident.
+_DATE_MARKED_ABBREVIATED_YEAR = r"[’'`]\s*\d{2}(?:\s*년)?"
 _DATE_KOREAN_MONTH = r"\d{1,2}\s*월"
 _DATE_DOT_YEAR_KOREAN_MONTH = r"(?:[’'`]\s*)?\d{2,4}\s*\.\s*\d{1,2}\s*월"
 _DATE_DOT_YMD = r"(?:[’'`]\s*)?\d{2,4}\s*\.\s*\d{1,2}\s*\.\s*\d{1,2}"
@@ -135,7 +196,8 @@ _DATE_DOT_YM = r"(?:[’'`]\s*)?\d{2,4}\s*\.\s*\d{1,2}(?:\s*\.)?"
 _DATE_DOT_MD = r"\d{1,2}\s*\.\s*\d{1,2}"
 _DATE_DOT_MONTH = r"\d{1,2}\s*\."
 _PROGRAM_PERIOD_DATE_TOKEN = (
-    rf"(?:{_DATE_KOREAN_YEAR_MONTH}|{_DATE_DOT_YEAR_KOREAN_MONTH}|{_DATE_DOT_YMD}|{_DATE_DOT_YM}|"
+    rf"(?:{_DATE_KOREAN_YEAR_MONTH}|{_DATE_KOREAN_YEAR}|{_DATE_MARKED_ABBREVIATED_YEAR}|"
+    rf"{_DATE_DOT_YEAR_KOREAN_MONTH}|{_DATE_DOT_YMD}|{_DATE_DOT_YM}|"
     rf"{_DATE_KOREAN_MONTH}|{_DATE_DOT_MD}|{_DATE_DOT_MONTH})"
 )
 _PROGRAM_PERIOD_DATE_RANGE_PATTERN = (
@@ -556,6 +618,350 @@ def _source_document(document: dict[str, Any]) -> dict[str, Any]:
     return {"format": info["source_kind"], "common_ir": lineage}
 
 
+def _explicit_procedure_table_ids(
+    document: dict[str, Any], pack: CandidatePack,
+) -> tuple[str, ...]:
+    """Return high-confidence, non-empty explicit procedure tables.
+
+    Only an exact supported header in an explicit Common IR table qualifies.
+    A second semantic table-cell row is required, which excludes blank form
+    shells and arrow-only layout rows without interpreting their content.
+    """
+
+    explicit_table_ids = {
+        str(block.get("block_id"))
+        for block in document.get("blocks", [])
+        if isinstance(block, dict)
+        and block.get("kind") == "table"
+        and block.get("structure_status") == "explicit"
+        and isinstance(block.get("block_id"), str)
+    }
+    table_cells = [
+        block
+        for block in pack.blocks
+        if block.block_kind == "table_cell"
+        and block.common_ir_block_id in explicit_table_ids
+    ]
+    cells_by_table_row_column: dict[tuple[str, int, int], SourceBlock] = {}
+    for block in table_cells:
+        coordinates = _CELL_COORDINATES.search(block.block_id)
+        if coordinates is None or block.common_ir_block_id is None:
+            continue
+        cells_by_table_row_column[(
+            block.common_ir_block_id,
+            int(coordinates.group("row")),
+            int(coordinates.group("col")),
+        )] = block
+
+    header_rows: dict[str, set[int]] = defaultdict(set)
+    for block in table_cells:
+        if block.text.strip() not in _EXPLICIT_PROCEDURE_HEADERS:
+            continue
+        coordinates = _CELL_COORDINATES.search(block.block_id)
+        if coordinates is not None and block.common_ir_block_id is not None:
+            row = int(coordinates.group("row"))
+            column = int(coordinates.group("col"))
+            # ``추진절차 | <value>`` is an ordinary key/value row in an
+            # overview table, not a table caption.  Do not make every other
+            # semantic cell in such a table an implementation-plan obligation.
+            adjacent = cells_by_table_row_column.get(
+                (block.common_ir_block_id, row, column + 1)
+            )
+            if (
+                adjacent is not None
+                and adjacent.text.strip() not in _PROCEDURE_HEADER_COMPANION_CELLS
+                and adjacent.text.strip() not in _NON_SUBSTANTIVE_PROCEDURE_CELLS
+                and _SEMANTIC_TEXT.search(adjacent.text.strip()) is not None
+            ):
+                continue
+            header_rows[block.common_ir_block_id].add(
+                row
+            )
+
+    qualifying: list[str] = []
+    for table_id, rows in header_rows.items():
+        has_substantive_body_cell = False
+        for block in table_cells:
+            if block.common_ir_block_id != table_id:
+                continue
+            coordinates = _CELL_COORDINATES.search(block.block_id)
+            if coordinates is None or int(coordinates.group("row")) in rows:
+                continue
+            text = block.text.strip()
+            if (
+                text not in _NON_SUBSTANTIVE_PROCEDURE_CELLS
+                and _SEMANTIC_TEXT.search(text) is not None
+            ):
+                has_substantive_body_cell = True
+                break
+        if has_substantive_body_cell:
+            qualifying.append(table_id)
+    return tuple(sorted(qualifying))
+
+
+def _labeled_program_period_candidate_refs(
+    pack: CandidatePack,
+) -> tuple[tuple[str, str], ...]:
+    """Return exact programme-period candidates with source-visible ownership.
+
+    A candidate is eligible only when either its nearest preceding period label
+    in the same block is exactly ``사업기간``, or an immediately preceding
+    table cell in the same row is that label.  This deliberately rejects a
+    later ``접수기간``/``신청기간`` range in an otherwise business-period block,
+    while still accepting conventional table label/value cells.
+    """
+
+    blocks = {block.block_id: block for block in pack.blocks}
+    cells_by_table_row_column: dict[tuple[str, int, int], SourceBlock] = {}
+    for block in pack.blocks:
+        if block.block_kind != "table_cell" or block.common_ir_block_id is None:
+            continue
+        coordinates = _CELL_COORDINATES.search(block.block_id)
+        if coordinates is None:
+            continue
+        cells_by_table_row_column[(
+            block.common_ir_block_id,
+            int(coordinates.group("row")),
+            int(coordinates.group("col")),
+        )] = block
+
+    def has_business_period_owner(candidate: ValueSpanCandidate) -> bool:
+        block = blocks[candidate.source_block_id]
+        preceding_labels = list(_PERIOD_LABEL.finditer(block.text, 0, candidate.start_char))
+        if preceding_labels:
+            # The closest label wins. This prevents a preceding 사업기간 from
+            # incorrectly claiming a later 신청기간 in one paragraph/cell.
+            return preceding_labels[-1].group("label") == "사업기간"
+
+        coordinates = _CELL_COORDINATES.search(block.block_id)
+        if coordinates is None or block.common_ir_block_id is None:
+            return False
+        previous_cell = cells_by_table_row_column.get((
+            block.common_ir_block_id,
+            int(coordinates.group("row")),
+            int(coordinates.group("col")) - 1,
+        ))
+        return (
+            previous_cell is not None
+            and _EXACT_PROGRAM_PERIOD_LABEL.search(previous_cell.text) is not None
+        )
+
+    return tuple(sorted(
+        (candidate.source_block_id, candidate.value_span_candidate_id)
+        for candidate in build_value_span_candidates(pack)
+        if candidate.candidate_kind == "program_period_date_range"
+        and has_business_period_owner(candidate)
+    ))
+
+
+def _procedure_table_body_source_block_ids(
+    pack: CandidatePack, procedure_table_ids: tuple[str, ...],
+) -> dict[str, frozenset[str]]:
+    """Return substantive non-caption cells for already-qualified tables.
+
+    Completeness requires an implementation-plan Fact from an actual procedure
+    step/body cell.  The caption (``추진절차``/``사업추진절차``), its companion
+    column header, and arrow-only layout cells are not an implementation plan.
+    ``procedure_table_ids`` must come from ``_explicit_procedure_table_ids``;
+    this helper intentionally does not try to qualify tables on its own.
+    """
+
+    table_id_set = set(procedure_table_ids)
+    caption_rows: dict[str, set[int]] = defaultdict(set)
+    for block in pack.blocks:
+        if (
+            block.block_kind != "table_cell"
+            or block.common_ir_block_id not in table_id_set
+            or block.text.strip() not in _EXPLICIT_PROCEDURE_HEADERS
+        ):
+            continue
+        coordinates = _CELL_COORDINATES.search(block.block_id)
+        if coordinates is not None and block.common_ir_block_id is not None:
+            caption_rows[block.common_ir_block_id].add(
+                int(coordinates.group("row"))
+            )
+
+    body_ids: dict[str, set[str]] = defaultdict(set)
+    for block in pack.blocks:
+        if (
+            block.block_kind != "table_cell"
+            or block.common_ir_block_id not in table_id_set
+        ):
+            continue
+        coordinates = _CELL_COORDINATES.search(block.block_id)
+        if coordinates is None or int(coordinates.group("row")) in caption_rows[
+            block.common_ir_block_id
+        ]:
+            continue
+        text = block.text.strip()
+        if (
+            text not in _NON_SUBSTANTIVE_PROCEDURE_CELLS
+            and text not in _PROCEDURE_BODY_HEADER_CELLS
+            and _SEMANTIC_TEXT.search(text) is not None
+        ):
+            body_ids[block.common_ir_block_id].add(block.block_id)
+    return {
+        table_id: frozenset(body_ids[table_id])
+        for table_id in procedure_table_ids
+    }
+
+
+def materialized_evidence_keys_v012(
+    profile: dict[str, Any],
+) -> frozenset[MaterializedEvidenceKey]:
+    """Return stable semantic span identities without retaining source text."""
+
+    keys: set[MaterializedEvidenceKey] = set()
+
+    def add(kind: str, semantic_name: str, row: dict[str, Any]) -> None:
+        source = row.get("value_source")
+        if not isinstance(source, dict):
+            return
+        block_id = source.get("source_block_id")
+        start = source.get("start_char")
+        end = source.get("end_char")
+        if isinstance(block_id, str) and isinstance(start, int) and isinstance(end, int):
+            keys.add((kind, semantic_name, block_id, start, end))
+
+    for field_name, rows in profile.get("comparison_profile", {}).items():
+        if field_name == "delivery_relations":
+            continue
+        for row in rows:
+            if isinstance(row, dict):
+                add("fact", str(field_name), row)
+    for field_name, rows in profile.get("request_context", {}).items():
+        for row in rows:
+            if isinstance(row, dict):
+                add("fact", str(field_name), row)
+    for row in profile.get("support_components", []):
+        if not isinstance(row, dict):
+            continue
+        add(
+            "support_component",
+            str(row.get("component_kind") or "unknown"),
+            {"value_source": row.get("value_source")},
+        )
+        add(
+            "support_component_applies_to",
+            str(row.get("component_kind") or "unknown"),
+            {"value_source": row.get("applies_to_source")},
+        )
+    hierarchy = profile.get("program_hierarchy", {})
+    if isinstance(hierarchy, dict):
+        for row in hierarchy.get("nodes", []):
+            if isinstance(row, dict):
+                add("program_node", str(row.get("level") or "unknown"), row)
+    for relation in profile.get("comparison_profile", {}).get(
+        "delivery_relations", []
+    ):
+        if not isinstance(relation, dict):
+            continue
+        actor = relation.get("actor")
+        if isinstance(actor, dict):
+            add("delivery_relation", "actor", actor)
+        role = relation.get("role")
+        if isinstance(role, dict):
+            add("delivery_relation", "member", role)
+        for action in relation.get("actions", []):
+            if isinstance(action, dict):
+                add("delivery_relation", "member", action)
+        container = relation.get("relation_container")
+        if not isinstance(container, dict):
+            continue
+        container_type = container.get("container_type")
+        table_id = container.get("common_ir_block_id")
+        if container_type == "paragraph":
+            block_id = container.get("source_block_id")
+            if isinstance(block_id, str) and isinstance(table_id, str):
+                keys.add((
+                    "delivery_relation_container",
+                    "paragraph",
+                    table_id,
+                    block_id,
+                ))
+        elif container_type == "table_row":
+            row_index = container.get("row_index")
+            if isinstance(table_id, str) and isinstance(row_index, int):
+                keys.add((
+                    "delivery_relation_container",
+                    "table_row",
+                    table_id,
+                    row_index,
+                ))
+        elif container_type == "table_column_pair":
+            actor_cell_id = container.get("actor_common_ir_cell_id")
+            related_cell_ids: list[str] = []
+            role_cell_id = container.get("role_common_ir_cell_id")
+            if isinstance(role_cell_id, str):
+                related_cell_ids.append(role_cell_id)
+            action_cell_ids = container.get("action_common_ir_cell_ids", [])
+            if isinstance(action_cell_ids, list):
+                related_cell_ids.extend(
+                    item for item in action_cell_ids if isinstance(item, str)
+                )
+            if (
+                isinstance(table_id, str)
+                and isinstance(actor_cell_id, str)
+                and related_cell_ids
+            ):
+                keys.add((
+                    "delivery_relation_container",
+                    "table_column_pair",
+                    table_id,
+                    actor_cell_id,
+                    *sorted(related_cell_ids),
+                ))
+    return frozenset(keys)
+
+
+def _request_title_raw(pack: CandidatePack, hierarchy: list[dict[str, Any]]) -> str | None:
+    """Return a conservative Request title from source-visible structure.
+
+    A form's exact ``사업명`` table-cell pair is authoritative when there is
+    one unambiguous value cell immediately to its right.  Some inputs do not
+    preserve that pair cleanly, so a single materialised detail-program node
+    is the only fallback.  Headings, filenames, and arbitrary first blocks are
+    deliberately never used.
+    """
+
+    labels = [
+        block
+        for block in pack.blocks
+        if block.block_kind == "table_cell" and block.text.strip() == "사업명"
+        and block.common_ir_block_id is not None
+    ]
+    values: list[str] = []
+    for label in labels:
+        match = _CELL_COORDINATES.search(label.block_id)
+        if match is None:
+            continue
+        row, column = int(match.group("row")), int(match.group("col"))
+        paired = [
+            block.text.strip()
+            for block in pack.blocks
+            if block.block_kind == "table_cell"
+            and block.common_ir_block_id == label.common_ir_block_id
+            and (coordinate := _CELL_COORDINATES.search(block.block_id)) is not None
+            and int(coordinate.group("row")) == row
+            and int(coordinate.group("col")) == column + 1
+            and block.text.strip()
+        ]
+        values.extend(paired)
+    unique_values = list(dict.fromkeys(values))
+    if len(unique_values) == 1:
+        return unique_values[0]
+
+    detail_nodes = [
+        str(node["name_raw"]).strip()
+        for node in hierarchy
+        if node.get("level") == ProgramLevel.DETAIL_PROGRAM.value
+        and isinstance(node.get("name_raw"), str)
+        and node["name_raw"].strip()
+    ]
+    unique_nodes = list(dict.fromkeys(detail_nodes))
+    return unique_nodes[0] if len(unique_nodes) == 1 else None
+
+
 def _resolve_anchor(
     anchor: SourceTextAnchor, blocks: dict[str, SourceBlock], pack: CandidatePack,
     *, required_candidate_kind: Literal["program_period_date_range"] | None = None,
@@ -969,7 +1375,8 @@ def resolve_request_type_from_candidate_pack(pack: CandidatePack) -> dict[str, A
 
 def assemble_request_profile_v012(
     document: dict[str, Any], pack: CandidatePack, selection: RequestSourceSelectionV012,
-    *, model_id: str = "not_called", prompt_version: str = "request_source_selection_v0.1.2",
+    *, model_id: str = "not_called", prompt_version: str = "request_source_selection_v0.1.3",
+    enforce_completeness: bool = False,
 ) -> dict[str, Any]:
     """Materialize a validated Request profile without an LLM/API call."""
 
@@ -1046,6 +1453,8 @@ def assemble_request_profile_v012(
             "parent_node_id": selected.parent_node_id,
             "name_raw": node["value_raw"], "value_source": node["value_source"], "evidence": node["evidence"],
         })
+
+    title_raw = _request_title_raw(pack, hierarchy)
 
     for selected in selection.delivery_relations:
         actor = _materialize_anchor(selected.actor_anchor, blocks, pack)
@@ -1231,7 +1640,7 @@ def assemble_request_profile_v012(
         "schema_version": REQUEST_SCHEMA_VERSION,
         "profile_id": selection.profile_id,
         "profile_type": "pre_review_request",
-        "identity": {"title_raw": None, "source_document_id": identity["document_id"]},
+        "identity": {"title_raw": title_raw, "source_document_id": identity["document_id"]},
         "request_type": request_type,
         "program_hierarchy": {"nodes": hierarchy},
         "request_context": request_context,
@@ -1266,4 +1675,66 @@ def assemble_request_profile_v012(
     issues = _validate_request_profile(profile, pack)
     if issues:
         raise ValueError("Request profile validation failed: " + "; ".join(issues))
+    if not enforce_completeness:
+        return profile
+
+    completeness_failures: list[str] = []
+    procedure_table_ids = _explicit_procedure_table_ids(document, pack)
+    blocks_by_id = {block.block_id: block for block in pack.blocks}
+    procedure_body_block_ids = _procedure_table_body_source_block_ids(
+        pack, procedure_table_ids
+    )
+    covered_procedure_table_ids = {
+        block.common_ir_block_id
+        for row in request_context["implementation_plan"]
+        if isinstance(row.get("value_source"), dict)
+        and isinstance(row["value_source"].get("source_block_id"), str)
+        and (block := blocks_by_id.get(row["value_source"]["source_block_id"])) is not None
+        and block.common_ir_block_id in procedure_table_ids
+        and block.block_id in procedure_body_block_ids[block.common_ir_block_id]
+    }
+    missing_procedure_table_ids = [
+        table_id for table_id in procedure_table_ids
+        if table_id not in covered_procedure_table_ids
+    ]
+    if missing_procedure_table_ids:
+        completeness_failures.append(
+            "implementation_plan has no source-visible coverage for explicit "
+            "procedure table ids=" + ",".join(missing_procedure_table_ids)
+        )
+    period_candidate_refs = _labeled_program_period_candidate_refs(pack)
+    candidate_by_id = {
+        candidate.value_span_candidate_id: candidate
+        for candidate in build_value_span_candidates(pack)
+    }
+    selected_period_refs = {
+        (candidate.source_block_id, candidate.value_span_candidate_id)
+        for row in comparison["program_period"]
+        if isinstance(row.get("value_source"), dict)
+        and isinstance(row["value_source"].get("source_block_id"), str)
+        and isinstance(row["value_source"].get("start_char"), int)
+        and isinstance(row["value_source"].get("end_char"), int)
+        for candidate in candidate_by_id.values()
+        if candidate.candidate_kind == "program_period_date_range"
+        and candidate.source_block_id == row["value_source"]["source_block_id"]
+        and candidate.start_char == row["value_source"]["start_char"]
+        and candidate.end_char == row["value_source"]["end_char"]
+    }
+    # One exact, source-visible business-period candidate is enough.  The
+    # same period may legitimately be repeated in a narrative and a summary
+    # table; requiring every duplicate would create false missing errors.
+    if period_candidate_refs and not (set(period_candidate_refs) & selected_period_refs):
+        completeness_failures.append(
+            "program_period has no source-visible coverage for labeled "
+            "date-range candidate refs="
+            + ",".join(
+                f"{block_id}/{candidate_id}"
+                for block_id, candidate_id in period_candidate_refs
+            )
+        )
+    if completeness_failures:
+        raise RequestCompletenessError(
+            "Request completeness failed: " + "; ".join(completeness_failures),
+            materialized_evidence_keys=materialized_evidence_keys_v012(profile),
+        )
     return profile

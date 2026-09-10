@@ -32,6 +32,51 @@ except ImportError:  # direct ``python scripts/...`` execution
 EXISTING_SPECIFIC = {
     "payment_terms", "duplicate_support_conditions", "applicable_entity", "delivery_roles",
 }
+CURRENT_VERSION_ACTIVATION_LOCK = "pre-review-existing-kb-current-and-embedding-v1"
+
+
+def _lock_current_version_activation(database: "KnowledgeBase") -> None:
+    """Serialise import with the staged v2 activation transaction.
+
+    Migration 28 enforces the same invariant for every SQL writer.  Keeping
+    this lock/demotion boundary in the official importer also protects the
+    short upgrade window while migration 27/28 are being applied.
+    """
+
+    with database.connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (CURRENT_VERSION_ACTIVATION_LOCK,),
+        )
+
+
+def _demote_v2_after_current_set_change(database: "KnowledgeBase") -> None:
+    """Leave a changed Existing corpus fail-closed until v2 is rebackfilled."""
+
+    with database.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH demoted_v2 AS (
+                UPDATE retrieval.embedding_configuration
+                SET is_active = FALSE
+                WHERE provider = 'openai'
+                  AND model_id = 'text-embedding-3-small'
+                  AND dimensions = 1536
+                  AND distance_metric = 'cosine'
+                  AND assembly_version = 'approved-facts-components-role-aware-v2'
+                  AND is_active
+                RETURNING embedding_config_pk
+            )
+            UPDATE retrieval.embedding_configuration
+            SET is_active = TRUE
+            WHERE provider = 'openai'
+              AND model_id = 'text-embedding-3-small'
+              AND dimensions = 1536
+              AND distance_metric = 'cosine'
+              AND assembly_version = 'approved-facts-role-aware-v1'
+              AND EXISTS (SELECT 1 FROM demoted_v2)
+            """
+        )
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -473,7 +518,13 @@ def run_transaction(
     """Commit one complete notice or roll every DB row back on failure."""
 
     try:
+        _lock_current_version_activation(database)
         result = operation()
+        # The official importer returns this only after it inserted a new
+        # current source/profile version.  Do not disturb an already-ingested
+        # byte-identical record: it leaves the current set unchanged.
+        if isinstance(result, dict) and result.get("status") == "ingested":
+            _demote_v2_after_current_set_change(database)
         database.commit()
         return result
     except BaseException:

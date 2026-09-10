@@ -20,6 +20,9 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 - self-hosted Supabase와 private buckets: `existing-kb`, `request-temp`, `analysis-reports`
 - pgvector 기반 Existing Profile 임베딩: `text-embedding-3-small`, 1,536 dimensions,
   `purpose`/`target`/`support`/`combined` 네 scope
+- migration 26의 `approved-facts-components-role-aware-v2` 조립 규칙: 승인 Fact와
+  `support_components[].name_raw`를 Existing/Request 양쪽에 동일하게 반영하고,
+  구 버전 벡터와의 혼용은 fail-closed
 - Existing 공고 100건의 Profile·artifact·관계형 KB 적재 및 retrieval 검증
 - Existing 100건 data pack의 ZIP/manifest 안전 검증, batch import, 공고별 DB transaction,
   멱등 재실행과 private Storage 실물 검증 절차
@@ -41,6 +44,10 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 - migration 25: `queued` 전환 전에 동일 run의 source artifact와 dispatch source identity가
   일치하도록 강제하고, active source·dispatch의 핵심 메타데이터 변경을 차단
 - same-server polling worker 조립과 CLI/Docker service
+- 지원되는 Existing KB writer는 `scripts/ingest_existing_profile.py`(batch는 이를
+  subprocess로 호출)뿐이다. 과거 `worker/kb_ingest.py`·`worker/kb_store.py`는 retired
+  `app.*` 의존성을 지녀 `.dockerignore`로 runtime image에서 제외되어 현 배포 경로로는
+  실행되지 않는다.
 - source 다운로드 → HWP/HWPX → Common IR → Request Profile → 3축 임베딩 검색 →
   CPL/FIT/SIM → fenced 결과 저장
 - Common IR/Profile을 `request-temp`와 `workspace.source_artifact`에 등록하고
@@ -51,28 +58,77 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 
 ## 2026-09-10 검증 결과
 
-- 전체 backend 회귀 테스트: `192 passed`
+- 전체 backend 회귀 테스트: `226 passed`
+- Request Profile vendor 계약 테스트: `58 passed`
 - Supabase migration·self-hosted 설치/경로 안전성 계약 테스트: `17 passed`
 - 합성 HWPX 5건 offline parser/preflight: `5/5 passed`
   - ZIP·manifest SHA-256·Common IR provenance·본문 보존
   - 각 2 Common IR blocks, `detail_program_new` 판정
 - 실제 Luna Request Profile 생성: 성공, exact candidate-pack span `6/6`
-- migration 01~25 실DB 적용: 성공
+- migration 01~28 실DB 적용: 성공. 조기 활성화됐던 빈 v2 설정을 보정해 현재는
+  v1 400행이 활성이고 v2는 0행·비활성이다.
 - queue runtime rollback 계약: 성공
-- 실제 1건 E2E: 성공
+- 합성 HWPX 1건 live E2E: 성공
   - Supabase Auth → FastAPI upload → private Storage/PostgreSQL queue
   - HWPX/Common IR/Request Profile → OpenAI embedding/pgvector → CPL/FIT/SIM
   - FastAPI polling/result read
   - CPL 13, FIT 7, SIM 후보 1, evidence 47
 - E2E DB 후검증: source/Common IR/Profile artifact 3개, lineage edge 2개,
   Request Profile 1개, request fact 13개, result axis 20개, processing attempt 1개
-- Existing 100건 live verifier: `valid`
-  - Profile 100/100, embedding 100/100 × 4 scope
+- 실제 Hancom 작성 HWP 검증: 성공
+  - direct HWP → Common IR: 47 blocks(단락 39, 표 8), relation 1,
+    validation error 0
+  - 입력 SHA-256:
+    `48b1c2909efaca3710642020901071260592fa4c9b763b905ec21c9f905b9228`
+  - 최초 run은 동일 run의 두 번 attempt 모두 OpenAI HTTP 200 이후
+    Pydantic/domain cross-field validation에서 `LLM_INVALID_RESPONSE`로 종료했다.
+    SDK `parse`가 raw 응답을 노출하기 전에 검증해 기존 인메모리 보정 경로가
+    실행되지 못한 것이 원인이었다.
+  - OpenAI client를 `create` 호출 → raw JSON 인메모리 보존 → local
+    `model_validate` 순서로 수정했다. 후속 반복 검증에서 strict JSON Schema로
+    표현되지 않는 `delivery_relations[*].relation_container`의 kind별 상호배타
+    필드가 다시 확인되어, 원격 응답의 무의미한 필드만 제거하도록 정규화했다.
+    필수 근거를 만들거나 span을 변경하지 않으며 서버 materializer 검증은 그대로다.
+  - 최종 live E2E run `62f26473-2b94-439a-8c00-917f840dd133`, case
+    `723a7eb3-a352-4ca6-ac82-b8a3692910e9`가 첫 worker attempt에 성공
+  - CPL 13, FIT 7, SIM 후보 1, evidence 63
+  - source/Common IR/structured Profile artifact 각 1개, result axis 20개,
+    active analysis session 1개, 종료 후 non-terminal queue 0개
+- 위 HWP의 의미 품질 후검증에서 Common IR에는 명시된 `사업기간` 후보 2개와
+  `추진절차` 표 1개가 있는데도 최초 Request Profile에는 둘 다 0건이고
+  `identity.title_raw`도 `null`인 누락을 확인했다.
+  - 연도-only 범위(`’24 ~ ’28`, `` `24~`28년 ``) 후보 규칙과 명시 `사업명` 기반
+    title 복원을 추가했다. 해당 문서에서 title은 `ICT지원사업`으로 결정된다.
+  - 명시적인 `추진절차`/`사업추진절차` 표와 exact `사업기간` label의 기간 후보를
+    성공 전에 검사한다. 누락 시 기존 근거를 보존한 채 한 번 repair하고, 계속
+    누락되면 성공 처리하지 않는다.
+  - 실제 HWP Common IR에 새 검사를 적용해 누락 조건이 모두 탐지됨을 확인했고,
+    관련 회귀 테스트는 통과했다. 수정 버전의 OpenAI live 재처리는 아직 수행 전이다.
+- Existing 100건 관계형 KB·Storage live verifier: `valid`
+  - Profile 100/100, 기존 v1 embedding 100/100 × 4 scope
   - artifact 500개와 lineage 400개, Profile artifact FK 모두 불일치 0
   - private Storage 실제 객체 500/500의 byte SHA-256·크기 일치
   - 과거 importer가 누락한 delivery role 38행·기관 occurrence 48행 backfill 완료
+- migration 20 재실행은 알려진 초기 generic config만 정리하고 active v2/향후 assembly를
+  보존하며, active config가 전혀 없을 때만 v1을 bootstrap한다. migration 26은 v2 설정을
+  staged inactive로 추가하고 v1 config를 rollback 상태로 유지한다.
+  migration 27은 이미 조기 활성화된 **active** v2 환경도 현재 Profile의 네 scope가 완전하지
+  않으면 v1으로 복구하고 inactive v2/active future config는 보존한다. worker는 v2 이외의
+  config와 후보 0건 모두 fail-closed 하므로 전체
+  100건 v2 재임베딩의 hash 검증·원자 전환 전에는 정상 분석 결과를 만들지 않는다.
+  검증 backfill도 exact v1/v2 identity가 아닌 active future/foreign config(같은 assembly
+  label 재사용 포함)를 발견하면 이를 내리지 않고 명시적으로 실패하며, active config가
+  전혀 없을 때만 완전 검증 v2를 활성화한다.
+  migration 28은 v2 전환과 Existing current-version 변경을 동일 advisory transaction
+  lock으로 직렬화하고, 전환 뒤 current Profile이 생성·변경·삭제되면 v2를 v1으로 demote한다.
+  최초 완전 28 설치 또는 함수·네 개 trigger drift 재적용은 27→28 upgrade gap의
+  legacy/manual child-row 변경을 안전하게 흡수하려고 active v2를 한 번 demote하며,
+  정상 28 재실행은 v2를 유지한다. 전체 Profile byte/hash 재검증 backfill만 v2를
+  재활성화한다.
+  - v2 비용 없는 dry-run: Profile 100건, 4 scope 400입력, 총 64,973 tokens,
+    scope 최대 2,906 tokens로 모두 8,192 상한 안에 있음
 - Docker 이미지 build: 성공. 최신 이미지의 `--network none` 컨테이너에서 전체 회귀
-  테스트 192건과 합성 HWPX parser 5/5 성공
+  테스트 210건과 합성 HWPX parser 5/5 성공
   (`rhwp-python` native runtime에 `libexpat1`, `libfreetype6` 필요)
 - `cl100k_base` tokenizer cache를 이미지에 포함해 retrieval token 계산이 런타임
   인터넷 연결에 의존하지 않음
@@ -107,6 +163,10 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 ## 남은 작업
 
+- Existing Profile 100건을 `approved-facts-components-role-aware-v2`로 재임베딩하고
+  scope별 100건(총 400행) 및 live retrieval을 다시 검증
+- 수정된 Request Profile v0.1.3으로 실제 Hancom HWP live E2E를 재실행해 사업명,
+  사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검
 - password recovery link를 HttpOnly session cookie로 교환하는 callback/PKCE 흐름
 - reverse proxy/ASGI 경계의 multipart 전체 body·part 수 제한과 streaming upload
 - `request-temp` 및 90일 만료 결과의 reference-aware cleanup/감사 작업. 현재 요청 경로의
@@ -117,7 +177,7 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 - OpenAI 호출 단위 `ops.model_invocation` 감사 기록 연결
   (현재는 `ops.processing_run`의 시도·성공·실패 이력만 기록)
 - 기존 로컬 runtime에 남아 있을 수 있는 legacy Edge Function 제거 및 direct grant 폐기
-- 실제 Hancom 작성 HWP/HWPX와 malformed/timeout 문서 E2E
+- 실제 Hancom 작성 HWPX와 malformed/timeout 문서 E2E
 - 임의의 새 Existing data pack에 vendor v0.2 의미 검증과 관계형 row fingerprint 대조 확대
 - 이미 저장된 과거 non-current Existing Profile을 재입력할 때 fail-closed할지 current로
   원자 전환할지 정책 확정
@@ -147,8 +207,8 @@ SUPABASE_DIR="$PWD/.runtime/supabase-dev" backend/supabase/run_worker_queue_vali
 실제 비밀값을 출력·커밋하지 말고, migration 적용 전에는 백업과 Compose volume 경로를
 확인한다.
 
-합성 5건 offline 검증과 실제 1건 live E2E는 다음 스크립트로 재현한다. live E2E는
-OpenAI 비용이 발생하고 확인용 Auth user/result를 DB에 남긴다.
+합성 5건 offline 검증과 HWP/HWPX live E2E는 다음 스크립트로 재현한다.
+live E2E는 OpenAI 비용이 발생하고 확인용 Auth user/result를 DB에 남긴다.
 
 ```bash
 PREREVIEW_FREETYPE_LIB=/lib/x86_64-linux-gnu/libfreetype.so.6 \
@@ -156,7 +216,16 @@ PREREVIEW_FREETYPE_LIB=/lib/x86_64-linux-gnu/libfreetype.so.6 \
 
 cd backend
 .venv/bin/python scripts/run_local_live_e2e.py
+
+# 지정한 HWP 또는 HWPX로 검증
+.venv/bin/python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
 ```
+
+live E2E 스크립트는 자신이 생성한 동일 run만 점유하고 DB queue 계약과
+같은 최대 두 번의 attempt를 수행한다. 첫 시도가 retryable failure로
+`queued`에 복귀하면 두 번째 시도까지 이어가고, 성공·최종 실패·시도
+소진 중 하나로 유한하게 종료한다. 자세한 운영 주의사항은
+[FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 따른다.
 
 ## online FastAPI 설정
 

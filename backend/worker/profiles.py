@@ -51,6 +51,7 @@ from common_ir_pipeline.schema import validation_errors  # noqa: E402
 import semantic_structuring.request_profile_v012 as _request_profile_contract  # noqa: E402
 from semantic_structuring.request_profile_v012 import (  # noqa: E402
     REQUEST_PIPELINE_VERSION,
+    RequestCompletenessError,
     assemble_request_profile_v012,
     RequestSourceSelectionV012,
     build_request_candidate_pack,
@@ -547,6 +548,19 @@ def _materialize_isolated(
     팀원 검증은 하나도 완화하지 않는다. 같은 ``assemble_request_profile_v012``
     를 그대로 다시 부르고, 통과하는 부분만 남긴다.
     """
+    completeness_failed = isinstance(
+        error.materialization_error, RequestCompletenessError
+    ) or any(
+        row.get("error_type") == RequestCompletenessError.__name__
+        for row in error.diagnostics
+    )
+    if completeness_failed:
+        # A completeness failure means the retained selection is individually
+        # valid but omitted required source-visible coverage.  Once observed,
+        # a later generic repair failure must not erase that obligation.
+        # Dropping delivery groups cannot satisfy it and must never turn it
+        # into a misleading OK snapshot.
+        return None
     baseline = error.selection.model_dump(mode="json")
     dropped: list[str] = []
     counts: dict[str, int] = {}
@@ -564,6 +578,7 @@ def _materialize_isolated(
                 trimmed,
                 model_id=model_id,
                 prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+                enforce_completeness=True,
             )
         except (ValidationError, ValueError):
             continue

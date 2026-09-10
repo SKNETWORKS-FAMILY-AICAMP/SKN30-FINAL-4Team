@@ -1,7 +1,7 @@
 # Supabase migration manifest
 
 마지막 감사: 2026-09-10
-현재 버전: v0.10
+현재 버전: v0.13
 
 이 manifest는 `backend/supabase/migrations`의 순차 SQL과 현재
 Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조를 설명한다.
@@ -9,8 +9,8 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 
 ## 현재 수량
 
-- 순차 migration: 25개 (`01`~`25`)
-- SQL 물리 행 수: 4,962 (`wc -l`, 주석/빈 줄 포함)
+- 순차 migration: 28개 (`01`~`28`)
+- SQL 물리 행 수: 5,447 (`wc -l`, 주석/빈 줄 포함)
 - 애플리케이션 table: 60개
 - data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
 - contract schema: 1개 (`api`, table 없이 View/RPC)
@@ -43,12 +43,15 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | 17 | `17_request_profile_ingest_core.sql` | 193 | 0 | 0 | worker Request Profile materialisation |
 | 18 | `18_worker_existing_api_and_result_ingest.sql` | 222 | 0 | 0 | 과거 Edge read/unfenced ingest 계약 |
 | 19 | `19_pgvector_existing_profile_retrieval.sql` | 132 | 2 | 2 | Existing Profile embedding/config와 cosine match |
-| 20 | `20_embedding_input_policy_and_axis_match.sql` | 149 | 0 | 0 | 8,192-token input policy, three-axis match |
+| 20 | `20_embedding_input_policy_and_axis_match.sql` | 173 | 0 | 0 | 8,192-token input policy, three-axis match; replay-safe v1 bootstrap |
 | 21 | `21_analysis_worker_queue.sql` | 495 | 0 | 2 | polling claim, lease, heartbeat, two-attempt retry/fence |
 | 22 | `22_fenced_analysis_result_ingest.sql` | 194 | 0 | 0 | fenced atomic result ingest, unfenced writer 폐기 |
 | 23 | `23_result_read_retention_and_candidate_evidence.sql` | 449 | 0 | 0 | live-retention reads, exact candidate version/evidence |
 | 24 | `24_retire_legacy_worker_completion.sql` | 10 | 0 | 0 | 결과 없는 성공 전이를 허용한 과거 완료 함수 제거 |
 | 25 | `25_queued_source_invariant.sql` | 669 | 0 | 1 | queued source artifact·dispatch·lease·processing fence 무결성 강제 |
+| 26 | `26_component_name_embedding_assembly.sql` | 40 | 0 | 0 | support component name 포함 v2 임베딩 조립 구성 staged 생성 |
+| 27 | `27_repair_component_embedding_activation.sql` | 117 | 0 | 0 | 빈 active v2 보정; inactive v2/active future config 보존 |
+| 28 | `28_serialise_existing_kb_embedding_activation.sql` | 304 | 0 | 0 | four-table writer lock·최초 설치/trigger drift one-time revalidation, current/입력 child 변경 시 v1 demote |
 
 합계는 60 table, 73 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
 스키마 정확성을 대신하는 검증이 아니다.
@@ -129,7 +132,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-이 script에는 migration ledger가 없으며 매번 `01`~`25`를 모두 실행한다. 각 파일은 독립
+이 script에는 migration ledger가 없으며 매번 `01`~`28`을 모두 실행한다. 각 파일은 독립
 transaction이라 중간 실패 전 파일은 이미 commit된다. reset/delete는 하지 않지만 모든
 부분 적용·재실행 상태가 안전하다고 보장하지도 않는다. 실패 시 무작정 재실행하지 말고
 적용된 객체와 오류 migration을 확인한 뒤 backup restore 또는 검증된 repair 절차를 따른다.
@@ -156,7 +159,7 @@ SUPABASE_DIR=/path/to/supabase-compose \
   ./supabase/run_worker_queue_validation.sh
 ```
 
-배포 gate에는 별도로 migration 01~25 fresh apply, 실제 private Storage put/get/delete,
+배포 gate에는 별도로 migration 01~28 fresh apply, 실제 private Storage put/get/delete,
 FastAPI Cookie auth/upload/poll/result, HWP/HWPX parser와 OpenAI를 포함한 worker E2E가 필요하다.
 
 ## 관련 문서

@@ -34,7 +34,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 다음 조건이 먼저 충족되어야 한다.
 
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
-- `backend/supabase/migrations/01`부터 `25`까지 적용되어 있다.
+- `backend/supabase/migrations/01`부터 `28`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
 - Existing Profile과 `retrieval.existing_profile_embedding` 데이터가 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
@@ -48,7 +48,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 처음부터 재현할 때는 다음 순서를 지킨다.
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
-2. migration 01~25를 적용한다.
+2. migration 01~28을 적용한다.
 3. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
 4. 실제 전체 분석이 필요하면 Existing KB와 embedding을 bootstrap한다. 로그인·`/me`만
    확인할 때는 이 단계가 필요하지 않다.
@@ -362,6 +362,45 @@ LIMIT 20;
 `analysis_case_id`가 반환되는지 보는 것이다. OpenAI 비용이 발생하므로 배포마다 자동으로
 실행하지 않는다.
 
+### Operator용 HWP/HWPX live E2E
+
+로컬 Supabase·migration 01~28·Existing KB/embedding·`backend/.env`가 준비된 개발
+환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue →
+worker → polling/result read를 한 번에 검증할 수 있다. PDF는 받지 않고 HWP·HWPX만
+받는다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team/backend
+uv run python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
+
+# 기본 위치와 다른 보안 설정 파일을 쓰는 경우만 명시한다.
+uv run python scripts/run_local_live_e2e.py \
+  --file /safe/local/request.hwpx \
+  --backend-env /safe/local/backend.env \
+  --supabase-env /safe/local/supabase.env
+```
+
+기본 `--backend-env`는 `backend/.env`, `--supabase-env`는 저장소의
+`.runtime/supabase-dev/.env`다. 스크립트는 임의의 confirmed Auth user를 만들고
+입력·Common IR·Request Profile·분석 결과를 검증 후에도 보존한다. 생성한 계정의
+email/password, 원문 byte, 전체 모델 출력은 터미널에 출력하지 않는다.
+
+스크립트는 자신이 생성한 `analysis_run` 하나만 worker로 실행한다. 다른
+non-terminal run을 점유하지 않도록 claim 구간에서 보호하고, 예상과 다른 run이
+반환되면 파이프라인을 실행하지 않고 fail-closed한다. 첫 attempt가 retryable
+failure로 `queued`에 복귀하면 같은 run을 한 번 더 실행하며, DB queue
+계약과 같이 최대 두 번 후 성공·최종 실패·시도 소진 중 하나로 종료한다.
+
+이 스크립트가 worker runtime을 직접 실행하므로 결과를 재현 가능하게 보려면
+검증 중 상시 `worker` 컨테이너를 일시 중지하고 다른 업로드를 막는다. 동시에
+실행 중인 다른 worker가 대상 run을 먼저 점유하면 스크립트는 안전하게 실패할 수
+있다. 이 잠시 중지는 Supabase stack이나 영속 volume을 내리는 작업이 아니다.
+
+최근 실측에서 실제 Hancom HWP는 Common IR 47 blocks(단락 39, 표 8),
+relation 1, validation error 0으로 파싱됐고 전체 live E2E도 성공했다.
+산출물 수·run/case ID·입력 SHA-256 같은 검증 기록은
+[Backend 구현 현황](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
+
 ### Swagger/OpenAPI로 프론트 작업하기
 
 API가 실행되면 다음 문서를 바로 사용할 수 있다.
@@ -486,6 +525,8 @@ Cookie Secure를 반드시 활성화한다.
 | 요청이 계속 `queued` | worker 컨테이너·로그, DB URL, migration 21~25, queue claim |
 | worker가 바로 종료 | 필수 환경변수 이름 누락; worker는 설정 오류 시 exit code 2 |
 | HWP/HWPX parser가 `FT_Palette_Data_Get` 오류 | 이미지 재빌드와 `PREREVIEW_FREETYPE_LIB` 경로 |
+| OpenAI HTTP 200 후 `LLM_INVALID_RESPONSE` | HTTP 성공과 domain 구조 검증 성공은 다름. finish/refusal, JSON root, cross-field validation 단계를 확인하되 raw 응답·원문은 로그에 남기지 않음 |
+| `relation_container` cross-field validation 반복 | OpenAI SDK 2.54.0 고정 및 원격 응답 kind별 정규화가 포함된 최신 worker 이미지인지 확인. 필수 container 근거가 없으면 정규화로 값을 만들지 않고 실패하는 것이 정상 |
 | 후보가 없거나 embedding 오류 | Existing embedding 적재 여부, active model ID·1,536차원 일치 |
 | `.env` 수정 후 값이 그대로임 | `restart` 대신 `up -d --force-recreate` 사용 |
 
@@ -501,7 +542,7 @@ Cookie Secure를 반드시 활성화한다.
 - reverse proxy/ASGI 전체 multipart body·part 수 제한과 streaming upload
 - `request-temp` 및 만료 결과의 reference-aware cleanup
 - worker heartbeat/queue lag를 포함한 readiness
-- 실제 Hancom 작성 HWP/HWPX 및 malformed/timeout 문서 검증
+- 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
 - 채팅·PDF 보고서·PDF OCR API
 
 최신 완료·미완료 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를

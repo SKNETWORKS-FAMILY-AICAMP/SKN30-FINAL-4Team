@@ -140,7 +140,7 @@ class FakeStore:
             model_id="text-embedding-3-small",
             dimensions=2,
             max_input_tokens=8192,
-            assembly_version="approved-facts-role-aware-v1",
+            assembly_version="approved-facts-components-role-aware-v2",
         )
 
     def match_existing_profiles(self, **values: Any) -> list[ExistingCandidate]:
@@ -283,6 +283,36 @@ def test_handler_offline_e2e_and_retry_reuses_committed_profile() -> None:
     assert store.cached is not None
     assert (store.cached.common_ir.bucket, store.cached.common_ir.object_key) in retry_gets
     assert (store.cached.structured_profile.bucket, store.cached.structured_profile.object_key) in retry_gets
+
+
+def test_old_embedding_assembly_version_fails_before_embedding() -> None:
+    handler, _storage, store, _producer, embedding, _engine, job = _fixture()
+
+    store.active_embedding_configuration = lambda: EmbeddingConfiguration(  # type: ignore[method-assign]
+        configuration_id=str(uuid4()),
+        provider="openai",
+        model_id="text-embedding-3-small",
+        dimensions=2,
+        max_input_tokens=8192,
+        assembly_version="approved-facts-role-aware-v1",
+    )
+
+    with pytest.raises(AnalysisJobContractError, match="assembly version"):
+        handler.handle(job)
+
+    assert embedding.calls == 0
+    assert store.match_calls == 0
+
+
+def test_empty_existing_match_is_retrieval_readiness_failure() -> None:
+    handler, _storage, store, _producer, _embedding, engine, job = _fixture()
+
+    store.match_existing_profiles = lambda **_values: []  # type: ignore[method-assign]
+
+    with pytest.raises(AnalysisJobUnavailable, match="embeddings are not ready"):
+        handler.handle(job)
+
+    assert engine.calls == 0
 
 
 def test_source_hash_mismatch_fails_before_pipeline_or_upload() -> None:

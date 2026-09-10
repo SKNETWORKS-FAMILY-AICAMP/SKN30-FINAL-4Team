@@ -43,7 +43,7 @@ from .sim_inputs import build_common_profile
 SOURCE_MAX_BYTES = 50 * 1024 * 1024
 DERIVED_MAX_BYTES = 200 * 1024 * 1024
 REQUEST_PROFILE_SCHEMA = "pre_review_request_profile/v0.1"
-EMBEDDING_ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
+EMBEDDING_ASSEMBLY_VERSION = "approved-facts-components-role-aware-v2"
 
 
 class AnalysisJobContractError(RuntimeError):
@@ -406,6 +406,15 @@ class AnalysisJobHandler:
             support=vectors["support"],
             limit=self._top_k,
         )
+        # The KB is expected to have at least one fully indexed Existing
+        # Profile.  Returning a normal analysis with no candidates would hide
+        # an unseeded/staged/misactivated retrieval configuration as “no
+        # similar notice”.  Treat it as retryable operational misconfiguration
+        # instead, so the run cannot publish a misleading final result.
+        if not matches:
+            raise AnalysisJobUnavailable(
+                "Existing KB retrieval returned no candidates; embeddings are not ready"
+            )
         candidates = [
             ExistingProfileDocument(
                 candidate=match,

@@ -20,10 +20,9 @@ from openai import (
     APIError,
     APIStatusError,
     APITimeoutError,
-    ContentFilterFinishReasonError,
-    LengthFinishReasonError,
     OpenAI,
 )
+from openai.lib._parsing import type_to_response_format_param
 from pydantic import BaseModel, ValidationError
 
 from ..ports.llm import (
@@ -92,28 +91,30 @@ class OpenAILLMClient:
         if not task_name.strip() or not messages:
             raise ValueError("Structured LLM task name and messages are required")
 
+        # Keep deterministic schema-conversion failures out of the provider
+        # outage/retry path.  ``response_schema`` is an internal programming
+        # contract, not a transient OpenAI transport concern.
+        response_format = type_to_response_format_param(response_schema)
         started_at = time.perf_counter()
         try:
-            # Let the SDK turn the Pydantic model into OpenAI's strict JSON
-            # Schema dialect.  Passing ``model_json_schema()`` directly with
-            # ``strict=True`` is not equivalent: optional/defaulted Pydantic
-            # fields are not automatically added to the strict ``required``
-            # lists and the API can reject the schema before inference.
-            completion = self._client.chat.completions.parse(
+            # Reuse the OpenAI 2.x SDK's strict-schema conversion, but ask for
+            # an ordinary completion so cross-field Pydantic validation stays
+            # under this adapter's control.  The SDK ``parse`` helper raises
+            # before exposing content when a model validator fails, which
+            # prevents the caller's bounded in-memory normalization/repair.
+            completion = self._client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": message.role, "content": message.content}
                     for message in messages
                 ],
-                response_format=response_schema,
+                response_format=response_format,
+                n=1,
+                store=False,
                 timeout=self._timeout_seconds,
             )
             if inspect.isawaitable(completion):  # bounded offline async fake
                 completion = await completion
-        except (ValidationError, LengthFinishReasonError, ContentFilterFinishReasonError):
-            raise LLMInvalidResponseError(
-                "OpenAI returned an invalid structured response"
-            ) from None
         except APITimeoutError:
             raise LLMTimeoutError("OpenAI request timed out") from None
         except (APIConnectionError, APIStatusError, APIError):
@@ -126,11 +127,9 @@ class OpenAILLMClient:
                 f"OpenAI request failed: {type(error).__name__}"
             ) from None
 
-        result = _structured_result(completion, response_schema)
-
         usage = getattr(completion, "usage", None)
         logger.info(
-            "OpenAI structured request completed task=%s model=%s prompt_tokens=%s "
+            "OpenAI structured response received task=%s model=%s prompt_tokens=%s "
             "completion_tokens=%s total_tokens=%s duration_ms=%s",
             task_name,
             model,
@@ -139,11 +138,14 @@ class OpenAILLMClient:
             getattr(usage, "total_tokens", None),
             round((time.perf_counter() - started_at) * 1000),
         )
-        return result
+        # Record provider-side usage before local schema validation.  An
+        # invalid response still consumed tokens, but must never be described
+        # as a successful structured result in operator logs.
+        return _structured_result(completion, response_schema)
 
 
 def _structured_result(completion: Any, response_schema: type[BaseModel]) -> BaseModel:
-    """Read one parsed Chat Completions response without leaking its content."""
+    """Validate one Chat Completions JSON response without logging its content."""
 
     try:
         choices = completion.choices
@@ -151,25 +153,12 @@ def _structured_result(completion: Any, response_schema: type[BaseModel]) -> Bas
             raise ValueError("missing choices")
         choice = choices[0]
         finish_reason = getattr(choice, "finish_reason", None)
-        if finish_reason not in (None, "stop"):
+        if finish_reason != "stop":
             raise ValueError("incomplete completion")
         message = choice.message
         if getattr(message, "refusal", None):
             raise ValueError("model refused")
 
-        parsed = getattr(message, "parsed", None)
-        if isinstance(parsed, response_schema):
-            return parsed
-        if parsed is not None:
-            try:
-                return response_schema.model_validate(parsed)
-            except ValidationError:
-                raise LLMInvalidResponseError(
-                    "OpenAI returned an invalid structured response"
-                ) from None
-
-        # Keep this fallback for bounded fakes and defensive compatibility
-        # with SDK transports that expose content but no ``parsed`` value.
         content = getattr(message, "content", None)
         if not isinstance(content, str) or not content.strip():
             raise ValueError("missing content")
@@ -184,5 +173,5 @@ def _structured_result(completion: Any, response_schema: type[BaseModel]) -> Bas
             ) from None
     except LLMInvalidResponseError:
         raise
-    except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+    except (AttributeError, TypeError, ValueError):
         raise LLMInvalidResponseError("OpenAI returned an invalid structured response") from None

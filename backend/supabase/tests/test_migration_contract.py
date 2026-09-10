@@ -57,6 +57,9 @@ class MigrationContractTest:
         "23_result_read_retention_and_candidate_evidence.sql",
         "24_retire_legacy_worker_completion.sql",
         "25_queued_source_invariant.sql",
+        "26_component_name_embedding_assembly.sql",
+        "27_repair_component_embedding_activation.sql",
+        "28_serialise_existing_kb_embedding_activation.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -326,6 +329,16 @@ class MigrationContractTest:
         policy = (
             self.MIGRATIONS_DIR / "20_embedding_input_policy_and_axis_match.sql"
         ).read_text()
+        component_policy = (
+            self.MIGRATIONS_DIR / "26_component_name_embedding_assembly.sql"
+        ).read_text()
+        activation_repair = (
+            self.MIGRATIONS_DIR / "27_repair_component_embedding_activation.sql"
+        ).read_text()
+        activation_serialisation = (
+            self.MIGRATIONS_DIR
+            / "28_serialise_existing_kb_embedding_activation.sql"
+        ).read_text()
 
         assert "max_input_tokens" in policy
         assert "BETWEEN 1 AND 8192" in policy
@@ -333,6 +346,75 @@ class MigrationContractTest:
         assert "approved-facts-role-aware-v1" in policy
         assert "match_existing_profiles_three_axis" in policy
         assert "HAVING COUNT(*) = 3" in policy
+        # apply_migrations.sh replays migration 20.  It may retire only the
+        # known generic pre-policy config, must preserve a verified active
+        # v2, and bootstraps v1 only if no config is active.
+        assert "assembly_version = 'existing-profile-v1'" in policy
+        assert "assembly_version <> 'approved-facts-role-aware-v1'" not in policy
+        assert "is_active = TRUE" not in policy.split("ON CONFLICT", 1)[1].split(
+            "UPDATE retrieval.embedding_configuration AS v1", 1
+        )[0]
+        assert "AND NOT EXISTS" in policy
+        assert "FROM retrieval.embedding_configuration AS active_config" in policy
+        assert "approved-facts-components-role-aware-v2" in component_policy
+        assert "FALSE" in component_policy
+        assert "is_active is intentionally" in component_policy
+        assert "v2_complete_count <> current_profile_count" in activation_repair
+        assert "HAVING COUNT(DISTINCT embedding.scope) = 4" in activation_repair
+        assert "approved-facts-role-aware-v1" in activation_repair
+        assert "pg_advisory_xact_lock" in activation_repair
+        assert "must never promote an inactive v2" in activation_repair
+        assert "v2_is_active BOOLEAN" in activation_repair
+        assert "v_any_active BOOLEAN" in activation_repair
+        assert "IF v2_is_active" in activation_repair
+        assert "ELSIF NOT v_any_active" in activation_repair
+        assert "embedding_config_pk = v2_pk\n           AND is_active" in activation_repair
+        assert "embedding_config_pk = v1_pk\n           AND NOT is_active" in activation_repair
+        assert "pg_advisory_xact_lock" in activation_serialisation
+        assert "LOCK TABLE kb.source_version, kb.profile_version" in activation_serialisation
+        assert "kb.support_component, kb.fact_occurrence" in activation_serialisation
+        assert "SHARE ROW EXCLUSIVE" in activation_serialisation
+        assert "trg_kb_source_version_embedding_activation" in activation_serialisation
+        assert "trg_kb_profile_version_embedding_activation" in activation_serialisation
+        assert "trg_kb_support_component_embedding_activation" in activation_serialisation
+        assert "trg_kb_fact_occurrence_embedding_activation" in activation_serialisation
+        assert "SET is_active = FALSE" in activation_serialisation
+        assert "NEW.is_current IS DISTINCT FROM OLD.is_current" in activation_serialisation
+        assert "NEW.source_sha256 IS NOT DISTINCT FROM OLD.source_sha256" in activation_serialisation
+        assert "NEW.profile_sha256 IS NOT DISTINCT FROM OLD.profile_sha256" in activation_serialisation
+        assert "NEW.structured_artifact_pk" in activation_serialisation
+        assert "TG_OP = 'DELETE'" in activation_serialisation
+        assert "AFTER INSERT OR UPDATE OR DELETE" in activation_serialisation
+        # Migration 28 is reapplied by the local bootstrap script.  It takes
+        # a one-time revalidation gate before replacing triggers, so a
+        # healthy reapply preserves a complete active v2 corpus while a
+        # first install or trigger/function drift safely restores v1.
+        assert "CREATE TEMP TABLE migration_28_activation_gate" in activation_serialisation
+        assert "requires_one_time_revalidation" in activation_serialisation
+        assert "pre-review-migration-28-embedding-activation-v1" in activation_serialisation
+        assert "trigger_row.tgtype = 29" in activation_serialisation
+        assert "tgenabled = 'O'" in activation_serialisation
+        assert "current_profile_count" not in activation_serialisation
+        assert "v2_complete_count" not in activation_serialisation
+        assert activation_serialisation.index("LOCK TABLE kb.source_version") < (
+            activation_serialisation.index(
+                "CREATE TEMP TABLE migration_28_activation_gate"
+            )
+        )
+        assert activation_serialisation.index(
+            "CREATE TEMP TABLE migration_28_activation_gate"
+        ) < activation_serialisation.index(
+            "DROP TRIGGER IF EXISTS trg_kb_source_version_embedding_activation"
+        )
+        assert "profile.profile_version_pk = ANY(v_touched_profile_pks)" in activation_serialisation
+        # The demotion branch is explicitly gated.  Do not reintroduce a
+        # count-only activation check: child-content edits are invisible to a
+        # row count and require byte/hash revalidation by the embed script.
+        install_tail = activation_serialisation.rsplit(
+            "IF v_requires_one_time_revalidation", 1
+        )[1]
+        assert "AND EXISTS" in install_tail
+        assert "COUNT(" not in install_tail
 
     def test_analysis_worker_queue_contract(self):
         """The durable worker queue must be PostgreSQL-only and fenced."""

@@ -28,6 +28,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.retrieval.embedding_inputs import (
     DEFAULT_BATCH_SIZE,
+    EMBEDDING_ASSEMBLY_VERSION,
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
     MAX_INPUT_TOKENS,
@@ -41,13 +42,19 @@ except ImportError:  # direct ``python scripts/...`` execution
     from local_supabase_env import LocalSupabaseEnvError, load_local_supabase_settings
 
 
-ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
+ASSEMBLY_VERSION = EMBEDDING_ASSEMBLY_VERSION
 CHUNKING_STRATEGY = "fact-boundary-token-weighted-mean-v1"
 MAX_BATCH_TOKENS = 300_000
 ALL_SCOPES = ("purpose", "target", "support", "combined")
 PROFILE_SCHEMA = "existing_program_profile/v0.2"
 SOURCE_KINDS = frozenset({"hwp", "hwpx", "pdf", "markdown_fixture"})
 SHA256_PATTERN = re.compile(r"^[0-9A-Fa-f]{64}$")
+LEGACY_ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
+# Must remain byte-for-byte aligned with migration 28.  Existing KB current
+# version changes take this same transaction-scoped lock and demote v2 if they
+# occur after a completed backfill.  That makes the final verification and
+# promotion serial with every supported current-version transition.
+CURRENT_VERSION_ACTIVATION_LOCK = "pre-review-existing-kb-current-and-embedding-v1"
 
 
 @dataclass(slots=True)
@@ -161,18 +168,31 @@ def _vector_literal(vector: Sequence[float]) -> str:
 
 
 def _configuration(connection: Any) -> dict[str, Any]:
+    """Return the v2 *target* configuration, whether or not it is active.
+
+    v2 is staged inactive while its vectors are backfilled.  Looking up only
+    the active row here would either prevent the backfill or force an unsafe
+    early activation.
+    """
     with connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT embedding_config_pk, provider, model_id, dimensions,
                    assembly_version, max_input_tokens, chunking_strategy
             FROM retrieval.embedding_configuration
-            WHERE is_active
-            """
+            WHERE provider = 'openai'
+              AND model_id = %s
+              AND dimensions = %s
+              AND distance_metric = 'cosine'
+              AND assembly_version = %s
+            """,
+            (EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, ASSEMBLY_VERSION),
         )
         rows = cursor.fetchall()
     if len(rows) != 1:
-        raise RuntimeError(f"expected one active embedding configuration, got {len(rows)}")
+        raise RuntimeError(
+            "expected one v2 embedding configuration; apply migrations through 26 first"
+        )
     config = dict(rows[0])
     expected = {
         "provider": "openai",
@@ -188,8 +208,192 @@ def _configuration(connection: Any) -> dict[str, Any]:
         if config.get(key) != value
     }
     if mismatches:
-        raise RuntimeError(f"active embedding configuration mismatch: {mismatches}")
+        raise RuntimeError(f"v2 embedding configuration mismatch: {mismatches}")
     return config
+
+
+def _current_profile_version_ids(connection: Any) -> set[str]:
+    """Return exactly the Profile versions eligible for online retrieval."""
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT profile.profile_version_pk
+            FROM kb.profile_version AS profile
+            JOIN kb.source_version AS source
+              ON source.source_version_pk = profile.source_version_pk
+            WHERE profile.is_current
+              AND source.is_current
+            """
+        )
+        return {str(row["profile_version_pk"]) for row in cursor.fetchall()}
+
+
+def _activate_v2_after_verified_backfill(
+    connection: Any,
+    *,
+    config_pk: Any,
+    expected_hashes: dict[tuple[str, str], str],
+) -> None:
+    """Atomically promote v2 only after exact four-scope verification.
+
+    Embedding upserts are intentionally committed before this point so a
+    transient OpenAI/database failure leaves useful v2 progress behind.  This
+    final, short transaction locks the target configs and any currently active
+    config, rechecks every current Profile/scope/input hash, and then performs
+    the v1→v2 handoff.  A future active assembly version is an explicit
+    contract boundary: it is never silently replaced by this v2 backfill.
+    A no-active state is allowed only because this exact verification then
+    promotes v2 atomically.  Any error rolls the transaction back.
+    """
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (CURRENT_VERSION_ACTIVATION_LOCK,),
+            )
+            cursor.execute(
+                """
+                SELECT embedding_config_pk, provider, model_id, dimensions,
+                       distance_metric, assembly_version, is_active
+                FROM retrieval.embedding_configuration
+                WHERE (
+                    provider = 'openai'
+                    AND model_id = %s
+                    AND dimensions = %s
+                    AND distance_metric = 'cosine'
+                    AND assembly_version IN (%s, %s)
+                )
+                   OR is_active
+                FOR UPDATE
+                """,
+                (
+                    EMBEDDING_MODEL,
+                    EMBEDDING_DIMENSIONS,
+                    LEGACY_ASSEMBLY_VERSION,
+                    ASSEMBLY_VERSION,
+                ),
+            )
+            config_rows = cursor.fetchall()
+            exact_target_rows = [
+                row
+                for row in config_rows
+                if row["provider"] == "openai"
+                and row["model_id"] == EMBEDDING_MODEL
+                and row["dimensions"] == EMBEDDING_DIMENSIONS
+                and row["distance_metric"] == "cosine"
+            ]
+            v1_rows = [
+                row
+                for row in exact_target_rows
+                if row["assembly_version"] == LEGACY_ASSEMBLY_VERSION
+            ]
+            v2_rows = [
+                row
+                for row in exact_target_rows
+                if row["assembly_version"] == ASSEMBLY_VERSION
+            ]
+            if len(v2_rows) != 1 or v2_rows[0]["embedding_config_pk"] != config_pk:
+                raise RuntimeError("v2 embedding configuration changed during backfill")
+            if len(v1_rows) != 1:
+                raise RuntimeError("legacy v1 embedding configuration is missing")
+            v1_pk = v1_rows[0]["embedding_config_pk"]
+            v2_pk = v2_rows[0]["embedding_config_pk"]
+            unexpected_active_configs = sorted(
+                (
+                    str(row["provider"]),
+                    str(row["model_id"]),
+                    str(row["dimensions"]),
+                    str(row["distance_metric"]),
+                    str(row["assembly_version"]),
+                )
+                for row in config_rows
+                if row["is_active"]
+                and row["embedding_config_pk"] not in (v1_pk, v2_pk)
+            )
+            if unexpected_active_configs:
+                raise RuntimeError(
+                    "cannot activate v2 while another embedding configuration is active: "
+                    + ", ".join("/".join(config) for config in unexpected_active_configs)
+                )
+
+            cursor.execute(
+                """
+                SELECT profile.profile_version_pk
+                FROM kb.profile_version AS profile
+                JOIN kb.source_version AS source
+                  ON source.source_version_pk = profile.source_version_pk
+                WHERE profile.is_current
+                  AND source.is_current
+                """
+            )
+            current_ids = {str(row["profile_version_pk"]) for row in cursor.fetchall()}
+            expected_ids = {profile_pk for profile_pk, _scope in expected_hashes}
+            if current_ids != expected_ids:
+                raise RuntimeError(
+                    "cannot activate v2: local profile pack does not exactly match "
+                    "current DB Existing Profiles"
+                )
+            expected_keys = {
+                (profile_pk, scope)
+                for profile_pk in current_ids
+                for scope in ALL_SCOPES
+            }
+            if set(expected_hashes) != expected_keys:
+                raise RuntimeError(
+                    "cannot activate v2: all four scopes must be assembled for every current Profile"
+                )
+
+            cursor.execute(
+                """
+                SELECT profile_version_pk, scope, lower(input_sha256) AS input_sha256
+                FROM retrieval.existing_profile_embedding
+                WHERE embedding_config_pk = %s
+                """,
+                (config_pk,),
+            )
+            actual_hashes = {
+                (str(row["profile_version_pk"]), str(row["scope"])): str(
+                    row["input_sha256"]
+                )
+                for row in cursor.fetchall()
+            }
+            mismatched = sorted(
+                key
+                for key, expected_hash in expected_hashes.items()
+                if actual_hashes.get(key) != expected_hash.lower()
+            )
+            if mismatched:
+                raise RuntimeError(
+                    "cannot activate v2: incomplete or stale embedding rows "
+                    f"({len(mismatched)} profile/scope pairs)"
+                )
+
+            # v1 is the only permitted active predecessor.  Do not clear an
+            # arbitrary active config here: a future assembly is rejected
+            # above, rather than silently downgraded to v2.
+            cursor.execute(
+                """
+                UPDATE retrieval.embedding_configuration
+                SET is_active = FALSE
+                WHERE embedding_config_pk = %s
+                  AND is_active
+                """,
+                (v1_pk,),
+            )
+            cursor.execute(
+                """
+                UPDATE retrieval.embedding_configuration
+                SET is_active = TRUE
+                WHERE embedding_config_pk = %s
+                """,
+                (config_pk,),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
 
 
 def _profile_version(
@@ -422,6 +626,7 @@ def main() -> int:
         config = _configuration(connection)
         existing = _existing_hashes(connection, config["embedding_config_pk"])
         pending: list[PendingInput] = []
+        expected_hashes: dict[tuple[str, str], str] = {}
         skipped = 0
         for path in selected:
             profile, profile_sha256 = _load_profile_snapshot(path)
@@ -432,6 +637,14 @@ def main() -> int:
                 profile_sha256=profile_sha256,
             )
             inputs = assemble_embedding_inputs(profile)
+            profile_key = str(profile_pk)
+            # Keep all four inputs even when an operator is deliberately
+            # backfilling only one strategy.  Promotion is later allowed
+            # only for a full all-scope/full-pack run.
+            for scope_name in ALL_SCOPES:
+                expected_hashes[(profile_key, scope_name)] = inputs[
+                    scope_name
+                ].input_sha256.lower()
             for scope in scopes:
                 embedding_input = inputs[scope]
                 if existing.get((profile_pk, scope)) == embedding_input.input_sha256:
@@ -483,6 +696,25 @@ def main() -> int:
 
         if pending:
             _upsert(connection, config["embedding_config_pk"], pending)
+        activation = "not_attempted"
+        activation_reason: str | None = None
+        full_backfill_requested = args.limit is None and args.strategy == "all"
+        if full_backfill_requested:
+            current_ids = _current_profile_version_ids(connection)
+            local_ids = {profile_pk for profile_pk, _scope in expected_hashes}
+            if current_ids != local_ids:
+                activation_reason = (
+                    "local_profile_pack_does_not_match_current_db_profiles"
+                )
+            else:
+                _activate_v2_after_verified_backfill(
+                    connection,
+                    config_pk=config["embedding_config_pk"],
+                    expected_hashes=expected_hashes,
+                )
+                activation = "promoted_v2"
+        else:
+            activation_reason = "requires_unlimited_all_scope_backfill"
         print(
             json.dumps(
                 {
@@ -494,6 +726,8 @@ def main() -> int:
                     "openai_requests": request_count,
                     "prompt_tokens": prompt_tokens,
                     "embedding_config_pk": str(config["embedding_config_pk"]),
+                    "activation": activation,
+                    "activation_reason": activation_reason,
                 },
                 ensure_ascii=False,
             )

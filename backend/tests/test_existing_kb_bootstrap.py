@@ -876,6 +876,254 @@ def test_embedding_live_profile_requires_v02_identity(tmp_path: Path) -> None:
         embedding_cli._load_profile_snapshot(profile_path)
 
 
+class ActivationCursor:
+    def __init__(self, connection: "ActivationConnection") -> None:
+        self.connection = connection
+        self.rows: list[dict[str, str]] = []
+
+    def __enter__(self) -> "ActivationCursor":
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        return None
+
+    def execute(self, query: str, _params: Any = None) -> None:
+        self.connection.queries.append(query)
+        if "assembly_version IN" in query:
+            identity = {
+                "provider": "openai",
+                "model_id": embedding_cli.EMBEDDING_MODEL,
+                "dimensions": embedding_cli.EMBEDDING_DIMENSIONS,
+                "distance_metric": "cosine",
+            }
+            self.rows = [
+                {
+                    "embedding_config_pk": "v1-config",
+                    "assembly_version": embedding_cli.LEGACY_ASSEMBLY_VERSION,
+                    "is_active": (
+                        self.connection.active_assembly_version
+                        == embedding_cli.LEGACY_ASSEMBLY_VERSION
+                    ),
+                    **identity,
+                },
+                {
+                    "embedding_config_pk": "v2-config",
+                    "assembly_version": embedding_cli.ASSEMBLY_VERSION,
+                    "is_active": (
+                        self.connection.active_assembly_version
+                        == embedding_cli.ASSEMBLY_VERSION
+                    ),
+                    **identity,
+                },
+            ]
+            if self.connection.active_assembly_version not in (
+                embedding_cli.LEGACY_ASSEMBLY_VERSION,
+                embedding_cli.ASSEMBLY_VERSION,
+                None,
+            ):
+                self.rows.append(
+                    {
+                        "embedding_config_pk": "future-config",
+                        "assembly_version": self.connection.active_assembly_version,
+                        "is_active": True,
+                        **identity,
+                    }
+                )
+            if self.connection.active_foreign_same_assembly:
+                self.rows.append(
+                    {
+                        "embedding_config_pk": "foreign-config",
+                        "provider": "foreign-provider",
+                        "model_id": embedding_cli.EMBEDDING_MODEL,
+                        "dimensions": embedding_cli.EMBEDDING_DIMENSIONS,
+                        "distance_metric": "cosine",
+                        "assembly_version": embedding_cli.ASSEMBLY_VERSION,
+                        "is_active": True,
+                    }
+                )
+        elif "FROM kb.profile_version" in query:
+            self.rows = [
+                {"profile_version_pk": profile_pk}
+                for profile_pk in self.connection.current_profile_ids
+            ]
+        elif "FROM retrieval.existing_profile_embedding" in query:
+            self.rows = list(self.connection.embedding_rows)
+        else:
+            self.rows = []
+
+    def fetchall(self) -> list[dict[str, str]]:
+        return self.rows
+
+
+class ActivationConnection:
+    def __init__(
+        self,
+        embedding_rows: list[dict[str, str]],
+        current_profile_ids: tuple[str, ...] = ("profile-1",),
+        active_assembly_version: str | None = embedding_cli.LEGACY_ASSEMBLY_VERSION,
+        active_foreign_same_assembly: bool = False,
+    ) -> None:
+        self.embedding_rows = embedding_rows
+        self.current_profile_ids = current_profile_ids
+        self.active_assembly_version = active_assembly_version
+        self.active_foreign_same_assembly = active_foreign_same_assembly
+        self.queries: list[str] = []
+        self.commits = 0
+        self.rollbacks = 0
+
+    def cursor(self) -> ActivationCursor:
+        return ActivationCursor(self)
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+def _v2_expected_hashes() -> dict[tuple[str, str], str]:
+    return {
+        ("profile-1", scope): f"{'a' * 63}{index}"
+        for index, scope in enumerate(embedding_cli.ALL_SCOPES)
+    }
+
+
+def test_embedding_activation_promotes_only_after_exact_four_scope_backfill() -> None:
+    expected = _v2_expected_hashes()
+    connection = ActivationConnection(
+        [
+            {
+                "profile_version_pk": profile_pk,
+                "scope": scope,
+                "input_sha256": digest,
+            }
+            for (profile_pk, scope), digest in expected.items()
+        ]
+    )
+
+    embedding_cli._activate_v2_after_verified_backfill(
+        connection,
+        config_pk="v2-config",
+        expected_hashes=expected,
+    )
+
+    assert connection.commits == 1
+    assert connection.rollbacks == 0
+    updates = [query for query in connection.queries if "UPDATE retrieval" in query]
+    assert len(updates) == 2
+    assert "SET is_active = FALSE" in updates[0]
+    assert "SET is_active = TRUE" in updates[1]
+
+
+def test_embedding_activation_rejects_partial_backfill_without_switching() -> None:
+    expected = _v2_expected_hashes()
+    missing_scope = embedding_cli.ALL_SCOPES[-1]
+    connection = ActivationConnection(
+        [
+            {
+                "profile_version_pk": profile_pk,
+                "scope": scope,
+                "input_sha256": digest,
+            }
+            for (profile_pk, scope), digest in expected.items()
+            if scope != missing_scope
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete or stale"):
+        embedding_cli._activate_v2_after_verified_backfill(
+            connection,
+            config_pk="v2-config",
+            expected_hashes=expected,
+        )
+
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert not any("SET is_active = TRUE" in query for query in connection.queries)
+
+
+def test_embedding_activation_rechecks_current_profiles_under_advisory_lock() -> None:
+    expected = _v2_expected_hashes()
+    connection = ActivationConnection(
+        [
+            {
+                "profile_version_pk": profile_pk,
+                "scope": scope,
+                "input_sha256": digest,
+            }
+            for (profile_pk, scope), digest in expected.items()
+        ],
+        # Represents an Existing importer that committed a new current
+        # Profile before activation acquired the shared advisory lock.
+        current_profile_ids=("profile-1", "profile-2"),
+    )
+
+    with pytest.raises(RuntimeError, match="does not exactly match"):
+        embedding_cli._activate_v2_after_verified_backfill(
+            connection,
+            config_pk="v2-config",
+            expected_hashes=expected,
+        )
+
+    assert "pg_advisory_xact_lock" in connection.queries[0]
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert not any("SET is_active = TRUE" in query for query in connection.queries)
+
+
+def test_embedding_activation_rejects_active_future_assembly_without_downgrade() -> None:
+    expected = _v2_expected_hashes()
+    connection = ActivationConnection(
+        [
+            {
+                "profile_version_pk": profile_pk,
+                "scope": scope,
+                "input_sha256": digest,
+            }
+            for (profile_pk, scope), digest in expected.items()
+        ],
+        active_assembly_version="approved-facts-components-role-aware-v3",
+    )
+
+    with pytest.raises(RuntimeError, match="another embedding configuration is active"):
+        embedding_cli._activate_v2_after_verified_backfill(
+            connection,
+            config_pk="v2-config",
+            expected_hashes=expected,
+        )
+
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert not any("UPDATE retrieval.embedding_configuration" in query for query in connection.queries)
+
+
+def test_embedding_activation_rejects_foreign_active_config_with_v2_label() -> None:
+    expected = _v2_expected_hashes()
+    connection = ActivationConnection(
+        [
+            {
+                "profile_version_pk": profile_pk,
+                "scope": scope,
+                "input_sha256": digest,
+            }
+            for (profile_pk, scope), digest in expected.items()
+        ],
+        active_assembly_version=None,
+        active_foreign_same_assembly=True,
+    )
+
+    with pytest.raises(RuntimeError, match="another embedding configuration is active"):
+        embedding_cli._activate_v2_after_verified_backfill(
+            connection,
+            config_pk="v2-config",
+            expected_hashes=expected,
+        )
+
+    assert connection.commits == 0
+    assert connection.rollbacks == 1
+    assert not any("UPDATE retrieval.embedding_configuration" in query for query in connection.queries)
+
+
 def test_verify_help_does_not_load_backend_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -918,13 +1166,17 @@ def test_local_supabase_env_builds_loopback_urls_without_printing(
 
 
 class FakeCursor:
+    def __init__(self, connection: "FakeConnection") -> None:
+        self.connection = connection
+
     def __enter__(self) -> "FakeCursor":
         return self
 
     def __exit__(self, *_: Any) -> None:
         return None
 
-    def execute(self, *_: Any) -> None:
+    def execute(self, query: Any, *_: Any) -> None:
+        self.connection.queries.append(str(query))
         return None
 
     def fetchone(self) -> dict[str, str]:
@@ -935,9 +1187,10 @@ class FakeConnection:
     def __init__(self) -> None:
         self.commits = 0
         self.rollbacks = 0
+        self.queries: list[str] = []
 
     def cursor(self) -> FakeCursor:
-        return FakeCursor()
+        return FakeCursor(self)
 
     def commit(self) -> None:
         self.commits += 1
@@ -963,9 +1216,20 @@ def test_single_record_db_writes_commit_only_at_transaction_boundary() -> None:
     assert connection.commits == 0
     assert connection.rollbacks == 1
 
+    before_already = len(connection.queries)
+    already = run_transaction(database, lambda: {"status": "already_ingested"})
+    already_queries = connection.queries[before_already:]
+    assert already == {"status": "already_ingested"}
+    assert "pg_advisory_xact_lock" in already_queries[0]
+    assert not any("demoted_v2" in query for query in already_queries)
+
+    before_ingested = len(connection.queries)
     result = run_transaction(database, lambda: {"status": "ingested"})
+    ingested_queries = connection.queries[before_ingested:]
     assert result == {"status": "ingested"}
-    assert connection.commits == 1
+    assert connection.commits == 2
+    assert "pg_advisory_xact_lock" in ingested_queries[0]
+    assert any("demoted_v2" in query for query in ingested_queries)
 
 
 def test_single_importer_has_no_secret_cli_and_redacts_storage_body(

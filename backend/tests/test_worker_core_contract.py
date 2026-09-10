@@ -10,9 +10,12 @@ from __future__ import annotations
 import asyncio
 import ast
 import importlib
+import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
+from jsonschema import validate as validate_json_schema
 import pytest
 from pydantic import BaseModel
 
@@ -199,26 +202,27 @@ class _ResultSchema(BaseModel):
 
 
 class _FakeChatCompletions:
-    def __init__(self, content: str) -> None:
+    def __init__(
+        self,
+        content: str,
+        *,
+        finish_reason: str | None = "stop",
+        refusal: str | None = None,
+    ) -> None:
         self.content = content
+        self.finish_reason = finish_reason
+        self.refusal = refusal
         self.calls: list[dict[str, object]] = []
 
-    async def parse(self, **kwargs: object) -> object:
+    async def create(self, **kwargs: object) -> object:
         self.calls.append(kwargs)
-        response_format = kwargs["response_format"]
-        parsed = None
-        try:
-            parsed = response_format.model_validate_json(self.content)
-        except Exception:
-            pass
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
-                    finish_reason="stop",
+                    finish_reason=self.finish_reason,
                     message=SimpleNamespace(
                         content=self.content,
-                        parsed=parsed,
-                        refusal=None,
+                        refusal=self.refusal,
                     ),
                 )
             ],
@@ -297,7 +301,13 @@ def test_openai_adapters_offline_happy_path_and_schema_failure() -> None:
     assert result == _ResultSchema(value="grounded")
     assert chat.calls[0]["model"] == "gpt-test"
     assert chat.calls[0]["timeout"] == 12.0
-    assert chat.calls[0]["response_format"] is _ResultSchema
+    response_format = chat.calls[0]["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "_ResultSchema"
+    assert response_format["json_schema"]["strict"] is True
+    assert response_format["json_schema"]["schema"]["additionalProperties"] is False
+    assert chat.calls[0]["n"] == 1
+    assert chat.calls[0]["store"] is False
     assert "temperature" not in chat.calls[0]
 
     broken = OpenAILLMClient(
@@ -330,3 +340,312 @@ def test_openai_adapters_offline_happy_path_and_schema_failure() -> None:
     assert batch.vectors == [[1.0, 0.0], [0.0, 1.0]]
     assert embeddings.calls[0]["model"] == "text-embedding-test"
     assert embeddings.calls[0]["timeout"] == 9.0
+
+
+def test_openai_llm_preserves_cross_field_invalid_raw_for_normalization(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from semantic_structuring.request_profile_v012 import RequestSourceSelectionV012
+    from semantic_structuring.run_request_profile_v012 import (
+        _normalize_remote_selection_payload,
+    )
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    raw = {
+        "profile_id": "request:test",
+        "candidate_pack_id": "pack:test",
+        "program_hierarchy": [],
+        "facts": [
+            {
+                "fact_id": "fact:purpose",
+                "field_name": "purpose_goal",
+                "value_anchor": {
+                    "source_block_id": "block:purpose",
+                    "anchor_text": "private-cross-field-sentinel",
+                    "value_span_candidate_id": "span:purpose",
+                },
+                "context_source_block_ids": [],
+                "status": "identified",
+                "primary_component_id": None,
+                "program_node_id": None,
+            }
+        ],
+        "support_components": [],
+        "delivery_relations": [],
+        "delivery_methods": [],
+        "field_states": [],
+    }
+    chat = _FakeChatCompletions(json.dumps(raw, ensure_ascii=False))
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"request_profile": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+    caplog.set_level(logging.DEBUG)
+
+    with pytest.raises(LLMInvalidResponseError) as error:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="request_source_selection_v012",
+                messages=[Message(role="user", content="minimal payload")],
+                response_schema=RequestSourceSelectionV012,
+                model_profile="request_profile",
+            )
+        )
+
+    assert error.value.raw == raw
+    response_format = chat.calls[0]["response_format"]
+    validate_json_schema(raw, response_format["json_schema"]["schema"])
+    normalized = _normalize_remote_selection_payload(error.value.raw)
+    repaired = RequestSourceSelectionV012.model_validate(normalized)
+    assert repaired.facts[0].value_anchor.value_span_candidate_id == "span:purpose"
+    assert repaired.facts[0].value_anchor.anchor_text is None
+    assert "private-cross-field-sentinel" not in str(error.value)
+    assert "private-cross-field-sentinel" not in repr(error.value)
+    assert "private-cross-field-sentinel" not in caplog.text
+
+
+def test_openai_llm_records_usage_before_invalid_response_without_content_leak(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    sentinel = "private-invalid-response-sentinel"
+    chat = _FakeChatCompletions(json.dumps({"wrong": sentinel}))
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+    caplog.set_level(logging.INFO, logger="worker.adapters.openai_llm_client")
+
+    with pytest.raises(LLMInvalidResponseError):
+        asyncio.run(
+            llm.generate_structured(
+                task_name="invalid_response_usage_test",
+                messages=[Message(role="user", content="private prompt content")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+
+    assert (
+        "OpenAI structured response received task=invalid_response_usage_test "
+        "model=gpt-test prompt_tokens=4 completion_tokens=2 total_tokens=6"
+    ) in caplog.text
+    assert "structured request completed" not in caplog.text
+    assert sentinel not in caplog.text
+    assert "private prompt content" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("container", "expected"),
+    [
+        (
+            {
+                "kind": "paragraph",
+                "source_block_id": "block:paragraph",
+                "anchor_text": "문단 전체",
+                "common_ir_block_id": "common:block:paragraph",
+                "row_index": 3,
+            },
+            {
+                "kind": "paragraph",
+                "source_block_id": "block:paragraph",
+                "anchor_text": "문단 전체",
+                "common_ir_block_id": "common:block:paragraph",
+            },
+        ),
+        (
+            {
+                "kind": "table_row",
+                "source_block_id": "redundant:block",
+                "anchor_text": "redundant text",
+                "common_ir_block_id": "common:table",
+                "row_index": 2,
+            },
+            {
+                "kind": "table_row",
+                "common_ir_block_id": "common:table",
+                "row_index": 2,
+            },
+        ),
+        (
+            {
+                "kind": "table_column_pair",
+                "source_block_id": "redundant:block",
+                "anchor_text": "redundant text",
+                "common_ir_block_id": "common:table",
+                "row_index": 2,
+            },
+            {
+                "kind": "table_column_pair",
+                "common_ir_block_id": "common:table",
+            },
+        ),
+    ],
+)
+def test_remote_relation_container_normalization_is_kind_specific(
+    container: dict[str, object],
+    expected: dict[str, object],
+) -> None:
+    from semantic_structuring.request_profile_v012 import RequestSourceSelectionV012
+    from semantic_structuring.run_request_profile_v012 import (
+        _normalize_remote_selection_payload,
+    )
+
+    raw = {
+        "profile_id": "request:test",
+        "candidate_pack_id": "pack:test",
+        "delivery_relations": [
+            {
+                "delivery_relation_id": "relation:test",
+                "actor_anchor": {
+                    "source_block_id": "block:actor",
+                    "anchor_text": "actor",
+                },
+                "role_anchor": {
+                    "source_block_id": "block:role",
+                    "anchor_text": "role",
+                },
+                "actions": [],
+                "relation_container": container,
+            }
+        ],
+    }
+
+    normalized = _normalize_remote_selection_payload(raw)
+    assert normalized["delivery_relations"][0]["relation_container"] == expected
+    RequestSourceSelectionV012.model_validate(normalized)
+
+
+@pytest.mark.parametrize(
+    "chat",
+    [
+        _FakeChatCompletions(
+            '{"value":"private partial content"}', finish_reason="length"
+        ),
+        _FakeChatCompletions(
+            '{"value":"well-formed private content"}',
+            refusal="private refusal content",
+        ),
+    ],
+)
+def test_openai_llm_handles_incomplete_and_refusal_without_content_leak(
+    chat: _FakeChatCompletions,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    caplog.set_level(logging.DEBUG)
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+    with pytest.raises(LLMInvalidResponseError) as error:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="worker_core_test",
+                messages=[Message(role="user", content="private prompt content")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+
+    assert error.value.raw is None
+    assert str(error.value) == "OpenAI returned an invalid structured response"
+    assert "private" not in caplog.text
+
+
+def test_openai_llm_rejects_missing_finish_reason_without_raw_content() -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    chat = _FakeChatCompletions(
+        '{"value":"private complete-looking content"}',
+        finish_reason=None,
+    )
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+
+    with pytest.raises(LLMInvalidResponseError) as error:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="worker_core_test",
+                messages=[Message(role="user", content="private prompt content")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+
+    assert error.value.raw is None
+
+
+def test_request_completeness_failure_cannot_be_delivery_isolated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from semantic_structuring.request_profile_v012 import (
+        RequestCompletenessError,
+        RequestSourceSelectionV012,
+    )
+    from semantic_structuring.run_request_profile_v012 import (
+        RequestMaterializationError,
+    )
+    from worker import profiles as worker_profiles
+
+    selection = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-completeness-isolation",
+        "candidate_pack_id": "pack-completeness-isolation",
+    })
+    cause = RequestCompletenessError(
+        "Request completeness failed: implementation_plan is missing",
+        materialized_evidence_keys=frozenset(),
+    )
+    error = RequestMaterializationError(
+        cause,
+        selection=selection,
+        retry_count=1,
+        diagnostics=[],
+        usage=[],
+    )
+
+    def unexpected_assembly(*args: object, **kwargs: object) -> object:
+        raise AssertionError("delivery isolation must not retry completeness errors")
+
+    monkeypatch.setattr(
+        worker_profiles,
+        "assemble_request_profile_v012",
+        unexpected_assembly,
+    )
+
+    assert worker_profiles._materialize_isolated(
+        error,
+        document={},
+        pack=object(),
+        model_id="mock-luna",
+    ) is None
+
+    later_generic_error = RequestMaterializationError(
+        ValueError("generic relation materialization failure"),
+        selection=selection,
+        retry_count=1,
+        diagnostics=[{
+            "repair_attempt": 1,
+            "error_type": "RequestCompletenessError",
+            "validation_error": "safe completeness diagnostic",
+        }, {
+            "repair_attempt": 2,
+            "error_type": "ValueError",
+            "validation_error": "safe relation diagnostic",
+        }],
+        usage=[],
+    )
+    assert worker_profiles._materialize_isolated(
+        later_generic_error,
+        document={},
+        pack=object(),
+        model_id="mock-luna",
+    ) is None

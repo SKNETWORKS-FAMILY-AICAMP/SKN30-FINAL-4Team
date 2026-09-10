@@ -9,18 +9,25 @@ from copy import deepcopy
 from pathlib import Path
 
 from .request_profile_v012 import (
+    RequestCompletenessError,
     RequestSourceSelectionV012,
+    _explicit_procedure_table_ids,
+    _labeled_program_period_candidate_refs,
+    _procedure_table_body_source_block_ids,
     assemble_request_profile_v012,
     build_request_candidate_pack,
     build_value_span_candidates,
     candidate_pack_artifact,
+    materialized_evidence_keys_v012,
 )
 from .run_request_profile_v012 import (
     RequestMaterializationError,
     RequestSourceSelectionParseError,
     _failure_selection_artifact,
+    _enforce_remote_repair_evidence_baseline,
     _new_remote_run_status,
     _normalize_remote_selection_payload,
+    _remote_repair_evidence_baseline,
     _selection_parse_failure_artifact,
     _status_observer,
     _write_artifact_with_lifecycle,
@@ -69,6 +76,22 @@ def _program_period_candidate_anchor(pack, value_raw: str) -> dict:
     ]
     assert len(matches) == 1, value_raw
     return {"value_span_candidate_id": matches[0].value_span_candidate_id}
+
+
+def _actual_hwp_program_period_fact(pack, fact_id: str = "program-period-1") -> dict:
+    candidate = next(
+        candidate
+        for candidate in build_value_span_candidates(pack)
+        if candidate.candidate_kind == "program_period_date_range"
+        and candidate.source_block_id == "hwp:b29"
+    )
+    return {
+        "fact_id": fact_id,
+        "field_name": "program_period",
+        "value_anchor": {
+            "value_span_candidate_id": candidate.value_span_candidate_id,
+        },
+    }
 
 
 def _with_server_request_type(pack: CandidatePack) -> CandidatePack:
@@ -224,6 +247,95 @@ def test_remote_candidate_anchor_normalization_keeps_local_contract_strict() -> 
         assert "source_block_id hint" in str(error)
     else:
         raise AssertionError("candidate block hint must remain server-validated")
+
+
+def test_remote_relation_container_cleanup_is_path_scoped() -> None:
+    """A bare ``kind`` elsewhere must not trigger relation-union cleanup."""
+
+    remote_payload = {
+        "delivery_relations": [{
+            "relation_container": {
+                "kind": "table_column_pair",
+                "common_ir_block_id": "table:delivery",
+                # Redundant nullable fields emitted by the remote provider.
+                "source_block_id": "table:delivery#r1c0p0",
+                "anchor_text": "수행기관",
+                "row_index": 1,
+            },
+        }],
+        # This is deliberately not a selection contract object.  Recursive
+        # generic candidate-anchor handling must still work, but a bare `kind`
+        # must not be interpreted as a relation container.
+        "unrelated_provider_metadata": {
+            "kind": "table_row",
+            "source_block_id": "metadata:row",
+            "anchor_text": "metadata anchor",
+            "row_index": 9,
+            "nested_anchor": {
+                "value_span_candidate_id": "candidate:metadata",
+                "anchor_text": "redundant candidate anchor",
+            },
+        },
+    }
+
+    normalized = _normalize_remote_selection_payload(remote_payload)
+    assert normalized["delivery_relations"][0]["relation_container"] == {
+        "kind": "table_column_pair",
+        "common_ir_block_id": "table:delivery",
+    }
+    assert normalized["unrelated_provider_metadata"] == {
+        "kind": "table_row",
+        "source_block_id": "metadata:row",
+        "anchor_text": "metadata anchor",
+        "row_index": 9,
+        "nested_anchor": {"value_span_candidate_id": "candidate:metadata"},
+    }
+
+
+def test_remote_relation_container_cleanup_keeps_materializer_provenance_check() -> None:
+    """Compatibility cleanup cannot turn a wrong table declaration into valid evidence."""
+
+    document = _document()
+    pack = _with_server_request_type(CandidatePack(
+        pack_id="request-remote-table-row-pack", notice_id="PREREVIEW-TEST-2027-01",
+        extraction_scope="document", question="test remote table row",
+        generator="semantic_structuring.common_ir_v1", generator_version="1",
+        common_ir_document_id="request:PREREVIEW-TEST-2027-01",
+        blocks=[
+            SourceBlock(block_id="table:roles#r2c0p0", text="가상 진흥원", relation=SourceRelation.CANDIDATE,
+                        common_ir_block_id="table:roles", common_ir_cell_id="table:roles:c0", common_ir_occurrence_ids=("occ:actor",)),
+            SourceBlock(block_id="table:roles#r2c1p0", text="전담기관", relation=SourceRelation.CANDIDATE,
+                        common_ir_block_id="table:roles", common_ir_cell_id="table:roles:c1", common_ir_occurrence_ids=("occ:role",)),
+        ],
+    ))
+    remote_payload = {
+        "profile_id": "request-remote-bad-table", "candidate_pack_id": pack.pack_id,
+        "delivery_relations": [{
+            "delivery_relation_id": "delivery_remote_bad_table",
+            "actor_anchor": {"source_block_id": "table:roles#r2c0p0", "anchor_text": "가상 진흥원"},
+            "role_anchor": {"source_block_id": "table:roles#r2c1p0", "anchor_text": "전담기관"},
+            "relation_container": {
+                "kind": "table_row",
+                # This wrong immutable table ID must survive cleanup and fail
+                # the materializer's source-provenance check.
+                "common_ir_block_id": "wrong:table",
+                "row_index": 2,
+                "source_block_id": "table:roles#r2c0p0",
+                "anchor_text": "not evidence",
+            },
+        }],
+    }
+
+    normalized = _normalize_remote_selection_payload(remote_payload)
+    container = normalized["delivery_relations"][0]["relation_container"]
+    assert container == {"kind": "table_row", "common_ir_block_id": "wrong:table", "row_index": 2}
+    selection = RequestSourceSelectionV012.model_validate(normalized)
+    try:
+        assemble_request_profile_v012(document, pack, selection)
+    except ValueError as error:
+        assert "table_row delivery relation members must share explicit Common IR table row" in str(error)
+    else:
+        raise AssertionError("remote cleanup must not bypass table-row provenance validation")
 
 
 def test_request_02_clean_program_period_requires_date_range_candidate() -> None:
@@ -513,6 +625,10 @@ def test_request_03_grant_component_is_separate_from_item_and_delivery_facets() 
         "1단계(아이디어 검증 완료, 150만원)·2단계(사업화 완료 보고, 250만원)",
     ]
     assert "support_components identify named packages" in request_selection_instructions()
+    assert "Completeness is required, not one representative example" in request_selection_instructions()
+    assert "Preserve the complete contiguous purpose clause" in request_selection_instructions()
+    assert "enumerate every independently evidenced actor-to-role" in request_selection_instructions()
+    assert "when an explicit table is headed exactly 추진절차" in request_selection_instructions()
 
 
 def test_request_03_rejects_service_as_item_and_payment_tranche_as_component() -> None:
@@ -774,6 +890,19 @@ def test_runner_without_selection_writes_template_not_profile(tmp_path: Path) ->
     assert "request_type" not in artifact
     # The runner deliberately strips its own artifact-only fields when the
     # template returns as a future model-input/selection document.
+    document = json.loads(common_ir.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    artifact["facts"] = [{
+        "fact_id": "program-period-1",
+        "field_name": "program_period",
+        "value_anchor": _program_period_candidate_anchor(
+            pack, "2027년 1월~12월"
+        ),
+    }]
+    output.write_text(
+        json.dumps(artifact, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     profile_output = tmp_path / "profile.json"
     subprocess.run([
         sys.executable, "-m", "semantic_structuring.run_request_profile_v012",
@@ -840,17 +969,35 @@ def test_server_guided_remote_repair_retries_once_without_raw_response_storage()
     pack = build_request_candidate_pack(document)
     bad = RequestSourceSelectionV012.model_validate({
         "profile_id": "request-repair-test", "candidate_pack_id": pack.pack_id,
-        "facts": [{
-            "fact_id": "goal_01", "field_name": "purpose_goal",
-            "value_anchor": {"source_block_id": pack.blocks[0].block_id, "anchor_text": "not-a-literal-candidate-span"},
-        }],
+        "facts": [
+            {
+                "fact_id": "goal_01", "field_name": "purpose_goal",
+                "value_anchor": {"source_block_id": pack.blocks[0].block_id, "anchor_text": "not-a-literal-candidate-span"},
+            },
+            {
+                "fact_id": "program-period-1",
+                "field_name": "program_period",
+                "value_anchor": _program_period_candidate_anchor(
+                    pack, "2027년 1월~12월"
+                ),
+            },
+        ],
     })
     good = RequestSourceSelectionV012.model_validate({
         "profile_id": "request-repair-test", "candidate_pack_id": pack.pack_id,
-        "facts": [{
-            "fact_id": "goal_01", "field_name": "purpose_goal",
-            "value_anchor": _anchor(pack, "사회연대경제 청년 일경험 사업의 참여기업·참여청년 규모를 확대"),
-        }],
+        "facts": [
+            {
+                "fact_id": "goal_01", "field_name": "purpose_goal",
+                "value_anchor": _anchor(pack, "사회연대경제 청년 일경험 사업의 참여기업·참여청년 규모를 확대"),
+            },
+            {
+                "fact_id": "program-period-1",
+                "field_name": "program_period",
+                "value_anchor": _program_period_candidate_anchor(
+                    pack, "2027년 1월~12월"
+                ),
+            },
+        ],
     })
     calls = []
 
@@ -867,6 +1014,613 @@ def test_server_guided_remote_repair_retries_once_without_raw_response_storage()
     assert len(diagnostics) == 1 and "occur exactly once" in diagnostics[0]["validation_error"]
     assert calls[1][0] == bad
     assert calls[1][1] == [diagnostics[0]["validation_error"]]
+
+
+def test_explicit_procedure_table_requires_an_implementation_plan_fact() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    assert "hwp:t91" in _explicit_procedure_table_ids(document, pack)
+    empty = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-empty",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [_actual_hwp_program_period_fact(pack)],
+    })
+
+    try:
+        assemble_request_profile_v012(
+            document, pack, empty, enforce_completeness=True
+        )
+    except RequestCompletenessError as error:
+        assert "implementation_plan" in str(error)
+        assert "hwp:t91" in str(error)
+        assert "신규사업 공고 및 접수" not in str(error)
+        assert error.materialized_evidence_keys
+    else:
+        raise AssertionError("an explicit procedure table must not become not_found")
+
+    plan_block = next(
+        block for block in pack.blocks
+        if block.common_ir_block_id == "hwp:t91"
+        and block.text == "신규사업 공고 및 접수"
+    )
+    selected = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-selected",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(pack),
+            {
+                "fact_id": "implementation-plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": {
+                    "source_block_id": plan_block.block_id,
+                    "anchor_text": plan_block.text,
+                },
+            },
+        ],
+    })
+    profile = assemble_request_profile_v012(
+        document, pack, selected, enforce_completeness=True
+    )
+    assert profile["request_context"]["implementation_plan"][0]["value_raw"] == plan_block.text
+
+
+def test_procedure_completeness_detector_excludes_unsafe_table_shapes() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+
+    application_header = pack.model_copy(update={"blocks": [
+        block.model_copy(update={"text": "신청절차"})
+        if block.common_ir_block_id == "hwp:t91" and block.text == "추진절차"
+        else block
+        for block in pack.blocks
+    ]})
+    assert "hwp:t91" not in _explicit_procedure_table_ids(
+        document, application_header
+    )
+
+    header_or_arrow_only = pack.model_copy(update={"blocks": [
+        block
+        for block in pack.blocks
+        if block.common_ir_block_id != "hwp:t91"
+        or block.text == "추진절차"
+        or not any(character.isalpha() for character in block.text)
+    ]})
+    assert "hwp:t91" not in _explicit_procedure_table_ids(
+        document, header_or_arrow_only
+    )
+
+    implicit_document = deepcopy(document)
+    next(
+        block for block in implicit_document["blocks"]
+        if block.get("block_id") == "hwp:t91"
+    )["structure_status"] = "inferred"
+    assert "hwp:t91" not in _explicit_procedure_table_ids(
+        implicit_document, pack
+    )
+
+
+def test_labeled_program_period_candidate_requires_a_program_period_fact() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    candidate_refs = _labeled_program_period_candidate_refs(pack)
+    assert {block_id for block_id, _ in candidate_refs} == {
+        "hwp:b29",
+        "hwp:t4#r3c1p0",
+    }
+    plan_only = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-period-empty",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [{
+            "fact_id": "implementation-plan-1",
+            "field_name": "implementation_plan",
+            "value_anchor": _anchor(pack, "신규사업 공고 및 접수"),
+        }],
+    })
+
+    try:
+        assemble_request_profile_v012(
+            document, pack, plan_only, enforce_completeness=True
+        )
+    except RequestCompletenessError as error:
+        diagnostic = str(error)
+        assert "program_period" in diagnostic
+        for block_id, candidate_id in candidate_refs:
+            assert block_id in diagnostic
+            assert candidate_id in diagnostic
+        for candidate in build_value_span_candidates(pack):
+            if candidate.value_span_candidate_id in {
+                candidate_id for _, candidate_id in candidate_refs
+            }:
+                assert candidate.value_raw not in diagnostic
+    else:
+        raise AssertionError("an exact labeled date-range candidate must be selected")
+
+    selected = plan_only.model_copy(update={
+        "facts": [
+            *plan_only.facts,
+            RequestSourceSelectionV012.model_validate({
+                "profile_id": "period-fact-holder",
+                "candidate_pack_id": pack.pack_id,
+                "facts": [_actual_hwp_program_period_fact(pack)],
+            }).facts[0],
+        ],
+    })
+    profile = assemble_request_profile_v012(
+        document, pack, selected, enforce_completeness=True
+    )
+    assert profile["comparison_profile"]["program_period"]
+
+
+def test_completeness_requires_implementation_plan_from_each_procedure_table() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    # This is a valid exact span, but it belongs to the overview table rather
+    # than the explicit 추진절차 table. A non-empty plan field must not bypass
+    # the table-coverage requirement.
+    wrong_plan = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-wrong-table",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(pack),
+            {
+                "fact_id": "wrong-plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": _anchor(
+                    pack, "정보통신진흥및융합활성화등에관한특별법 제18조, 제32조"
+                ),
+            },
+        ],
+    })
+    try:
+        assemble_request_profile_v012(
+            document, pack, wrong_plan, enforce_completeness=True
+        )
+    except RequestCompletenessError as error:
+        assert "hwp:t91" in str(error)
+        assert "정보통신진흥" not in str(error)
+    else:
+        raise AssertionError("implementation_plan from another table must not cover 추진절차")
+
+
+def test_completeness_rejects_procedure_caption_and_column_header_as_plan() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    for source_text in ("추진절차", "주요내용"):
+        header_block = next(
+            block for block in pack.blocks
+            if block.common_ir_block_id == "hwp:t91" and block.text == source_text
+        )
+        header_only = RequestSourceSelectionV012.model_validate({
+            "profile_id": f"request-procedure-header-{source_text}",
+            "candidate_pack_id": pack.pack_id,
+            "facts": [
+                _actual_hwp_program_period_fact(pack),
+                {
+                    "fact_id": "header-plan-1",
+                    "field_name": "implementation_plan",
+                    "value_anchor": {
+                        "source_block_id": header_block.block_id,
+                        "anchor_text": source_text,
+                    },
+                },
+            ],
+        })
+        try:
+            assemble_request_profile_v012(
+                document, pack, header_only, enforce_completeness=True
+            )
+        except RequestCompletenessError as error:
+            assert "implementation_plan" in str(error)
+            assert "hwp:t91" in str(error)
+            assert source_text not in str(error)
+        else:
+            raise AssertionError(
+                "procedure caption/header must not cover implementation_plan"
+            )
+
+
+def test_completeness_rejects_separate_procedure_column_header_row() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    template = next(
+        block for block in pack.blocks
+        if block.common_ir_block_id == "hwp:t91" and block.text == "추진절차"
+    )
+    separate_headers = [
+        template.model_copy(update={
+            "block_id": f"hwp:t91#r1c{column}p0", "text": text,
+        })
+        for column, text in ((0, "단계"), (2, "주요내용"), (4, "일정"))
+    ]
+    header_row_pack = pack.model_copy(update={
+        "blocks": [*pack.blocks, *separate_headers],
+    })
+    body_ids = _procedure_table_body_source_block_ids(
+        header_row_pack, ("hwp:t91",)
+    )
+    assert not {
+        block.block_id for block in separate_headers
+    } & body_ids["hwp:t91"]
+
+    header_only = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-separate-header",
+        "candidate_pack_id": header_row_pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(header_row_pack),
+            {
+                "fact_id": "header-plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": {
+                    "source_block_id": separate_headers[0].block_id,
+                    "anchor_text": "단계",
+                },
+            },
+        ],
+    })
+    try:
+        assemble_request_profile_v012(
+            document, header_row_pack, header_only, enforce_completeness=True
+        )
+    except RequestCompletenessError as error:
+        assert "hwp:t91" in str(error)
+        assert "단계" not in str(error)
+    else:
+        raise AssertionError("a separate column-header row must not cover a procedure table")
+
+
+def test_completeness_requires_labeled_program_period_candidate_membership() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    unrelated_period = pack.blocks[0].model_copy(update={
+        "block_id": "hwp:synthetic-application-period#p0",
+        "text": "신청기간: 2028년 1월~2028년 2월",
+        "block_kind": "paragraph",
+        "common_ir_block_id": "hwp:synthetic-application-period",
+    })
+    mixed_pack = pack.model_copy(update={"blocks": [*pack.blocks, unrelated_period]})
+    wrong_period = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-period-wrong-candidate",
+        "candidate_pack_id": mixed_pack.pack_id,
+        "facts": [
+            {
+                "fact_id": "wrong-period-1",
+                "field_name": "program_period",
+                "value_anchor": _program_period_candidate_anchor(
+                    mixed_pack, "2028년 1월~2028년 2월"
+                ),
+            },
+            {
+                "fact_id": "plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": _anchor(mixed_pack, "신규사업 공고 및 접수"),
+            },
+        ],
+    })
+    try:
+        assemble_request_profile_v012(
+            document, mixed_pack, wrong_period, enforce_completeness=True
+        )
+    except RequestCompletenessError as error:
+        assert "program_period" in str(error)
+        assert "2028년" not in str(error)
+    else:
+        raise AssertionError("an application-period candidate must not cover 사업기간")
+
+
+def test_period_and_procedure_completeness_detectors_respect_table_structure() -> None:
+    common = {
+        "relation": SourceRelation.CANDIDATE,
+        "common_ir_occurrence_ids": ("occ:completeness",),
+    }
+    period_pack = CandidatePack(
+        pack_id="request-period-label-ownership",
+        notice_id="PREREVIEW-PERIOD-OWNERSHIP",
+        extraction_scope="document",
+        question="period ownership regression",
+        blocks=[
+            SourceBlock(
+                block_id="request:periods#p0",
+                text=(
+                    "사업기간: 2027년 1월~2027년 12월; "
+                    "신청기간: 2028년 1월~2028년 2월"
+                ),
+                **common,
+            ),
+            SourceBlock(
+                block_id="request:table-period#r1c0p0",
+                text="사업기간",
+                block_kind="table_cell",
+                common_ir_block_id="request:table-period",
+                **common,
+            ),
+            SourceBlock(
+                block_id="request:table-period#r1c1p0",
+                text="2029년 1월~2029년 12월",
+                block_kind="table_cell",
+                common_ir_block_id="request:table-period",
+                **common,
+            ),
+        ],
+    )
+    owned_period_values = {
+        candidate.value_raw
+        for candidate in build_value_span_candidates(period_pack)
+        if (candidate.source_block_id, candidate.value_span_candidate_id)
+        in set(_labeled_program_period_candidate_refs(period_pack))
+    }
+    assert owned_period_values == {"2027년 1월~2027년 12월", "2029년 1월~2029년 12월"}
+
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    key_value_header = next(
+        block for block in pack.blocks
+        if block.block_id == "hwp:t91#r0c0p0"
+    ).model_copy(update={
+        "block_id": "hwp:t91#r0c1p0", "text": "절차 개요",
+    })
+    overview_like_pack = pack.model_copy(update={"blocks": [*pack.blocks, key_value_header]})
+    assert "hwp:t91" not in _explicit_procedure_table_ids(document, overview_like_pack)
+
+    # A two-column procedure table may use the exact caption/header pair
+    # ``추진절차 | 주요내용``.  The companion is not a row value and must not
+    # disable the table-level completeness obligation.
+    column_header = key_value_header.model_copy(update={"text": "주요내용"})
+    two_column_procedure_pack = pack.model_copy(update={
+        "blocks": [*pack.blocks, column_header],
+    })
+    assert "hwp:t91" in _explicit_procedure_table_ids(
+        document, two_column_procedure_pack
+    )
+
+
+def test_program_period_completeness_requires_exact_colocated_label() -> None:
+    common = {
+        "relation": SourceRelation.CANDIDATE,
+        "common_ir_occurrence_ids": ("occ:period",),
+    }
+    split_pack = CandidatePack(
+        pack_id="request-split-period-pack",
+        notice_id="PREREVIEW-SPLIT-PERIOD",
+        extraction_scope="document",
+        question="period completeness regression",
+        generator="semantic_structuring.common_ir_v1",
+        generator_version="1",
+        common_ir_document_id="request:split-period",
+        blocks=[
+            SourceBlock(
+                block_id="request:period-label#p0",
+                text="사업기간",
+                common_ir_block_id="request:period-label",
+                **common,
+            ),
+            SourceBlock(
+                block_id="request:period-value#p0",
+                text="’24 ~ ’28",
+                common_ir_block_id="request:period-value",
+                **common,
+            ),
+        ],
+    )
+    assert _labeled_program_period_candidate_refs(split_pack) == ()
+
+    prefixed_label_pack = split_pack.model_copy(update={
+        "pack_id": "request-prefixed-period-pack",
+        "blocks": [SourceBlock(
+            block_id="request:prefixed-period#p0",
+            text="지원사업기간: ’24 ~ ’28",
+            common_ir_block_id="request:prefixed-period",
+            **common,
+        )],
+    })
+    assert _labeled_program_period_candidate_refs(prefixed_label_pack) == ()
+
+
+def test_completeness_repair_preserves_prior_valid_materialized_evidence() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    legal_text = "정보통신진흥및융합활성화등에관한특별법 제18조, 제32조"
+    plan_text = "신규사업 공고 및 접수"
+    prior = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-repair",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(pack),
+            {
+                "fact_id": "legal-1",
+                "field_name": "legal_basis",
+                "value_anchor": _anchor(pack, legal_text),
+            },
+        ],
+    })
+    repaired = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-repair",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            *(fact.model_dump(mode="json") for fact in prior.facts),
+            {
+                "fact_id": "plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": _anchor(pack, plan_text),
+            },
+        ],
+    })
+    calls = []
+
+    def selector(previous, errors):
+        calls.append((previous, errors))
+        return (prior, {"attempt": 0}) if previous is None else (repaired, {"attempt": 1})
+
+    profile, final_selection, usage, diagnostics = select_and_materialize_with_repairs(
+        selector,
+        document,
+        pack,
+        "request-procedure-repair",
+        max_repairs=1,
+        model_id="mock-luna",
+    )
+    assert final_selection == repaired
+    assert len(calls) == 2
+    assert usage == [{"attempt": 0}, {"attempt": 1}]
+    assert diagnostics[0]["error_type"] == "RequestCompletenessError"
+    assert profile["request_context"]["legal_basis"]
+    assert profile["request_context"]["implementation_plan"]
+
+    dropping_repair = repaired.model_copy(update={
+        "facts": [repaired.facts[0], repaired.facts[2]],
+    })
+
+    def dropping_selector(previous, errors):
+        return (prior, {"attempt": 0}) if previous is None else (dropping_repair, {"attempt": 1})
+
+    try:
+        select_and_materialize_with_repairs(
+            dropping_selector,
+            document,
+            pack,
+            "request-procedure-repair",
+            max_repairs=1,
+            model_id="mock-luna",
+        )
+    except RequestMaterializationError as error:
+        assert isinstance(error.materialization_error, RequestCompletenessError)
+        assert "removed previously valid" in str(error)
+        assert legal_text not in str(error)
+    else:
+        raise AssertionError("a completeness repair must not drop prior valid evidence")
+
+
+def test_remote_repair_baseline_rejects_dropping_a_valid_prior_selection() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    legal_text = "정보통신진흥및융합활성화등에관한특별법 제18조, 제32조"
+    prior = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-remote-repair-baseline",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(pack),
+            {
+                "fact_id": "legal-1", "field_name": "legal_basis",
+                "value_anchor": _anchor(pack, legal_text),
+            },
+            {
+                "fact_id": "plan-1", "field_name": "implementation_plan",
+                "value_anchor": _anchor(pack, "신규사업 공고 및 접수"),
+            },
+        ],
+    })
+    baseline, validation_error = _remote_repair_evidence_baseline(
+        document, pack, prior, model_id="mock-luna"
+    )
+    assert baseline and validation_error is None
+
+    dropped = prior.model_copy(update={
+        "facts": [prior.facts[0], prior.facts[2]],
+    })
+    repaired_profile = assemble_request_profile_v012(
+        document, pack, dropped, model_id="mock-luna", enforce_completeness=True
+    )
+    try:
+        _enforce_remote_repair_evidence_baseline(repaired_profile, baseline)
+    except RequestCompletenessError as error:
+        assert "removed previously valid" in str(error)
+        assert legal_text not in str(error)
+    else:
+        raise AssertionError("remote repair cannot delete a valid prior span")
+
+
+def test_completeness_repair_allows_role_to_action_correction_for_same_span() -> None:
+    document = json.loads(REQUEST_HWP_ORG_CHART.read_text(encoding="utf-8"))
+    pack = build_request_candidate_pack(document)
+    actor_id = "hwp:t87.c5.b1#r8c0p0"
+    member_id = "hwp:t87.c5.b1#r9c0p0"
+    actor = next(block for block in pack.blocks if block.block_id == actor_id)
+    member = next(block for block in pack.blocks if block.block_id == member_id)
+    prior = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-role-action-repair",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [_actual_hwp_program_period_fact(pack)],
+        "delivery_relations": [{
+            "delivery_relation_id": "delivery-role-before-repair",
+            "actor_anchor": {
+                "source_block_id": actor.block_id,
+                "anchor_text": actor.text,
+            },
+            "role_anchor": {
+                "source_block_id": member.block_id,
+                "anchor_text": member.text,
+            },
+            "relation_container": {
+                "kind": "table_column_pair",
+                "common_ir_block_id": "hwp:t87.c5.b1",
+            },
+        }],
+    })
+    repaired = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request-procedure-role-action-repair",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(pack),
+            {
+                "fact_id": "plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": _anchor(pack, "신규사업 공고 및 접수"),
+            },
+        ],
+        "delivery_relations": [{
+            "delivery_relation_id": "delivery-action-after-repair",
+            "actor_anchor": {
+                "source_block_id": actor.block_id,
+                "anchor_text": actor.text,
+            },
+            "actions": [{
+                "value_anchor": {
+                    "source_block_id": member.block_id,
+                    "anchor_text": member.text,
+                },
+            }],
+            "relation_container": {
+                "kind": "table_column_pair",
+                "common_ir_block_id": "hwp:t87.c5.b1",
+            },
+        }],
+    })
+    prior_delivery_keys = {
+        key
+        for key in materialized_evidence_keys_v012(
+            assemble_request_profile_v012(document, pack, prior)
+        )
+        if key[0].startswith("delivery_relation")
+    }
+    repaired_delivery_keys = {
+        key
+        for key in materialized_evidence_keys_v012(
+            assemble_request_profile_v012(document, pack, repaired)
+        )
+        if key[0].startswith("delivery_relation")
+    }
+    assert prior_delivery_keys == repaired_delivery_keys
+    assert {key[0] for key in prior_delivery_keys} == {
+        "delivery_relation",
+        "delivery_relation_container",
+    }
+
+    def selector(previous, errors):
+        return (prior, {"attempt": 0}) if previous is None else (repaired, {"attempt": 1})
+
+    profile, final_selection, _, diagnostics = select_and_materialize_with_repairs(
+        selector,
+        document,
+        pack,
+        "request-procedure-role-action-repair",
+        max_repairs=1,
+        model_id="mock-luna",
+    )
+
+    relation = profile["comparison_profile"]["delivery_relations"][0]
+    assert final_selection == repaired
+    assert diagnostics[0]["error_type"] == "RequestCompletenessError"
+    assert relation["role"] is None
+    assert relation["actions"][0]["value_raw"] == member.text
 
 
 def test_remote_materialization_failure_keeps_parsed_selection_without_raw_response() -> None:
@@ -947,10 +1701,19 @@ def test_remote_lifecycle_records_success_failure_and_artifact_write_error(tmp_p
     pack = build_request_candidate_pack(document)
     good = RequestSourceSelectionV012.model_validate({
         "profile_id": "request-lifecycle-success", "candidate_pack_id": pack.pack_id,
-        "facts": [{
-            "fact_id": "goal_01", "field_name": "purpose_goal",
-            "value_anchor": _anchor(pack, "사회연대경제 청년 일경험 사업의 참여기업·참여청년 규모를 확대"),
-        }],
+        "facts": [
+            {
+                "fact_id": "goal_01", "field_name": "purpose_goal",
+                "value_anchor": _anchor(pack, "사회연대경제 청년 일경험 사업의 참여기업·참여청년 규모를 확대"),
+            },
+            {
+                "fact_id": "program-period-1",
+                "field_name": "program_period",
+                "value_anchor": _program_period_candidate_anchor(
+                    pack, "2027년 1월~12월"
+                ),
+            },
+        ],
     })
     events: list[dict] = []
 
@@ -1375,6 +2138,14 @@ def test_delivery_column_pair_accepts_actual_hwp_actor_action_cells() -> None:
     action = next(block for block in pack.blocks if block.block_id == action_id)
     selection = RequestSourceSelectionV012.model_validate({
         "profile_id": "request-hwp-column-action", "candidate_pack_id": pack.pack_id,
+        "facts": [
+            _actual_hwp_program_period_fact(pack),
+            {
+                "fact_id": "implementation-plan-1",
+                "field_name": "implementation_plan",
+                "value_anchor": _anchor(pack, "신규사업 공고 및 접수"),
+            },
+        ],
         "delivery_relations": [{
             "delivery_relation_id": "delivery_action_01",
             "actor_anchor": {"source_block_id": actor_id, "anchor_text": actor.text},

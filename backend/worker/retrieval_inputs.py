@@ -1,8 +1,9 @@
 """Deterministic Request Profile inputs for three-axis vector retrieval.
 
-Only server-materialised ``value_raw`` values with approved states are copied.
-No generative summary is introduced.  Oversized inputs are split without
-truncation and later token-weighted back into one vector per retrieval axis.
+Only server-materialised fact values with approved states and structural
+``support_components[].name_raw`` values are copied.  No generative summary is
+introduced.  Oversized inputs are split without truncation and later
+token-weighted back into one vector per retrieval axis.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ TARGET_FIELDS = (
     "participation_requirements",
 )
 SUPPORT_FIELDS = (
+    "support_components",
     "support_activities",
     "support_methods",
     "support_items",
@@ -75,7 +77,21 @@ def _iter_facts(profile: Mapping[str, Any]) -> Iterable[Mapping[str, Any]]:
     components = profile.get("support_components")
     if isinstance(components, list):
         for component in components:
-            if isinstance(component, Mapping) and isinstance(component.get("facts"), list):
+            if not isinstance(component, Mapping):
+                continue
+            name = _clean(component.get("name_raw"))
+            if name:
+                source = component.get("value_source")
+                source = source if isinstance(source, Mapping) else {
+                    "source_block_id": component.get("name_source_block_id")
+                }
+                yield {
+                    "field_name": "support_components",
+                    "value_raw": name,
+                    "status": component.get("name_status") or "identified",
+                    "value_source": source,
+                }
+            if isinstance(component.get("facts"), list):
                 yield from (
                     row for row in component["facts"] if isinstance(row, Mapping)
                 )
@@ -93,8 +109,7 @@ def _source_order(fact: Mapping[str, Any], encounter: int) -> tuple[Any, ...]:
 
 
 def _group(profile: Mapping[str, Any]) -> dict[str, list[_Fact]]:
-    grouped: dict[str, list[_Fact]] = {}
-    seen: set[tuple[str, str, str]] = set()
+    unique: dict[tuple[str, str, str], _Fact] = {}
     for encounter, row in enumerate(_iter_facts(profile)):
         if _clean(row.get("status")).lower() not in ALLOWED_STATUSES:
             continue
@@ -102,21 +117,36 @@ def _group(profile: Mapping[str, Any]) -> dict[str, list[_Fact]]:
         value = _clean(row.get("value_raw"))
         role = _clean(row.get("semantic_role") or row.get("subject_role"))
         key = (field, role, value)
-        if not field or not value or key in seen:
+        if not field or not value:
             continue
-        seen.add(key)
-        grouped.setdefault(field, []).append(
-            _Fact(field, value, role, _source_order(row, encounter))
-        )
+        candidate = _Fact(field, value, role, _source_order(row, encounter))
+        if key not in unique or candidate.order < unique[key].order:
+            unique[key] = candidate
+    grouped: dict[str, list[_Fact]] = {}
+    for fact in unique.values():
+        grouped.setdefault(fact.field_name, []).append(fact)
     for facts in grouped.values():
         facts.sort(key=lambda item: item.order)
     return grouped
 
 
-def _render(grouped: Mapping[str, Sequence[_Fact]], fields: Sequence[str], *, headers: bool) -> str:
+def _render(
+    grouped: Mapping[str, Sequence[_Fact]],
+    fields: Sequence[str],
+    *,
+    headers: bool,
+    deduplicate_values: bool = False,
+) -> str:
     sections: list[str] = []
+    seen_values: set[tuple[str, str]] = set()
     for field in fields:
-        values = [f"{fact.role}: {fact.value}" if fact.role else fact.value for fact in grouped.get(field, ())]
+        values: list[str] = []
+        for fact in grouped.get(field, ()):
+            semantic_value = (fact.role, fact.value)
+            if deduplicate_values and semantic_value in seen_values:
+                continue
+            seen_values.add(semantic_value)
+            values.append(f"{fact.role}: {fact.value}" if fact.role else fact.value)
         if values:
             body = "\n".join(values)
             sections.append(f"[{field}]\n{body}" if headers else body)
@@ -188,7 +218,9 @@ def assemble_inputs(
     texts = {
         "purpose": _render(grouped, PURPOSE_FIELDS, headers=False),
         "target": _render(grouped, TARGET_FIELDS, headers=True),
-        "support": _render(grouped, SUPPORT_FIELDS, headers=True),
+        "support": _render(
+            grouped, SUPPORT_FIELDS, headers=True, deduplicate_values=True
+        ),
     }
     missing = [scope for scope, value in texts.items() if not value]
     if missing:

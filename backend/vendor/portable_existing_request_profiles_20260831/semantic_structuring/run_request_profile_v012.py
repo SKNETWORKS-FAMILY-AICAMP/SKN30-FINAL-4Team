@@ -24,15 +24,17 @@ from .common_ir_v1 import common_ir_v1_identity
 from .pipeline import _openai_schema, _usage
 from .request_profile_v012 import (
     REQUEST_PIPELINE_VERSION,
+    RequestCompletenessError,
     RequestSourceSelectionV012,
     assemble_request_profile_v012,
     build_request_candidate_pack,
     candidate_pack_artifact,
+    materialized_evidence_keys_v012,
     resolve_request_type_from_candidate_pack,
 )
 
 
-REQUEST_SELECTION_PROMPT_VERSION = "request_source_selection_v0.1.2"
+REQUEST_SELECTION_PROMPT_VERSION = "request_source_selection_v0.1.3"
 LifecycleObserver = Callable[[str, dict[str, Any]], None]
 
 
@@ -106,6 +108,9 @@ def request_selection_instructions() -> str:
         "Never put before-after comparison narration (such as →, 변경 전/후, 기존 대비, 시범사업 대비) into purpose_goal or support_content. "
         "For purpose_goal, select only the requested policy-purpose expression itself; do not select a sentence that narrates a retained prior purpose, "
         "a before/after comparison, or maintain-and-expand wording (for example '기존 목적을 유지하되 ... 확대'). "
+        "Preserve the complete contiguous purpose clause: include its explicit subject and every chained policy outcome leading to the terminal outcome. "
+        "Do not shrink a source clause such as 'ICT혁신기업이 신시장 창출 동력을 확보하여 고성장 기업으로 도약할 수 있도록' "
+        "to only the generic terminal phrase '고성장 기업으로 도약할 수 있도록'. "
         "When a purpose sentence mixes an intervention/change mechanism (for example '지급 구조를 단계별로 나누고' or "
         "'멘토링을 ... 구체화하여') with a separately contiguous policy outcome, select only the exact outcome span (for example "
         "'사업화 실행력을 높임'). Never summarize, trim, or join disconnected spans; if no standalone exact outcome exists, omit purpose_goal. "
@@ -128,6 +133,8 @@ def request_selection_instructions() -> str:
         "program_period_date_range; legacy anchor_text is not allowed for this field. Select only that candidate's literal date-range span "
         "(for example '2027년 1월~12월' or the explicit official open interval '공고일~2027.12.31'). Do not include '(12개월)', a label, "
         "or before/after change narration in that Raw Fact. Do not infer an unstated start/end date; only the listed candidate is eligible. "
+        "When a paragraph or explicit table cell labels an eligible candidate as 사업기간, select that candidate; do not mark program_period "
+        "not_found or extraction_failed. "
         "do not treat application/receipt periods as either. support_scale contains only selected/support count, actual amount, "
         "rate, or limit: never duration or activity/session counts. In a 변경 후, 요청안, or 확산사업 context, if an amount, rate, "
         "or selected/supported count is independently written as an exact span, you must select each as support_scale even when '(변경 없음)' "
@@ -140,6 +147,10 @@ def request_selection_instructions() -> str:
         "states a concrete thing the recipient receives. For example, a grant/support fund is an item, whereas the act of paying it is not a "
         "recipient activity. When the component heading and an independently stated body occurrence are different exact spans, keep the heading "
         "as the component name and select the body occurrence as support_items. "
+        "Completeness is required, not one representative example. When explicit rows or sections divide the request into participation types, "
+        "support stages, years, or packages, create every explicitly named component and select every material target, eligibility, support-period, "
+        "support-scale, and budget value, linking each value to its component when the local table or section makes that scope explicit. Preserve "
+        "differences such as M&A versus strategic alliance, consortium requirements, stage durations, per-year amounts, totals, and selected counts. "
         "support_activities means what the recipient is enabled to do (for example training, commercialization, demonstration, or employment), "
         "not the provider's payment/disbursement action. "
         "A named recipient service such as mentoring is support_methods, not support_items; its exact format can be a separate method. "
@@ -166,6 +177,11 @@ def request_selection_instructions() -> str:
         "never join separate regions. An actor must be an institution, organisation, or operational entity, never a diagram/layout label such as "
         "'(정책지정)→설명'. An explicit nested-table organisation chart can use table_column_pair only for actor plus explicit role OR actor plus explicit "
         "action cells in the same Common IR table and same column on consecutive non-empty semantic rows; do not coerce an action into role_raw or infer one. "
+        "In an explicit organisation or delivery table, enumerate every independently evidenced actor-to-role or actor-to-action relation rather than "
+        "selecting one representative relation. Phrases describing work such as '정책수립 및 예산 지원', '사업 기획 및 평가관리', "
+        "'R&D 과제수행', or '전문가 POOL 관리' are actions; never place them in role_anchor merely to fit a canonical role. "
+        "For implementation_plan, when an explicit table is headed exactly 추진절차 or 사업추진절차, select the meaningful named "
+        "stages and their material actions in source order. Do not mark implementation_plan not_found merely because the procedure is spread across table cells. "
         "For a paragraph relation_container use source_block_id and anchor_text; "
         "common_ir_block_id is only required for table_row/table_column_pair. delivery_methods describe programme execution, not beneficiary support methods. "
         "If a value is not safely selectable, omit it rather than guessing."
@@ -276,6 +292,7 @@ class RequestMaterializationError(RuntimeError):
         retry_count: int, diagnostics: list[dict[str, Any]], usage: list[dict[str, Any]],
     ):
         super().__init__(str(error))
+        self.materialization_error = error
         self.selection = selection
         self.retry_count = retry_count
         self.diagnostics = diagnostics
@@ -401,23 +418,64 @@ def _selection_parse_failure_artifact(
     }
 
 
-def _normalize_remote_selection_payload(value: Any) -> Any:
-    """Normalize one known Structured Output compatibility artifact in memory.
+def _is_delivery_relation_container_path(path: tuple[str | int, ...]) -> bool:
+    """Return whether ``path`` is exactly a delivery-relation container.
+
+    Structured Outputs compatibility cleanup is deliberately narrow: other
+    schema objects may also happen to use a ``kind`` key, but their fields must
+    remain untouched.  The only kind-dependent union in this remote contract
+    is ``delivery_relations[*].relation_container``.
+    """
+
+    return (
+        len(path) == 3
+        and path[0] == "delivery_relations"
+        and isinstance(path[1], int)
+        and path[2] == "relation_container"
+    )
+
+
+def _normalize_remote_selection_payload(
+    value: Any, *, _path: tuple[str | int, ...] = (),
+) -> Any:
+    """Normalize known Structured Output compatibility artifacts in memory.
 
     Some providers return a redundant ``anchor_text`` alongside an authoritative
     ``value_span_candidate_id`` despite the JSON-schema contract.  Only on the
     remote-response path do we discard that redundant locator before Pydantic
     parsing.  Local ``--selection`` files remain strict, while the server still
     verifies an optional ``source_block_id`` hint against the candidate ID.
+
+    The strict provider schema also cannot express ``relation_container``'s
+    kind-dependent nullable fields.  Remove only fields that are meaningless
+    for the selected kind; required evidence is never invented and the normal
+    server materializer still verifies every retained relation member.
     """
 
     if isinstance(value, list):
-        return [_normalize_remote_selection_payload(item) for item in value]
+        return [
+            _normalize_remote_selection_payload(item, _path=(*_path, index))
+            for index, item in enumerate(value)
+        ]
     if not isinstance(value, dict):
         return value
-    normalized = {key: _normalize_remote_selection_payload(item) for key, item in value.items()}
+    normalized = {
+        key: _normalize_remote_selection_payload(item, _path=(*_path, key))
+        for key, item in value.items()
+    }
     if normalized.get("value_span_candidate_id") is not None and "anchor_text" in normalized:
         normalized.pop("anchor_text")
+    if _is_delivery_relation_container_path(_path):
+        relation_kind = normalized.get("kind")
+        if relation_kind == "paragraph":
+            normalized.pop("row_index", None)
+        elif relation_kind == "table_row":
+            normalized.pop("source_block_id", None)
+            normalized.pop("anchor_text", None)
+        elif relation_kind == "table_column_pair":
+            normalized.pop("source_block_id", None)
+            normalized.pop("anchor_text", None)
+            normalized.pop("row_index", None)
     return normalized
 
 
@@ -499,6 +557,7 @@ def select_and_materialize_with_repairs(
     selection: RequestSourceSelectionV012 | None = None
     usage: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
+    completeness_baseline: frozenset[tuple[str | int, ...]] | None = None
     for attempt in range(max_repairs + 1):
         _emit_lifecycle(lifecycle, "selection_attempt_started", attempt=attempt + 1, repair=bool(attempt))
         try:
@@ -523,10 +582,25 @@ def select_and_materialize_with_repairs(
             _emit_lifecycle(lifecycle, "server_materialization_started", attempt=attempt + 1)
             profile = assemble_request_profile_v012(
                 document, pack, selection, model_id=model_id, prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+                enforce_completeness=True,
             )
+            if completeness_baseline is not None:
+                current_evidence = materialized_evidence_keys_v012(profile)
+                removed = completeness_baseline - current_evidence
+                if removed:
+                    raise RequestCompletenessError(
+                        "Request completeness repair removed previously valid "
+                        f"materialized evidence spans count={len(removed)}",
+                        materialized_evidence_keys=current_evidence,
+                    )
             _emit_lifecycle(lifecycle, "server_materialization_completed", attempt=attempt + 1)
             return profile, selection, usage, diagnostics
         except ValueError as error:
+            if (
+                completeness_baseline is None
+                and isinstance(error, RequestCompletenessError)
+            ):
+                completeness_baseline = error.materialized_evidence_keys
             diagnostics.append({
                 "repair_attempt": attempt + 1,
                 "error_type": type(error).__name__,
@@ -542,6 +616,49 @@ def select_and_materialize_with_repairs(
                 ) from error
             _emit_lifecycle(lifecycle, "server_guided_repair_scheduled", next_attempt=attempt + 2)
     raise AssertionError("unreachable")
+
+
+def _remote_repair_evidence_baseline(
+    document: dict[str, Any], pack, prior_selection: RequestSourceSelectionV012,
+    *, model_id: str,
+) -> tuple[frozenset[tuple[str | int, ...]] | None, str | None]:
+    """Materialize the resume selection once and retain only safe span IDs.
+
+    ``--remote-repair-from`` can resume a valid selection when an operator
+    supplied ``--repair-reason``.  It must not let that repair silently drop
+    values which were already source-valid.  A completeness failure also
+    exposes its partial materialization baseline.  Other validation failures
+    have no trustworthy partial profile, so they deliberately return no
+    baseline rather than infer one from an untrusted selection payload.
+    """
+
+    try:
+        profile = assemble_request_profile_v012(
+            document, pack, prior_selection, model_id=model_id,
+            prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+            enforce_completeness=True,
+        )
+    except RequestCompletenessError as error:
+        return error.materialized_evidence_keys, str(error)
+    except ValueError as error:
+        return None, str(error)
+    return materialized_evidence_keys_v012(profile), None
+
+
+def _enforce_remote_repair_evidence_baseline(
+    profile: dict[str, Any], baseline: frozenset[tuple[str | int, ...]] | None,
+) -> None:
+    """Reject a resumed repair which removes previously materialized spans."""
+
+    if baseline is None:
+        return
+    removed = baseline - materialized_evidence_keys_v012(profile)
+    if removed:
+        raise RequestCompletenessError(
+            "Remote repair removed previously valid materialized evidence "
+            f"spans count={len(removed)}",
+            materialized_evidence_keys=materialized_evidence_keys_v012(profile),
+        )
 
 
 def _load_selection(path: Path, profile_id: str) -> RequestSourceSelectionV012:
@@ -623,13 +740,14 @@ def main() -> None:
             client = OpenAI()
             if args.remote_repair_from:
                 prior_selection = _load_selection(args.remote_repair_from, args.profile_id)
-                try:
-                    assemble_request_profile_v012(
-                        document, pack, prior_selection, model_id=model_id,
-                        prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
-                    )
-                except ValueError as error:
-                    validation_errors = [str(error), *([args.repair_reason] if args.repair_reason else [])]
+                repair_baseline, prior_validation_error = _remote_repair_evidence_baseline(
+                    document, pack, prior_selection, model_id=model_id,
+                )
+                if prior_validation_error is not None:
+                    validation_errors = [
+                        prior_validation_error,
+                        *([args.repair_reason] if args.repair_reason else []),
+                    ]
                 else:
                     if not args.repair_reason:
                         raise ValueError("--remote-repair-from requires a failed selection or --repair-reason")
@@ -643,7 +761,9 @@ def main() -> None:
                 profile = assemble_request_profile_v012(
                     document, pack, selection, model_id=model_id,
                     prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+                    enforce_completeness=True,
                 )
+                _enforce_remote_repair_evidence_baseline(profile, repair_baseline)
                 _emit_lifecycle(lifecycle, "server_materialization_completed", attempt=1, repair=True)
                 usage = [call_usage]
                 repair_diagnostics = [{"repair_attempt": 1, "validation_error": validation_errors[0]}]
@@ -747,6 +867,7 @@ def main() -> None:
         try:
             profile = assemble_request_profile_v012(
                 document, pack, selection, model_id="not_called", prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
+                enforce_completeness=True,
             )
         except ValueError as error:
             _write_json(args.output.with_suffix(".failure.json"), {

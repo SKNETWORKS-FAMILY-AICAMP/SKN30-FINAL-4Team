@@ -115,7 +115,7 @@ manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~25·same-server worker와 묶어 검증된 위 스크립트만 사용한다.
+override·migration 01~28·same-server worker와 묶어 검증된 위 스크립트만 사용한다.
 
 ## 데이터 위치
 
@@ -132,7 +132,29 @@ Profile만 `purpose`, `target`, `support`, `combined` 네 scope로 영속화한�
 같은 조립 규칙으로 worker 메모리에서 임베딩·검색한 뒤 폐기한다.
 
 - embedding: OpenAI `text-embedding-3-small`, 1,536차원, cosine
-- 입력: `identified`, `partial`, `partially_identified` Fact의 승인된 `value_raw`
+- 입력: `identified`, `partial`, `partially_identified` Fact의 승인된 `value_raw`와
+  원문 근거가 있는 `support_components[].name_raw`
+- 조립 버전: `approved-facts-components-role-aware-v2`; migration 26은 v2를
+  **inactive**으로 준비하고 v1을 rollback 가능한 활성 config로 보존한다. worker는 v2만
+  허용하므로 backfill 중에는 candidate 0건을 정상 결과로 만들지 않고 fail-closed 한다.
+  전체 Existing Profile의 네 scope backfill과 SHA-256 검증이 끝난
+  `embed_existing_profiles.py`만 v1→v2를 원자적으로 전환한다. 부분 실행·실패 시 v1이
+  계속 활성 상태다. 이후 Existing importer가 current source/profile을 실제 변경·삭제하면
+  migration 28 trigger가 같은 transaction에서 v2를 v1으로 되돌려 재backfill 전
+  worker가 fail-closed 하게 만든다. `fact_occurrence`·`support_component`의 current
+  Profile 하위 변경도 같은 규칙이다. migration 28을 **처음 완전 설치**하거나 함수·네 개
+  trigger가 drift한 상태로 재적용하면, 27→28 사이의 구버전 writer/수동 변경을 보수적으로
+  흡수하기 위해 active v2를 한 번 v1으로 demote한다. 정상 설치 상태의 migration 재실행은
+  v2를 건드리지 않는다. byte/hash를 재검증하는 전체 embed 명령의 `promoted_v2` 결과 전에는
+  v2를 다시 쓰지 않는다. 이미 current인 동일 Profile 재적재는 되돌리지 않는다.
+  migration 20의 재실행은 알려진 초기 generic `existing-profile-v1`만 비활성화하고,
+  이미 활성인 v2나 이후 assembly version은 보존한다. 활성 config가 전혀 없을 때만
+  v1 bootstrap을 수행한다. migration 27도 불완전한 **활성** v2만 v1으로 되돌리며,
+  inactive v2와 활성 v3(이후 version)의 조합은 변경하지 않는다.
+  검증된 v2 backfill도 exact OpenAI/model/dimension/metric identity가 아닌 활성 config
+  (같은 assembly label을 재사용한 foreign config 포함)를 발견하면 이를 내리지 않고
+  명시적으로 실패한다. 활성 config가 없는 상태만 예외로, 전체 byte/hash 검증을 통과한
+  v2가 안전하게 활성화된다.
 - 상한: scope당 8,192 tokens. 초과 시 Fact/줄 경계 chunk와 token-weighted average 사용
 - `2,048`은 token 상한이 아니라 API 입력 배열 수에 관한 과거 혼동값이다.
 
@@ -235,7 +257,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`25` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`28` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤
@@ -312,6 +334,8 @@ docker compose run --rm --no-deps \
 이 명령은 Existing Profile을 처음 적재하지 않는다. `kb.profile_version`과 대응
 `structured_profile.v0.2.json`이 이미 있어야 하며, 위 `/srv/.../extracted-100`은 저장소에
 포함된 경로가 아니다. 먼저 bootstrap 가이드의 manifest 검증과 batch import를 완료한다.
+성공 출력의 `activation`이 `promoted_v2`여야 worker의 v2 검색이 시작된다. `--limit`
+또는 `--strategy` 부분 실행은 backfill 진행분만 저장하고 worker를 fail-closed 상태로 둔다.
 
 ## 검증과 트러블슈팅
 
