@@ -111,6 +111,15 @@ def _configure_environment(
         # The parser subprocess preloads the host FreeType build; Windows
         # resolves it through the packaged runtime instead.
         settings["PREREVIEW_FREETYPE_LIB"] = "/lib/x86_64-linux-gnu/libfreetype.so.6"
+    # Without this the ML child cannot find its weights and Model 1 reports
+    # "모델 가중치를 사용할 수 없습니다." while the run still succeeds, so the
+    # miss is easy to read as a healthy result.  An empty value must not
+    # overwrite a serving root the caller already exported.
+    model1_serving_dir = str(
+        provider.get("PREREVIEW_MODEL1_SERVING_DIR") or ""
+    ).strip()
+    if model1_serving_dir:
+        settings["PREREVIEW_MODEL1_SERVING_DIR"] = model1_serving_dir
     os.environ.update(settings)
 
 

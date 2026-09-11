@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -120,3 +121,72 @@ def test_pooler_username_is_url_quoted() -> None:
     username, port = MODULE._database_endpoint("a/c me", "linux")
     assert username == "postgres.a%2Fc%20me"
     assert port == 5432
+
+
+@pytest.fixture
+def isolated_environ(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """``_configure_environment`` writes straight into ``os.environ``.
+
+    Hand it a copy so a test's fake API key never leaks into the rest of the
+    session.
+    """
+
+    copy = dict(os.environ)
+    monkeypatch.setattr(os, "environ", copy)
+    return copy
+
+
+def _env_files(tmp_path: Path, model1_line: str) -> tuple[Path, Path]:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "OPENAI_API_KEY=sk-test-not-a-real-key\n" + model1_line, encoding="utf-8"
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=pw\nPOOLER_TENANT_ID=acme\n"
+        "JWT_SECRET=s\nANON_KEY=a\nSERVICE_ROLE_KEY=r\n",
+        encoding="utf-8",
+    )
+    return backend_env, supabase_env
+
+
+def test_model1_serving_dir_reaches_the_worker_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served = r"C:\models\model1\serving"
+    backend_env, supabase_env = _env_files(
+        tmp_path, f"PREREVIEW_MODEL1_SERVING_DIR={served}\n"
+    )
+    monkeypatch.delenv("PREREVIEW_MODEL1_SERVING_DIR", raising=False)
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    # The Windows path must survive verbatim: no separator or case rewriting.
+    assert os.environ["PREREVIEW_MODEL1_SERVING_DIR"] == served
+
+
+@pytest.mark.parametrize("line", ["", "PREREVIEW_MODEL1_SERVING_DIR=   \n"])
+def test_a_blank_model1_serving_dir_never_overwrites_the_caller(
+    tmp_path: Path, isolated_environ: dict[str, str], line: str
+) -> None:
+    backend_env, supabase_env = _env_files(tmp_path, line)
+    isolated_environ["PREREVIEW_MODEL1_SERVING_DIR"] = "/already/exported"
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert isolated_environ["PREREVIEW_MODEL1_SERVING_DIR"] == "/already/exported"
+
+
+def test_configure_environment_prints_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    isolated_environ: dict[str, str],
+) -> None:
+    served = r"C:\models\model1\serving"
+    backend_env, supabase_env = _env_files(
+        tmp_path, f"PREREVIEW_MODEL1_SERVING_DIR={served}\n"
+    )
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
