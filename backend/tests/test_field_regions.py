@@ -10,7 +10,7 @@ import pytest
 
 from worker import vendor  # noqa: F401  (vendored 경로를 sys.path 에 넣는다)
 
-from semantic_structuring.field_regions import build_field_regions
+from semantic_structuring.field_regions import build_field_regions, find_text_regions
 from semantic_structuring.models import CandidatePack, SourceBlock, SourceRelation
 
 
@@ -186,3 +186,78 @@ def test_a_region_carries_its_own_occurrence_and_offsets() -> None:
     assert region.content_text == "2024~2028년"
     assert region.contains(region.content_start, region.content_end)
     assert not region.contains(0, region.content_end)
+
+
+# --- 공개 순수 함수 -------------------------------------------------------
+# 소비자마다 좌표 원천이 다르다. 벤더는 CandidatePack 블록 텍스트에, 워커는
+# Common IR occurrence 텍스트에 같은 규칙을 적용하고 각자 식별자를 만든다.
+
+def test_find_text_regions_returns_offsets_only(text: str = "○ (사업기간) 2024~2028년") -> None:
+    (span,) = find_text_regions(text, field_name="program_period")
+
+    assert span.field_name == "program_period"
+    assert span.label_text == "○ (사업기간)"
+    assert text[span.content_start : span.content_end] == "2024~2028년"
+    assert span.label_start < span.content_start
+
+
+def test_find_text_regions_skips_an_empty_region() -> None:
+    assert find_text_regions("○ 사업기간 :", field_name="program_period") == []
+
+
+def test_find_text_regions_is_unknown_field_safe() -> None:
+    assert find_text_regions("○ 사업기간 : 2024~2028년", field_name="총사업비") == []
+
+
+# 같은 텍스트 안에 같은 문구가 두 번 나오면 두 구간 다 돌려준다. 여기서 접으면
+# 서로 다른 자리의 근거가 사라진다.
+def test_find_text_regions_keeps_both_occurrences_of_one_phrase() -> None:
+    text = "○ 사업기간 : 2024~2028년\n○ 사업기간 : 2024~2028년"
+
+    spans = find_text_regions(text, field_name="program_period")
+
+    assert len(spans) == 2
+    assert spans[0].content_start != spans[1].content_start
+
+
+# 본문에 나온 낱말로는 구역을 끊지 않는다. 라벨 자리에 있을 때만 경계다.
+def test_a_boundary_word_in_running_text_does_not_cut_the_region() -> None:
+    text = "○ (사업목적) 중소기업의 지원대상을 넓혀 기술경쟁력을 강화한다"
+
+    (span,) = find_text_regions(text, field_name="purpose_goal")
+
+    assert text[span.content_start : span.content_end].strip() == (
+        "중소기업의 지원대상을 넓혀 기술경쟁력을 강화한다"
+    )
+
+
+# 구분자를 달고 있으면 글머리 없이 이어 붙여도 라벨이다.
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("사업기간 2024~2028년 사업예산 : 35,300백만원", "2024~2028년"),
+        ("사업기간 2024~2028년 지원대상 : 중소기업", "2024~2028년"),
+        ("○ 사업기간 : 2024~2028년 수행기관 : 테크노파크", "2024~2028년"),
+    ],
+)
+def test_a_boundary_word_with_a_separator_ends_the_region(
+    text: str, expected: str
+) -> None:
+    (span,) = find_text_regions(text, field_name="program_period")
+
+    assert text[span.content_start : span.content_end].strip() == expected
+
+
+# 같은 블록 안의 서로 다른 자리는 접지 않는다. 계층 중첩만 접는다.
+def test_two_places_in_one_block_are_both_kept() -> None:
+    regions = _regions(("b0", "○ 사업기간 : 2024~2028년\n○ 사업기간 : 2024~2028년"))
+
+    assert len(regions) == 2
+    assert {r.content_start for r in regions} == {8, 28}
+
+
+# sibling 지배는 구역을 만들지 않는 다른 항목 라벨에서도 끝난다.
+def test_sibling_domination_stops_at_any_form_label() -> None:
+    assert _regions(
+        ("b0", "□ 사업목적"), ("b1", "□ 지원대상 : 중소기업"), field="purpose_goal",
+    ) == []

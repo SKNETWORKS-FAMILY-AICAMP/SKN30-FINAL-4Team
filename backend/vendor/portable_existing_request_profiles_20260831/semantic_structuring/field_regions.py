@@ -36,14 +36,30 @@ _NEXT_LABEL = re.compile(rf"[\n{_REGION_BOUNDARY}]")
 # 서식이 쓰는 다른 항목의 라벨. 여기서 구역을 만들지는 않지만, 만나면 앞 구역의
 # 지배가 끝난다. 글머리 기호 없이 이어 쓴 서식(``□ 사업기간 및 전체예산``)에서
 # 제목의 뒷부분을 값으로 오인하지 않으려면 낱말만으로도 경계가 돼야 한다.
-_BOUNDARY_WORDS = re.compile(
-    r"(?:사업\s*목적|사업\s*기간|사업\s*수행\s*기간|전체\s*추진\s*기간"
+_BOUNDARY_WORD = (
+    r"사업\s*목적|사업\s*기간|사업\s*수행\s*기간|전체\s*추진\s*기간"
     r"|사업\s*예산|전체\s*예산|총\s*사업비|사업\s*필요성"
     r"|지원\s*근거|연계\s*정책|지원\s*대상|지원\s*조건|지원\s*내용"
     r"|지원\s*규모|지원\s*분야|지원\s*기간|수행\s*기관|수행\s*방식"
     r"|사업\s*추진\s*체계|사업\s*추진\s*절차|추진\s*체계|추진\s*절차"
-    r"|기대\s*효과|파급\s*효과|성과\s*지표|사업명)"
+    r"|기대\s*효과|파급\s*효과|성과\s*지표|사업명"
 )
+# 낱말이 본문에 나왔다는 이유로 구역을 끊으면 안 된다. ``중소기업의 지원대상을
+# 넓혀`` 같은 서술에서 사업목적 구역이 세 글자로 잘린다. 낱말이 **라벨 자리**에
+# 있을 때만 경계다 — 줄머리·글머리 기호·여는 괄호 뒤이거나, 제목을 잇는
+# 접속사(``및``·``과``·``와``·``,``·``·``) 뒤일 때.
+# (1) 라벨 자리에 놓인 낱말: 줄머리·글머리·여는 괄호 뒤이거나, 제목을 잇는
+#     접속사 뒤(``□ 사업기간 및 전체예산``).
+_BOUNDARY_LABEL_AT_HEAD = re.compile(
+    rf"(?:^|[\n{_LABEL_BULLETS}(（]|및|과|와|,|/)\s*\(?\s*"
+    rf"(?P<word>{_BOUNDARY_WORD})\s*\)?\s*[:：)]?"
+)
+# (2) 구분자를 달고 있는 낱말: 글머리 없이 이어 붙여도 라벨이다
+#     (``사업기간 2024~2028년 사업예산 : 35,300백만원``).
+_BOUNDARY_LABEL_WITH_SEPARATOR = re.compile(
+    rf"\(?\s*(?P<word>{_BOUNDARY_WORD})\s*\)?\s*[:：)]"
+)
+
 # 라벨만 찍히고 비어 있는 구역은 문서가 정말 비운 것이다. 그것을 추출 누락으로
 # 표시하면 문서의 빈칸을 우리 결함으로 되돌린다.
 _MIN_REGION_CHARS = 2
@@ -61,10 +77,57 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
 _ANY_LABEL = re.compile(
     _LABEL_GRAMMAR.format(
         label="|".join(
-            label for labels in FIELD_LABELS.values() for label in labels
+            [label for labels in FIELD_LABELS.values() for label in labels]
         )
+        + "|"
+        + _BOUNDARY_WORD
     )
 )
+
+
+@dataclass(frozen=True, slots=True)
+class TextRegionSpan:
+    """텍스트 한 벌 안에서 라벨이 지배하는 구간.
+
+    좌표만 말한다. 어느 블록인지, 어느 occurrence 인지, 그 구간으로 무엇을
+    할지는 부르는 쪽이 정한다. 그래서 CandidatePack 블록 텍스트에도 Common IR
+    occurrence 텍스트에도 같은 규칙을 적용할 수 있고, 각 소비자는 자기 좌표
+    원천과 식별자 생성법을 그대로 유지한다.
+    """
+
+    field_name: str
+    label_text: str
+    label_start: int
+    content_start: int
+    content_end: int
+
+
+def find_text_regions(text: str, *, field_name: str) -> list[TextRegionSpan]:
+    """한 텍스트 안에서 그 필드의 라벨이 지배하는 구간을 찾는다.
+
+    라벨만 찍히고 내용이 비어 있는 구간은 돌려주지 않는다 — 문서가 비운 것을
+    추출 누락으로 되돌리지 않기 위해서다. 다음 블록으로 이어지는 지배는 여기서
+    다루지 않는다. 이 함수는 주어진 텍스트 안만 본다.
+    """
+
+    pattern = _PATTERNS.get(field_name)
+    if pattern is None:
+        return []
+    spans: list[TextRegionSpan] = []
+    for match in pattern.finditer(text):
+        end = _region_end(text, match.end())
+        if len(text[match.end() : end].strip()) < _MIN_REGION_CHARS:
+            continue
+        spans.append(
+            TextRegionSpan(
+                field_name=field_name,
+                label_text=match.group().strip(),
+                label_start=match.start(),
+                content_start=match.end(),
+                content_end=end,
+            )
+        )
+    return spans
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,9 +169,10 @@ def _region_end(text: str, label_end: int) -> int:
     bullet = _NEXT_LABEL.search(text, label_end)
     if bullet is not None:
         stop = bullet.start()
-    word = _BOUNDARY_WORDS.search(text, label_end)
-    if word is not None and word.start() < stop:
-        stop = word.start()
+    for boundary in (_BOUNDARY_LABEL_AT_HEAD, _BOUNDARY_LABEL_WITH_SEPARATOR):
+        word = boundary.search(text, label_end)
+        if word is not None and word.start("word") < stop:
+            stop = word.start("word")
     return stop
 
 
@@ -154,21 +218,34 @@ def build_field_regions(
     for index, block in enumerate(blocks):
         text = block.text or ""
         for field in fields:
-            pattern = _PATTERNS.get(field)
-            if pattern is None:
+            if field not in _PATTERNS:
                 continue
-            for match in pattern.finditer(text):
-                end = _region_end(text, match.end())
-                content = text[match.end() : end]
-                host, start, stop = block, match.end(), end
-                if len(content.strip()) < _MIN_REGION_CHARS:
-                    sibling = _sibling_content(blocks, index)
-                    if sibling is None:
-                        continue
-                    host, start, stop = sibling
+            spans = find_text_regions(text, field_name=field)
+            if not spans:
+                # 라벨은 있는데 내용이 비었으면 다음 블록으로 지배가 넘어간다.
+                match = _PATTERNS[field].search(text)
+                if match is None:
+                    continue
+                sibling = _sibling_content(blocks, index)
+                if sibling is None:
+                    continue
+                host, start, stop = sibling
+                spans = [
+                    TextRegionSpan(
+                        field_name=field,
+                        label_text=match.group().strip(),
+                        label_start=match.start(),
+                        content_start=start,
+                        content_end=stop,
+                    )
+                ]
+            else:
+                host = block
+            for span in spans:
+                start, stop = span.content_start, span.content_end
                 region = RequestFieldRegion(
                     field_name=field,
-                    label_text=match.group().strip(),
+                    label_text=span.label_text,
                     block_id=host.block_id,
                     label_block_id=block.block_id,
                     common_ir_block_id=host.common_ir_block_id,
@@ -178,7 +255,7 @@ def build_field_regions(
                     content_end=stop,
                     content_text=(host.text or "")[start:stop],
                     raw_text=(host.text or "")[
-                        match.start() if host is block else start : stop
+                        span.label_start if host is block else start : stop
                     ],
                 )
                 found.append(region)
@@ -195,8 +272,9 @@ def _drop_nested_duplicates(
     세게 된다.
 
     문구가 같다는 이유만으로 접지 않는다. 한 문서에 같은 문구가 서로 다른
-    자리에 두 번 나올 수 있고 그 둘은 서로 다른 근거다. 블록 id 가 서로의
-    접두사일 때 — 곧 같은 자리를 계층만 달리해 가리킬 때 — 만 좁은 쪽을 남긴다.
+    자리에 두 번 나올 수 있고 그 둘은 서로 다른 근거다. 한 블록 안의 두 자리도
+    마찬가지다. 블록 id 가 **서로 다르면서** 한쪽이 다른 쪽의 접두사일 때 —
+    곧 같은 자리를 계층만 달리해 가리킬 때 — 만 좁은 쪽을 남긴다.
     """
 
     kept: list[RequestFieldRegion] = []
@@ -204,6 +282,7 @@ def _drop_nested_duplicates(
         nested = any(
             other.field_name == region.field_name
             and other.content_text == region.content_text
+            and other.block_id != region.block_id
             and other.block_id.startswith(region.block_id)
             for other in kept
         )
@@ -212,4 +291,10 @@ def _drop_nested_duplicates(
     return kept
 
 
-__all__ = ["FIELD_LABELS", "RequestFieldRegion", "build_field_regions"]
+__all__ = [
+    "FIELD_LABELS",
+    "RequestFieldRegion",
+    "TextRegionSpan",
+    "build_field_regions",
+    "find_text_regions",
+]
