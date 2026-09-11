@@ -26,6 +26,7 @@ from .contracts.cpl_result import (
     NO_PROFILE_FIELD,
     PROFILE_FIELD_STATE_MISSING,
     SERVER_RESOLVED_CHECKBOX,
+    SERVER_RESOLVED_PROGRAM_HIERARCHY,
     UNMAPPED_PROFILE_FIELD,
     CplFieldCode,
     CplItem,
@@ -37,6 +38,9 @@ from .contracts.cpl_result import (
 )
 
 _STAGE = "build_cpl_result"
+# AGENTS.md IMPLEMENTATION_PLAN: 「내역사업」 또는 「내내역사업」이 명시됐는지가
+# 계층 확인의 기준이다. 세부사업만으로는 내역사업 존재를 추론하지 않는다.
+_SUB_PROGRAM_LEVELS = frozenset({"sub_program", "sub_sub_program"})
 
 
 def _subfield(
@@ -53,6 +57,8 @@ def _subfield(
     name = field_name_of(path)
     if name == "request_type":
         return _request_type_subfield(profile, path)
+    if path == "program_hierarchy.nodes":
+        return _program_nodes_subfield(profile, path)
     state = states.get(name)
     if state is None:
         # 컨테이너가 아예 없는 경우와 field_states 에만 없는 경우가 같은 결론이다:
@@ -98,6 +104,41 @@ def _request_type_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
         profile_field_name="request_type",
         status=status,
         reason_codes=[SERVER_RESOLVED_CHECKBOX],
+        facts=facts,
+    )
+
+
+def _program_nodes_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
+    """사업 계층도 ``request_type`` 과 같은 이유로 상태를 Rule 로 정한다.
+
+    ``field_states`` 25 개에 ``nodes`` 는 없다. 누락이 아니라 계층이 LLM 의미
+    선택 대상이 아니라서다. 그대로 두면 완전히 접지된 노드가 화면에서 "상태
+    모름" 으로 보이고, 그 하나 때문에 IMPLEMENTATION_PLAN 이 무슨 근거를
+    확보하든 ``needs_confirmation`` 을 벗어나지 못한다.
+
+    등급은 AGENTS.md ``IMPLEMENTATION_PLAN`` 절을 따른다: 세부사업만 명시된
+    경우 내역사업 존재를 추론하지 않고 확인 필요로 둔다. 그 절의 나머지 분기
+    (연차별·내역사업별 계획을 ``source_role`` 로 나눠 판정)는 계층이 아니라
+    추진내용에 걸린 규칙이라 여기서 구현하지 않는다.
+    """
+
+    facts = facts_at(profile, path)
+    nodes = read_path(profile, path)
+    rows = [row for row in nodes if isinstance(row, dict)] if isinstance(nodes, list) else []
+    levels = {row.get("level") for row in rows}
+    if not rows:
+        status = "not_found"
+    elif levels & _SUB_PROGRAM_LEVELS:
+        status = "identified"
+    else:
+        # 세부사업만 있거나 계층을 읽지 못한 경우다. 둘 다 내역사업 존재를
+        # 추론할 근거가 아니므로 부재와 구분해 확인 필요로 둔다.
+        status = "mentioned_unresolved"
+    return CplSubfield(
+        profile_field=path,
+        profile_field_name=field_name_of(path),
+        status=status,
+        reason_codes=[SERVER_RESOLVED_PROGRAM_HIERARCHY],
         facts=facts,
     )
 

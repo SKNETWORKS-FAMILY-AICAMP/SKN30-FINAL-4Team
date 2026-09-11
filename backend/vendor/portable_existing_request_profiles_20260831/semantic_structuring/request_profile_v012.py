@@ -126,7 +126,7 @@ _STAGE_BOUNDARY_FIELDS = frozenset({
 # explicit official open start (``공고일~2027.12.31``) is permitted: it is a
 # named program-boundary event, not an inferred date. Other missing endpoints
 # remain ineligible for a program_period Fact.
-_DATE_RANGE_SEPARATOR = r"\s*(?:~|∼|–|—|-)\s*"
+_DATE_RANGE_SEPARATOR = r"\s*\.?\s*(?:~|∼|–|—|-)\s*"
 _DATE_KOREAN_YEAR_MONTH = r"(?:[’'`]\s*)?\d{2,4}\s*년\s*\d{1,2}\s*월"
 _DATE_KOREAN_MONTH = r"\d{1,2}\s*월"
 _DATE_DOT_YEAR_KOREAN_MONTH = r"(?:[’'`]\s*)?\d{2,4}\s*\.\s*\d{1,2}\s*월"
@@ -144,11 +144,12 @@ _PROGRAM_PERIOD_DATE_RANGE_PATTERN = (
 )
 _PROGRAM_PERIOD_DATE_RANGE = re.compile(rf"^\s*{_PROGRAM_PERIOD_DATE_RANGE_PATTERN}\s*$")
 _PROGRAM_PERIOD_DATE_RANGE_FINDER = re.compile(_PROGRAM_PERIOD_DATE_RANGE_PATTERN)
-# A generic month-only range is valid when the source really omits its year.
-# It is not valid when the candidate finder has merely started after an
-# adjacent dotted year token (``2027. 3월`` -> ``3월``).
+# A genuinely year-less range is valid when the source really omits its year.
+# It is not valid when the candidate finder has merely started immediately
+# after a dotted year token (``2027. 3월`` -> ``3월``, ``2026. 01. 01.`` ->
+# ``01. 01.``).  The ``$`` anchor keeps this to true adjacency, so a year that
+# is separated by any other text never suppresses a candidate.
 _DROPPED_DOTTED_YEAR_PREFIX = re.compile(r"(?:[’'`]\s*)?\d{2,4}\s*\.\s*$")
-_MONTH_ONLY_CANDIDATE_PREFIX = re.compile(r"\d{1,2}\s*월")
 
 
 class ProgramLevel(StrEnum):
@@ -456,7 +457,6 @@ def build_value_span_candidates(pack: CandidatePack) -> list[ValueSpanCandidate]
         raw = block.text[start:end]
         if (
             candidate_kind == "program_period_date_range"
-            and _MONTH_ONLY_CANDIDATE_PREFIX.match(raw)
             and _DROPPED_DOTTED_YEAR_PREFIX.search(block.text[:start])
         ):
             # Keep genuinely year-less ranges available, but never expose a
