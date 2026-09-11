@@ -10,44 +10,34 @@
 서술인지(``추후 결정`` 같은) 명시적 부재인지는 이 정보만으로 갈리지 않는다.
 재검이나 상태 확정은 이 신호를 받은 쪽이 정한다.
 
-라벨 문법은 닫혀 있다. 서식이 정해 둔 표기라 표현이 열려 있지 않고, 실문서
-10 건에서 세 가지 표기가 관측됐다.
+라벨 문법은 여기 있지 않다. ``semantic_structuring.field_regions`` 의 공개
+``find_text_regions()`` 하나를 쓴다. 값 span 후보를 만드는 쪽과 이 감지기가 서로
+다른 구역 정의를 갖고 있으면, 한쪽이 찾는 구역을 다른 쪽이 못 찾는 상태가
+조용히 생긴다.
 
-    ○ 사업목적 :        ○ (사업목적)        ○ 사업 목적 :
-
-의미 키워드 목록을 늘리는 것이 아니다. 새 필드를 다루려면 그 필드의 라벨
-문법을 확인하고 여기에 더한다.
+좌표는 그대로 Common IR occurrence 기준이다. 저쪽은 CandidatePack 블록 좌표를
+쓰지만 규칙만 공유하고 좌표 원천은 각자 유지한다 — ``evidence_ref`` 가 재검
+요청·응답 대조와 FIT fallback 의 식별값이라 기준이 바뀌면 과거 결과와 이어지지
+않는다.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-import re
 from typing import Any
+
+from semantic_structuring.field_regions import find_text_regions
 
 from .analysis_inputs import field_states_by_name, read_path
 
 
-# 글머리 기호·괄호·콜론은 서식마다 다르고 라벨 안 공백도 문서마다 다르다.
-# 라벨 단어 자체는 바꾸지 않는다.
-# 줄머리로 한정하지 않는다. 셀 안 항목을 줄바꿈 없이 이어 쓴 서식이 있어서
-# (``○ 사업기간 … ○ 사업목적 : …``) 줄머리만 보면 그 문서를 통째로 놓친다.
-# 대신 글머리 기호나 줄 경계를 앞에 요구해 본문 속 같은 낱말과 섞이지 않게 한다.
-_LABEL_GRAMMAR = r"(?:^|\n|[○□■●▪·])\s*\(?\s*{label}\s*\)?\s*[:：)]?"
-# 라벨 뒤에 실제 내용이 있어야 한다. 라벨만 찍히고 비어 있는 구역은 문서가
-# 정말 비운 것이지 구조화가 놓친 것이 아니다.
-_NEXT_LABEL = re.compile(r"[\n○□■●▪]")
-_MIN_REGION_CHARS = 2
-
-# 필드 하나에 라벨 하나. 별칭이 필요하면 그 필드의 표기를 실제로 확인한 뒤 더한다.
-_FIELD_LABELS: dict[str, str] = {
-    "comparison_profile.purpose_goal": r"사업\s*목적",
-}
-
-_PATTERNS = {
-    path: re.compile(_LABEL_GRAMMAR.format(label=label))
-    for path, label in _FIELD_LABELS.items()
+# 감시 대상. 프로파일 경로 -> 공용 계산기의 필드 이름.
+# 지금은 사업목적 하나다. 공용 ``FIELD_LABELS`` 에 다른 필드가 있다고 해서 여기를
+# 자동으로 늘리지 않는다. 재검기가 사업목적 의미 축을 대상으로 만들어져 있어서,
+# 다른 필드를 붙이면 재검 범위와 LLM 입력 계약이 함께 달라진다.
+_WATCHED_FIELDS: dict[str, str] = {
+    "comparison_profile.purpose_goal": "purpose_goal",
 }
 
 
@@ -77,30 +67,6 @@ def _occurrences(common_ir: Mapping[str, Any]) -> list[tuple[str, str, str]]:
                     str(occurrence["text"]),
                 ))
     return rows
-
-
-def _region_end(text: str, label_end: int) -> int:
-    """라벨이 지배하는 구역의 끝. 다음 라벨이나 줄 경계에서 끊는다.
-
-    구역을 블록 전체로 잡으면 400 자 한 문단에 여러 항목이 이어진 서식에서
-    사업목적 구역이 예산·지원대상까지 삼킨다. 재검 입력이 그러면 다시 blob 을
-    주는 셈이라 나눈 의미가 없다.
-    """
-
-    boundary = _NEXT_LABEL.search(text, label_end)
-    return boundary.start() if boundary else len(text)
-
-
-def _region_has_content(text: str, label_end: int) -> bool:
-    """라벨 바로 뒤 구역에 실제 글이 있는지 본다.
-
-    ``○ 사업목적 :`` 만 찍혀 있고 곧바로 다음 항목이 오면 문서가 그 구역을
-    비운 것이다. 그것을 추출 누락으로 표시하면 문서의 빈칸을 우리 결함으로
-    되돌린다.
-    """
-
-    region = text[label_end : _region_end(text, label_end)]
-    return len(region.strip()) >= _MIN_REGION_CHARS
 
 
 def evidence_ref(
@@ -146,43 +112,57 @@ def build_fragments(
 ) -> list[CplFragment]:
     """그 필드의 라벨이 지배하는 원문 구역을 모은다. 값을 만들지 않는다."""
 
-    pattern = _PATTERNS.get(profile_field)
-    if pattern is None:
+    field_name = _WATCHED_FIELDS.get(profile_field)
+    if field_name is None:
         return []
     document_id = (common_ir.get("document") or {}).get("document_id")
-    fragments: list[CplFragment] = []
-    # 표는 같은 본문을 계층마다 다시 싣는다(t4 / t4:c5 / t4:c5:p0). 구역 하나를
-    # 계층 수만큼 재검에 넣으면 같은 원문을 여러 번 묻는다. 가장 좁은 occurrence
-    # 하나만 남긴다 — 좌표가 가장 정확하고 그 자리를 유일하게 가리킨다.
-    seen: set[str] = set()
-    by_text: dict[tuple[str, str], CplFragment] = {}
+    found: list[CplFragment] = []
     for block_id, occurrence_id, text in _occurrences(common_ir):
-        for match in pattern.finditer(text):
-            start = match.start()
-            end = _region_end(text, match.end())
-            if len(text[match.end() : end].strip()) < _MIN_REGION_CHARS:
-                continue
-            ref = evidence_ref(document_id, occurrence_id, start, end)
-            if ref in seen:
-                continue
-            seen.add(ref)
-            fragment = CplFragment(
-                evidence_ref=ref,
-                profile_field=profile_field,
-                raw_text=text[start:end],
-                source_role=None,
-                common_ir_document_id=document_id,
-                common_ir_block_id=block_id,
-                common_ir_occurrence_id=occurrence_id,
-                start_char=start,
-                end_char=end,
+        for span in find_text_regions(text, field_name=field_name):
+            start, end = span.label_start, span.content_end
+            found.append(
+                CplFragment(
+                    evidence_ref=evidence_ref(document_id, occurrence_id, start, end),
+                    profile_field=profile_field,
+                    raw_text=text[start:end],
+                    source_role=None,
+                    common_ir_document_id=document_id,
+                    common_ir_block_id=block_id,
+                    common_ir_occurrence_id=occurrence_id,
+                    start_char=start,
+                    end_char=end,
+                )
             )
-            key = (block_id, fragment.raw_text)
-            kept = by_text.get(key)
-            if kept is None or len(occurrence_id) > len(kept.common_ir_occurrence_id):
-                by_text[key] = fragment
-    fragments = list(by_text.values())
-    return fragments
+    return _drop_nested_duplicates(found)
+
+
+def _drop_nested_duplicates(fragments: list[CplFragment]) -> list[CplFragment]:
+    """표 계층이 같은 자리를 다시 실은 것만 접는다.
+
+    표는 한 본문을 부모·셀·문단 occurrence 로 다시 싣는다
+    (``occ:rhwp:t4`` / ``occ:rhwp:t4:c5`` / ``occ:rhwp:t4:c5:p0``). 같은 자리를
+    계층 수만큼 재검에 넣으면 같은 원문을 여러 번 묻는다. 가장 좁은 occurrence
+    하나만 남긴다 — 좌표가 가장 정확하고 그 자리를 유일하게 가리킨다.
+
+    문구가 같다는 이유만으로 접지 않는다. 한 문서에 같은 문구가 서로 다른
+    자리에 두 번 나올 수 있고 그 둘은 서로 다른 근거다. occurrence id 가
+    **서로 다르면서** 한쪽이 다른 쪽의 접두사일 때만 접는다.
+    """
+
+    kept: list[CplFragment] = []
+    for fragment in sorted(fragments, key=lambda f: -len(f.common_ir_occurrence_id)):
+        nested = any(
+            other.common_ir_block_id == fragment.common_ir_block_id
+            and other.raw_text == fragment.raw_text
+            and other.common_ir_occurrence_id != fragment.common_ir_occurrence_id
+            and other.common_ir_occurrence_id.startswith(
+                fragment.common_ir_occurrence_id
+            )
+            for other in kept
+        )
+        if not nested:
+            kept.append(fragment)
+    return kept
 
 
 def detect_coverage_gaps(
@@ -193,7 +173,7 @@ def detect_coverage_gaps(
     states = field_states_by_name(profile)
     texts = _occurrences(common_ir)
     gaps: list[CoverageGap] = []
-    for path, pattern in _PATTERNS.items():
+    for path, field_name in _WATCHED_FIELDS.items():
         name = path.rsplit(".", 1)[-1]
         rows = read_path(profile, path)
         if rows:
@@ -206,10 +186,7 @@ def detect_coverage_gaps(
         found = tuple(
             block_id
             for block_id, _occurrence_id, text in texts
-            if any(
-                _region_has_content(text, match.end())
-                for match in pattern.finditer(text)
-            )
+            if find_text_regions(text, field_name=field_name)
         )
         if found:
             gaps.append(
