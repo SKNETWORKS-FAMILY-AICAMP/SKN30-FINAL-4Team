@@ -17,8 +17,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .cpl_coverage import detect_coverage_gaps
-from .cpl_prompt import PromptUnavailableError, load_purpose_axis_prompt
+from .cpl_coverage import build_fragments, detect_coverage_gaps
+from .cpl_prompt import (
+    PromptUnavailableError,
+    load_purpose_axis_prompt,
+    load_purpose_recheck_prompt,
+)
 from .llm_call import generate
 from .ports.llm import (
     LLMClient,
@@ -46,6 +50,10 @@ from .contracts.cpl_result import (
     PROFILE_FIELD_STATE_MISSING,
     PURPOSE_AXIS_CODES,
     EXTRACTION_COVERAGE_GAP,
+    RECHECK_NO_VALID_OCCURRENCE,
+    RECHECK_RECOVERED,
+    CplEvidence,
+    CplFact,
     PROMPT_UNAVAILABLE,
     PURPOSE_AXIS_UNRESOLVED,
     PurposeAxisAssignment,
@@ -63,6 +71,7 @@ from .contracts.cpl_result import (
 )
 
 _STAGE = "build_cpl_result"
+_RECHECK_STAGE = "cpl_purpose_recheck"
 # AGENTS.md IMPLEMENTATION_PLAN: 「내역사업」 또는 「내내역사업」이 명시됐는지가
 # 계층 확인의 기준이다. 세부사업만으로는 내역사업 존재를 추론하지 않는다.
 _SUB_PROGRAM_LEVELS = frozenset({"sub_program", "sub_sub_program"})
@@ -201,6 +210,10 @@ def _display(subfield: CplSubfield) -> str:
     문서에 내용이 없다고 확정할 수 없다는 것은 확실하다 (초안 §6.1).
     """
 
+    if RECHECK_RECOVERED in subfield.reason_codes:
+        # status 는 구조화 1차 결과(not_found)로 남겨 이력을 지우지 않는다.
+        # 표시는 재검이 확보한 값을 따른다.
+        return display_status("identified")
     if EXTRACTION_COVERAGE_GAP in subfield.reason_codes:
         return NEEDS_CONFIRMATION
     return display_status(subfield.status)
@@ -481,6 +494,164 @@ def _with_coverage_gaps(
     return replace(result, items=items, diagnostics=diagnostics)
 
 
+# ------------------------------------------------------- 구역 재검 (1회 한정)
+
+
+class _RecheckRow(BaseModel):
+    evidence_ref: str
+    raw_text: str
+    axis_code: str
+
+
+class _RecheckResponse(BaseModel):
+    occurrences: list[_RecheckRow]
+
+
+def _recovered_facts(fragments, rows):
+    """검증을 통과한 행만 fact 로 만든다. 탈락 행은 사유와 함께 돌려준다."""
+
+    by_ref = {fragment.evidence_ref: fragment for fragment in fragments}
+    facts = []
+    dropped = []
+    for row in rows:
+        fragment = by_ref.get(row.evidence_ref)
+        if fragment is None:
+            dropped.append(f"{row.evidence_ref}: 요청에 없는 evidence_ref")
+            continue
+        if row.axis_code not in PURPOSE_AXIS_CODES:
+            dropped.append(f"{row.evidence_ref}: 어휘 밖 axis_code")
+            continue
+        offset = fragment.raw_text.find(row.raw_text)
+        if not row.raw_text or offset < 0:
+            dropped.append(f"{row.evidence_ref}: 구역 원문의 부분문자열이 아니다")
+            continue
+        start = fragment.start_char + offset
+        facts.append(
+            CplFact(
+                # 구조화가 만든 id 가 없다. 가짜 id 를 지어내지 않고 그 값이 나온
+                # 구역 참조를 그대로 둔다.
+                fact_id=None,
+                evidence_ref=fragment.evidence_ref,
+                value_raw=row.raw_text,
+                status="identified",
+                source_block_id=fragment.common_ir_block_id,
+                start_char=start,
+                end_char=start + len(row.raw_text),
+                text_basis="cpl_purpose_recheck",
+                evidence=[
+                    CplEvidence(
+                        source_block_id=fragment.common_ir_block_id,
+                        common_ir_document_id=fragment.common_ir_document_id,
+                        common_ir_block_id=fragment.common_ir_block_id,
+                        common_ir_occurrence_ids=[fragment.common_ir_occurrence_id],
+                    )
+                ],
+                axis_code=row.axis_code,
+                axis_quoted_text=row.raw_text,
+            )
+        )
+    return facts, dropped
+
+
+def _recheck(fragments, llm_client, *, model_profile):
+    """구역 원문에서 값과 축을 함께 되찾는다. 같은 입력으로 두 번 부르지 않는다."""
+
+    try:
+        prompt = load_purpose_recheck_prompt()
+    except PromptUnavailableError:
+        return [], PROMPT_UNAVAILABLE, []
+    try:
+        response = generate(
+            llm_client,
+            task_name="cpl_purpose_recheck",
+            instructions=prompt.text,
+            payload={
+                "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
+                "regions": [
+                    {"evidence_ref": row.evidence_ref, "raw_text": row.raw_text}
+                    for row in fragments
+                ],
+            },
+            response_schema=_RecheckResponse,
+            model_profile=model_profile,
+        )
+    except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
+        return [], _TRANSPORT_REASONS[type(error)], []
+    facts, dropped = _recovered_facts(fragments, list(response.occurrences))
+    # 형식은 정상인데 통과한 것이 하나도 없는 경우를 전송 실패와 구분한다.
+    return facts, (None if facts else RECHECK_NO_VALID_OCCURRENCE), dropped
+
+
+def _with_recheck(result, common_ir, llm_client, *, model_profile):
+    """구역 누락 후보가 있으면 그 구역만 한 번 재검한다."""
+
+    target = next(
+        (
+            subfield
+            for item in result.items
+            for subfield in item.subfields
+            if EXTRACTION_COVERAGE_GAP in subfield.reason_codes
+            and subfield.profile_field == _PURPOSE_FIELD
+        ),
+        None,
+    )
+    if target is None:
+        return result
+    fragments = build_fragments(common_ir, profile_field=_PURPOSE_FIELD)
+    if not fragments:
+        return result
+
+    facts, reason, dropped = _recheck(
+        fragments, llm_client, model_profile=model_profile
+    )
+
+    def revise(subfield):
+        if subfield is not target:
+            return subfield
+        if facts:
+            # 되찾았으므로 활성 사유에서 후보 표시를 걷는다. 원래 진단은
+            # diagnostics 에 이력으로 남는다.
+            codes = [c for c in subfield.reason_codes if c != EXTRACTION_COVERAGE_GAP]
+            codes.append(RECHECK_RECOVERED)
+        elif reason:
+            codes = [*subfield.reason_codes, reason]
+        else:
+            codes = list(subfield.reason_codes)
+        # status 는 구조화 1차 결과다. 재검이 되찾았어도 덮어쓰지 않는다 —
+        # 처음에 놓쳤다는 이력이 사라진다.
+        return replace(subfield, reason_codes=codes, facts=[*subfield.facts, *facts])
+
+    items = []
+    for item in result.items:
+        subfields = [revise(row) for row in item.subfields]
+        if subfields == item.subfields:
+            items.append(item)
+            continue
+        status, status_reason = _representative(subfields)
+        items.append(
+            replace(
+                item,
+                subfields=subfields,
+                representative_status=status,
+                status_reason=status_reason,
+            )
+        )
+    detail = f"구역 {len(fragments)}개 재검: 복구 {len(facts)}건"
+    if dropped:
+        detail += f", 탈락 {len(dropped)}건 ({'; '.join(dropped[:3])})"
+    diagnostics = [
+        *result.diagnostics,
+        StageDiagnostic(
+            stage=_RECHECK_STAGE,
+            unit=_PURPOSE_FIELD,
+            reason_code=RECHECK_RECOVERED if facts else (reason or ""),
+            message=detail,
+            attempt=1,
+        ),
+    ]
+    return replace(result, items=items, diagnostics=diagnostics)
+
+
 def analyze_cpl(
     profile: dict[str, Any],
     llm_client: LLMClient,
@@ -501,7 +672,9 @@ def analyze_cpl(
     result = build_cpl_result(profile)
     if common_ir is not None:
         result = _with_coverage_gaps(result, profile, common_ir)
-    return _with_axes(
-        result,
-        _classify(_purpose_facts(result), llm_client, model_profile=model_profile),
-    )
+    facts = _purpose_facts(result)
+    if not facts and common_ir is not None:
+        # 1 차 추출이 값을 못 냈고 구역은 있다. 축만 붙일 대상이 없으므로 값과
+        # 축을 함께 되찾는 재검으로 간다. 문서당 의미 호출은 최대 한 번이다.
+        return _with_recheck(result, common_ir, llm_client, model_profile=model_profile)
+    return _with_axes(result, _classify(facts, llm_client, model_profile=model_profile))

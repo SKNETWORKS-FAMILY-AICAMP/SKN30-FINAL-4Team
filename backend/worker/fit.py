@@ -153,7 +153,10 @@ def _fit_fact_id(fact: CplFact) -> str | None:
         return f"{fact.relation_id}.actions[{fact.member_index}]"
     if fact.fact_id:
         return fact.fact_id
-    return None
+    # CPL 재검으로 복구한 값은 구조화가 만든 id 가 없다. 서버가 검증한 구역
+    # 참조를 그대로 쓴다 — 식별자를 지어내지 않으면서 기존 FIT JSON 키를
+    # 유지한다.
+    return fact.evidence_ref
 
 
 def _fact_id_registry(cpl: CplResult) -> set[str]:
@@ -555,16 +558,20 @@ def _purpose_side(cpl: CplResult, axis: CplAxisCode) -> FitSide:
     해당하는 부분만 좌측에 놓는다 (초안 §7.1 FIT-1).
     """
 
+    # CPL 재검으로 복구한 값은 fact_id 가 없고 evidence_ref 로 접지된다.
+    # 식별자가 없다는 이유로 검증된 근거를 버리지 않는다.
     refs = [
         FitEvidenceRef(
-            fact_id=fact.fact_id,
+            fact_id=identifier,
             field_name="purpose_goal",
             value_raw=fact.axis_quoted_text,
             evidence=list(fact.evidence),
             primary_component_id=fact.primary_component_id,
         )
-        for fact in _facts_at(cpl, _PURPOSE_PATH)
-        if fact.axis_code == axis.value and fact.fact_id
+        for fact, identifier in (
+            (row, _fit_fact_id(row)) for row in _facts_at(cpl, _PURPOSE_PATH)
+        )
+        if fact.axis_code == axis.value and identifier
     ]
     return FitSide(field_names=[f"purpose_goal[{axis.value}]"], facts=refs)
 

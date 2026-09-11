@@ -38,6 +38,8 @@ __all__ = [
     "PURPOSE_AXIS_CODES",
     "cpl_display_code",
     "EXTRACTION_COVERAGE_GAP",
+    "RECHECK_RECOVERED",
+    "RECHECK_NO_VALID_OCCURRENCE",
     "PROMPT_UNAVAILABLE",
     "PURPOSE_AXIS_UNRESOLVED",
     "CplAxisCode",
@@ -201,6 +203,12 @@ PROMPT_UNAVAILABLE = "PROMPT_UNAVAILABLE"
 # 원문에 그 필드의 라벨 구역이 있는데 값이 비었다. 실패 원인이 무엇인지는
 # 모르지만 "문서에 내용이 없다" 고 확정할 수 없다는 것은 확실하다.
 EXTRACTION_COVERAGE_GAP = "EXTRACTION_COVERAGE_GAP"
+# 1차 추출이 놓친 값을 CPL 재검이 되찾았다. subfield.status 는 구조화가 낸
+# not_found 로 남는다 — 처음에 놓쳤다는 이력을 지우지 않는다.
+RECHECK_RECOVERED = "RECHECK_RECOVERED"
+# 재검이 형식은 정상인 응답을 냈는데 검증을 통과한 occurrence 가 하나도 없다.
+# 전송 실패와 구분한다.
+RECHECK_NO_VALID_OCCURRENCE = "RECHECK_NO_VALID_OCCURRENCE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +289,9 @@ class CplFact:
     # 비교 입력은 문장 전체가 아니라 이 구간이다 (초안 §7.1 FIT-1). 축과 짝이라
     # 축이 없으면 이것도 없다.
     axis_quoted_text: str | None = None
+    # CPL 재검으로 복구한 값은 구조화가 만든 fact_id 가 없다. 서버가 가짜 id 를
+    # 지어내는 대신 그 값이 나온 원문 구역 참조를 그대로 둔다.
+    evidence_ref: str | None = None
     # 요청 유형 체크박스 글리프. 서버가 원본 글리프로 정한 값이라
     # 표시 계층까지 원형으로 끌고 간다 (초안 §6).
     selection_glyph_raw: str | None = None

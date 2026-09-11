@@ -23,13 +23,13 @@ from pathlib import Path
 
 PURPOSE_AXIS_PROMPT_VERSION = "cpl-purpose-axis-v0.2"
 PURPOSE_AXIS_PROMPT_ENV = "CPL_PURPOSE_AXIS_PROMPT_PATH"
+# 재검은 구역 원문에서 값과 축을 함께 받는다. 축만 붙이는 1차 분류와 입력이
+# 달라 프롬프트도 따로 둔다.
+PURPOSE_RECHECK_PROMPT_VERSION = "cpl-purpose-recheck-v0.1"
+PURPOSE_RECHECK_PROMPT_ENV = "CPL_PURPOSE_RECHECK_PROMPT_PATH"
 
-_DEFAULT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "config"
-    / "prompts"
-    / f"{PURPOSE_AXIS_PROMPT_VERSION}.txt"
-)
+def _prompt_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "config" / "prompts"
 
 
 class PromptUnavailableError(RuntimeError):
@@ -46,11 +46,9 @@ class Prompt:
     path: str
 
 
-def load_purpose_axis_prompt() -> Prompt:
-    """축 분류 프롬프트를 읽는다. 실패하면 예외를 던진다."""
-
-    override = (os.environ.get(PURPOSE_AXIS_PROMPT_ENV) or "").strip()
-    path = Path(override) if override else _DEFAULT_PATH
+def _load(version: str, env_name: str) -> Prompt:
+    override = (os.environ.get(env_name) or "").strip()
+    path = Path(override) if override else _prompt_dir() / f"{version}.txt"
     try:
         raw = path.read_bytes()
     except OSError as error:
@@ -64,11 +62,23 @@ def load_purpose_axis_prompt() -> Prompt:
     if not text.strip():
         raise PromptUnavailableError(f"축 프롬프트가 비어 있다: {path}")
     return Prompt(
-        version=PURPOSE_AXIS_PROMPT_VERSION,
+        version=version,
         text=text,
         sha256=sha256(raw).hexdigest(),
         path=str(path),
     )
+
+
+def load_purpose_axis_prompt() -> Prompt:
+    """축 분류 프롬프트를 읽는다. 실패하면 예외를 던진다."""
+
+    return _load(PURPOSE_AXIS_PROMPT_VERSION, PURPOSE_AXIS_PROMPT_ENV)
+
+
+def load_purpose_recheck_prompt() -> Prompt:
+    """재검 프롬프트를 읽는다. 실패하면 예외를 던진다."""
+
+    return _load(PURPOSE_RECHECK_PROMPT_VERSION, PURPOSE_RECHECK_PROMPT_ENV)
 
 
 __all__ = [
@@ -76,5 +86,8 @@ __all__ = [
     "PURPOSE_AXIS_PROMPT_ENV",
     "Prompt",
     "PromptUnavailableError",
+    "PURPOSE_RECHECK_PROMPT_VERSION",
+    "PURPOSE_RECHECK_PROMPT_ENV",
     "load_purpose_axis_prompt",
+    "load_purpose_recheck_prompt",
 ]
