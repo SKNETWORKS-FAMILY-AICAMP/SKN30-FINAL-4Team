@@ -165,23 +165,3 @@ def test_compose_defaults_to_loopback_and_secure_session_cookies() -> None:
         '"${PREREVIEW_AUTH_COOKIE_SECURE:-true}"'
     ) in api_section
     assert '${PREREVIEW_AUTH_COOKIE_SECURE:-false}' not in api_section
-
-
-def test_runtime_image_excludes_unimportable_retired_worker_modules() -> None:
-    dockerignore = (
-        __import__("pathlib").Path(__file__).resolve().parents[1] / ".dockerignore"
-    ).read_text(encoding="utf-8").splitlines()
-
-    assert {
-        "worker/analysis.py",
-        "worker/dispatcher.py",
-        "worker/execution_log.py",
-        "worker/jobs.py",
-        "worker/kb_ingest.py",
-        "worker/kb_store.py",
-        "worker/persistence.py",
-        "worker/queue.py",
-        "worker/report_pdf.py",
-    } <= set(dockerignore)
-    assert "worker/ml_reference.py" not in dockerignore
-    assert "worker/adapters/ml_subprocess.py" not in dockerignore

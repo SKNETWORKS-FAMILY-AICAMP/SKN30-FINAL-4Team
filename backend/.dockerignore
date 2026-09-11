@@ -12,18 +12,5 @@ venv
 !**/.env.example
 handover
 
-# Retired pre-rebuild worker paths.  They depend on deleted app.db/app.ports/
-# app.schemas modules and are not reachable from the supported worker.main
-# entrypoint.  Keep those incomplete compatibility modules out of the runtime
-# image while their source history remains available in the working tree.
-worker/analysis.py
-worker/dispatcher.py
-worker/execution_log.py
-worker/jobs.py
-worker/kb_ingest.py
-worker/kb_store.py
 # Active ML boundary modules are retained in the worker image.  Their complete
 # source/artifact root is mounted separately through PREREVIEW_ML_ROOT.
-worker/persistence.py
-worker/queue.py
-worker/report_pdf.py
