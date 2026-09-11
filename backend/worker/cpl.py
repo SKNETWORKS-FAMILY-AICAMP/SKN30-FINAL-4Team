@@ -26,7 +26,7 @@ from .contracts.cpl_result import (
     NO_PROFILE_FIELD,
     PROFILE_FIELD_STATE_MISSING,
     SERVER_RESOLVED_CHECKBOX,
-    SERVER_RESOLVED_PROGRAM_HIERARCHY,
+    SERVER_DERIVED_HIERARCHY_STATE,
     UNMAPPED_PROFILE_FIELD,
     CplFieldCode,
     CplItem,
@@ -109,12 +109,18 @@ def _request_type_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
 
 
 def _program_nodes_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
-    """사업 계층도 ``request_type`` 과 같은 이유로 상태를 Rule 로 정한다.
+    """LLM 이 고른 계층에서 서버가 표시 상태를 계산한다.
 
-    ``field_states`` 25 개에 ``nodes`` 는 없다. 누락이 아니라 계층이 LLM 의미
-    선택 대상이 아니라서다. 그대로 두면 완전히 접지된 노드가 화면에서 "상태
-    모름" 으로 보이고, 그 하나 때문에 IMPLEMENTATION_PLAN 이 무슨 근거를
-    확보하든 ``needs_confirmation`` 을 벗어나지 못한다.
+    ``request_type`` 과는 다르다. 그쪽은 체크박스라 값 자체를 서버가 판정하지만,
+    계층은 LLM 이 고른다 — ``ProgramNodeSelection.level`` 이 응답 계약에 있다.
+    여기서 서버가 하는 일은 그 노드를 읽어 표시 상태를 정하는 것뿐이고, 노드를
+    만들거나 등급을 바꾸지 않는다. 검증을 설계할 때 이 구분이 중요하다:
+    계층이 틀리면 그것은 추출 문제이지 이 함수의 문제가 아니다.
+
+    ``field_states`` 25 개에 ``nodes`` 는 없다. 누락이 아니라 그것이 Raw Fact
+    필드가 아니라서다. 그대로 두면 완전히 접지된 노드가 화면에서 "상태 모름"
+    으로 보이고, 그 하나 때문에 IMPLEMENTATION_PLAN 이 무슨 근거를 확보하든
+    ``needs_confirmation`` 을 벗어나지 못한다.
 
     등급은 AGENTS.md ``IMPLEMENTATION_PLAN`` 절을 따른다: 세부사업만 명시된
     경우 내역사업 존재를 추론하지 않고 확인 필요로 둔다. 그 절의 나머지 분기
@@ -138,7 +144,7 @@ def _program_nodes_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
         profile_field=path,
         profile_field_name=field_name_of(path),
         status=status,
-        reason_codes=[SERVER_RESOLVED_PROGRAM_HIERARCHY],
+        reason_codes=[SERVER_DERIVED_HIERARCHY_STATE],
         facts=facts,
     )
 

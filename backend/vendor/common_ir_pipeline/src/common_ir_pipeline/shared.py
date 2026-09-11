@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 GENERATOR_NAME = "common_ir_v1_adapters"
-GENERATOR_VERSION = "1.0.1"
+GENERATOR_VERSION = "1.1.0"
 SCHEMA_VERSION = "common_ir_v1"
 
 # Source-derived structural boundary markers this project cares about

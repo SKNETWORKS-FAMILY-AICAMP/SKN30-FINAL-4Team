@@ -33,6 +33,11 @@ ponytail: editable install 대신 sys.path 삽입이다. ``profile_structuring``
   문단을 따로 접지한다. 한 문단짜리 셀은 자기 자신이 그 문단이므로 출력이 바뀌지
   않는다. ``role`` 은 닫힌 enum 이라 ``rhwp_cell`` 을 그대로 쓴다. 회귀는
   ``backend/tests/test_rhwp_cell_paragraphs.py`` 가 잠근다.
+
+- 2026-09-11 ``shared.GENERATOR_VERSION`` 1.0.1 -> 1.1.0.
+  위 문단 분리로 산출물 구조가 바뀌었는데 버전이 그대로면 어떤 방식으로 만든
+  근거인지 나중에 구분할 수 없다. ``markdown_fixture`` 는 자기 상수를 쓰고
+  generator 이름도 달라 영향받지 않는다.
 """
 
 from pathlib import Path

@@ -16,7 +16,7 @@ import pytest
 from worker.contracts.cpl_result import (
     CplFieldCode,
     PROFILE_FIELD_STATE_MISSING,
-    SERVER_RESOLVED_PROGRAM_HIERARCHY,
+    SERVER_DERIVED_HIERARCHY_STATE,
 )
 from worker.cpl import build_cpl_result
 
@@ -44,7 +44,7 @@ def test_grounded_nodes_are_never_reported_as_unknown_state() -> None:
     subfield = _nodes_subfield([_DETAIL, _SUB])
 
     assert subfield.status == "identified"
-    assert subfield.reason_codes == [SERVER_RESOLVED_PROGRAM_HIERARCHY]
+    assert subfield.reason_codes == [SERVER_DERIVED_HIERARCHY_STATE]
     assert PROFILE_FIELD_STATE_MISSING not in subfield.reason_codes
     assert len(subfield.facts) == 2
 

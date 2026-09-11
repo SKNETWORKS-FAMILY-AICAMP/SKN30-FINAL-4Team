@@ -207,7 +207,7 @@ _CPL_REASON_SUMMARY = {
     "PROFILE_FIELD_STATE_MISSING": "프로파일 상태를 확인할 수 없습니다.",
     "UNMAPPED_PROFILE_FIELD": "프로파일 필드 연결이 확인되지 않았습니다.",
     "SERVER_RESOLVED_CHECKBOX": "요청유형 체크박스를 서버 규칙으로 확인했습니다.",
-    "SERVER_RESOLVED_PROGRAM_HIERARCHY": "사업 계층을 서버 규칙으로 확인했습니다.",
+    "SERVER_DERIVED_HIERARCHY_STATE": "선택된 사업 계층에서 표시 상태를 계산했습니다.",
 }
 
 
