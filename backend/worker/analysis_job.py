@@ -339,7 +339,7 @@ class CoreAnalysisEngine:
             title=_profile_title(request),
         )
         fit: FitResult = analyze_fit(
-            request,
+            cpl,
             self._llm,
             model_profile=self._fit_model_profile,
             max_repairs=self._max_repairs,

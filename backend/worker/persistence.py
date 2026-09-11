@@ -179,7 +179,11 @@ def _plain(value: Any) -> Any:
     """dataclass 트리를 json 이 아는 모양으로 편다. 값을 바꾸지 않는다."""
 
     if is_dataclass(value) and not isinstance(value, type):
-        return {f.name: _plain(getattr(value, f.name)) for f in fields(value)}
+        return {
+            f.name: _plain(getattr(value, f.name))
+            for f in fields(value)
+            if f.metadata.get("serialize", True)
+        }
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):

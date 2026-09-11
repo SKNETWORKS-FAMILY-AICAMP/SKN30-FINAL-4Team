@@ -161,8 +161,13 @@ def _relation_facts(entry: dict[str, Any]) -> list[CplFact]:
 
     container = entry.get("relation_container")
     actions = entry.get("actions")
-    members: list[tuple[str, Any]] = [(name, entry.get(name)) for name in _RELATION_MEMBERS]
-    members += [("action", row) for row in (actions if isinstance(actions, list) else [])]
+    members: list[tuple[str, int | None, Any]] = [
+        (name, None, entry.get(name)) for name in _RELATION_MEMBERS
+    ]
+    members += [
+        ("action", index, row)
+        for index, row in enumerate(actions if isinstance(actions, list) else [])
+    ]
 
     facts = [
         replace(
@@ -171,8 +176,9 @@ def _relation_facts(entry: dict[str, Any]) -> list[CplFact]:
             normalise_fact({**node, "relation_container": container}),
             relation_id=entry.get(_RELATION_ID_KEY),
             member=member,
+            member_index=member_index,
         )
-        for member, node in members
+        for member, member_index, node in members
         if isinstance(node, dict)
     ]
     # 멤버가 하나도 없는 relation 은 id 와 접지만 남은 한 줄로 둔다. 조용히

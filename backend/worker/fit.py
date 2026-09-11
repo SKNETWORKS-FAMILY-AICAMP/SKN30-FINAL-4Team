@@ -1,10 +1,9 @@
 """Slice 3: Request Profile v0.1.2 → FIT 7관계 판정 (초안 §7.1, §9.0–§9.2.1).
 
-좌우 근거는 전부 프로파일에서 만든다. 다른 관계의 판정 결과를 근거로 쓰지
-않고, 없는 값을 만들어 비교를 성립시키지도 않는다. 그래서
-``app.services.fit`` 아래의 옛 FIT 구현을 import 하지 않는다 — 저쪽은
-CplResult 표시 구조를 다시 해석해서 관계를 만들었고, 그 재해석이 여기서
-금지된 "다른 단계 출력에서 근거 만들기" 다.
+좌우 근거는 CPL이 확정한 ``CplResult`` 에서 만든다. 다른 관계의 판정 결과를
+근거로 쓰지 않고, 없는 값을 만들어 비교를 성립시키지도 않는다. 그래서
+``app.services.fit`` 아래의 옛 FIT 구현을 import 하지 않는다. 워커 CPL 계약이
+확정한 값·상태·근거를 직접 소비하고, FastAPI 표시 모델을 다시 해석하지 않는다.
 (테스트가 worker 소스에 그 모듈 경로 문자열이 없는지도 함께 고정한다.)
 
 수단 배치는 초안 §7.1 표 그대로다.
@@ -33,7 +32,8 @@ from .ports.llm import (
     LLMUnavailableError,
 )
 
-from .analysis_inputs import facts_at, field_name_of, field_states_by_name, read_path
+from .analysis_inputs import field_name_of
+from .contracts.cpl_result import CplFact, CplResult
 from .contracts.fit_result import (
     COMPARISON_EVIDENCE_MISSING,
     COMPARISON_VALUE_INVALID,
@@ -49,7 +49,6 @@ from .contracts.fit_result import (
     PURPOSE_AXIS_CODES,
     SELF_COMPARISON,
     SINGLE_SIDED_NO_CONFLICT,
-    CplEvidence,
     FitEvidenceRef,
     FitRelationId,
     FitRelationResult,
@@ -124,34 +123,54 @@ _RELATION_QUESTION = {
 # ------------------------------------------------------------ 근거 만들기
 
 
-def _fact_id_registry(profile: dict[str, Any]) -> set[str]:
-    """프로파일 안에 실제로 존재하는 모든 항목 id.
+def _facts_at(cpl: CplResult, path: str) -> list[CplFact]:
+    """CPL이 확정한 한 프로파일 경로의 fact만 읽는다."""
 
-    게이트 3번(근거 참조가 실제 fact 로 해소되는가)과 LLM 응답 접지 검사가
-    같은 집합을 본다. 한쪽만 통과하는 id 가 생기지 않게 한 곳에서 만든다.
+    return [
+        fact
+        for item in cpl.items
+        for subfield in item.subfields
+        if subfield.profile_field == path
+        for fact in subfield.facts
+    ]
+
+
+def _all_facts(cpl: CplResult) -> list[CplFact]:
+    return [fact for item in cpl.items for subfield in item.subfields for fact in subfield.facts]
+
+
+def _fit_fact_id(fact: CplFact) -> str | None:
+    """CPL fact 좌표를 기존 FIT fact_id 표기로 옮긴다.
+
+    일반 fact는 원래 id를 그대로 쓰고, id가 없는 delivery 멤버만 CPL이
+    보존한 relation/member 좌표를 기존 공개 표기로 렌더링한다.
     """
 
+    if fact.relation_id and fact.member in {"actor", "role"}:
+        return f"{fact.relation_id}.{fact.member}"
+    if (
+        fact.relation_id
+        and fact.member == "action"
+        and fact.member_index is not None
+    ):
+        return f"{fact.relation_id}.actions[{fact.member_index}]"
+    if fact.fact_id:
+        return fact.fact_id
+    return None
+
+
+def _fact_id_registry(cpl: CplResult) -> set[str]:
+    """CPL facts에 실제로 존재하는 id와 delivery relation id."""
+
     found: set[str] = set()
-    id_keys = (
-        "fact_id",
-        "delivery_relation_id",
-        "program_node_id",
-        "support_component_id",
-    )
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            for key in id_keys:
-                value = node.get(key)
-                if isinstance(value, str):
-                    found.add(value)
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for value in node:
-                walk(value)
-
-    walk(profile)
+    for fact in _all_facts(cpl):
+        if fact.fact_id:
+            found.add(fact.fact_id)
+        if fact.relation_id:
+            found.add(fact.relation_id)
+        rendered = _fit_fact_id(fact)
+        if rendered:
+            found.add(rendered)
     return found
 
 
@@ -161,49 +180,34 @@ def _base_id(fact_id: str) -> str:
     return fact_id.split(".", 1)[0]
 
 
-def _refs_at(profile: dict[str, Any], path: str) -> list[FitEvidenceRef]:
-    """경로 하나를 근거 목록으로 편다. id 가 없는 항목은 인용할 수 없으므로 뺀다."""
+def _refs_at(cpl: CplResult, path: str) -> list[FitEvidenceRef]:
+    """CPL fact를 기존 FIT 근거 모양으로 편다."""
 
     name = field_name_of(path)
-    return [
-        FitEvidenceRef(
-            fact_id=fact.fact_id,
-            field_name=name,
-            value_raw=fact.value_raw,
-            evidence=list(fact.evidence),
-            primary_component_id=fact.primary_component_id,
-        )
-        for fact in facts_at(profile, path)
-        if fact.fact_id
-    ]
+    refs: list[FitEvidenceRef] = []
+    for fact in _facts_at(cpl, path):
+        fact_id = _fit_fact_id(fact)
+        if fact_id:
+            refs.append(
+                FitEvidenceRef(
+                    fact_id=fact_id,
+                    field_name=name,
+                    value_raw=fact.value_raw,
+                    evidence=list(fact.evidence),
+                    primary_component_id=fact.primary_component_id,
+                )
+            )
+    return refs
 
 
-def _side(profile: dict[str, Any], paths: tuple[str, ...]) -> FitSide:
+def _side(cpl: CplResult, paths: tuple[str, ...]) -> FitSide:
     refs: list[FitEvidenceRef] = []
     for path in paths:
-        refs.extend(_refs_at(profile, path))
+        refs.extend(_refs_at(cpl, path))
     return FitSide(field_names=[field_name_of(path) for path in paths], facts=refs)
 
 
-def _evidence_rows(entry: dict[str, Any]) -> list[CplEvidence]:
-    """항목 하나의 Common IR 접지. 없으면 빈 목록이고 지어내지 않는다."""
-
-    rows = entry.get("evidence")
-    if not isinstance(rows, list):
-        rows = []
-    return [
-        CplEvidence(
-            source_block_id=row.get("source_block_id"),
-            common_ir_document_id=row.get("common_ir_document_id"),
-            common_ir_block_id=row.get("common_ir_block_id"),
-            common_ir_occurrence_ids=list(row.get("common_ir_occurrence_ids") or []),
-        )
-        for row in rows
-        if isinstance(row, dict)
-    ]
-
-
-def _delivery_sides(profile: dict[str, Any]) -> tuple[FitSide, FitSide]:
+def _delivery_sides(cpl: CplResult) -> tuple[FitSide, FitSide]:
     """FIT-6 의 좌우. ``delivery_relations`` 컨테이너 안에서 갈린다.
 
     actor 와 role 은 같은 relation 안에 있어 ``fact_id`` 가 없다. 컨테이너 id
@@ -215,53 +219,34 @@ def _delivery_sides(profile: dict[str, Any]) -> tuple[FitSide, FitSide]:
     아니다. Rule 로 CONFLICT 를 만들지 않는다 (초안 §7.1 FIT-6).
     """
 
-    relations = read_path(profile, _DELIVERY_PATH)
-    rows = relations if isinstance(relations, list) else []
     left: list[FitEvidenceRef] = []
     right: list[FitEvidenceRef] = []
-    for row in rows:
-        if not isinstance(row, dict):
+    for fact in _facts_at(cpl, _DELIVERY_PATH):
+        fact_id = _fit_fact_id(fact)
+        if not fact_id:
             continue
-        relation_id = row.get("delivery_relation_id")
-        if not relation_id:
+        if fact.member == "actor":
+            field_name = "delivery_relations.actor"
+            target = left
+        elif fact.member in {"role", "action"}:
+            field_name = (
+                "delivery_relations.role"
+                if fact.member == "role"
+                else "delivery_relations.actions"
+            )
+            target = right
+        else:
             continue
-        container = row.get("relation_container")
-        container_evidence = (
-            _evidence_rows({"evidence": [container]}) if isinstance(container, dict) else []
+        target.append(
+            FitEvidenceRef(
+                fact_id=fact_id,
+                field_name=field_name,
+                value_raw=fact.value_raw,
+                evidence=list(fact.evidence),
+                primary_component_id=fact.primary_component_id,
+            )
         )
-        actor = row.get("actor")
-        if isinstance(actor, dict):
-            left.append(
-                FitEvidenceRef(
-                    fact_id=f"{relation_id}.actor",
-                    field_name="delivery_relations.actor",
-                    value_raw=actor.get("value_raw"),
-                    evidence=_evidence_rows(actor) or container_evidence,
-                )
-            )
-        role = row.get("role")
-        if isinstance(role, dict):
-            right.append(
-                FitEvidenceRef(
-                    fact_id=f"{relation_id}.role",
-                    field_name="delivery_relations.role",
-                    value_raw=role.get("value_raw"),
-                    evidence=_evidence_rows(role) or container_evidence,
-                )
-            )
-        actions = row.get("actions")
-        for index, action in enumerate(actions if isinstance(actions, list) else []):
-            if not isinstance(action, dict):
-                continue
-            right.append(
-                FitEvidenceRef(
-                    fact_id=f"{relation_id}.actions[{index}]",
-                    field_name="delivery_relations.actions",
-                    value_raw=action.get("value_raw"),
-                    evidence=_evidence_rows(action) or container_evidence,
-                )
-            )
-    right.extend(_refs_at(profile, _DELIVERY_METHODS_PATH))
+    right.extend(_refs_at(cpl, _DELIVERY_METHODS_PATH))
     return (
         FitSide(field_names=["delivery_relations.actor"], facts=left),
         FitSide(
@@ -299,7 +284,7 @@ def _gate(left: FitSide, right: FitSide, registry: set[str]) -> str | None:
     return None
 
 
-def _fit5_reason(states: dict[str, dict[str, Any]], left: FitSide) -> str | None:
+def _fit5_reason(cpl: CplResult, left: FitSide) -> str | None:
     """FIT-5 만의 부재·실패 구분 (초안 §7.1 "단순 조건 미기재와 추출 실패").
 
     문서에 있는 조건을 "조건 없음" 으로 단정하지 않는다. 그래서 상태가
@@ -310,8 +295,11 @@ def _fit5_reason(states: dict[str, dict[str, Any]], left: FitSide) -> str | None
     if not left.facts:
         return COMPARISON_EVIDENCE_MISSING
     statuses = [
-        (states.get(field_name_of(path)) or {}).get("status")
+        subfield.status
         for path in _CONDITION_PATHS
+        for item in cpl.items
+        for subfield in item.subfields
+        if subfield.profile_field == path
     ]
     if any(status in ("extraction_failed", "mentioned_unresolved") for status in statuses):
         return COMPARISON_EVIDENCE_MISSING
@@ -425,7 +413,7 @@ def _axis_values(
     return grouped, invalid
 
 
-def _fit7(profile: dict[str, Any]) -> FitRelationResult:
+def _fit7(cpl: CplResult) -> FitRelationResult:
     """FIT-7: 같은 component 안에서 같은 축의 값 집합을 비교한다.
 
     ``total_budget`` · ``cost_sharing`` 은 입력이 아니다 (초안 §7.1).
@@ -433,8 +421,8 @@ def _fit7(profile: dict[str, Any]) -> FitRelationResult:
     "400만원 vs 150만원" 같은 분할 지급 단계액이 거짓 충돌이 된다.
     """
 
-    left = _side(profile, (_CONTENT_PATH,))
-    right = _side(profile, (_SCALE_PATH,))
+    left = _side(cpl, (_CONTENT_PATH,))
+    right = _side(cpl, (_SCALE_PATH,))
     diagnostics: list[StageDiagnostic] = []
 
     def result(status: FitStatus, reason: str | None) -> FitRelationResult:
@@ -580,7 +568,7 @@ def _generate(
 
 
 def _classify_purpose_axes(
-    profile: dict[str, Any],
+    cpl: CplResult,
     llm_client: LLMClient,
     *,
     model_profile: str,
@@ -598,7 +586,7 @@ def _classify_purpose_axes(
     않는다.
     """
 
-    facts = [fact for fact in facts_at(profile, _PURPOSE_PATH) if fact.fact_id]
+    facts = [fact for fact in _facts_at(cpl, _PURPOSE_PATH) if fact.fact_id]
     if not facts:
         return PurposeAxisClassification(
             attempted=False, reason_code=COMPARISON_EVIDENCE_MISSING
@@ -710,7 +698,7 @@ def _classify_purpose_axes(
 
 
 def _purpose_side(
-    profile: dict[str, Any],
+    cpl: CplResult,
     classification: PurposeAxisClassification,
     axis: PurposeAxisCode,
 ) -> FitSide:
@@ -720,7 +708,7 @@ def _purpose_side(
     해당하는 부분만 좌측에 놓는다 (초안 §7.1 FIT-1).
     """
 
-    by_id = {fact.fact_id: fact for fact in facts_at(profile, _PURPOSE_PATH)}
+    by_id = {fact.fact_id: fact for fact in _facts_at(cpl, _PURPOSE_PATH)}
     refs = [
         FitEvidenceRef(
             fact_id=row.fact_id,
@@ -950,16 +938,15 @@ def _compare_relations(
 
 
 def analyze_fit(
-    profile: dict[str, Any],
+    cpl: CplResult,
     llm_client: LLMClient,
     *,
     model_profile: str,
     max_repairs: int = 1,
 ) -> FitResult:
-    """프로파일 dict 하나를 FIT 7관계 결과로 옮긴다. 예외를 던지지 않는다."""
+    """CPL 결과 하나를 FIT 7관계 결과로 옮긴다. 예외를 던지지 않는다."""
 
-    registry = _fact_id_registry(profile)
-    states = field_states_by_name(profile)
+    registry = _fact_id_registry(cpl)
     diagnostics: list[StageDiagnostic] = []
     results: dict[FitRelationId, FitRelationResult] = {}
 
@@ -983,17 +970,17 @@ def analyze_fit(
     )
 
     # FIT-7: Rule. LLM 을 타지 않으므로 응답 실패의 영향도 받지 않는다.
-    results[FitRelationId.FIT_7] = _fit7(profile)
+    results[FitRelationId.FIT_7] = _fit7(cpl)
 
-    # 나머지 다섯 관계의 우측(그리고 FIT-5·6 의 좌측)은 프로파일에서 바로 나온다.
-    delivery_left, delivery_right = _delivery_sides(profile)
+    # 나머지 다섯 관계의 우측(그리고 FIT-5·6 의 좌측)은 CPL에서 바로 나온다.
+    delivery_left, delivery_right = _delivery_sides(cpl)
     sides: dict[FitRelationId, tuple[FitSide, FitSide]] = {
-        FitRelationId.FIT_1: (FitSide(), _side(profile, _TARGET_PATHS)),
-        FitRelationId.FIT_2: (FitSide(), _side(profile, _MEANS_PATHS)),
-        FitRelationId.FIT_3: (FitSide(), _side(profile, _EFFECT_PATHS)),
+        FitRelationId.FIT_1: (FitSide(), _side(cpl, _TARGET_PATHS)),
+        FitRelationId.FIT_2: (FitSide(), _side(cpl, _MEANS_PATHS)),
+        FitRelationId.FIT_3: (FitSide(), _side(cpl, _EFFECT_PATHS)),
         FitRelationId.FIT_5: (
-            _side(profile, _TARGET_PATHS),
-            _side(profile, _CONDITION_PATHS),
+            _side(cpl, _TARGET_PATHS),
+            _side(cpl, _CONDITION_PATHS),
         ),
         FitRelationId.FIT_6: (delivery_left, delivery_right),
     }
@@ -1007,7 +994,7 @@ def analyze_fit(
     ]
     if needs_axis:
         classification = _classify_purpose_axes(
-            profile, llm_client, model_profile=model_profile, diagnostics=diagnostics
+            cpl, llm_client, model_profile=model_profile, diagnostics=diagnostics
         )
     else:
         classification = PurposeAxisClassification(
@@ -1015,14 +1002,14 @@ def analyze_fit(
         )
     for relation_id, axis in _PURPOSE_AXIS_OF.items():
         sides[relation_id] = (
-            _purpose_side(profile, classification, axis),
+            _purpose_side(cpl, classification, axis),
             sides[relation_id][1],
         )
 
     pending: dict[FitRelationId, tuple[FitSide, FitSide]] = {}
     for relation_id, (left, right) in sides.items():
         reason = (
-            _fit5_reason(states, left) if relation_id is FitRelationId.FIT_5 else None
+            _fit5_reason(cpl, left) if relation_id is FitRelationId.FIT_5 else None
         )
         if reason is None:
             reason = _gate(left, right, registry)
@@ -1079,16 +1066,11 @@ def analyze_fit(
             used_right_fact_ids=used_right,
         )
 
-    metadata = profile.get("processing_metadata") or {}
-    documents = profile.get("source_documents") or []
-    first_ir = documents[0].get("common_ir", {}) if documents else {}
     return FitResult(
         relations=[results[relation_id] for relation_id in FitRelationId],
         purpose_axis=classification,
-        profile_id=profile.get("profile_id"),
-        common_ir_document_id=(
-            metadata.get("common_ir_document_id") or first_ir.get("document_id")
-        ),
+        profile_id=cpl.profile_id,
+        common_ir_document_id=cpl.common_ir_document_id,
         model_profile=model_profile,
         ruleset_version=FIT_RULESET_VERSION,
         prompt_version=FIT_PROMPT_VERSION,

@@ -198,6 +198,12 @@ class CplFact:
     # 남긴다. 없는 id 를 지어내지 않고, 셋 중 하나를 대표로 고르지도 않는다.
     relation_id: str | None = None
     member: str | None = None
+    # ``actions`` 는 같은 relation 안에 여러 항목이 있을 수 있어 순번을
+    # 보존한다. 내부 FIT 입력 좌표로만 쓰며 공개 result_data에는 직렬화하지
+    # 않는다.
+    member_index: int | None = field(
+        default=None, repr=False, metadata={"serialize": False}
+    )
     # 요청 유형 체크박스 글리프. 서버가 원본 글리프로 정한 값이라
     # 표시 계층까지 원형으로 끌고 간다 (초안 §6).
     selection_glyph_raw: str | None = None

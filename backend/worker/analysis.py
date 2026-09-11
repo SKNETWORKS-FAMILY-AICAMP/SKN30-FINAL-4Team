@@ -341,7 +341,7 @@ def run_analysis(
 
     try:
         fit = analyze_fit(
-            profile,
+            cpl,
             active_llm,
             model_profile=fit_model_profile,
             max_repairs=max_repairs,

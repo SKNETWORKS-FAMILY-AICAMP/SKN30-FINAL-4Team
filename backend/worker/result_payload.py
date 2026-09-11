@@ -28,7 +28,11 @@ def plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: plain(getattr(value, field.name)) for field in fields(value)}
+        return {
+            field.name: plain(getattr(value, field.name))
+            for field in fields(value)
+            if field.metadata.get("serialize", True)
+        }
     if isinstance(value, Mapping):
         return {str(plain(key)): plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
