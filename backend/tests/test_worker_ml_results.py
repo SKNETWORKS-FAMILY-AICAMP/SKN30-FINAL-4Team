@@ -144,7 +144,8 @@ def test_core_engine_runs_all_ml_models_and_exposes_only_public_fields(
     )
     engine = analysis_job.CoreAnalysisEngine(
         _NoCallLLM(),
-        fit_model_profile="fit",
+        cpl_model_profile="cpl",
+            fit_model_profile="fit",
         sim_model_profile="sim",
         ml_models={
             MlModelId.MODEL_1_SUPPORT_TYPE: model_1,

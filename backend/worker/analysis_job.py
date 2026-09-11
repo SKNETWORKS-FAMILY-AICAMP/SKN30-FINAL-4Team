@@ -23,7 +23,7 @@ from .contracts.fit_result import FitResult
 from .contracts.ml_result import MlModelId
 from .contracts.profile_snapshot import CommonIrArtifact
 from .contracts.sim_result import SimComparisonResult, SimCommonProfile
-from .cpl import build_cpl_result
+from .cpl import analyze_cpl
 from .fit import analyze_fit
 from .ml_reference import MlModel, run_ml_reference
 from .ports.embedding import EmbeddingClient
@@ -311,12 +311,15 @@ class CoreAnalysisEngine:
         self,
         llm_client: LLMClient,
         *,
+        cpl_model_profile: str,
         fit_model_profile: str,
         sim_model_profile: str,
         max_repairs: int = 1,
         ml_models: Mapping[MlModelId, MlModel | None] | None = None,
     ) -> None:
         self._llm = llm_client
+        # CPL 의 의미 축 분류용. 구조화·FIT 과 다른 작업이라 프로필을 따로 둔다.
+        self._cpl_model_profile = cpl_model_profile
         self._fit_model_profile = fit_model_profile
         self._sim_model_profile = sim_model_profile
         self._max_repairs = max_repairs
@@ -330,7 +333,12 @@ class CoreAnalysisEngine:
         candidates: Sequence[ExistingProfileDocument],
     ) -> Mapping[str, Any]:
         request = dict(profile)
-        cpl: CplResult = build_cpl_result(request)
+        cpl: CplResult = analyze_cpl(
+            request,
+            self._llm,
+            model_profile=self._cpl_model_profile,
+            common_ir=common_ir,
+        )
         ml_result = run_ml_reference(
             request,
             self._ml_models,

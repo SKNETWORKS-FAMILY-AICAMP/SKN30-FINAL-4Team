@@ -354,7 +354,9 @@ def build_worker() -> WorkerComposition:
     openai = OpenAIConfig.from_env()
     llm = OpenAILLMClient(
         api_key=openai.api_key,
-        model_profiles=openai.llm_model_profiles("request_profile", "fit", "sim"),
+        model_profiles=openai.llm_model_profiles(
+            "request_profile", "cpl", "fit", "sim"
+        ),
         timeout_seconds=openai.timeout_seconds,
     )
     embedding = OpenAIEmbeddingClient(
@@ -382,6 +384,7 @@ def build_worker() -> WorkerComposition:
         embedding_client=embedding,
         analysis_engine=CoreAnalysisEngine(
             llm,
+            cpl_model_profile="cpl",
             fit_model_profile="fit",
             sim_model_profile="sim",
             max_repairs=openai.max_repairs,

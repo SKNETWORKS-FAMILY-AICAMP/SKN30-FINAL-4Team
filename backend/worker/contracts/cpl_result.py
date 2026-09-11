@@ -37,6 +37,7 @@ __all__ = [
     "CPL_DISPLAY_STATUSES",
     "PURPOSE_AXIS_CODES",
     "cpl_display_code",
+    "EXTRACTION_COVERAGE_GAP",
     "PROMPT_UNAVAILABLE",
     "PURPOSE_AXIS_UNRESOLVED",
     "CplAxisCode",
@@ -197,6 +198,9 @@ PURPOSE_AXIS_UNRESOLVED = "PURPOSE_AXIS_UNRESOLVED"
 # 버전 프롬프트 파일을 읽지 못했다. 기본 문구로 대체하지 않는다 — 어떤 문구로
 # 만든 분류인지 말할 수 없는 결과를 내느니 축을 비운다.
 PROMPT_UNAVAILABLE = "PROMPT_UNAVAILABLE"
+# 원문에 그 필드의 라벨 구역이 있는데 값이 비었다. 실패 원인이 무엇인지는
+# 모르지만 "문서에 내용이 없다" 고 확정할 수 없다는 것은 확실하다.
+EXTRACTION_COVERAGE_GAP = "EXTRACTION_COVERAGE_GAP"
 
 
 @dataclass(frozen=True, slots=True)

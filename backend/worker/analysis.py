@@ -63,7 +63,7 @@ from .profiles import (
 )
 from .sim import SIM_COMPARISON_PROMPT_VERSION, SIM_SCORING_VERSION
 from .sim_inputs import SIM_RULESET_VERSION, build_common_profile
-from .cpl import build_cpl_result
+from .cpl import analyze_cpl
 from .fit import analyze_fit
 
 __all__ = ["analyse_case", "run_analysis"]
@@ -337,7 +337,14 @@ def run_analysis(
 
     # 이 단계는 결정적이고, 입력 프로파일이 이미 검증됐다는 전제에서 예외를
     # 만들지 않는다.
-    cpl = build_cpl_result(profile)
+    # common_ir 이 Artifact 면 경로만 들고 있어 구역 감지에 쓸 수 없다. 문서
+    # 본문을 받은 경우에만 넘긴다 — 없으면 감지를 건너뛸 뿐 값은 그대로다.
+    cpl = analyze_cpl(
+        profile,
+        active_llm,
+        model_profile=model_profile,
+        common_ir=common_ir if isinstance(common_ir, Mapping) else None,
+    )
 
     try:
         fit = analyze_fit(

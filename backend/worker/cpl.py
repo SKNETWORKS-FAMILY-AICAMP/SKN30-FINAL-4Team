@@ -12,10 +12,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel
 
+from .cpl_coverage import detect_coverage_gaps
 from .cpl_prompt import PromptUnavailableError, load_purpose_axis_prompt
 from .llm_call import generate
 from .ports.llm import (
@@ -43,6 +45,7 @@ from .contracts.cpl_result import (
     NO_PROFILE_FIELD,
     PROFILE_FIELD_STATE_MISSING,
     PURPOSE_AXIS_CODES,
+    EXTRACTION_COVERAGE_GAP,
     PROMPT_UNAVAILABLE,
     PURPOSE_AXIS_UNRESOLVED,
     PurposeAxisAssignment,
@@ -187,7 +190,20 @@ def _representative(subfields: list[CplSubfield]) -> tuple[str, str | None]:
 
     if not subfields:
         return NEEDS_CONFIRMATION, NO_PROFILE_FIELD
-    return aggregate_display(display_status(sub.status) for sub in subfields), None
+    return aggregate_display(_display(sub) for sub in subfields), None
+
+
+def _display(subfield: CplSubfield) -> str:
+    """하위 필드 하나의 표시값.
+
+    구조화 상태는 ``not_found`` 그대로 두되, 원문에 그 구역이 있는데 값이
+    비었다면 표시는 "내용 없음" 이 아니다. 실패 원인이 무엇인지는 몰라도
+    문서에 내용이 없다고 확정할 수 없다는 것은 확실하다 (초안 §6.1).
+    """
+
+    if EXTRACTION_COVERAGE_GAP in subfield.reason_codes:
+        return NEEDS_CONFIRMATION
+    return display_status(subfield.status)
 
 
 def build_cpl_result(profile: dict[str, Any]) -> CplResult:
@@ -411,11 +427,66 @@ def _with_axes(
     )
 
 
+def _with_coverage_gaps(
+    result: CplResult, profile: dict[str, Any], common_ir: Mapping[str, Any]
+) -> CplResult:
+    """라벨 구역은 있는데 값이 빈 필드에 사유를 단다. 값·축은 만들지 않는다."""
+
+    gaps = {gap.profile_field: gap for gap in detect_coverage_gaps(profile, common_ir)}
+    if not gaps:
+        return result
+
+    def mark(subfield: CplSubfield) -> CplSubfield:
+        gap = gaps.get(subfield.profile_field)
+        if gap is None or EXTRACTION_COVERAGE_GAP in subfield.reason_codes:
+            return subfield
+        # 상태는 구조화가 낸 것을 그대로 둔다. 사유만 더한다.
+        return replace(
+            subfield,
+            reason_codes=[*subfield.reason_codes, EXTRACTION_COVERAGE_GAP],
+        )
+
+    items = []
+    for item in result.items:
+        subfields = [mark(row) for row in item.subfields]
+        if subfields == item.subfields:
+            items.append(item)
+            continue
+        # 사유가 붙었으면 대표 표시도 다시 접는다. 상태를 바꾸지 않고 사유만
+        # 더해 놓으면 화면은 여전히 "내용 없음" 이다.
+        status, reason = _representative(subfields)
+        items.append(
+            replace(
+                item,
+                subfields=subfields,
+                representative_status=status,
+                status_reason=reason,
+            )
+        )
+    diagnostics = [
+        *result.diagnostics,
+        *(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=gap.profile_field,
+                reason_code=EXTRACTION_COVERAGE_GAP,
+                message=(
+                    f"원문 {', '.join(gap.label_block_ids)} 에 라벨 구역이 있으나 "
+                    f"값이 비었다 (상태 {gap.status})."
+                ),
+            )
+            for gap in gaps.values()
+        ),
+    ]
+    return replace(result, items=items, diagnostics=diagnostics)
+
+
 def analyze_cpl(
     profile: dict[str, Any],
     llm_client: LLMClient,
     *,
     model_profile: str,
+    common_ir: Mapping[str, Any] | None = None,
 ) -> CplResult:
     """CPL 13항목에 의미 축까지 확정한다. 예외를 던지지 않는다.
 
@@ -428,6 +499,8 @@ def analyze_cpl(
     """
 
     result = build_cpl_result(profile)
+    if common_ir is not None:
+        result = _with_coverage_gaps(result, profile, common_ir)
     return _with_axes(
         result,
         _classify(_purpose_facts(result), llm_client, model_profile=model_profile),
