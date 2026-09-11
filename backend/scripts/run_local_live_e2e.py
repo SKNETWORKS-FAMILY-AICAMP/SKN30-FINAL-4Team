@@ -38,6 +38,9 @@ DEFAULT_SOURCE = (
 DEFAULT_BACKEND_ENV = BACKEND_ROOT / ".env"
 DEFAULT_SUPABASE_ENV = REPOSITORY_ROOT / ".runtime" / "supabase-dev" / ".env"
 TEST_ORIGIN = "http://e2e.local"
+# Deployment default, and the retrieval breadth the stored traces under
+# .runtime/pipeline-traces were produced with.  Keep runs comparable.
+DEFAULT_TOP_K = 5
 
 
 class E2EFailure(RuntimeError):
@@ -51,7 +54,15 @@ def _required(values: dict[str, str | None], name: str) -> str:
     return value
 
 
-def _configure_environment(root_env: Path, supabase_env: Path) -> None:
+def _configure_environment(
+    root_env: Path,
+    supabase_env: Path,
+    *,
+    llm_model: str | None = None,
+    top_k: int = DEFAULT_TOP_K,
+) -> None:
+    if not 1 <= top_k <= 100:
+        raise E2EFailure("--top-k must be between 1 and 100")
     provider = dotenv_values(root_env)
     local = dotenv_values(supabase_env)
     password = _required(local, "POSTGRES_PASSWORD")
@@ -72,16 +83,15 @@ def _configure_environment(root_env: Path, supabase_env: Path) -> None:
         "SUPABASE_ANON_KEY": _required(local, "ANON_KEY"),
         "SUPABASE_SERVICE_ROLE_KEY": _required(local, "SERVICE_ROLE_KEY"),
         "OPENAI_API_KEY": _required(provider, "OPENAI_API_KEY"),
-        "OPENAI_LLM_MODEL": str(
-            provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-luna"
-        ),
+        "OPENAI_LLM_MODEL": llm_model
+        or str(provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-luna"),
         "OPENAI_EMBEDDING_MODEL": str(
             provider.get("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-small"
         ),
         "OPENAI_TIMEOUT_SECONDS": str(
             provider.get("OPENAI_TIMEOUT_SECONDS") or "120"
         ),
-        "PREREVIEW_WORKER_TOP_K": "1",
+        "PREREVIEW_WORKER_TOP_K": str(top_k),
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
         "PREREVIEW_FREETYPE_LIB": "/lib/x86_64-linux-gnu/libfreetype.so.6",
     }
@@ -121,7 +131,59 @@ async def _create_confirmed_test_user() -> tuple[str, str, str]:
     return user_id, email, password
 
 
-async def _run(source: Path) -> dict[str, object]:
+def _validated_source(source: Path) -> tuple[bytes, str]:
+    """Read and validate the exact upload bytes and return their MIME type."""
+
+    content = source.read_bytes()
+    from app.models.pipeline import PipelineKind
+    from app.pipelines.formats import validate_format
+
+    try:
+        decision = validate_format(PipelineKind.REQUEST, source, content=content)
+    except ValueError as error:
+        raise E2EFailure(f"--file format is invalid: {error}") from None
+    return content, decision.mime_type
+
+
+def _write_trace(
+    trace_dir: Path,
+    *,
+    upload: object,
+    common_ir: object,
+    structured_profile: object,
+    result: dict[str, object],
+) -> None:
+    """Write the actual E2E stage outputs without rerunning any stage."""
+
+    if trace_dir.exists():
+        raise E2EFailure("--trace-dir must not already exist")
+    trace_dir.mkdir(parents=True)
+    stages = (
+        ("00_upload.json", upload),
+        ("01_common_ir.json", common_ir),
+        ("02_structured_profile.json", structured_profile),
+        ("03_cpl.json", result.get("cpl")),
+        ("04_fit.json", result.get("fit")),
+        ("05_sim.json", result.get("sim")),
+        ("06_ml.json", result.get("ml")),
+        ("07_result.json", result),
+    )
+    for name, payload in stages:
+        (trace_dir / name).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+
+async def _run(
+    source: Path,
+    *,
+    trace_dir: Path | None = None,
+    source_content: bytes | None = None,
+    source_mime_type: str | None = None,
+) -> dict[str, object]:
+    if source_content is None or source_mime_type is None:
+        source_content, source_mime_type = _validated_source(source)
     # Import only after the environment is complete: both composition roots
     # intentionally read their deployment configuration at construction time.
     from main import create_app
@@ -154,8 +216,8 @@ async def _run(source: Path) -> dict[str, object]:
             files={
                 "file": (
                     source.name,
-                    source.read_bytes(),
-                    "application/vnd.hancom.hwpx",
+                    source_content,
+                    source_mime_type,
                 )
             },
         )
@@ -200,7 +262,26 @@ async def _run(source: Path) -> dict[str, object]:
                 f"FastAPI result read failed with HTTP {result.status_code}"
             )
         body = result.json()
-        return {
+        if not isinstance(body, dict):
+            raise E2EFailure("FastAPI result response contract is invalid")
+        if trace_dir is not None:
+            # The persisted artifacts are the exact structure consumed by the
+            # worker below; exporting them here avoids a second parse/LLM run.
+            cached = composition.handler._store.cached_request_profile(
+                analysis_run_id=run_id
+            )
+            if cached is None:
+                raise E2EFailure("worker did not persist the structured profile")
+            _write_trace(
+                trace_dir,
+                upload=payload,
+                common_ir=composition.handler._load_json_artifact(cached.common_ir),
+                structured_profile=composition.handler._load_json_artifact(
+                    cached.structured_profile
+                ),
+                result=body,
+            )
+        outcome: dict[str, object] = {
             "status": "ok",
             "test_user_id": user_id,
             "analysis_run_id": run_id,
@@ -211,6 +292,9 @@ async def _run(source: Path) -> dict[str, object]:
             "sim_candidates": len(body.get("sim", {}).get("candidates", [])),
             "evidences": len(body.get("evidences", [])),
         }
+        if trace_dir is not None:
+            outcome["trace_dir"] = str(trace_dir)
+        return outcome
 
 
 def main() -> int:
@@ -225,11 +309,45 @@ def main() -> int:
         help="FastAPI/worker runtime .env (default: backend/.env)",
     )
     parser.add_argument("--supabase-env", type=Path, default=DEFAULT_SUPABASE_ENV)
+    parser.add_argument(
+        "--llm-model",
+        help="override OPENAI_LLM_MODEL for this one E2E run",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=DEFAULT_TOP_K,
+        help=(
+            "SIM retrieval breadth for this run "
+            f"(default: {DEFAULT_TOP_K}; the deployment default and the "
+            "baseline the stored traces were produced with)"
+        ),
+    )
+    parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        help="new directory for actual Common IR, profile, CPL, FIT, SIM, ML, and result JSON",
+    )
     args = parser.parse_args()
-    if not args.file.is_file() or args.file.suffix.lower() != ".hwpx":
-        raise E2EFailure("--file must be an existing HWPX file")
-    _configure_environment(args.backend_env, args.supabase_env)
-    result = asyncio.run(_run(args.file.resolve()))
+    if not args.file.is_file():
+        raise E2EFailure("--file must be an existing HWP or HWPX file")
+    source_content, source_mime_type = _validated_source(args.file)
+    if args.trace_dir is not None and args.trace_dir.exists():
+        raise E2EFailure("--trace-dir must not already exist")
+    _configure_environment(
+        args.backend_env,
+        args.supabase_env,
+        llm_model=args.llm_model,
+        top_k=args.top_k,
+    )
+    result = asyncio.run(
+        _run(
+            args.file.resolve(),
+            trace_dir=args.trace_dir.resolve() if args.trace_dir is not None else None,
+            source_content=source_content,
+            source_mime_type=source_mime_type,
+        )
+    )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 
