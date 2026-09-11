@@ -141,9 +141,17 @@ def test_a_compound_heading_is_not_a_value_region(text: str) -> None:
     assert _regions(("b0", text), field="purpose_goal") == []
 
 
-# 복합 제목 뒤에 실제 값 블록이 오면 그 블록이 구역이 된다.
-def test_a_compound_heading_takes_the_following_value_block() -> None:
-    regions = _regions(("b0", "□ 사업기간 및 전체예산"), ("b1", " 2024 ~ 2028 (5년)"))
+# 복합 제목은 뒤 블록으로 지배를 넘기지도 않는다. ``□ 사업기간 및 전체예산`` 다음
+# 값이 사업기간의 것인지 전체예산의 것인지 원문만으로 가릴 수 없다. 라벨이 다른
+# 라벨에 잘려 비었을 때는 이어받지 않는 쪽이 맞다 — 추측으로 남의 값을 가져오는
+# 것보다 비워 두고 재검에 맡기는 편이 낫다.
+def test_a_compound_heading_does_not_hand_over_to_the_next_block() -> None:
+    assert _regions(("b0", "□ 사업기간 및 전체예산"), ("b1", " 2024 ~ 2028 (5년)")) == []
+
+
+# 반면 단독 제목은 넘긴다. 뒤 값이 누구 것인지 모호하지 않다.
+def test_a_single_heading_takes_the_following_value_block() -> None:
+    regions = _regions(("b0", "□ 사업기간"), ("b1", " 2024 ~ 2028 (5년)"))
 
     assert len(regions) == 1
     assert regions[0].block_id == "b1"
@@ -261,3 +269,81 @@ def test_sibling_domination_stops_at_any_form_label() -> None:
     assert _regions(
         ("b0", "□ 사업목적"), ("b1", "□ 지원대상 : 중소기업"), field="purpose_goal",
     ) == []
+
+
+# --- include_empty / continues_to_sibling ---------------------------------
+# 라벨이 아예 없는 것과 라벨은 있는데 비어 있는 것은 다른 사실이다. 다음 블록으로
+# 지배가 넘어가는지는 그 구분에서만 나온다.
+
+@pytest.mark.parametrize("text", ["□ 사업목적", "□ 사업목적 ", "□ 사업목적\n"])
+def test_a_label_that_runs_out_of_text_may_continue_to_a_sibling(text: str) -> None:
+    assert find_text_regions(text, field_name="purpose_goal") == []
+
+    (span,) = find_text_regions(text, field_name="purpose_goal", include_empty=True)
+
+    assert span.content_start >= span.content_end or not text[
+        span.content_start : span.content_end
+    ].strip()
+    assert span.continues_to_sibling is True
+
+
+# 다음 라벨 때문에 비었으면 넘기지 않는다. 뒤따르는 내용은 남의 값이다.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "○ 사업목적 ○ 사업기간 : 2024~2028년",
+        "○ 사업목적\n○ 사업기간 : 2024~2028년",
+        "○ 사업목적 지원대상 : 중소기업",
+    ],
+)
+def test_a_label_cut_by_the_next_label_never_continues(text: str) -> None:
+    (span,) = find_text_regions(text, field_name="purpose_goal", include_empty=True)
+
+    assert span.continues_to_sibling is False
+
+
+# 내용이 있는 구간은 예전과 같고 이어받지 않는다.
+def test_a_filled_region_is_unchanged_and_never_continues() -> None:
+    text = "○ 사업목적 : 기술경쟁력 강화"
+
+    (default,) = find_text_regions(text, field_name="purpose_goal")
+    (with_empty,) = find_text_regions(
+        text, field_name="purpose_goal", include_empty=True
+    )
+
+    assert default == with_empty
+    assert default.continues_to_sibling is False
+    assert text[default.content_start : default.content_end].strip() == "기술경쟁력 강화"
+
+
+# 접속사는 라벨 **바로 뒤** 에서만 복합 제목을 만든다. 본문 한가운데의 ``성과``
+# 마지막 글자나 ``산업·`` 의 가운뎃점이 접속사로 읽히면 구역이 거기서 잘린다.
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("○ 사업목적 : 성과 지원대상을 넓힌다", "성과 지원대상을 넓힌다"),
+        ("○ 사업목적 : 산업·지원대상 기업의 경쟁력을 강화한다", "산업·지원대상 기업의 경쟁력을 강화한다"),
+        ("○ 사업목적 : 기술과 지원내용을 함께 본다", "기술과 지원내용을 함께 본다"),
+    ],
+)
+def test_a_conjunction_inside_running_text_does_not_cut_the_region(
+    text: str, expected: str
+) -> None:
+    (span,) = find_text_regions(text, field_name="purpose_goal")
+
+    assert text[span.content_start : span.content_end].strip() == expected
+
+
+# 라벨 바로 뒤의 접속사는 복합 제목이다.
+@pytest.mark.parametrize(
+    ("text", "field"),
+    [
+        ("□ 사업기간 및 전체예산", "program_period"),
+        ("□ 사업목적 및 사업필요성", "purpose_goal"),
+        ("○ 지원내용·지원규모", "purpose_goal"),
+    ],
+)
+def test_a_conjunction_right_after_the_label_makes_a_compound_heading(
+    text: str, field: str
+) -> None:
+    assert find_text_regions(text, field_name=field) == []

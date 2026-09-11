@@ -27,7 +27,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from semantic_structuring.field_regions import find_text_regions
+from semantic_structuring.field_regions import (
+    find_text_regions,
+    starts_with_form_label,
+)
 
 from .analysis_inputs import field_states_by_name, read_path
 
@@ -105,6 +108,12 @@ class CplFragment:
     common_ir_occurrence_id: str
     start_char: int
     end_char: int
+    # 라벨이 앞 블록에 있고 내용이 뒤따라온 경우의 라벨 좌표. ``evidence_ref`` 는
+    # 언제나 내용 occurrence 를 가리킨다 — 저것은 "어느 원문 span 인가" 를 말하고
+    # 필드 귀속은 ``profile_field`` 가 따로 담는다. 라벨 좌표를 ref 문자열에
+    # 합치면 같은 span 이 라벨에 따라 다른 id 를 갖게 되어 대조가 깨진다.
+    label_block_id: str | None = None
+    label_occurrence_id: str | None = None
 
 
 def build_fragments(
@@ -116,24 +125,84 @@ def build_fragments(
     if field_name is None:
         return []
     document_id = (common_ir.get("document") or {}).get("document_id")
+    rows = _occurrences(common_ir)
     found: list[CplFragment] = []
-    for block_id, occurrence_id, text in _occurrences(common_ir):
-        for span in find_text_regions(text, field_name=field_name):
+    for index, (block_id, occurrence_id, text) in enumerate(rows):
+        # 기본 호출이 곧 "내용이 있는 구간" 이다. 빈 구간의 판단 기준을 여기서
+        # 다시 만들지 않는다.
+        filled = find_text_regions(text, field_name=field_name)
+        for span in filled:
             start, end = span.label_start, span.content_end
             found.append(
-                CplFragment(
-                    evidence_ref=evidence_ref(document_id, occurrence_id, start, end),
-                    profile_field=profile_field,
-                    raw_text=text[start:end],
-                    source_role=None,
-                    common_ir_document_id=document_id,
-                    common_ir_block_id=block_id,
-                    common_ir_occurrence_id=occurrence_id,
-                    start_char=start,
-                    end_char=end,
+                _fragment(
+                    document_id, profile_field, block_id, occurrence_id,
+                    text, start, end,
+                )
+            )
+        if filled:
+            continue
+        # 라벨은 있는데 텍스트가 끝나서 비었으면 지배가 다음 occurrence 로
+        # 넘어간다. 다음 라벨 때문에 비었다면 넘기지 않는다.
+        spans = find_text_regions(text, field_name=field_name, include_empty=True)
+        if any(span.continues_to_sibling for span in spans):
+            sibling = _sibling_content(rows, index)
+            if sibling is None:
+                continue
+            next_block_id, next_occurrence_id, next_text = sibling
+            found.append(
+                _fragment(
+                    document_id, profile_field, next_block_id, next_occurrence_id,
+                    next_text, 0, len(next_text),
+                    label_block_id=block_id, label_occurrence_id=occurrence_id,
                 )
             )
     return _drop_nested_duplicates(found)
+
+
+def _fragment(
+    document_id: str | None,
+    profile_field: str,
+    block_id: str,
+    occurrence_id: str,
+    text: str,
+    start: int,
+    end: int,
+    *,
+    label_block_id: str | None = None,
+    label_occurrence_id: str | None = None,
+) -> CplFragment:
+    return CplFragment(
+        evidence_ref=evidence_ref(document_id, occurrence_id, start, end),
+        profile_field=profile_field,
+        raw_text=text[start:end],
+        source_role=None,
+        common_ir_document_id=document_id,
+        common_ir_block_id=block_id,
+        common_ir_occurrence_id=occurrence_id,
+        start_char=start,
+        end_char=end,
+        label_block_id=label_block_id,
+        label_occurrence_id=label_occurrence_id,
+    )
+
+
+def _sibling_content(
+    rows: list[tuple[str, str, str]], index: int
+) -> tuple[str, str, str] | None:
+    """라벨 occurrence 다음에서 그 라벨이 지배하는 내용 occurrence 를 찾는다.
+
+    다음 라벨을 만나면 지배가 끝난다 — 남의 값을 가져오지 않는다.
+    """
+
+    for block_id, occurrence_id, text in rows[index + 1 :]:
+        if not text.strip():
+            continue
+        if starts_with_form_label(text):
+            return None
+        return block_id, occurrence_id, text
+    return None
+
+
 
 
 def _drop_nested_duplicates(fragments: list[CplFragment]) -> list[CplFragment]:
@@ -171,7 +240,6 @@ def detect_coverage_gaps(
     """라벨 구역이 있는데 값이 비어 있는 필드를 모은다. 상태를 바꾸지 않는다."""
 
     states = field_states_by_name(profile)
-    texts = _occurrences(common_ir)
     gaps: list[CoverageGap] = []
     for path, field_name in _WATCHED_FIELDS.items():
         name = path.rsplit(".", 1)[-1]
@@ -183,10 +251,14 @@ def detect_coverage_gaps(
         # 추출 누락으로 되돌리지 않는다.
         if state == "not_applicable":
             continue
+        # 판정 기준을 ``build_fragments`` 와 합친다. 따로 세면 라벨과 내용이
+        # 다른 블록에 있는 서식에서 fragment 는 만들어지는데 gap 이 안 잡혀,
+        # 재검이 target 을 못 찾고 그 fragment 가 쓰이지 않는다.
         found = tuple(
-            block_id
-            for block_id, _occurrence_id, text in texts
-            if find_text_regions(text, field_name=field_name)
+            dict.fromkeys(
+                fragment.label_block_id or fragment.common_ir_block_id
+                for fragment in build_fragments(common_ir, profile_field=path)
+            )
         )
         if found:
             gaps.append(

@@ -48,18 +48,27 @@ _BOUNDARY_WORD = (
 # 넓혀`` 같은 서술에서 사업목적 구역이 세 글자로 잘린다. 낱말이 **라벨 자리**에
 # 있을 때만 경계다 — 줄머리·글머리 기호·여는 괄호 뒤이거나, 제목을 잇는
 # 접속사(``및``·``과``·``와``·``,``·``·``) 뒤일 때.
-# (1) 라벨 자리에 놓인 낱말: 줄머리·글머리·여는 괄호 뒤이거나, 제목을 잇는
-#     접속사 뒤(``□ 사업기간 및 전체예산``).
-_BOUNDARY_LABEL_AT_HEAD = re.compile(
-    rf"(?:^|[\n{_LABEL_BULLETS}(（]|및|과|와|,|/)\s*\(?\s*"
+# (1) 복합 제목: 라벨 **바로 뒤** 에 접속사로 이어 붙인 다른 항목.
+#     ``□ 사업기간 및 전체예산`` · ``지원내용·지원규모``.
+#     텍스트 아무 데서나 찾으면 안 된다. ``성과 지원대상`` 의 ``과``,
+#     ``산업·지원대상`` 의 ``·`` 가 접속사로 읽혀 본문 한가운데서 구역이
+#     잘린다. 그래서 ``label_end`` 에 붙여서만(anchored) 본다.
+_COMPOUND_HEADING = re.compile(
+    # ``match(text, label_end)`` 가 이미 그 자리에 고정한다. ``^`` 를 쓰면
+    # 문자열 머리에서만 맞아 라벨 뒤에서는 영영 매치되지 않는다.
+    rf"\s*(?:및|과|와|·|,|/)\s*\(?\s*"
     rf"(?P<word>{_BOUNDARY_WORD})\s*\)?\s*[:：)]?"
 )
-# (2) 구분자를 달고 있는 낱말: 글머리 없이 이어 붙여도 라벨이다
+# (2) 줄머리·글머리 뒤의 항목 라벨. 위치가 이미 경계라 검색해도 안전하다.
+_BOUNDARY_LABEL_AT_HEAD = re.compile(
+    rf"(?:^|[\n{_REGION_BOUNDARY}(（])\s*\(?\s*"
+    rf"(?P<word>{_BOUNDARY_WORD})\s*\)?\s*[:：)]?"
+)
+# (3) 구분자를 달고 있는 항목 라벨: 글머리 없이 이어 붙여도 라벨이다
 #     (``사업기간 2024~2028년 사업예산 : 35,300백만원``).
 _BOUNDARY_LABEL_WITH_SEPARATOR = re.compile(
     rf"\(?\s*(?P<word>{_BOUNDARY_WORD})\s*\)?\s*[:：)]"
 )
-
 # 라벨만 찍히고 비어 있는 구역은 문서가 정말 비운 것이다. 그것을 추출 누락으로
 # 표시하면 문서의 빈칸을 우리 결함으로 되돌린다.
 _MIN_REGION_CHARS = 2
@@ -100,14 +109,26 @@ class TextRegionSpan:
     label_start: int
     content_start: int
     content_end: int
+    # 내용이 비어 있고, 그 이유가 **텍스트가 끝나서** 일 때만 참이다. 다음
+    # 라벨이 구역을 끊어 비었다면 거짓 — 그 자리는 문서가 비운 것이고 뒤따르는
+    # 내용은 남의 값이다. 다음 블록으로 지배를 넘길지는 이 값만 보고 정한다.
+    continues_to_sibling: bool = False
 
 
-def find_text_regions(text: str, *, field_name: str) -> list[TextRegionSpan]:
+def find_text_regions(
+    text: str, *, field_name: str, include_empty: bool = False
+) -> list[TextRegionSpan]:
     """한 텍스트 안에서 그 필드의 라벨이 지배하는 구간을 찾는다.
 
-    라벨만 찍히고 내용이 비어 있는 구간은 돌려주지 않는다 — 문서가 비운 것을
-    추출 누락으로 되돌리지 않기 위해서다. 다음 블록으로 이어지는 지배는 여기서
-    다루지 않는다. 이 함수는 주어진 텍스트 안만 본다.
+    기본값은 내용이 있는 구간만 돌려준다. 라벨만 찍히고 비어 있는 구간은 문서가
+    비운 것이지 구조화가 놓친 것이 아니라서, 그것을 추출 누락으로 되돌리지 않기
+    위해서다.
+
+    ``include_empty=True`` 는 빈 구간도 돌려준다. 라벨이 아예 없는 것과 라벨은
+    있는데 비어 있는 것은 다른 사실이고, 다음 블록으로 지배가 넘어가는지는 그
+    구분에서만 나온다. 넘어갈 수 있는지는 ``continues_to_sibling`` 이 말한다.
+
+    이 함수는 주어진 텍스트 안만 본다. 다음 블록을 찾아가는 일은 부르는 쪽이다.
     """
 
     pattern = _PATTERNS.get(field_name)
@@ -116,7 +137,8 @@ def find_text_regions(text: str, *, field_name: str) -> list[TextRegionSpan]:
     spans: list[TextRegionSpan] = []
     for match in pattern.finditer(text):
         end = _region_end(text, match.end())
-        if len(text[match.end() : end].strip()) < _MIN_REGION_CHARS:
+        empty = len(text[match.end() : end].strip()) < _MIN_REGION_CHARS
+        if empty and not include_empty:
             continue
         spans.append(
             TextRegionSpan(
@@ -125,6 +147,8 @@ def find_text_regions(text: str, *, field_name: str) -> list[TextRegionSpan]:
                 label_start=match.start(),
                 content_start=match.end(),
                 content_end=end,
+                # 뒤에 남은 것이 공백뿐이면 텍스트가 끝나서 빈 것이다.
+                continues_to_sibling=empty and not text[end:].strip(),
             )
         )
     return spans
@@ -169,6 +193,9 @@ def _region_end(text: str, label_end: int) -> int:
     bullet = _NEXT_LABEL.search(text, label_end)
     if bullet is not None:
         stop = bullet.start()
+    compound = _COMPOUND_HEADING.match(text, label_end)
+    if compound is not None:
+        stop = min(stop, compound.start("word"))
     for boundary in (_BOUNDARY_LABEL_AT_HEAD, _BOUNDARY_LABEL_WITH_SEPARATOR):
         word = boundary.search(text, label_end)
         if word is not None and word.start("word") < stop:
@@ -176,7 +203,15 @@ def _region_end(text: str, label_end: int) -> int:
     return stop
 
 
-def _starts_with_any_label(text: str) -> bool:
+def starts_with_form_label(text: str) -> bool:
+    """텍스트 머리에 서식 항목 라벨이 오는가.
+
+    구역을 만드는 필드뿐 아니라 경계로만 쓰는 항목 라벨(``지원대상``,
+    ``사업예산`` …)도 포함한다. 앞 라벨의 지배는 여기서 끝난다 — 남의 값을
+    가져오지 않는다. 부르는 쪽이 구역을 만드는 필드 목록만 알아서는 이 판단을
+    할 수 없으므로 공개한다.
+    """
+
     match = _ANY_LABEL.search(text)
     return match is not None and not text[: match.start()].strip()
 
@@ -194,7 +229,7 @@ def _sibling_content(
         text = following.text or ""
         if not text.strip():
             continue
-        if _starts_with_any_label(text):
+        if starts_with_form_label(text):
             return None
         return following, 0, len(text)
     return None
@@ -220,11 +255,21 @@ def build_field_regions(
         for field in fields:
             if field not in _PATTERNS:
                 continue
-            spans = find_text_regions(text, field_name=field)
-            if not spans:
-                # 라벨은 있는데 내용이 비었으면 다음 블록으로 지배가 넘어간다.
-                match = _PATTERNS[field].search(text)
-                if match is None:
+            spans = find_text_regions(text, field_name=field, include_empty=True)
+            filled = [s for s in spans if not s.continues_to_sibling]
+            filled = [
+                s
+                for s in filled
+                if len(text[s.content_start : s.content_end].strip())
+                >= _MIN_REGION_CHARS
+            ]
+            if filled:
+                spans, host = filled, block
+            else:
+                # 라벨은 있는데 텍스트가 끝나서 비었다면 지배가 다음 블록으로
+                # 넘어간다. 다음 라벨 때문에 비었다면 넘기지 않는다.
+                carry = [s for s in spans if s.continues_to_sibling]
+                if not carry:
                     continue
                 sibling = _sibling_content(blocks, index)
                 if sibling is None:
@@ -233,14 +278,12 @@ def build_field_regions(
                 spans = [
                     TextRegionSpan(
                         field_name=field,
-                        label_text=match.group().strip(),
-                        label_start=match.start(),
+                        label_text=carry[0].label_text,
+                        label_start=carry[0].label_start,
                         content_start=start,
                         content_end=stop,
                     )
                 ]
-            else:
-                host = block
             for span in spans:
                 start, stop = span.content_start, span.content_end
                 region = RequestFieldRegion(
@@ -297,4 +340,5 @@ __all__ = [
     "TextRegionSpan",
     "build_field_regions",
     "find_text_regions",
+    "starts_with_form_label",
 ]

@@ -344,3 +344,91 @@ def test_a_table_region_is_asked_once_not_once_per_layer() -> None:
     assert len(fragments) == 1
     # 가장 좁은 occurrence 가 그 자리를 가장 정확히 가리킨다.
     assert fragments[0].common_ir_occurrence_id == "occ:rhwp:t4:c5:p0"
+
+
+from worker.cpl_coverage import build_fragments  # noqa: E402
+
+
+# --- 라벨과 내용이 다른 블록에 있는 서식 -----------------------------------
+# 새 HWP 는 ``□ 사업목적`` 만 있는 블록 뒤에 내용이 따라온다. 지배가 넘어가되
+# ``evidence_ref`` 는 **내용 occurrence** 를 가리킨다 — 그 문자열의 역할은
+# "어느 원문 span 인가" 이고, 필드 귀속은 ``profile_field`` 가 따로 담는다.
+
+def _sibling_ir(*paragraphs: str) -> dict[str, object]:
+    return {
+        "document": {"document_id": "hwp:doc"},
+        "blocks": [
+            {
+                "block_id": f"hwp:b{index}",
+                "reading_order": index,
+                "occurrences": [
+                    {"occurrence_id": f"occ:p{index}", "text": text}
+                ],
+            }
+            for index, text in enumerate(paragraphs)
+        ],
+    }
+
+
+def test_a_label_only_block_hands_the_region_to_the_next_block() -> None:
+    fragments = build_fragments(
+        _sibling_ir("□ 사업목적", " ㅇ ICT혁신기업의 기술개발 지원"),
+        profile_field="comparison_profile.purpose_goal",
+    )
+
+    assert len(fragments) == 1
+    fragment = fragments[0]
+    # ref 는 내용 occurrence 다. 라벨 좌표를 문자열에 합치지 않는다.
+    assert fragment.evidence_ref == "hwp:doc#occ:p1@0-19"
+    assert fragment.common_ir_occurrence_id == "occ:p1"
+    assert fragment.label_occurrence_id == "occ:p0"
+    assert fragment.label_block_id == "hwp:b0"
+    assert fragment.raw_text.strip() == "ㅇ ICT혁신기업의 기술개발 지원"
+
+
+def test_domination_stops_at_the_next_form_label() -> None:
+    assert build_fragments(
+        _sibling_ir("□ 사업목적", "□ 지원대상 : 중소기업"),
+        profile_field="comparison_profile.purpose_goal",
+    ) == []
+
+
+# 같은 블록 안에서 다음 라벨에 잘려 빈 구역은 넘기지 않는다.
+def test_a_region_cut_by_the_next_label_does_not_reach_the_next_block() -> None:
+    assert build_fragments(
+        _sibling_ir("○ 사업목적 ○ 사업기간 : 2024~2028년", " ㅇ 남의 값"),
+        profile_field="comparison_profile.purpose_goal",
+    ) == []
+
+
+# 같은 블록에서 끝나는 기존 서식은 라벨 provenance 가 없다.
+def test_a_same_block_region_carries_no_label_provenance() -> None:
+    (fragment,) = build_fragments(
+        _sibling_ir("○ (사업목적) 기술경쟁력을 강화한다"),
+        profile_field="comparison_profile.purpose_goal",
+    )
+
+    assert fragment.label_block_id is None
+    assert fragment.label_occurrence_id is None
+    assert fragment.evidence_ref.startswith("hwp:doc#occ:p0@0-")
+
+
+# gap 판정은 fragment 와 같은 기준이어야 한다. 따로 세면 라벨과 내용이 갈린
+# 서식에서 fragment 는 있는데 gap 이 없어 재검이 target 을 못 찾는다.
+def test_a_sibling_region_is_a_gap_candidate() -> None:
+    ir = _sibling_ir("□ 사업목적", " ㅇ 실제 목적 내용")
+    profile = _profile([], "not_found")
+
+    gaps = detect_coverage_gaps(profile, ir)
+
+    assert len(gaps) == 1
+    # 라벨 블록을 가리킨다 — 사람이 원문에서 찾아갈 자리다.
+    assert gaps[0].label_block_ids == ("hwp:b0",)
+    assert len(build_fragments(ir, profile_field=_PURPOSE)) == 1
+
+
+def test_a_label_followed_by_another_form_label_is_not_a_gap() -> None:
+    ir = _sibling_ir("□ 사업목적", "□ 지원대상 : 중소기업")
+
+    assert detect_coverage_gaps(_profile([], "not_found"), ir) == []
+    assert build_fragments(ir, profile_field=_PURPOSE) == []

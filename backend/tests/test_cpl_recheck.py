@@ -190,3 +190,62 @@ def test_one_semantic_call_per_document() -> None:
     _run(llm)
 
     assert len(llm.tasks) == 1
+
+
+# --- 라벨과 내용이 다른 블록에 있는 서식 -----------------------------------
+# 값 span 후보 쪽과 달리 재검은 gap 이 먼저 붙어야 돈다. 라벨과 내용이 갈린
+# 서식에서 fragment 만 만들어지고 gap 이 안 잡히면, 만들어 둔 fragment 가
+# 파이프라인에서 한 번도 쓰이지 않는다.
+
+_SIBLING_LABEL = "□ 사업목적"
+_SIBLING_CONTENT = " ㅇ ICT혁신기업의 기술개발을 단계별로 지원"
+
+
+def _sibling_ir(second: str = _SIBLING_CONTENT) -> dict[str, Any]:
+    return {
+        "document": {"document_id": "hwp:d2"},
+        "blocks": [
+            {
+                "block_id": "hwp:b0", "reading_order": 0,
+                "occurrences": [{"occurrence_id": "occ:p0", "text": _SIBLING_LABEL}],
+            },
+            {
+                "block_id": "hwp:b1", "reading_order": 1,
+                "occurrences": [{"occurrence_id": "occ:p1", "text": second}],
+            },
+        ],
+    }
+
+
+def test_a_sibling_region_reaches_the_recheck() -> None:
+    ir = _sibling_ir()
+    fragments = build_fragments(ir, profile_field=_PURPOSE)
+    assert len(fragments) == 1
+    llm = _Llm([{
+        "evidence_ref": fragments[0].evidence_ref,
+        "raw_text": "ICT혁신기업",
+        "axis_code": CplAxisCode.TARGET_CONDITION.value,
+    }])
+
+    result = analyze_cpl(_empty_profile(), llm, model_profile="cpl", common_ir=ir)
+
+    _item, subfield = _purpose(result)
+    # gap 이 붙어야 재검이 돌고, 돌아야 값이 되돌아온다.
+    assert llm.tasks == ["cpl_purpose_recheck"]
+    assert RECHECK_RECOVERED in subfield.reason_codes
+    assert [fact.value_raw for fact in subfield.facts] == ["ICT혁신기업"]
+    # ref 는 내용 occurrence 를 가리킨다.
+    assert subfield.facts[0].evidence_ref.startswith("hwp:d2#occ:p1@")
+
+
+def test_a_label_followed_by_another_form_label_never_rechecks() -> None:
+    llm = _Llm([])
+
+    result = analyze_cpl(
+        _empty_profile(), llm, model_profile="cpl",
+        common_ir=_sibling_ir("□ 지원대상 : 중소기업"),
+    )
+
+    _item, subfield = _purpose(result)
+    assert llm.tasks == []
+    assert EXTRACTION_COVERAGE_GAP not in subfield.reason_codes
