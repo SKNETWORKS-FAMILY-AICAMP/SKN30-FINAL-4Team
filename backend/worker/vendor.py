@@ -21,6 +21,18 @@ ponytail: editable install 대신 sys.path 삽입이다. ``profile_structuring``
   ``_MONTH_ONLY_CANDIDATE_PREFIX`` 조건을 걷어냈다. ``2027. 3월`` 만 막고
   점 표기를 놓치던 조건이다. 회귀는 ``backend/tests/test_program_period_candidates.py``
   가 잠근다.
+
+- 2026-09-11 ``adapters/rhwp.py`` ``emit_table``.
+  표 셀의 문단을 ``"
+".join()`` 으로 합쳐 occurrence 하나만 냈다. 투영
+  코드(``common_ir_v1``)는 ``cell["text_occurrence_ids"]`` 를 문단으로 열거하는데
+  항상 1 개라 계약이 끊겨 있었고, 공문 서식처럼 한 셀에 사업기간부터 수행기관까지
+  담긴 문서는 26 문단 1000 자가 후보 블록 하나가 됐다. LLM 이 그 안에서 20 여 개
+  필드의 정확한 문자 좌표를 한꺼번에 골라야 해서 같은 문서·같은 모델에서도 런마다
+  결과가 달라졌다. 셀은 whole-cell occurrence 를 ``evidence_ids`` 로 유지한 채
+  문단을 따로 접지한다. 한 문단짜리 셀은 자기 자신이 그 문단이므로 출력이 바뀌지
+  않는다. ``role`` 은 닫힌 enum 이라 ``rhwp_cell`` 을 그대로 쓴다. 회귀는
+  ``backend/tests/test_rhwp_cell_paragraphs.py`` 가 잠근다.
 """
 
 from pathlib import Path
