@@ -12,6 +12,8 @@ from dataclasses import dataclass
 import logging
 import math
 import os
+from pathlib import Path
+import shutil
 import socket
 import sys
 from uuid import uuid4
@@ -20,6 +22,14 @@ from dotenv import load_dotenv
 
 from worker.adapters.openai_embedding_client import OpenAIEmbeddingClient
 from worker.adapters.openai_llm_client import OpenAILLMClient
+from worker.adapters.ml_subprocess import (
+    Model1SubprocessMlModel,
+    Model2SubprocessMlModel,
+    Model3SubprocessMlModel,
+    model1_command,
+    model2_command,
+    model3_command,
+)
 from worker.analysis_job import (
     AnalysisJobHandler,
     CoreAnalysisEngine,
@@ -38,9 +48,17 @@ from worker.runtime import (
 )
 from worker.profiles import DEFAULT_PARSE_TIMEOUT_SECONDS
 from worker.supabase_storage import SupabaseWorkerStorage
+from worker.contracts.ml_result import MlModelId
+from worker.ml_reference import (
+    MlModel,
+    missing_artifact_model,
+    missing_runtime_model,
+)
 
 
 LOGGER = logging.getLogger(__name__)
+DEFAULT_ML_ROOT = Path(__file__).resolve().parents[2] / "ml"
+DEFAULT_ML_TIMEOUT_SECONDS = 180.0
 
 
 class WorkerConfigurationError(RuntimeError):
@@ -61,6 +79,10 @@ class WorkerSettings:
     storage_timeout_seconds: float = 30.0
     database_connect_timeout_seconds: int = 10
     parse_timeout_seconds: float = DEFAULT_PARSE_TIMEOUT_SECONDS
+    ml_root: Path = DEFAULT_ML_ROOT
+    model1_serving_dir: Path | None = None
+    ml_python_executable: str | None = None
+    ml_timeout_seconds: float = DEFAULT_ML_TIMEOUT_SECONDS
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "WorkerSettings":
@@ -89,6 +111,9 @@ class WorkerSettings:
         top_k = _positive_int(values, "PREREVIEW_WORKER_TOP_K", 5)
         if top_k > 100:
             raise WorkerConfigurationError("PREREVIEW_WORKER_TOP_K must be at most 100")
+        ml_root = _optional_path(values, "PREREVIEW_ML_ROOT") or DEFAULT_ML_ROOT
+        model1_serving_dir = _optional_path(values, "PREREVIEW_MODEL1_SERVING_DIR")
+        ml_python_executable = _optional_string(values, "PREREVIEW_ML_PYTHON_EXECUTABLE")
         return cls(
             database_url=database_url,
             supabase_url=_required(values, "SUPABASE_URL").rstrip("/"),
@@ -111,6 +136,14 @@ class WorkerSettings:
                 values,
                 "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS",
                 DEFAULT_PARSE_TIMEOUT_SECONDS,
+            ),
+            ml_root=ml_root,
+            model1_serving_dir=model1_serving_dir,
+            ml_python_executable=ml_python_executable,
+            ml_timeout_seconds=_positive_float(
+                values,
+                "PREREVIEW_ML_TIMEOUT_SECONDS",
+                DEFAULT_ML_TIMEOUT_SECONDS,
             ),
         )
 
@@ -167,6 +200,153 @@ def _positive_float(env: Mapping[str, str], name: str, default: float) -> float:
     return value
 
 
+def _optional_string(env: Mapping[str, str], name: str) -> str | None:
+    value = env.get(name, "").strip()
+    return value or None
+
+
+def _optional_path(env: Mapping[str, str], name: str) -> Path | None:
+    value = _optional_string(env, name)
+    return None if value is None else Path(value).expanduser()
+
+
+def _first_missing(paths: tuple[Path, ...]) -> Path | None:
+    for path in paths:
+        if not path.is_file():
+            return path
+    return None
+
+
+def _model1_root(configured: Path | None) -> Path | None:
+    """Accept either a mounted ``model1`` directory or its serving parent."""
+
+    if configured is None:
+        return None
+    if (configured / "inference.py").is_file():
+        return configured
+    nested = configured / "model1"
+    if (nested / "inference.py").is_file():
+        return nested
+    return configured
+
+
+def _ml_executable(settings: WorkerSettings) -> tuple[str | None, str | None]:
+    """Return the child interpreter, or a safe unavailable detail."""
+
+    executable = settings.ml_python_executable or sys.executable
+    if settings.ml_python_executable is not None:
+        candidate = Path(executable)
+        if not candidate.is_file() and shutil.which(executable) is None:
+            return None, executable
+    return executable, None
+
+
+def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
+    """Compose all three isolated ML ports without making ML mandatory.
+
+    The worker remains bootable when a mounted source tree, artifact, or ML
+    interpreter is absent.  In those cases an ``UnavailableModel`` preserves
+    the reason for the per-model result instead of failing worker startup.
+    """
+
+    model_ids = (
+        MlModelId.MODEL_1_SUPPORT_TYPE,
+        MlModelId.MODEL_2_AMOUNT,
+        MlModelId.MODEL_3_ANOMALY,
+    )
+    executable, runtime_detail = _ml_executable(settings)
+    if runtime_detail is not None:
+        return {
+            model_id: missing_runtime_model(model_id, runtime_detail)
+            for model_id in model_ids
+        }
+
+    assert executable is not None
+    environment = {"PREREVIEW_ML_ROOT": str(settings.ml_root)}
+    if settings.model1_serving_dir is not None:
+        environment["PREREVIEW_MODEL1_SERVING_DIR"] = str(settings.model1_serving_dir)
+
+    models: dict[MlModelId, MlModel] = {}
+    model1_id = MlModelId.MODEL_1_SUPPORT_TYPE
+    model1_root = _model1_root(settings.model1_serving_dir)
+    if model1_root is None:
+        models[model1_id] = missing_artifact_model(
+            model1_id, "PREREVIEW_MODEL1_SERVING_DIR"
+        )
+    else:
+        missing = _first_missing(
+            (
+                model1_root / "inference.py",
+                model1_root / "model" / "model.safetensors",
+                model1_root / "label_mapping.json",
+                settings.ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
+                settings.ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
+            )
+        )
+        if missing is None and not (model1_root / "tokenizer").is_dir():
+            missing = model1_root / "tokenizer"
+        if missing is not None:
+            models[model1_id] = missing_artifact_model(model1_id, missing)
+        else:
+            models[model1_id] = Model1SubprocessMlModel(
+                model1_command(python_executable=executable),
+                timeout_seconds=settings.ml_timeout_seconds,
+                environment=environment,
+                artifact_version="model1-external-serving-v1",
+            )
+
+    model2_id = MlModelId.MODEL_2_AMOUNT
+    model2_root = settings.ml_root / "serving" / "model2"
+    model2_missing = _first_missing(
+        (
+            model2_root / "predict.py",
+            model2_root / "feature_builder.py",
+            model2_root / "preprocessing.py",
+            model2_root / "proximity.py",
+            model2_root / "router.py",
+            model2_root / "masking.py",
+            model2_root / "cohort_reference.parquet",
+            settings.ml_root / "serving" / "shared" / "preconsultation_adapter.py",
+            settings.ml_root
+            / "serving"
+            / "shared"
+            / "preconsultation_adapter.py",
+            settings.ml_root / "models" / "model2_canonical" / "model2_p3_bundle.joblib",
+        )
+    )
+    if model2_missing is not None:
+        models[model2_id] = missing_artifact_model(model2_id, model2_missing)
+    else:
+        models[model2_id] = Model2SubprocessMlModel(
+            model2_command(python_executable=executable),
+            timeout_seconds=settings.ml_timeout_seconds,
+            environment=environment,
+            artifact_version="model2-p3-v1",
+        )
+
+    model3_id = MlModelId.MODEL_3_ANOMALY
+    model3_root = settings.ml_root / "serving" / "model3"
+    model3_missing = _first_missing(
+        (
+            model3_root / "score.py",
+            model3_root / "inference.py",
+            model3_root / "design_features_v3.parquet",
+            settings.ml_root / "serving" / "shared" / "preconsultation_adapter.py",
+        )
+    )
+    if model3_missing is not None:
+        models[model3_id] = missing_artifact_model(model3_id, model3_missing)
+    else:
+        models[model3_id] = Model3SubprocessMlModel(
+            model3_command(python_executable=executable),
+            timeout_seconds=settings.ml_timeout_seconds,
+            environment=environment,
+            artifact_version="model3-design-v3",
+        )
+
+    return models
+
+
 def build_worker() -> WorkerComposition:
     """Build the PostgreSQL-polling HWP/HWPX analysis worker without I/O."""
 
@@ -205,6 +385,7 @@ def build_worker() -> WorkerComposition:
             fit_model_profile="fit",
             sim_model_profile="sim",
             max_repairs=openai.max_repairs,
+            ml_models=_build_ml_models(settings),
         ),
         top_k=settings.top_k,
     )
