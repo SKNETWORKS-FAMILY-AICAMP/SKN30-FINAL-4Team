@@ -49,18 +49,22 @@ class Prompt:
 def _load(version: str, env_name: str) -> Prompt:
     override = (os.environ.get(env_name) or "").strip()
     path = Path(override) if override else _prompt_dir() / f"{version}.txt"
+    # 디렉터리나 장치 파일을 가리키면 read_bytes 가 OSError 로 새거나 플랫폼마다
+    # 다르게 동작한다. 먼저 일반 파일인지 본다.
+    if path.exists() and not path.is_file():
+        raise PromptUnavailableError(f"프롬프트 경로가 일반 파일이 아니다: {path}")
     try:
         raw = path.read_bytes()
     except OSError as error:
         raise PromptUnavailableError(
-            f"축 프롬프트를 읽지 못했다: {path} ({type(error).__name__})"
+            f"프롬프트를 읽지 못했다: {path} ({type(error).__name__})"
         ) from error
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as error:
-        raise PromptUnavailableError(f"축 프롬프트가 UTF-8 이 아니다: {path}") from error
+        raise PromptUnavailableError(f"프롬프트가 UTF-8 이 아니다: {path}") from error
     if not text.strip():
-        raise PromptUnavailableError(f"축 프롬프트가 비어 있다: {path}")
+        raise PromptUnavailableError(f"프롬프트가 비어 있다: {path}")
     return Prompt(
         version=version,
         text=text,
@@ -81,6 +85,21 @@ def load_purpose_recheck_prompt() -> Prompt:
     return _load(PURPOSE_RECHECK_PROMPT_VERSION, PURPOSE_RECHECK_PROMPT_ENV)
 
 
+def check_prompts_ready() -> list[Prompt]:
+    """워커가 작업을 받기 전에 프롬프트를 한 번 읽어 본다.
+
+    문서 단위 실패 처리(``PROMPT_UNAVAILABLE``)는 런타임 방어다. 그것만 두면
+    배포에서 경로를 잘못 잡았을 때 워커는 정상 기동하고 모든 문서가 축 없이
+    "완료" 로 끝난다. 화면에도 에러가 없어 트레이스를 열기 전에는 모른다.
+
+    설정 오류는 문서 하나의 문제가 아니라 배포 전체의 문제이므로 부팅에서
+    멈춘다. 내용은 검사하지 않는다 — 특정 SHA 를 강제하면 환경별 override 가
+    막힌다. 실제 쓴 SHA 는 실행 결과에 기록하므로 재현성은 거기서 확보한다.
+    """
+
+    return [load_purpose_axis_prompt(), load_purpose_recheck_prompt()]
+
+
 __all__ = [
     "PURPOSE_AXIS_PROMPT_VERSION",
     "PURPOSE_AXIS_PROMPT_ENV",
@@ -88,6 +107,7 @@ __all__ = [
     "PromptUnavailableError",
     "PURPOSE_RECHECK_PROMPT_VERSION",
     "PURPOSE_RECHECK_PROMPT_ENV",
+    "check_prompts_ready",
     "load_purpose_axis_prompt",
     "load_purpose_recheck_prompt",
 ]
