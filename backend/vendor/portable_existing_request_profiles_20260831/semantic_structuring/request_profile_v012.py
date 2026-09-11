@@ -138,9 +138,33 @@ _PROGRAM_PERIOD_DATE_TOKEN = (
     rf"(?:{_DATE_KOREAN_YEAR_MONTH}|{_DATE_DOT_YEAR_KOREAN_MONTH}|{_DATE_DOT_YMD}|{_DATE_DOT_YM}|"
     rf"{_DATE_KOREAN_MONTH}|{_DATE_DOT_MD}|{_DATE_DOT_MONTH})"
 )
+# Multi-year programs are often written as a bare year range (``'24 ~ '28``,
+# ``2024~2028년``).  Every token above needs a month or a dot separator, so
+# those spans produced no candidate at all and the field could not be filled.
+#
+# A year alone is far weaker evidence than a date, so this grammar is closed
+# on both sides rather than added to the token list above:
+#
+# - a year is four digits, or two-to-four digits carrying a quote mark
+#   (``'24``).  A bare ``24`` is not a year here.
+# - the range must carry one explicit year marker: a quote mark, or a
+#   trailing ``년``.  ``2024~2028`` alone stays out, because a plan citation
+#   (``제4차 … 계획(2024~2028)``) is written exactly the same way and the
+#   Rule has nothing to tell them apart.
+# - year tokens pair only with year tokens, never with the month/day tokens
+#   above.
+#
+# Two digits are not expanded to four.  ``value_raw`` stays the source span.
+_DATE_YEAR_MARKED = r"(?:[’'`]\s*\d{2,4}\s*년?|\d{2,4}\s*년)"
+_DATE_YEAR_PLAIN = r"(?:[’'`]\s*\d{2,4}|\d{4})\s*년?"
+_PROGRAM_PERIOD_YEAR_RANGE = (
+    rf"(?:{_DATE_YEAR_MARKED}{_DATE_RANGE_SEPARATOR}{_DATE_YEAR_PLAIN}|"
+    rf"{_DATE_YEAR_PLAIN}{_DATE_RANGE_SEPARATOR}{_DATE_YEAR_MARKED})"
+)
 _PROGRAM_PERIOD_DATE_RANGE_PATTERN = (
     rf"(?:{_PROGRAM_PERIOD_DATE_TOKEN}{_DATE_RANGE_SEPARATOR}{_PROGRAM_PERIOD_DATE_TOKEN}|"
-    rf"공고일{_DATE_RANGE_SEPARATOR}{_PROGRAM_PERIOD_DATE_TOKEN})"
+    rf"공고일{_DATE_RANGE_SEPARATOR}{_PROGRAM_PERIOD_DATE_TOKEN}|"
+    rf"{_PROGRAM_PERIOD_YEAR_RANGE})"
 )
 _PROGRAM_PERIOD_DATE_RANGE = re.compile(rf"^\s*{_PROGRAM_PERIOD_DATE_RANGE_PATTERN}\s*$")
 _PROGRAM_PERIOD_DATE_RANGE_FINDER = re.compile(_PROGRAM_PERIOD_DATE_RANGE_PATTERN)
