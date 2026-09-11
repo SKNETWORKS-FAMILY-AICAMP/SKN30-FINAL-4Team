@@ -33,6 +33,17 @@ _LABEL_GRAMMAR = (
     rf"(?:^|\n|[{_LABEL_BULLETS}])\s*\(?\s*(?:{{label}})\s*\)?\s*[:：)]?"
 )
 _NEXT_LABEL = re.compile(rf"[\n{_REGION_BOUNDARY}]")
+# 서식이 쓰는 다른 항목의 라벨. 여기서 구역을 만들지는 않지만, 만나면 앞 구역의
+# 지배가 끝난다. 글머리 기호 없이 이어 쓴 서식(``□ 사업기간 및 전체예산``)에서
+# 제목의 뒷부분을 값으로 오인하지 않으려면 낱말만으로도 경계가 돼야 한다.
+_BOUNDARY_WORDS = re.compile(
+    r"(?:사업\s*목적|사업\s*기간|사업\s*수행\s*기간|전체\s*추진\s*기간"
+    r"|사업\s*예산|전체\s*예산|총\s*사업비|사업\s*필요성"
+    r"|지원\s*근거|연계\s*정책|지원\s*대상|지원\s*조건|지원\s*내용"
+    r"|지원\s*규모|지원\s*분야|지원\s*기간|수행\s*기관|수행\s*방식"
+    r"|사업\s*추진\s*체계|사업\s*추진\s*절차|추진\s*체계|추진\s*절차"
+    r"|기대\s*효과|파급\s*효과|성과\s*지표|사업명)"
+)
 # 라벨만 찍히고 비어 있는 구역은 문서가 정말 비운 것이다. 그것을 추출 누락으로
 # 표시하면 문서의 빈칸을 우리 결함으로 되돌린다.
 _MIN_REGION_CHARS = 2
@@ -84,14 +95,21 @@ class RequestFieldRegion:
 
 
 def _region_end(text: str, label_end: int) -> int:
-    """구역의 끝. 다음 라벨 경계나 줄 경계에서 끊는다.
+    """구역의 끝. 글머리·줄 경계나 다른 항목 라벨에서 끊는다.
 
     구역을 블록 전체로 잡으면 400 자 한 문단에 여러 항목이 이어진 서식에서
-    한 구역이 뒤따르는 항목까지 삼킨다.
+    한 구역이 뒤따르는 항목까지 삼킨다. 글머리 없이 낱말로만 이어 쓴 제목
+    (``□ 사업기간 및 전체예산``)도 뒷부분이 다른 항목이므로 여기서 끊는다.
     """
 
-    boundary = _NEXT_LABEL.search(text, label_end)
-    return boundary.start() if boundary else len(text)
+    stop = len(text)
+    bullet = _NEXT_LABEL.search(text, label_end)
+    if bullet is not None:
+        stop = bullet.start()
+    word = _BOUNDARY_WORDS.search(text, label_end)
+    if word is not None and word.start() < stop:
+        stop = word.start()
+    return stop
 
 
 def _starts_with_any_label(text: str) -> bool:
@@ -132,10 +150,7 @@ def build_field_regions(
     blocks = sorted(
         pack.blocks, key=lambda b: (b.source_order if b.source_order is not None else 0)
     )
-    # 표는 같은 본문을 계층마다 다시 싣는다(t4 / t4#r3c1 / t4#r3c1p0). 한 구역을
-    # 계층 수만큼 내보내면 같은 원문을 여러 벌로 세게 된다. 같은 Common IR 블록
-    # 안에서 본문이 같으면 가장 좁은 occurrence 하나만 남긴다.
-    kept: dict[tuple[str, str | None, str], RequestFieldRegion] = {}
+    found: list[RequestFieldRegion] = []
     for index, block in enumerate(blocks):
         text = block.text or ""
         for field in fields:
@@ -166,11 +181,35 @@ def build_field_regions(
                         match.start() if host is block else start : stop
                     ],
                 )
-                key = (field, region.common_ir_block_id, region.content_text)
-                previous = kept.get(key)
-                if previous is None or len(region.block_id) > len(previous.block_id):
-                    kept[key] = region
-    return list(kept.values())
+                found.append(region)
+    return _drop_nested_duplicates(found)
+
+
+def _drop_nested_duplicates(
+    regions: list[RequestFieldRegion],
+) -> list[RequestFieldRegion]:
+    """표 계층이 같은 자리를 다시 실은 것만 접는다.
+
+    표는 한 본문을 부모·셀·문단으로 세 번 싣는다(``t4`` / ``t4#r3c1`` /
+    ``t4#r3c1p0``). 같은 자리를 계층 수만큼 내보내면 같은 원문을 여러 벌로
+    세게 된다.
+
+    문구가 같다는 이유만으로 접지 않는다. 한 문서에 같은 문구가 서로 다른
+    자리에 두 번 나올 수 있고 그 둘은 서로 다른 근거다. 블록 id 가 서로의
+    접두사일 때 — 곧 같은 자리를 계층만 달리해 가리킬 때 — 만 좁은 쪽을 남긴다.
+    """
+
+    kept: list[RequestFieldRegion] = []
+    for region in sorted(regions, key=lambda r: -len(r.block_id)):
+        nested = any(
+            other.field_name == region.field_name
+            and other.content_text == region.content_text
+            and other.block_id.startswith(region.block_id)
+            for other in kept
+        )
+        if not nested:
+            kept.append(region)
+    return kept
 
 
 __all__ = ["FIELD_LABELS", "RequestFieldRegion", "build_field_regions"]

@@ -124,3 +124,65 @@ def test_nested_table_duplicates_keep_only_the_narrowest_block() -> None:
     regions = build_field_regions(pack, field_name="program_period")
 
     assert [r.block_id for r in regions] == ["hwpx:t4#r3c1p0"]
+
+
+# 복합 제목은 값 구역이 아니다. ``□ 사업기간 및 전체예산`` 의 ``및 전체예산`` 을
+# 사업기간 값으로 오인하면 coverage 에 붙였을 때 거짓 gap 이 된다.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "□ 사업기간 및 전체예산",
+        "□ 사업목적 및 사업필요성",
+        "○ 지원대상 및 지원조건",
+    ],
+)
+def test_a_compound_heading_is_not_a_value_region(text: str) -> None:
+    assert _regions(("b0", text)) == []
+    assert _regions(("b0", text), field="purpose_goal") == []
+
+
+# 복합 제목 뒤에 실제 값 블록이 오면 그 블록이 구역이 된다.
+def test_a_compound_heading_takes_the_following_value_block() -> None:
+    regions = _regions(("b0", "□ 사업기간 및 전체예산"), ("b1", " 2024 ~ 2028 (5년)"))
+
+    assert len(regions) == 1
+    assert regions[0].block_id == "b1"
+    assert regions[0].label_block_id == "b0"
+
+
+# 구역을 만들지 않는 다른 항목 라벨도 경계로 인식해야 한다. 글머리 기호 없이
+# 낱말로만 이어 쓴 서식에서 앞 구역이 뒤 항목을 삼키지 않는다.
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("○ 사업기간 : 2024~2028년 사업예산 : 35,300백만원", "2024~2028년"),
+        ("○ 사업기간 : 2024~2028년 지원대상 : 중소기업", "2024~2028년"),
+        ("○ 사업기간 : 2024~2028년 수행기관 : 테크노파크", "2024~2028년"),
+    ],
+)
+def test_another_field_label_ends_the_region(text: str, expected: str) -> None:
+    assert _contents(("b0", text)) == [expected]
+
+
+# 같은 문구가 서로 다른 자리에 두 번 나오면 둘 다 남는다. 문구가 같다는 이유로
+# 접으면 서로 다른 근거가 하나로 사라진다.
+def test_the_same_phrase_at_two_places_is_kept_twice() -> None:
+    regions = _regions(
+        ("hwpx:t4#r1c1p0", "○ 사업기간 : 2024~2028년"),
+        ("hwpx:t4#r9c1p0", "○ 사업기간 : 2024~2028년"),
+    )
+
+    assert sorted(r.block_id for r in regions) == [
+        "hwpx:t4#r1c1p0", "hwpx:t4#r9c1p0",
+    ]
+
+
+# 접는 것은 계층 중첩뿐이다. 좌표는 언제나 식별에 남는다.
+def test_a_region_carries_its_own_occurrence_and_offsets() -> None:
+    (region,) = _regions(("hwpx:t4#r3c1p0", "○ (사업기간) 2024~2028년"))
+
+    assert region.block_id == "hwpx:t4#r3c1p0"
+    assert region.content_start < region.content_end
+    assert region.content_text == "2024~2028년"
+    assert region.contains(region.content_start, region.content_end)
+    assert not region.contains(0, region.content_end)
