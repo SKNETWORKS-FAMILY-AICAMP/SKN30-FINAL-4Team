@@ -121,11 +121,14 @@ def display_status(profile_status: str | None) -> str:
 def aggregate_display(statuses: Iterable[str]) -> str:
     """하위 필드 표시값들의 대표값 (AGENTS.md ``IMPLEMENTATION_PLAN`` 절 일반화).
 
-    하나라도 내용 없음이면 내용 없음, 그다음 하나라도 확인 필요면 확인 필요,
-    전부 해당 없음이면 해당 없음, 나머지는 확인됨이다.
+    전부 내용 없음이면 내용 없음, 내용 없음과 다른 상태가 섞이면 확인 필요,
+    그다음 하나라도 확인 필요면 확인 필요, 전부 해당 없음이면 해당 없음,
+    나머지는 확인됨이다.
 
     집계에서 ``not_applicable`` 은 "부재" 로 다룬다. 확인 + 해당 없음이면
     확인됨이다 (AGENTS.md: "`확인 + 해당 없음` 이면 `PRESENT`").
+    ``no_content`` 는 하위 필드에 그대로 남지만, 다른 하위 필드의 근거가
+    있는 경우 상위 항목 전체를 내용 없음으로 낮추지 않는다.
     """
 
     values = list(statuses)
@@ -133,9 +136,9 @@ def aggregate_display(statuses: Iterable[str]) -> str:
         # 부르는 쪽이 빈 목록을 걸러야 한다. 여기서 조용히 확인됨으로 떨어지면
         # 근거가 없는 항목이 초록으로 보인다.
         raise ValueError("집계할 하위 필드 상태가 없다")
-    if NO_CONTENT in values:
+    if all(value == NO_CONTENT for value in values):
         return NO_CONTENT
-    if NEEDS_CONFIRMATION in values or any(
+    if NO_CONTENT in values or NEEDS_CONFIRMATION in values or any(
         value not in CPL_DISPLAY_STATUSES for value in values
     ):
         # 어휘 밖의 값도 확인 필요로 떨어진다. 확인됨 쪽으로 올리는 실수만
