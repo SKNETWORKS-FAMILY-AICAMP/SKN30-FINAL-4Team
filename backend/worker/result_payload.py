@@ -228,9 +228,18 @@ def build_result_payload(
             # 한 원문이 의미 축을 여럿 가지면 CPL 은 축마다 fact 를 남긴다.
             # 근거는 그래도 한 줄이다 — 같은 값·같은 좌표를 축 수만큼 저장하면
             # 프론트 근거 목록과 DB Evidence 행이 축 때문에 불어난다.
-            seen: set[tuple[str | None, str | None]] = set()
+            #
+            # 키는 축을 뺀 fact 좌표 전부다. fact_id 만으로는 모자란다:
+            # delivery_relations 멤버는 자기 id 가 없어서 (relation_id, member,
+            # member_index) 가 자리를 가리키고, 같은 기관이 여러 relation 의
+            # actor 로 나오면 값까지 같다. 그 둘은 서로 다른 근거다.
+            seen: set[tuple[Any, ...]] = set()
             for fact in subfield.facts:
-                key = (fact.fact_id, fact.value_raw)
+                key = (
+                    fact.fact_id, fact.relation_id, fact.member, fact.member_index,
+                    fact.source_block_id, fact.start_char, fact.end_char,
+                    fact.value_raw,
+                )
                 if key in seen:
                     continue
                 seen.add(key)

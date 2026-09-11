@@ -166,3 +166,48 @@ def test_axis_split_does_not_multiply_public_evidence_rows() -> None:
 
     assert len(_purpose_facts(with_axes)) == 2  # 축별로 fact 는 둘
     assert len(rows(with_axes)) == len(rows(build_cpl_result(_profile())))  # 근거는 하나
+
+
+# 축 중복 제거 키가 fact_id 만 보면 안 된다. delivery_relations 멤버는 자기
+# id 가 없어서 (relation_id, member, member_index) 가 자리를 가리키는데, 같은
+# 기관이 여러 relation 의 actor 로 나오면 값까지 같아진다. 실문서(sol4)에
+# 실제로 있는 모양이다. 그 둘을 접으면 근거 한 줄이 조용히 사라진다.
+def test_dedupe_never_folds_two_delivery_members_that_share_a_name() -> None:
+    profile: dict[str, Any] = {
+        "comparison_profile": {
+            "delivery_relations": [
+                {
+                    "delivery_relation_id": "d1",
+                    "actor": {"value_raw": "부산테크노파크", "status": "identified"},
+                    "actions": [{"value_raw": "평가", "status": "identified"}],
+                },
+                {
+                    "delivery_relation_id": "d2",
+                    "actor": {"value_raw": "부산테크노파크", "status": "identified"},
+                    "actions": [{"value_raw": "평가", "status": "identified"}],
+                },
+            ]
+        },
+        "field_states": [{"field_name": "delivery_relations", "status": "identified"}],
+    }
+
+    result = build_cpl_result(profile)
+    facts = [
+        fact
+        for item in result.items
+        for subfield in item.subfields
+        if subfield.profile_field.endswith("delivery_relations")
+        for fact in subfield.facts
+    ]
+
+    # 같은 이름이지만 서로 다른 relation 이라 좌표가 다르다.
+    assert [fact.fact_id for fact in facts] == [None] * len(facts)
+    keys = {
+        (
+            fact.fact_id, fact.relation_id, fact.member, fact.member_index,
+            fact.source_block_id, fact.start_char, fact.end_char, fact.value_raw,
+        )
+        for fact in facts
+    }
+    assert len(keys) == len(facts)
+
