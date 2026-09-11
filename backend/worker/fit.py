@@ -64,16 +64,13 @@ from .contracts.fit_result import (
 __all__ = [
     "FIT_PROMPT_VERSION",
     "FIT_RULESET_VERSION",
-    "PURPOSE_AXIS_PROMPT_VERSION",
     "analyze_fit",
 ]
 
 _STAGE = "analyze_fit"
-_PURPOSE_STAGE = "classify_purpose_axis"
 
 FIT_RULESET_VERSION = "fit-rules-v0.1"
 FIT_PROMPT_VERSION = "fit-relations-v0.1"
-PURPOSE_AXIS_PROMPT_VERSION = "fit-purpose-axis-v0.1"
 
 
 # ------------------------------------------------------------ 입력 경로표
@@ -492,29 +489,8 @@ def _fit7(cpl: CplResult) -> FitRelationResult:
 # ------------------------------------------------------- 목적 의미 축 보완
 
 
-class _PurposeAxisAssignmentModel(BaseModel):
-    fact_id: str
-    axis_code: str
-    quoted_text: str
-
-
-class _PurposeAxisResponse(BaseModel):
-    # 엔벨로프 키는 필수다. 기본값을 주면 ``{}`` 가 "빈 배치" 로 조용히
-    # 통과해 최상위 오류가 정상 응답으로 둔갑한다.
-    assignments: list[_PurposeAxisAssignmentModel]
-
-
 # axis_code 를 enum 이 아니라 str 로 받는 이유: 어휘 밖의 값이 오면 스키마
 # 단계에서 조용히 터지는 대신 서버가 그 항목만 떨어뜨리고 진단을 남긴다.
-_PURPOSE_AXIS_INSTRUCTION = (
-    "You classify existing purpose statements into meaning axes. "
-    "Return only {fact_id, axis_code, quoted_text} for facts given in the payload. "
-    f"axis_code must be one of {sorted(PURPOSE_AXIS_CODES)}. "
-    "quoted_text must be copied verbatim from that fact's value_raw. "
-    "Never invent a fact_id, a new value, an offset, or evidence. "
-    "Omit any fact you cannot classify; an empty list is a valid answer."
-)
-
 _FIT_COMPARISON_INSTRUCTION = (
     "You compare two grounded evidence sides of a Korean public-program request document. "
     "For each relation in the payload return {relation_id, status, reason_code, "
@@ -567,158 +543,28 @@ def _generate(
     )
 
 
-def _classify_purpose_axes(
-    cpl: CplResult,
-    llm_client: LLMClient,
-    *,
-    model_profile: str,
-    diagnostics: list[StageDiagnostic],
-) -> PurposeAxisClassification:
-    """목적 fact 를 의미 축으로 분류한다. 문서당 한 번 (초안 §9.2).
+def _purpose_side(cpl: CplResult, axis: PurposeAxisCode) -> FitSide:
+    """그 축이 붙은 목적 근거만 좌측으로 만든다.
 
-    프로파일에는 목적의 대상조건·방향 축이 없다. 없는 축을 코드가 지어낼 수는
-    없고, 목적 전체를 한 축으로 취급하는 것도 초안 §7.1 이 금지한다. 그래서
-    이 한 건만 "의미 분류 미완료" 보완에 해당한다.
+    축은 CPL 이 확정한다. 여기서 다시 분류하지 않는다 — 값을 확정하는 곳과
+    축을 확정하는 곳이 다르면 화면과 판정이 갈라진다. 축이 비어 있으면 좌측이
+    비고 게이트가 ``INSUFFICIENT`` 로 내린다. 비교를 성립시키려고 목적 문장
+    전체를 한 축으로 취급하지 않는다 (초안 §7.1 이 금지한다).
 
-    모델은 축 이름과 인용문만 돌려준다. 값·오프셋·근거는 프로파일 것을 그대로
-    쓴다. 서버가 fact_id 존재·인용문 부분문자열·어휘 소속을 검사하고, 통과하지
-    못한 항목은 진단만 남기고 버린다. 예산은 1이며 같은 입력으로 재시도하지
-    않는다.
-    """
-
-    facts = [fact for fact in _facts_at(cpl, _PURPOSE_PATH) if fact.fact_id]
-    if not facts:
-        return PurposeAxisClassification(
-            attempted=False, reason_code=COMPARISON_EVIDENCE_MISSING
-        )
-
-    payload = {
-        "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
-        "facts": [
-            {"fact_id": fact.fact_id, "value_raw": fact.value_raw} for fact in facts
-        ],
-    }
-    try:
-        response = _generate(
-            llm_client,
-            task_name="fit_purpose_axis_classification",
-            instructions=_PURPOSE_AXIS_INSTRUCTION,
-            payload=payload,
-            response_schema=_PurposeAxisResponse,
-            model_profile=model_profile,
-        )
-    except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-        # 배정 하나가 계약을 어겼다고 나머지 배정을 버리지 않는다.
-        recovered = salvage_rows(
-            error,
-            envelope="assignments",
-            row_model=_PurposeAxisAssignmentModel,
-            id_field="fact_id",
-        )
-        if recovered is None:
-            reason = _TRANSPORT_REASONS[type(error)]
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_PURPOSE_STAGE,
-                    unit=_PURPOSE_PATH,
-                    reason_code=reason,
-                    message=str(error)[:2000],
-                    attempt=1,
-                    terminated_because=reason,
-                )
-            )
-            return PurposeAxisClassification(
-                attempted=True,
-                reason_code=reason,
-                prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
-            )
-        response_rows, broken, dropped_rows = recovered
-        for fact_id in broken:
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_PURPOSE_STAGE,
-                    unit=fact_id,
-                    reason_code=LLM_INVALID_RESPONSE,
-                    message="응답 행이 스키마를 어겨 축 분류에서 제외했다.",
-                    attempt=1,
-                )
-            )
-        if dropped_rows:
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_PURPOSE_STAGE,
-                    unit=None,
-                    reason_code=LLM_INVALID_RESPONSE,
-                    message=f"fact_id 를 알 수 없는 응답 행 {dropped_rows}건을 버렸다.",
-                    attempt=1,
-                )
-            )
-    else:
-        response_rows = list(response.assignments)
-        broken = []
-
-    by_id = {fact.fact_id: fact for fact in facts}
-    assignments: list[PurposeAxisAssignment] = []
-    dropped: list[str] = list(broken)
-    for row in response_rows:
-        fact = by_id.get(row.fact_id)
-        if fact is None:
-            problem = "프로파일에 없는 fact_id"
-        elif row.axis_code not in PURPOSE_AXIS_CODES:
-            problem = "어휘 밖 axis_code"
-        elif not row.quoted_text or row.quoted_text not in (fact.value_raw or ""):
-            problem = "원문 부분문자열이 아닌 인용문"
-        else:
-            assignments.append(
-                PurposeAxisAssignment(
-                    fact_id=row.fact_id,
-                    axis_code=row.axis_code,
-                    quoted_text=row.quoted_text,
-                )
-            )
-            continue
-        dropped.append(row.fact_id)
-        diagnostics.append(
-            StageDiagnostic(
-                stage=_PURPOSE_STAGE,
-                unit=row.fact_id,
-                reason_code=LLM_INVALID_RESPONSE,
-                message=f"{problem} 이므로 축 분류에서 제외했다.",
-                attempt=1,
-            )
-        )
-
-    return PurposeAxisClassification(
-        attempted=True,
-        assignments=assignments,
-        reason_code=None if assignments else PURPOSE_AXIS_UNRESOLVED,
-        dropped=dropped,
-        prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
-    )
-
-
-def _purpose_side(
-    cpl: CplResult,
-    classification: PurposeAxisClassification,
-    axis: PurposeAxisCode,
-) -> FitSide:
-    """분류된 축에 해당하는 목적 근거만 좌측으로 만든다.
-
-    ``value_raw`` 는 검증된 인용문이다. 목적 문장 전체가 아니라 그 축에
+    ``value_raw`` 는 CPL 이 검증한 인용문이다. 목적 문장 전체가 아니라 그 축에
     해당하는 부분만 좌측에 놓는다 (초안 §7.1 FIT-1).
     """
 
-    by_id = {fact.fact_id: fact for fact in _facts_at(cpl, _PURPOSE_PATH)}
     refs = [
         FitEvidenceRef(
-            fact_id=row.fact_id,
+            fact_id=fact.fact_id,
             field_name="purpose_goal",
-            value_raw=row.quoted_text,
-            evidence=list(by_id[row.fact_id].evidence),
-            primary_component_id=by_id[row.fact_id].primary_component_id,
+            value_raw=fact.axis_quoted_text,
+            evidence=list(fact.evidence),
+            primary_component_id=fact.primary_component_id,
         )
-        for row in classification.assignments
-        if row.axis_code == axis.value and row.fact_id in by_id
+        for fact in _facts_at(cpl, _PURPOSE_PATH)
+        if fact.axis_code == axis.value and fact.fact_id
     ]
     return FitSide(field_names=[f"purpose_goal[{axis.value}]"], facts=refs)
 
@@ -987,24 +833,9 @@ def analyze_fit(
 
     # 목적 의미 축 보완은 문서당 한 번이다. 우측 근거가 하나도 없으면 세
     # 관계 모두 어차피 게이트에서 걸리므로 호출하지 않는다.
-    needs_axis = [
-        relation_id
-        for relation_id in _PURPOSE_AXIS_OF
-        if sides[relation_id][1].facts
-    ]
-    if needs_axis:
-        classification = _classify_purpose_axes(
-            cpl, llm_client, model_profile=model_profile, diagnostics=diagnostics
-        )
-    else:
-        classification = PurposeAxisClassification(
-            attempted=False, reason_code=COMPARISON_EVIDENCE_MISSING
-        )
+    # 축은 CPL 이 확정해 왔다. FIT 은 고르기만 한다.
     for relation_id, axis in _PURPOSE_AXIS_OF.items():
-        sides[relation_id] = (
-            _purpose_side(cpl, classification, axis),
-            sides[relation_id][1],
-        )
+        sides[relation_id] = (_purpose_side(cpl, axis), sides[relation_id][1])
 
     pending: dict[FitRelationId, tuple[FitSide, FitSide]] = {}
     for relation_id, (left, right) in sides.items():
@@ -1068,7 +899,7 @@ def analyze_fit(
 
     return FitResult(
         relations=[results[relation_id] for relation_id in FitRelationId],
-        purpose_axis=classification,
+        purpose_axis=cpl.purpose_axis,
         profile_id=cpl.profile_id,
         common_ir_document_id=cpl.common_ir_document_id,
         model_profile=model_profile,

@@ -256,6 +256,10 @@ class CplFact:
     # 의미 축. 한 원문이 축을 여럿 가지면 축마다 fact 를 따로 보존한다.
     # 단수라야 소비 쪽 필터가 (field, axis) 한 쌍으로 끝난다.
     axis_code: str | None = None
+    # 그 축에 해당한다고 모델이 지목하고 서버가 검증한 ``value_raw`` 부분.
+    # 비교 입력은 문장 전체가 아니라 이 구간이다 (초안 §7.1 FIT-1). 축과 짝이라
+    # 축이 없으면 이것도 없다.
+    axis_quoted_text: str | None = None
     # 요청 유형 체크박스 글리프. 서버가 원본 글리프로 정한 값이라
     # 표시 계층까지 원형으로 끌고 간다 (초안 §6).
     selection_glyph_raw: str | None = None

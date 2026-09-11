@@ -371,20 +371,23 @@ def _with_axes(
 
     if not classification.assignments:
         return replace(result, purpose_axis=classification)
-    by_fact: dict[str, list[str]] = {}
+    by_fact: dict[str, list[tuple[str, str]]] = {}
     for row in classification.assignments:
-        by_fact.setdefault(row.fact_id, []).append(row.axis_code)
+        by_fact.setdefault(row.fact_id, []).append((row.axis_code, row.quoted_text))
 
     def expand(subfield: CplSubfield) -> CplSubfield:
         if subfield.profile_field != _PURPOSE_FIELD:
             return subfield
         facts: list[CplFact] = []
         for fact in subfield.facts:
-            codes = by_fact.get(fact.fact_id or "")
-            if not codes:
+            assigned = by_fact.get(fact.fact_id or "")
+            if not assigned:
                 facts.append(fact)
                 continue
-            facts.extend(replace(fact, axis_code=code) for code in codes)
+            facts.extend(
+                replace(fact, axis_code=code, axis_quoted_text=quoted)
+                for code, quoted in assigned
+            )
         return replace(subfield, facts=facts)
 
     return replace(
