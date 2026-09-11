@@ -57,7 +57,7 @@ from .contracts.fit_result import (
     FitStatus,
     PurposeAxisAssignment,
     PurposeAxisClassification,
-    PurposeAxisCode,
+    CplAxisCode,
     StageDiagnostic,
 )
 
@@ -102,9 +102,9 @@ _DELIVERY_METHODS_PATH = "comparison_profile.delivery_methods"
 
 # 좌측이 목적 의미 축에서 오는 관계와, 그 관계가 요구하는 축.
 _PURPOSE_AXIS_OF = {
-    FitRelationId.FIT_1: PurposeAxisCode.TARGET_CONDITION,
-    FitRelationId.FIT_2: PurposeAxisCode.DIRECTION,
-    FitRelationId.FIT_3: PurposeAxisCode.DIRECTION,
+    FitRelationId.FIT_1: CplAxisCode.TARGET_CONDITION,
+    FitRelationId.FIT_2: CplAxisCode.DIRECTION,
+    FitRelationId.FIT_3: CplAxisCode.DIRECTION,
 }
 
 # 관계별 한 줄 질문. LLM payload 에만 쓰이고 결과에는 실리지 않는다.
@@ -543,7 +543,7 @@ def _generate(
     )
 
 
-def _purpose_side(cpl: CplResult, axis: PurposeAxisCode) -> FitSide:
+def _purpose_side(cpl: CplResult, axis: CplAxisCode) -> FitSide:
     """그 축이 붙은 목적 근거만 좌측으로 만든다.
 
     축은 CPL 이 확정한다. 여기서 다시 분류하지 않는다 — 값을 확정하는 곳과

@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import BaseModel
 import pytest
 
-from worker.contracts.cpl_result import PURPOSE_AXIS_UNRESOLVED, PurposeAxisCode
+from worker.contracts.cpl_result import PURPOSE_AXIS_UNRESOLVED, CplAxisCode
 from worker.contracts.profile_snapshot import LLM_UNAVAILABLE
 from worker.cpl import analyze_cpl, build_cpl_result
 from worker.cpl_prompt import PURPOSE_AXIS_PROMPT_VERSION
@@ -71,15 +71,15 @@ def _row(axis: str, quoted: str, fact_id: str = "fact_1") -> dict[str, str]:
 # 필터가 (필드, 축) 한 쌍으로 끝난다.
 def test_one_statement_carrying_two_axes_is_kept_as_two_facts() -> None:
     llm = _Llm([
-        _row(PurposeAxisCode.TARGET_CONDITION.value, "부산 관내 제조 중소기업"),
-        _row(PurposeAxisCode.DIRECTION.value, "매출 성장을 달성"),
+        _row(CplAxisCode.TARGET_CONDITION.value, "부산 관내 제조 중소기업"),
+        _row(CplAxisCode.DIRECTION.value, "매출 성장을 달성"),
     ])
 
     facts = _purpose_facts(analyze_cpl(_profile(), llm, model_profile="default"))
 
     assert [fact.axis_code for fact in facts] == [
-        PurposeAxisCode.TARGET_CONDITION.value,
-        PurposeAxisCode.DIRECTION.value,
+        CplAxisCode.TARGET_CONDITION.value,
+        CplAxisCode.DIRECTION.value,
     ]
     # 값·근거는 새로 만들지 않는다. 같은 원문이 축만 다르게 두 번 실린다.
     assert {fact.value_raw for fact in facts} == {_VALUE}
@@ -123,7 +123,7 @@ def test_the_deterministic_builder_stays_free_of_the_model() -> None:
 
 
 def test_the_prompt_version_travels_with_the_classification() -> None:
-    llm = _Llm([_row(PurposeAxisCode.DIRECTION.value, "매출 성장을 달성")])
+    llm = _Llm([_row(CplAxisCode.DIRECTION.value, "매출 성장을 달성")])
 
     result = analyze_cpl(_profile(), llm, model_profile="default")
 
@@ -159,8 +159,8 @@ def test_axis_split_does_not_multiply_public_evidence_rows() -> None:
         ]
 
     llm = _Llm([
-        _row(PurposeAxisCode.TARGET_CONDITION.value, "부산 관내 제조 중소기업"),
-        _row(PurposeAxisCode.DIRECTION.value, "매출 성장을 달성"),
+        _row(CplAxisCode.TARGET_CONDITION.value, "부산 관내 제조 중소기업"),
+        _row(CplAxisCode.DIRECTION.value, "매출 성장을 달성"),
     ])
     with_axes = analyze_cpl(_profile(), llm, model_profile="default")
 
@@ -211,3 +211,110 @@ def test_dedupe_never_folds_two_delivery_members_that_share_a_name() -> None:
     }
     assert len(keys) == len(facts)
 
+
+
+# ---------------------------------------------------- fact_id 의 좌표 범위
+
+# fact_id 는 프로필 내부 좌표다. 저장된 19개 프로필에서 110개 id 가 여러
+# 프로필에 재사용되고, 그중 104개는 프로필마다 다른 span 을 가리킨다. 참조와
+# 감사 기록에서는 (profile_id, fact_id) 로 구분해야 하며 bare fact_id 를 전역
+# 키로 쓰면 서로 다른 근거가 같은 것으로 보인다.
+
+
+def _two_profiles() -> tuple[dict[str, Any], dict[str, Any]]:
+    def profile(profile_id: str, value: str, start: int) -> dict[str, Any]:
+        return {
+            "profile_id": profile_id,
+            "comparison_profile": {
+                "purpose_goal": [{
+                    "fact_id": "fact_1", "value_raw": value, "status": "identified",
+                    "value_source": {
+                        "source_block_id": "blk", "start_char": start,
+                        "end_char": start + len(value),
+                    },
+                }]
+            },
+            "field_states": [{"field_name": "purpose_goal", "status": "identified"}],
+        }
+
+    return profile("request:a", "가 사업의 목적", 0), profile("request:b", "나 사업의 목적", 40)
+
+
+def test_one_profile_never_maps_a_fact_id_to_two_spans() -> None:
+    left, _ = _two_profiles()
+
+    spans = {
+        (fact.source_block_id, fact.start_char, fact.end_char)
+        for fact in _purpose_facts(build_cpl_result(left))
+        if fact.fact_id == "fact_1"
+    }
+
+    assert len(spans) == 1
+
+
+def test_the_same_fact_id_in_another_profile_is_a_different_fact() -> None:
+    left, right = _two_profiles()
+
+    a = _purpose_facts(build_cpl_result(left))[0]
+    b = _purpose_facts(build_cpl_result(right))[0]
+
+    assert a.fact_id == b.fact_id == "fact_1"          # 재사용은 정상이다
+    assert (a.start_char, a.value_raw) != (b.start_char, b.value_raw)
+    # 구분은 프로필 id 와 함께여야 성립한다.
+    assert (left["profile_id"], a.fact_id) != (right["profile_id"], b.fact_id)
+
+
+# 축 분류는 프로필 하나만 받는다. 여러 프로필의 fact 를 한 요청에 섞으면
+# fact_id 가 무엇을 가리키는지 말할 수 없다.
+def test_the_classifier_resolves_fact_ids_inside_one_profile_only() -> None:
+    import inspect
+
+    from worker.cpl import analyze_cpl as subject
+
+    parameters = list(inspect.signature(subject).parameters)
+
+    assert parameters[0] == "profile"
+    assert "profiles" not in parameters
+
+
+# ------------------------------------------------------------ 프롬프트 계약
+
+
+def test_the_prompt_version_and_content_hash_travel_together() -> None:
+    from worker.cpl_prompt import load_purpose_axis_prompt
+
+    prompt = load_purpose_axis_prompt()
+    llm = _Llm([_row(CplAxisCode.DIRECTION.value, "매출 성장을 달성")])
+
+    record = analyze_cpl(_profile(), llm, model_profile="default").purpose_axis
+
+    assert record.prompt_version == prompt.version == "cpl-purpose-axis-v0.2"
+    assert record.prompt_sha256 == prompt.sha256
+
+
+# 문구를 못 읽으면 기본값으로 대체하지 않는다. 어떤 문구로 만든 분류인지 말할
+# 수 없는 결과를 내느니 축을 비운다. 값·근거·상태는 그대로다.
+def test_an_unreadable_prompt_empties_the_axes_without_touching_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any,
+) -> None:
+    from worker.contracts.cpl_result import PROMPT_UNAVAILABLE
+    from worker.cpl_prompt import PURPOSE_AXIS_PROMPT_ENV
+
+    monkeypatch.setenv(PURPOSE_AXIS_PROMPT_ENV, str(tmp_path / "없는파일.txt"))
+    llm = _Llm([_row(CplAxisCode.DIRECTION.value, "매출 성장을 달성")])
+
+    result = analyze_cpl(_profile(), llm, model_profile="default")
+
+    assert result.purpose_axis.reason_code == PROMPT_UNAVAILABLE
+    assert result.purpose_axis.assignments == []
+    assert [fact.value_raw for fact in _purpose_facts(result)] == [_VALUE]
+    assert len(result.items) == 13
+
+
+def test_all_four_contract_axes_exist() -> None:
+    assert [code.value for code in CplAxisCode] == [
+        "PURPOSE_TARGET_CONDITION",
+        "PURPOSE_PROBLEM_DOMAIN",
+        "PURPOSE_SPECIFIC_OBJECTIVE",
+        "PURPOSE_DIRECTION",
+    ]

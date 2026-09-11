@@ -36,8 +36,10 @@ __all__ = [
     "NOT_APPLICABLE",
     "CPL_DISPLAY_STATUSES",
     "PURPOSE_AXIS_CODES",
+    "cpl_display_code",
+    "PROMPT_UNAVAILABLE",
     "PURPOSE_AXIS_UNRESOLVED",
-    "PurposeAxisCode",
+    "CplAxisCode",
     "PurposeAxisAssignment",
     "PurposeAxisClassification",
     "display_status",
@@ -154,8 +156,12 @@ def aggregate_display(statuses: Iterable[str]) -> str:
     return CONFIRMED
 
 
-def cpl_axis_code(field_code: "CplFieldCode") -> str:
+def cpl_display_code(field_code: "CplFieldCode") -> str:
     """프론트 표시 코드. ``CplFieldCode`` 선언 순서의 순번이다.
+
+    의미 축(``CplAxisCode``) 이 아니다. 공개 페이로드의 ``axes[].axis_code`` 가
+    담는 값이 이것이라 이름이 겹쳐 보였다. 키 이름은 계약이라 두고 함수만
+    구분한다.
 
     프론트 명세의 예시 두 개가 이 순서와 맞는다 — ``CPL-01`` 이 요청유형
     ("요청유형이 확인되었습니다"), ``CPL-11`` 이 지원내용·지원규모
@@ -166,23 +172,31 @@ def cpl_axis_code(field_code: "CplFieldCode") -> str:
     return f"CPL-{list(CplFieldCode).index(field_code) + 1:02d}"
 
 
-class PurposeAxisCode(StrEnum):
-    """사업목적 문장의 의미 축.
+class CplAxisCode(StrEnum):
+    """원문 값의 의미 축 (AGENTS.md ``CPL Slice 6 정정 계약``).
 
-    ``cpl_axis_code()`` 와 다른 층이다. 저쪽은 13항목 표시 코드(``CPL-01``)로
-    항목 하나를 가리키고, 이쪽은 fact 하나가 목적의 어느 의미를 말하는지를
-    가리킨다. 이름이 둘 다 "axis" 라서 겹쳐 보이지만 어휘를 공유하지 않는다.
-    한쪽을 고쳐도 다른 쪽이 조용히 바뀌지 않게 끝까지 분리해 둔다.
+    ``cpl_display_code()`` 와 다른 층이다. 저쪽은 13항목 표시 코드(``CPL-01``)로
+    항목 하나를 가리키고, 이쪽은 fact 하나가 어떤 의미를 말하는지를 가리킨다.
+    이름이 겹쳐 보여도 어휘를 공유하지 않는다.
+
+    지금은 ``PURPOSE_GOAL`` 네 축만 있다. 다른 필드의 축이 확정되면 여기에
+    더한다. FIT 이 당장 두 축만 쓰더라도 CPL 은 네 축을 구조화한다 — 소비자가
+    쓰는 만큼만 만들면 CPL 이 다시 FIT 전용 중간 형식이 된다.
     """
 
     TARGET_CONDITION = "PURPOSE_TARGET_CONDITION"
+    PROBLEM_DOMAIN = "PURPOSE_PROBLEM_DOMAIN"
+    SPECIFIC_OBJECTIVE = "PURPOSE_SPECIFIC_OBJECTIVE"
     DIRECTION = "PURPOSE_DIRECTION"
 
 
-PURPOSE_AXIS_CODES = frozenset(code.value for code in PurposeAxisCode)
+PURPOSE_AXIS_CODES = frozenset(code.value for code in CplAxisCode)
 # 호출은 했는데 유효한 축을 하나도 만들지 못했다. 축이 없다는 사실이지
 # 값이 없다는 뜻이 아니다.
 PURPOSE_AXIS_UNRESOLVED = "PURPOSE_AXIS_UNRESOLVED"
+# 버전 프롬프트 파일을 읽지 못했다. 기본 문구로 대체하지 않는다 — 어떤 문구로
+# 만든 분류인지 말할 수 없는 결과를 내느니 축을 비운다.
+PROMPT_UNAVAILABLE = "PROMPT_UNAVAILABLE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +222,9 @@ class PurposeAxisClassification:
     reason_code: str | None = None
     dropped: list[str] = field(default_factory=list)
     prompt_version: str | None = None
+    # 버전 이름이 가리키는 실제 문구의 해시. 같은 이름으로 내용이 바뀌면
+    # 여기서 드러난다.
+    prompt_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

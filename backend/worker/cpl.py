@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .cpl_prompt import PURPOSE_AXIS_PROMPT_VERSION, purpose_axis_instruction
+from .cpl_prompt import PromptUnavailableError, load_purpose_axis_prompt
 from .llm_call import generate
 from .ports.llm import (
     LLMClient,
@@ -43,6 +43,7 @@ from .contracts.cpl_result import (
     NO_PROFILE_FIELD,
     PROFILE_FIELD_STATE_MISSING,
     PURPOSE_AXIS_CODES,
+    PROMPT_UNAVAILABLE,
     PURPOSE_AXIS_UNRESOLVED,
     PurposeAxisAssignment,
     PurposeAxisClassification,
@@ -309,10 +310,18 @@ def _classify(
     if not facts:
         return PurposeAxisClassification(attempted=False)
     try:
+        prompt = load_purpose_axis_prompt()
+    except PromptUnavailableError:
+        # 문구를 못 읽은 채 낸 분류는 버전을 신뢰할 수 없다. 값·근거는 그대로
+        # 두고 축만 비운다.
+        return PurposeAxisClassification(
+            attempted=False, reason_code=PROMPT_UNAVAILABLE
+        )
+    try:
         response = generate(
             llm_client,
             task_name="cpl_purpose_axis_classification",
-            instructions=purpose_axis_instruction(sorted(PURPOSE_AXIS_CODES)),
+            instructions=prompt.text,
             payload={
                 "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
                 "facts": [
@@ -327,7 +336,8 @@ def _classify(
         return PurposeAxisClassification(
             attempted=True,
             reason_code=_TRANSPORT_REASONS[type(error)],
-            prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
+            prompt_version=prompt.version,
+            prompt_sha256=prompt.sha256,
         )
 
     by_id = {fact.fact_id: fact for fact in facts}
@@ -355,7 +365,8 @@ def _classify(
         assignments=assignments,
         reason_code=None if assignments else PURPOSE_AXIS_UNRESOLVED,
         dropped=dropped,
-        prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
+        prompt_version=prompt.version,
+        prompt_sha256=prompt.sha256,
     )
 
 

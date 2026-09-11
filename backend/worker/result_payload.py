@@ -12,7 +12,7 @@ from enum import Enum
 import math
 from typing import Any
 
-from .contracts.cpl_result import CplEvidence, CplResult, cpl_axis_code
+from .contracts.cpl_result import CplEvidence, CplResult, cpl_display_code
 from .contracts.fit_result import FitResult, fit_axis_code
 from .contracts.ml_result import MlModelId, MlModelResult, MlReferenceResult
 from .contracts.sim_result import (
@@ -216,7 +216,7 @@ def build_result_payload(
         axes.append(
             {
                 "axis_type": "CPL",
-                "axis_code": cpl_axis_code(item.field_code),
+                "axis_code": cpl_display_code(item.field_code),
                 "status": item.representative_status,
                 "summary_text": _CPL_SUMMARY.get(
                     item.representative_status, "추가 확인이 필요합니다."

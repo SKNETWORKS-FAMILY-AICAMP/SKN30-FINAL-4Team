@@ -48,7 +48,7 @@ from app.schemas.cpl import CplFieldCode
 from app.schemas.fit import FitRelationId
 from app.schemas.sim import SimAxis
 
-from .contracts.cpl_result import CplEvidence, CplResult, cpl_axis_code
+from .contracts.cpl_result import CplEvidence, CplResult, cpl_display_code
 from .contracts.fit_result import FitResult, fit_axis_code
 from .contracts.sim_result import (
     SimAxisResult,
@@ -372,7 +372,7 @@ def _cpl_rows(
                 "analysis_case_pk": analysis_case_pk,
                 "axis_type": "CPL",
                 # 프론트 표시 코드다. 내부 어휘 이름은 result_data 에 남긴다.
-                "axis_code": cpl_axis_code(item.field_code),
+                "axis_code": cpl_display_code(item.field_code),
                 # 표시 어휘 그대로다. 하위 필드의 프로파일 상태 원본은
                 # result_data 안 subfields[] 에 남는다.
                 "status": item.representative_status,

@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import BaseModel
 import pytest
 
-from worker.contracts.cpl_result import PurposeAxisCode
+from worker.contracts.cpl_result import CplAxisCode
 from worker.contracts.fit_result import FitRelationId, FitStatus
 from worker.cpl import analyze_cpl, build_cpl_result
 from worker.fit import analyze_fit
@@ -60,9 +60,9 @@ class _Recorder:
 
 def _rows() -> list[dict[str, str]]:
     return [
-        {"fact_id": "fact_1", "axis_code": PurposeAxisCode.TARGET_CONDITION.value,
+        {"fact_id": "fact_1", "axis_code": CplAxisCode.TARGET_CONDITION.value,
          "quoted_text": _TARGET},
-        {"fact_id": "fact_1", "axis_code": PurposeAxisCode.DIRECTION.value,
+        {"fact_id": "fact_1", "axis_code": CplAxisCode.DIRECTION.value,
          "quoted_text": _DIRECTION},
     ]
 
@@ -94,7 +94,7 @@ def test_fit_never_calls_the_axis_classifier() -> None:
 def test_a_contradicting_model_at_fit_time_changes_nothing() -> None:
     cpl = analyze_cpl(_profile(), _Recorder(_rows()), model_profile="default")
     hostile = _Recorder([
-        {"fact_id": "fact_1", "axis_code": PurposeAxisCode.DIRECTION.value,
+        {"fact_id": "fact_1", "axis_code": CplAxisCode.DIRECTION.value,
          "quoted_text": _TARGET},
     ])
 

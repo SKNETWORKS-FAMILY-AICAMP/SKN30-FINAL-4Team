@@ -18,7 +18,12 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from .cpl_result import CplEvidence, PURPOSE_AXIS_UNRESOLVED
+from .cpl_result import (
+    CplAxisCode,
+    CplEvidence,
+    PURPOSE_AXIS_CODES,
+    PURPOSE_AXIS_UNRESOLVED,
+)
 from .profile_snapshot import (
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
@@ -31,7 +36,7 @@ __all__ = [
     "FitStatus",
     "CplEvidence",
     "StageDiagnostic",
-    "PurposeAxisCode",
+    "CplAxisCode",
     "PURPOSE_AXIS_CODES",
     "FIT_NOT_APPLICABLE",
     "FIT_DISPLAY_STATUSES",
@@ -79,22 +84,7 @@ class FitStatus(StrEnum):
     INSUFFICIENT = "INSUFFICIENT"
 
 
-class PurposeAxisCode(StrEnum):
-    """목적 의미 축 어휘 (초안 §7.1 FIT-2 "목적 의미 분류").
-
-    CPL 의 ``CplAxisCode`` 를 가져다 쓰지 않는다. 저쪽은 13항목 표시 축이고
-    이쪽은 FIT 좌측 입력을 만들기 위한 목적 문장 분류 축이라, 어휘가 우연히
-    겹쳐도 같은 계약이 아니다. 한쪽을 고치면 다른 쪽이 조용히 바뀌는 결합을
-    만들지 않는다.
-    """
-
-    TARGET_CONDITION = "PURPOSE_TARGET_CONDITION"
-    DIRECTION = "PURPOSE_DIRECTION"
-    PROBLEM_DOMAIN = "PURPOSE_PROBLEM_DOMAIN"
-    SPECIFIC_OBJECTIVE = "PURPOSE_SPECIFIC_OBJECTIVE"
-
-
-PURPOSE_AXIS_CODES = frozenset(code.value for code in PurposeAxisCode)
+# 축 어휘 정의는 cpl_result 로 옮겼다. 축을 확정하는 쪽이 어휘도 갖는다.
 
 
 # ------------------------------------------------------------- 표시 어휘
