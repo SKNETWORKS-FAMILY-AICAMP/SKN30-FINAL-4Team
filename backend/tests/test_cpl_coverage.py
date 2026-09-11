@@ -240,3 +240,107 @@ def test_the_word_inside_a_sentence_is_not_a_label() -> None:
     assert detect_coverage_gaps(
         _profile([], "not_found"), _ir("우리 사업목적은 아래와 같다")
     ) == []
+
+
+# -------------------------------------------------- 재검 입력 (CplFragment)
+
+# 감지 신호만으로는 재검을 못 한다. 구역이 비었다는 사실은 알지만 그 구역의
+# 원문을 다시 줄 수 없기 때문이다. fragment 는 그 원문을 가리키는 좌표다.
+# CplFact 를 대신하지 않는다 — 저쪽은 검증을 통과해 화면에 나가는 값이고
+# 이쪽은 아직 값이 되지 못한 원문이다.
+
+
+def _fragments(ir: dict[str, Any]):
+    from worker.cpl_coverage import build_fragments
+
+    return build_fragments(ir, profile_field=_PURPOSE)
+
+
+def _doc(text: str, *, occurrence_id: str = "occ:1", document_id: str = "hwpx:d1"):
+    return {
+        "document": {"document_id": document_id},
+        "blocks": [{
+            "block_id": "hwpx:t4",
+            "occurrences": [{"occurrence_id": occurrence_id, "text": text}],
+        }],
+    }
+
+
+# 긴 한 문단에 항목이 이어진 서식에서 목적 구역만 끊어야 한다. 블록 전체를
+# 주면 재검 입력이 다시 blob 이라 나눈 의미가 없다.
+def test_a_fragment_stops_at_the_next_label() -> None:
+    joined = (
+        "○ 사업기간 : 2026.1.1~2026.12.31"
+        "○ 사업목적 : 부산 관내 중소기업의 기술경쟁력 강화"
+        "○ 사업예산 : 금 10억원"
+    )
+
+    fragments = _fragments(_doc(joined))
+
+    assert len(fragments) == 1
+    assert "사업예산" not in fragments[0].raw_text
+    assert "사업기간" not in fragments[0].raw_text
+    assert "기술경쟁력 강화" in fragments[0].raw_text
+
+
+def test_an_empty_labelled_region_produces_no_fragment() -> None:
+    assert _fragments(_doc("○ 사업목적 :\n○ 사업예산 : 금 10억원")) == []
+
+
+def test_the_reference_is_the_same_every_time() -> None:
+    document = _doc("○ (사업목적) 부산 관내 제조 중소기업")
+
+    first = [row.evidence_ref for row in _fragments(document)]
+    second = [row.evidence_ref for row in _fragments(_doc(
+        "○ (사업목적) 부산 관내 제조 중소기업"
+    ))]
+
+    assert first == second != []
+
+
+def test_the_reference_carries_the_document_coordinates() -> None:
+    from worker.cpl_coverage import evidence_ref
+
+    fragment = _fragments(_doc("○ (사업목적) 부산 관내 제조 중소기업"))[0]
+
+    assert fragment.evidence_ref == evidence_ref(
+        "hwpx:d1", "occ:1", fragment.start_char, fragment.end_char
+    )
+    assert fragment.common_ir_document_id == "hwpx:d1"
+    assert fragment.common_ir_block_id == "hwpx:t4"
+    assert fragment.common_ir_occurrence_id == "occ:1"
+    # 이 슬라이스는 사업목적만 다룬다. 목적 FIT 관계는 role 을 요구하지 않으므로
+    # 전역 role 체계를 함께 만들지 않는다.
+    assert fragment.source_role is None
+
+
+# 프로필의 fact_id 는 프로필 내부 좌표라 다른 프로필에서 같은 값이 다시 나온다.
+# 재검 참조가 그것과 같은 공간을 쓰면 서로 다른 것이 같아 보인다.
+def test_a_reference_never_looks_like_a_profile_fact_id() -> None:
+    fragment = _fragments(_doc("○ (사업목적) 부산 관내 제조 중소기업"))[0]
+
+    assert fragment.evidence_ref not in {"fact_1", "fact_2", "delivery_method_1"}
+    assert "#" in fragment.evidence_ref and "@" in fragment.evidence_ref
+
+
+# 표는 같은 본문을 계층마다 다시 싣는다. 구역 하나를 계층 수만큼 재검에 넣으면
+# 같은 원문을 여러 번 묻는다.
+def test_a_table_region_is_asked_once_not_once_per_layer() -> None:
+    text = "○ (사업목적) 부산 관내 제조 중소기업"
+    document = {
+        "document": {"document_id": "hwpx:d1"},
+        "blocks": [{
+            "block_id": "hwpx:t4",
+            "occurrences": [
+                {"occurrence_id": "occ:rhwp:t4", "text": text},
+                {"occurrence_id": "occ:rhwp:t4:c5", "text": text},
+                {"occurrence_id": "occ:rhwp:t4:c5:p0", "text": text},
+            ],
+        }],
+    }
+
+    fragments = _fragments(document)
+
+    assert len(fragments) == 1
+    # 가장 좁은 occurrence 가 그 자리를 가장 정확히 가리킨다.
+    assert fragments[0].common_ir_occurrence_id == "occ:rhwp:t4:c5:p0"

@@ -61,32 +61,128 @@ class CoverageGap:
     label_block_ids: tuple[str, ...]
 
 
-def _block_texts(common_ir: Mapping[str, Any]) -> list[tuple[str, str]]:
-    """블록 id 와 본문. 표 셀 occurrence 도 각각 본다."""
+def _occurrences(common_ir: Mapping[str, Any]) -> list[tuple[str, str, str]]:
+    """블록 id, occurrence id, 본문. 표 셀 occurrence 도 각각 본다."""
 
-    rows: list[tuple[str, str]] = []
+    rows: list[tuple[str, str, str]] = []
     for block in common_ir.get("blocks") or []:
         if not isinstance(block, Mapping):
             continue
         block_id = str(block.get("block_id") or "")
         for occurrence in block.get("occurrences") or []:
             if isinstance(occurrence, Mapping) and occurrence.get("text"):
-                rows.append((block_id, str(occurrence["text"])))
+                rows.append((
+                    block_id,
+                    str(occurrence.get("occurrence_id") or ""),
+                    str(occurrence["text"]),
+                ))
     return rows
 
 
-def _region_has_content(text: str, start: int) -> bool:
-    """라벨 바로 뒤부터 다음 라벨·줄 경계까지 실제 글이 있는지 본다.
+def _region_end(text: str, label_end: int) -> int:
+    """라벨이 지배하는 구역의 끝. 다음 라벨이나 줄 경계에서 끊는다.
+
+    구역을 블록 전체로 잡으면 400 자 한 문단에 여러 항목이 이어진 서식에서
+    사업목적 구역이 예산·지원대상까지 삼킨다. 재검 입력이 그러면 다시 blob 을
+    주는 셈이라 나눈 의미가 없다.
+    """
+
+    boundary = _NEXT_LABEL.search(text, label_end)
+    return boundary.start() if boundary else len(text)
+
+
+def _region_has_content(text: str, label_end: int) -> bool:
+    """라벨 바로 뒤 구역에 실제 글이 있는지 본다.
 
     ``○ 사업목적 :`` 만 찍혀 있고 곧바로 다음 항목이 오면 문서가 그 구역을
     비운 것이다. 그것을 추출 누락으로 표시하면 문서의 빈칸을 우리 결함으로
     되돌린다.
     """
 
-    rest = text[start:]
-    boundary = _NEXT_LABEL.search(rest)
-    region = rest[: boundary.start()] if boundary else rest
+    region = text[label_end : _region_end(text, label_end)]
     return len(region.strip()) >= _MIN_REGION_CHARS
+
+
+def evidence_ref(
+    document_id: str | None, occurrence_id: str, start: int, end: int
+) -> str:
+    """원문 구역 하나를 가리키는 결정적 참조.
+
+    같은 문서를 다시 처리하면 같은 ref 가 나와야 재검 요청과 응답을 대조할 수
+    있다. 임의 UUID 를 쓰면 실행마다 달라져 감사 기록이 서로 연결되지 않는다.
+
+    프로필의 ``fact_id`` 와는 형식이 겹치지 않는다. 저쪽은 프로필 내부 좌표라
+    다른 프로필에서 같은 값이 다시 나오지만, 이쪽은 문서 좌표라 전역이다.
+    """
+
+    return f"{document_id or 'unknown'}#{occurrence_id}@{start}-{end}"
+
+
+@dataclass(frozen=True, slots=True)
+class CplFragment:
+    """재검 입력으로 쓰는 원문 구역 하나.
+
+    ``CplFact`` 를 대신하지 않는다. 저쪽은 검증을 통과해 CPL 결과에 실린 값이고
+    이쪽은 아직 값이 되지 못한 원문이다. 둘을 한 타입으로 합치면 화면에 나가는
+    것과 재검에 넣는 것이 같은 자리에서 섞인다.
+
+    ``source_role`` 은 이 슬라이스에서 ``None`` 이다. 사업목적 FIT 관계는 role 을
+    요구하지 않으므로 전역 role 체계를 함께 만들지 않는다.
+    """
+
+    evidence_ref: str
+    profile_field: str
+    raw_text: str
+    source_role: str | None
+    common_ir_document_id: str | None
+    common_ir_block_id: str
+    common_ir_occurrence_id: str
+    start_char: int
+    end_char: int
+
+
+def build_fragments(
+    common_ir: Mapping[str, Any], *, profile_field: str
+) -> list[CplFragment]:
+    """그 필드의 라벨이 지배하는 원문 구역을 모은다. 값을 만들지 않는다."""
+
+    pattern = _PATTERNS.get(profile_field)
+    if pattern is None:
+        return []
+    document_id = (common_ir.get("document") or {}).get("document_id")
+    fragments: list[CplFragment] = []
+    # 표는 같은 본문을 계층마다 다시 싣는다(t4 / t4:c5 / t4:c5:p0). 구역 하나를
+    # 계층 수만큼 재검에 넣으면 같은 원문을 여러 번 묻는다. 가장 좁은 occurrence
+    # 하나만 남긴다 — 좌표가 가장 정확하고 그 자리를 유일하게 가리킨다.
+    seen: set[str] = set()
+    by_text: dict[tuple[str, str], CplFragment] = {}
+    for block_id, occurrence_id, text in _occurrences(common_ir):
+        for match in pattern.finditer(text):
+            start = match.start()
+            end = _region_end(text, match.end())
+            if len(text[match.end() : end].strip()) < _MIN_REGION_CHARS:
+                continue
+            ref = evidence_ref(document_id, occurrence_id, start, end)
+            if ref in seen:
+                continue
+            seen.add(ref)
+            fragment = CplFragment(
+                evidence_ref=ref,
+                profile_field=profile_field,
+                raw_text=text[start:end],
+                source_role=None,
+                common_ir_document_id=document_id,
+                common_ir_block_id=block_id,
+                common_ir_occurrence_id=occurrence_id,
+                start_char=start,
+                end_char=end,
+            )
+            key = (block_id, fragment.raw_text)
+            kept = by_text.get(key)
+            if kept is None or len(occurrence_id) > len(kept.common_ir_occurrence_id):
+                by_text[key] = fragment
+    fragments = list(by_text.values())
+    return fragments
 
 
 def detect_coverage_gaps(
@@ -95,7 +191,7 @@ def detect_coverage_gaps(
     """라벨 구역이 있는데 값이 비어 있는 필드를 모은다. 상태를 바꾸지 않는다."""
 
     states = field_states_by_name(profile)
-    texts = _block_texts(common_ir)
+    texts = _occurrences(common_ir)
     gaps: list[CoverageGap] = []
     for path, pattern in _PATTERNS.items():
         name = path.rsplit(".", 1)[-1]
@@ -109,7 +205,7 @@ def detect_coverage_gaps(
             continue
         found = tuple(
             block_id
-            for block_id, text in texts
+            for block_id, _occurrence_id, text in texts
             if any(
                 _region_has_content(text, match.end())
                 for match in pattern.finditer(text)
@@ -127,4 +223,10 @@ def detect_coverage_gaps(
     return gaps
 
 
-__all__ = ["CoverageGap", "detect_coverage_gaps"]
+__all__ = [
+    "CoverageGap",
+    "CplFragment",
+    "build_fragments",
+    "detect_coverage_gaps",
+    "evidence_ref",
+]
