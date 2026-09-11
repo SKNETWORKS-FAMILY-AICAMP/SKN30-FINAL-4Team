@@ -105,3 +105,18 @@ def test_configure_environment_rejects_out_of_range_top_k(
 
 def test_top_k_defaults_to_the_stored_trace_baseline() -> None:
     assert MODULE.DEFAULT_TOP_K == 5
+
+
+def test_windows_uses_the_direct_postgres_listener() -> None:
+    assert MODULE._database_endpoint("acme", "win32") == ("postgres", 55432)
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_other_platforms_keep_the_supabase_pooler(platform: str) -> None:
+    assert MODULE._database_endpoint("acme", platform) == ("postgres.acme", 5432)
+
+
+def test_pooler_username_is_url_quoted() -> None:
+    username, port = MODULE._database_endpoint("a/c me", "linux")
+    assert username == "postgres.a%2Fc%20me"
+    assert port == 5432

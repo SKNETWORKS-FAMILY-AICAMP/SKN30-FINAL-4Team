@@ -54,6 +54,19 @@ def _required(values: dict[str, str | None], name: str) -> str:
     return value
 
 
+def _database_endpoint(tenant: str, platform: str = sys.platform) -> tuple[str, int]:
+    """Pick the reachable local PostgreSQL endpoint for this host.
+
+    Docker Desktop publishes the direct PostgreSQL listener to Windows, while
+    the Supabase pooler endpoint is not reliably reachable from that host.
+    Every other platform keeps the pooler, which is what Compose expects.
+    """
+
+    if platform == "win32":
+        return "postgres", 55432
+    return quote(f"postgres.{tenant}", safe=""), 5432
+
+
 def _configure_environment(
     root_env: Path,
     supabase_env: Path,
@@ -68,10 +81,10 @@ def _configure_environment(
     password = _required(local, "POSTGRES_PASSWORD")
     tenant = _required(local, "POOLER_TENANT_ID")
     database = str(local.get("POSTGRES_DB") or "postgres").strip() or "postgres"
-    username = quote(f"postgres.{tenant}", safe="")
+    username, database_port = _database_endpoint(tenant)
     database_url = (
         f"postgresql://{username}:{quote(password, safe='')}"
-        f"@127.0.0.1:5432/{quote(database, safe='')}?sslmode=disable"
+        f"@127.0.0.1:{database_port}/{quote(database, safe='')}?sslmode=disable"
     )
 
     settings = {
@@ -93,8 +106,11 @@ def _configure_environment(
         ),
         "PREREVIEW_WORKER_TOP_K": str(top_k),
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
-        "PREREVIEW_FREETYPE_LIB": "/lib/x86_64-linux-gnu/libfreetype.so.6",
     }
+    if sys.platform != "win32":
+        # The parser subprocess preloads the host FreeType build; Windows
+        # resolves it through the packaged runtime instead.
+        settings["PREREVIEW_FREETYPE_LIB"] = "/lib/x86_64-linux-gnu/libfreetype.so.6"
     os.environ.update(settings)
 
 
@@ -334,6 +350,9 @@ def main() -> int:
     source_content, source_mime_type = _validated_source(args.file)
     if args.trace_dir is not None and args.trace_dir.exists():
         raise E2EFailure("--trace-dir must not already exist")
+    if sys.platform == "win32":
+        # psycopg's asyncio support needs the selector loop on Windows.
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     _configure_environment(
         args.backend_env,
         args.supabase_env,
