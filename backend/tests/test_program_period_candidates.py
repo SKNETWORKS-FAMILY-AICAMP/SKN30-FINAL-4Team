@@ -82,3 +82,69 @@ def test_candidate_starting_right_after_a_dotted_year_is_suppressed() -> None:
 )
 def test_a_year_separated_by_other_text_never_suppresses(prefix: str) -> None:
     assert not _DROPPED_DOTTED_YEAR_PREFIX.search(prefix)
+
+
+# 다년도 사업은 기간을 연도 범위로만 적기도 한다. 이 문법은 사업기간 구역
+# 안에서만 돈다 — 문서 전체에서 찾으면 단계 기간이 같은 목록에 섞이고, 실측에서
+# 그것만으로 같은 구역을 쓰는 CPL-03 추출이 3/3 에서 0/3 으로 떨어졌다.
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("○ (사업기간) `24~`28년(5년)", "`24~`28년"),
+        ("ㅇ 사업기간 : ’24 ~ ’28(5년)", "’24 ~ ’28"),
+        ("○ (사업기간) '21년 ~ '25년(5년)", "'21년 ~ '25년"),
+        ("사업기간 2024~2028년", "2024~2028년"),
+        ("사업기간(2024~2028년)", "2024~2028년"),
+        ("○ 사업 수행 기간 : ’24 ~ ’28", "’24 ~ ’28"),
+    ],
+)
+def test_year_only_range_inside_the_period_region(text: str, expected: str) -> None:
+    assert _period_candidates(text) == [expected]
+
+
+# 구역 밖의 연도 범위는 후보가 아니다. 라벨이 없으면 사업기간 자리가 아니다.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- 1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사",
+        "제4차 중소기업 기술혁신 촉진계획(2024~2028년)",
+        "◦(지원기간) ’24 ~ ’28",
+    ],
+)
+def test_a_year_range_outside_the_period_region_is_not_a_candidate(text: str) -> None:
+    assert _period_candidates(text) == []
+
+
+# 구역은 다음 항목에서 끝난다. 뒤 항목의 연도 범위를 가져오지 않는다.
+def test_the_region_does_not_reach_into_the_next_item() -> None:
+    line = "○ 사업기간 : ’24 ~ ’28 ○ 관련계획 : 2030~2035년"
+
+    assert _period_candidates(line) == ["’24 ~ ’28"]
+
+
+# 연도 표시가 없는 범위는 구역 안에서도 받지 않는다. 계획 인용이 똑같이
+# 생겼고 Rule 로는 가를 수 없다.
+def test_a_year_range_without_a_marker_is_not_a_candidate() -> None:
+    assert _period_candidates("○ (사업기간) 2024~2028") == []
+
+
+# 두 자리 연도를 2000 년대로 펴지 않는다. value_raw 는 원문 그대로다.
+def test_two_digit_years_are_never_expanded() -> None:
+    assert _period_candidates("ㅇ 사업기간 : ’24 ~ ’28") == ["’24 ~ ’28"]
+
+
+# 일자·연월 범위는 구역과 무관하게 지금까지처럼 문서 어디서나 찾는다.
+def test_dated_ranges_stay_document_wide() -> None:
+    assert _period_candidates("기간: 2025.3.1~2025.12.31") == ["2025.3.1~2025.12.31"]
+
+
+# 연도 아닌 숫자는 구역 안에 있어도 기간이 되지 않는다.
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "051-888-0000", "제62조의2, 제9조", "총사업비 6,600백만원",
+        "120개사 (연 40개사)", "최대 5,000만원", "목표값 240명",
+    ],
+)
+def test_numbers_that_are_not_years_never_become_a_period(tail: str) -> None:
+    assert _period_candidates(f"○ (사업기간) {tail}") == []

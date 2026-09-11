@@ -24,6 +24,7 @@ from .common_ir_v1 import (
     common_ir_v1_identity,
     project_common_ir_v1,
 )
+from .field_regions import RequestFieldRegion, build_field_regions
 from .models import CandidatePack, ComponentKind, SourceBlock, SourceRelation
 from .profile_v02 import ValueSource, find_all_occurrences, materialize_value_source, validate_common_ir_lineage
 
@@ -31,6 +32,15 @@ from .profile_v02 import ValueSource, find_all_occurrences, materialize_value_so
 REQUEST_SCHEMA_VERSION = "pre_review_request_profile/v0.1"
 REQUEST_PIPELINE_VERSION = "request_profile_v0.1.2_scaffold"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
+# Names the value-span candidate generator, not the CandidatePack block
+# projection above it.  Bump both together whenever the span grammar
+# changes: a stored result keeps the version that produced it.
+#   v4  a bare year range inside a 사업기간 region can be a
+#       program_period candidate
+VALUE_SPAN_CANDIDATE_GENERATOR_VERSION = "4"
+VALUE_SPAN_CANDIDATE_GENERATOR = (
+    f"request_candidate_span_v{VALUE_SPAN_CANDIDATE_GENERATOR_VERSION}"
+)
 
 SHARED_COMPARISON_FIELDS = (
     "purpose_goal", "applicant_eligibility", "support_target",
@@ -143,6 +153,25 @@ _PROGRAM_PERIOD_DATE_RANGE_PATTERN = (
     rf"공고일{_DATE_RANGE_SEPARATOR}{_PROGRAM_PERIOD_DATE_TOKEN})"
 )
 _PROGRAM_PERIOD_DATE_RANGE = re.compile(rf"^\s*{_PROGRAM_PERIOD_DATE_RANGE_PATTERN}\s*$")
+# 다년도 사업은 기간을 월·일 없이 연도 범위로만 적기도 한다(``'24 ~ '28``,
+# ``2024~2028년``). 위 토큰은 전부 월이나 점 구분자를 요구해서 그런 구역은
+# 후보가 0 건이었고, program_period 는 서버가 등록한 후보에만 앵커를 걸 수
+# 있으므로 값을 고를 방법 자체가 없었다.
+#
+# 이 문법은 **사업기간 구역 안에서만** 쓴다. 문서 전체에서 찾으면
+# ``1단계(2026~2027년)`` 같은 단계 기간이 같은 후보 목록에 섞이고, 실측에서
+# 그것만으로 같은 구역을 쓰는 CPL-03 의 추출이 3/3 에서 0/3 으로 떨어졌다.
+# 후보 목록은 그대로 LLM 입력이 되므로 한 행을 더하는 것도 입력 변화다.
+#
+# 연도는 네 자리, 또는 따옴표를 단 두~네 자리다. 맨 ``24`` 는 연도가 아니다.
+# 범위는 따옴표나 끝의 ``년`` 중 하나를 표시로 가져야 한다. 두 자리 연도를
+# 2000 년대로 펴지 않는다 — ``value_raw`` 는 원문 그대로다.
+_DATE_YEAR_MARKED = r"(?:[’'`]\s*\d{2,4}\s*년?|\d{2,4}\s*년)"
+_DATE_YEAR_PLAIN = r"(?:[’'`]\s*\d{2,4}|\d{4})\s*년?"
+_PROGRAM_PERIOD_YEAR_RANGE_FINDER = re.compile(
+    rf"(?:{_DATE_YEAR_MARKED}{_DATE_RANGE_SEPARATOR}{_DATE_YEAR_PLAIN}|"
+    rf"{_DATE_YEAR_PLAIN}{_DATE_RANGE_SEPARATOR}{_DATE_YEAR_MARKED})"
+)
 _PROGRAM_PERIOD_DATE_RANGE_FINDER = re.compile(_PROGRAM_PERIOD_DATE_RANGE_PATTERN)
 # A genuinely year-less range is valid when the source really omits its year.
 # It is not valid when the candidate finder has merely started immediately
@@ -476,9 +505,24 @@ def build_value_span_candidates(pack: CandidatePack) -> list[ValueSpanCandidate]
             candidate_kind=candidate_kind,
         ))
 
+    # 사업기간 구역은 라벨 계산기 하나에서 온다. 후보 생성기와 워커의 누락
+    # 감지기가 같은 정의를 봐야 한쪽이 찾는 구역을 다른 쪽이 못 찾는 상태가
+    # 조용히 생기지 않는다.
+    period_regions: dict[str, list[RequestFieldRegion]] = defaultdict(list)
+    for region in build_field_regions(pack, field_name="program_period"):
+        period_regions[region.block_id].append(region)
     for block in pack.blocks:
+        # 일자·연월 범위는 지금까지처럼 문서 어디서나 찾는다.
         for match in _PROGRAM_PERIOD_DATE_RANGE_FINDER.finditer(block.text):
             add_candidate(block, match.start(), match.end(), "program_period_date_range")
+        # 연도만 적은 범위는 사업기간 구역 안에서만 찾는다.
+        for region in period_regions.get(block.block_id, ()):
+            for match in _PROGRAM_PERIOD_YEAR_RANGE_FINDER.finditer(
+                block.text, region.content_start, region.content_end
+            ):
+                add_candidate(
+                    block, match.start(), match.end(), "program_period_date_range"
+                )
         tokens = list(_SPAN_TOKEN.finditer(block.text))
         by_text: dict[str, list[tuple[int, int]]] = defaultdict(list)
         for start_index, token in enumerate(tokens):
@@ -524,8 +568,8 @@ def candidate_pack_artifact(pack: CandidatePack, document: dict[str, Any]) -> di
         "common_ir_document_id": pack.common_ir_document_id,
         "common_ir_source_sha256": identity["source_sha256"],
         "text_basis": TEXT_BASIS,
-        "value_span_candidate_generator": "request_candidate_span_v3",
-        "value_span_candidate_generator_version": "3",
+        "value_span_candidate_generator": VALUE_SPAN_CANDIDATE_GENERATOR,
+        "value_span_candidate_generator_version": VALUE_SPAN_CANDIDATE_GENERATOR_VERSION,
         "value_span_candidates": [row.model_dump(mode="json") for row in build_value_span_candidates(pack)],
         "blocks": [
             {
@@ -678,7 +722,10 @@ def _validate_raw_fact_semantic_policy(field_name: str, value_raw: str) -> None:
         if not any(marker in value_raw for marker in _SUPPORT_METHOD_MARKERS) and not _SERVICE_FORMAT_METHOD.search(value_raw):
             raise ValueError("support_methods must name a support providing or payment method")
     if field_name == "program_period":
-        if not _PROGRAM_PERIOD_DATE_RANGE.fullmatch(value_raw):
+        if not (
+            _PROGRAM_PERIOD_DATE_RANGE.fullmatch(value_raw)
+            or _PROGRAM_PERIOD_YEAR_RANGE_FINDER.fullmatch(value_raw)
+        ):
             raise ValueError(
                 "program_period must be one exact date-range span; exclude duration parentheses, labels, and change narration"
             )
