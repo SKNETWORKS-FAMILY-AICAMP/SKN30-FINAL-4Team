@@ -432,3 +432,138 @@ def test_a_label_followed_by_another_form_label_is_not_a_gap() -> None:
 
     assert detect_coverage_gaps(_profile([], "not_found"), ir) == []
     assert build_fragments(ir, profile_field=_PURPOSE) == []
+
+
+# --- 수행체계 구역 (CPL-12) ------------------------------------------------
+# 새 HWP 는 제목 블록 뒤에 표 제목이 오고 실제 체계도는 그 아래 중첩 표에 있다.
+# 첫 블록 하나만 이어받으면 캡션에서 끝나므로 다음 항목 라벨까지 모은다.
+
+_DELIVERY = "comparison_profile.delivery_relations"
+
+
+def _delivery_profile(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "comparison_profile": {"purpose_goal": [{"value_raw": "목적"}], "delivery_relations": rows},
+        "field_states": [
+            {"field_name": "purpose_goal", "status": "identified"},
+            {"field_name": "delivery_relations", "status": "not_found" if not rows else "identified"},
+        ],
+    }
+
+
+def _chart_ir(*tail: str) -> dict[str, Any]:
+    return _sibling_ir("  ㅇ 사업추진체계", *tail)
+
+
+def test_a_chart_region_reaches_past_the_table_caption() -> None:
+    ir = _chart_ir("< 사업추진 체계도 >", "(주무부처)", "정책수립 및 예산 지원")
+
+    gaps = detect_coverage_gaps(_delivery_profile([]), ir)
+
+    assert [gap.field_name for gap in gaps] == ["delivery_relations"]
+    # 제목에서 멈추지 않고 아래 내용까지 구역이며, 제목 자체는 내용이 아니다.
+    assert {
+        fragment.raw_text.strip()
+        for fragment in build_fragments(ir, profile_field=_DELIVERY)
+    } == {"(주무부처)", "정책수립 및 예산 지원"}
+
+
+# 표 제목만 있고 그 아래 내용이 없으면 후보가 아니다. 제목은 내용이 아니다.
+def test_a_caption_without_a_chart_is_not_a_gap() -> None:
+    ir = _chart_ir("< 사업추진 체계도 >")
+
+    assert detect_coverage_gaps(_delivery_profile([]), ir) == []
+    assert build_fragments(ir, profile_field=_DELIVERY) == []
+
+
+# 수행관계는 한 문단에 다 적히기도 한다. 내용 개수로 후보를 가르면 이 서식을
+# 통째로 놓친다. coverage 가 묻는 것은 "관계가 성립하는가" 가 아니라 "원문에
+# 내용이 있는데 값이 비었는가" 다.
+def test_a_single_paragraph_delivery_region_is_a_gap() -> None:
+    ir = _chart_ir("부산테크노파크가 사업을 총괄하고 접수·평가를 수행한다")
+
+    gaps = detect_coverage_gaps(_delivery_profile([]), ir)
+
+    assert [gap.field_name for gap in gaps] == ["delivery_relations"]
+    assert len(build_fragments(ir, profile_field=_DELIVERY)) == 1
+
+
+# 제목 다음에 실질 내용이 한 블록만 있어도 후보다.
+def test_a_caption_followed_by_one_content_block_is_a_gap() -> None:
+    ir = _chart_ir("< 사업추진 체계도 >", "(주무부처)")
+
+    assert [
+        gap.field_name for gap in detect_coverage_gaps(_delivery_profile([]), ir)
+    ] == ["delivery_relations"]
+    # 제목은 구역 내용으로 세지 않는다.
+    assert [
+        fragment.raw_text.strip()
+        for fragment in build_fragments(ir, profile_field=_DELIVERY)
+    ] == ["(주무부처)"]
+
+
+# 모르는 괄호 표현은 버리지 않는다. 기관명일 수 있고, coverage 가 값을 놓치지
+# 않는 편이 제목 한 줄을 잘못 세는 것보다 낫다. 확인된 제목 문법만 제외한다.
+@pytest.mark.parametrize(
+    "text", ["(주무부처)", "[주무부처]", "<수행기관>", "[전문기관]", "<기타 제목>"],
+)
+def test_an_unrecognised_bracket_form_stays_a_fragment(text: str) -> None:
+    assert [
+        fragment.raw_text.strip()
+        for fragment in build_fragments(_chart_ir(text), profile_field=_DELIVERY)
+    ] == [text]
+
+
+# 확인된 수행체계 제목 문법만 제외한다.
+@pytest.mark.parametrize(
+    "caption", ["< 사업추진 체계도 >", "<사업추진절차표>", "< 체계도 >"],
+)
+def test_a_confirmed_delivery_caption_is_not_content(caption: str) -> None:
+    assert build_fragments(_chart_ir(caption), profile_field=_DELIVERY) == []
+
+
+# 제목 제외는 수행체계 구역에만 건다. 사업목적 구역에는 적용하지 않는다.
+def test_the_caption_rule_is_scoped_to_delivery() -> None:
+    ir = _sibling_ir("□ 사업목적", "< 사업추진 체계도 >")
+
+    assert len(build_fragments(ir, profile_field=_PURPOSE)) == 1
+
+
+# 줄바꿈이 들어간 문자열은 한 줄 제목이 아니다.
+def test_a_multi_line_block_is_never_a_caption() -> None:
+    ir = _chart_ir("< 사업추진 체계도 >\n(주무부처)")
+
+    assert len(build_fragments(ir, profile_field=_DELIVERY)) == 1
+
+
+# 값이 이미 있으면 후보가 아니다.
+def test_a_filled_delivery_field_is_not_a_gap() -> None:
+    ir = _chart_ir("< 사업추진 체계도 >", "(주무부처)", "정책수립 및 예산 지원")
+
+    assert detect_coverage_gaps(_delivery_profile([{"actor": "x"}]), ir) == []
+
+
+# 다음 항목 라벨에서 구역이 끝난다. 절차 구역은 별도로 모인다.
+def test_the_chart_region_stops_at_the_procedure_label() -> None:
+    ir = _sibling_ir(
+        "  ㅇ 사업추진체계", "(주무부처)", "정책수립 및 예산 지원",
+        "  ㅇ 사업추진절차", "사업 공고 및 선정",
+    )
+
+    chart = {
+        fragment.raw_text.strip()
+        for fragment in build_fragments(ir, profile_field=_DELIVERY)
+        if fragment.label_occurrence_id == "occ:p0"
+    }
+
+    assert chart == {"(주무부처)", "정책수립 및 예산 지원"}
+
+
+# 복합 제목은 값 구역이 아니다. 뒷항목이 줄어 쓰여도 마찬가지다.
+def test_a_compound_delivery_heading_is_not_a_region() -> None:
+    ir = _sibling_ir("□ 사업추진 체계 및 절차", "  ㅇ 사업추진체계", "(주무부처)", "정책수립")
+
+    assert {
+        fragment.label_occurrence_id
+        for fragment in build_fragments(ir, profile_field=_DELIVERY)
+    } == {"occ:p1"}

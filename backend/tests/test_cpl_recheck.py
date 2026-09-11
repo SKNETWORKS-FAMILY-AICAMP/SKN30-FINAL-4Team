@@ -249,3 +249,48 @@ def test_a_label_followed_by_another_form_label_never_rechecks() -> None:
     _item, subfield = _purpose(result)
     assert llm.tasks == []
     assert EXTRACTION_COVERAGE_GAP not in subfield.reason_codes
+
+
+# 수행체계 구역은 coverage 만 붙인다. 목적 재검기는 `evidence_ref/raw_text/
+# axis_code` 형식이라 actor·role 의 컨테이너와 멤버 좌표를 표현할 수 없다.
+# 관계 재검은 별도 계약이며 여기서 끌어오지 않는다.
+def test_a_delivery_gap_never_calls_the_purpose_recheck() -> None:
+    ir = {
+        "document": {"document_id": "hwp:d3"},
+        "blocks": [
+            {
+                "block_id": f"hwp:b{i}", "reading_order": i,
+                "occurrences": [{"occurrence_id": f"occ:p{i}", "text": text}],
+            }
+            for i, text in enumerate(
+                ["  ㅇ 사업추진체계", "< 사업추진 체계도 >", "(주무부처)", "정책수립 및 예산 지원"]
+            )
+        ],
+    }
+    profile = {
+        "comparison_profile": {
+            "purpose_goal": [{"value_raw": "기술경쟁력 강화"}], "delivery_relations": [],
+        },
+        "field_states": [
+            {"field_name": "purpose_goal", "status": "identified"},
+            {"field_name": "delivery_relations", "status": "not_found"},
+        ],
+    }
+    llm = _Llm([])
+
+    result = analyze_cpl(profile, llm, model_profile="cpl", common_ir=ir)
+
+    delivery = next(
+        row for row in result.items
+        if row.field_code is CplFieldCode.DELIVERY_SYSTEM
+    )
+    relations = delivery.subfields[0]
+    assert EXTRACTION_COVERAGE_GAP in relations.reason_codes
+    assert delivery.representative_status == "needs_confirmation"
+    # delivery_methods 를 함께 묶지 않는다.
+    methods = next(
+        row for row in delivery.subfields
+        if row.profile_field_name == "delivery_methods"
+    )
+    assert EXTRACTION_COVERAGE_GAP not in methods.reason_codes
+    assert "cpl_purpose_recheck" not in llm.tasks

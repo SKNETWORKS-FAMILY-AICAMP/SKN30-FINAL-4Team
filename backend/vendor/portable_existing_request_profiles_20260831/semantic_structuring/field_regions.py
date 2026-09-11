@@ -53,11 +53,16 @@ _BOUNDARY_WORD = (
 #     텍스트 아무 데서나 찾으면 안 된다. ``성과 지원대상`` 의 ``과``,
 #     ``산업·지원대상`` 의 ``·`` 가 접속사로 읽혀 본문 한가운데서 구역이
 #     잘린다. 그래서 ``label_end`` 에 붙여서만(anchored) 본다.
+# 복합 제목의 뒷항목은 앞항목과 겹치는 부분을 줄여 쓰기도 한다
+# (``사업추진 체계 및 절차`` = 사업추진체계 + 사업추진절차). 이 축약형은
+# 라벨 바로 뒤 접속사 다음에서만 인정한다 — 본문에서 ``절차``·``체계`` 는
+# 흔한 낱말이라 아무 데서나 경계로 쓰면 구역이 잘린다.
+_COMPOUND_TAIL = rf"{_BOUNDARY_WORD}|절차|체계|예산|규모|대상|내용|기간"
 _COMPOUND_HEADING = re.compile(
     # ``match(text, label_end)`` 가 이미 그 자리에 고정한다. ``^`` 를 쓰면
     # 문자열 머리에서만 맞아 라벨 뒤에서는 영영 매치되지 않는다.
     rf"\s*(?:및|과|와|·|,|/)\s*\(?\s*"
-    rf"(?P<word>{_BOUNDARY_WORD})\s*\)?\s*[:：)]?"
+    rf"(?P<word>{_COMPOUND_TAIL})\s*\)?\s*[:：)]?"
 )
 # (2) 줄머리·글머리 뒤의 항목 라벨. 위치가 이미 경계라 검색해도 안전하다.
 _BOUNDARY_LABEL_AT_HEAD = re.compile(
@@ -77,6 +82,15 @@ _MIN_REGION_CHARS = 2
 FIELD_LABELS: dict[str, tuple[str, ...]] = {
     "program_period": (r"사업\s*기간", r"사업\s*수행\s*기간", r"전체\s*추진\s*기간"),
     "purpose_goal": (r"사업\s*목적",),
+    # 실제 문서에서 확인한 표기만 넣는다. 새 HWP 는 제목 블록 뒤에 체계도와
+    # 절차표가 따로 온다(`□ 사업추진 체계 및 절차` / `ㅇ 사업추진체계` /
+    # `ㅇ 사업추진절차`).
+    "delivery_relations": (
+        r"사업\s*추진\s*체계",
+        r"사업\s*추진\s*절차",
+        r"추진\s*체계",
+        r"추진\s*절차",
+    ),
 }
 
 _PATTERNS: dict[str, re.Pattern[str]] = {

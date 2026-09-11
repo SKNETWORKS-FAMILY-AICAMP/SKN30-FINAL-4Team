@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,7 +42,31 @@ from .analysis_inputs import field_states_by_name, read_path
 # 다른 필드를 붙이면 재검 범위와 LLM 입력 계약이 함께 달라진다.
 _WATCHED_FIELDS: dict[str, str] = {
     "comparison_profile.purpose_goal": "purpose_goal",
+    "comparison_profile.delivery_relations": "delivery_relations",
 }
+
+# 수행체계 구역의 표 제목. 실제로 확인된 표본은 ``< 사업추진 체계도 >`` 하나다.
+# 제목은 구역 안에 있어도 내용이 아니므로 세지 않지만, 거기서 구역이 끝나지도
+# 않는다 — 실제 내용은 그 아래에 온다.
+#
+# 문법을 확인된 범위로 좁게 잡는다. 모르는 괄호 표현은 버리지 않고 남긴다.
+# ``[주무부처]`` · ``<수행기관>`` 은 수행기관 이름일 수 있고, coverage 가 값을
+# 놓치지 않는 편이 제목 한 줄을 잘못 세는 것보다 낫다. 대괄호 표기는 캡션 표본이
+# 확인되기 전까지 제외하지 않는다. ``[ 	]`` 로 한 줄에 묶어 줄바꿈이 들어간
+# 문자열은 제목으로 인정하지 않는다.
+_DELIVERY_CAPTION = re.compile(
+    r"^[ 	]*[<〈][ 	]*(?:사업[ 	]*추진[ 	]*)?"
+    r"(?:체계[ 	]*도|절차[ 	]*도|절차[ 	]*표|체계[ 	]*표|흐름도)"
+    r"[ 	]*[>〉][ 	]*$"
+)
+
+
+def _is_delivery_caption(text: str, field_name: str) -> bool:
+    """수행체계 구역의 표 제목인가. 다른 필드에는 적용하지 않는다."""
+
+    return field_name == "delivery_relations" and bool(
+        _DELIVERY_CAPTION.match(text)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,11 +169,10 @@ def build_fragments(
         # 라벨은 있는데 텍스트가 끝나서 비었으면 지배가 다음 occurrence 로
         # 넘어간다. 다음 라벨 때문에 비었다면 넘기지 않는다.
         spans = find_text_regions(text, field_name=field_name, include_empty=True)
-        if any(span.continues_to_sibling for span in spans):
-            sibling = _sibling_content(rows, index)
-            if sibling is None:
-                continue
-            next_block_id, next_occurrence_id, next_text = sibling
+        if not any(span.continues_to_sibling for span in spans):
+            continue
+        collected = _sibling_content(rows, index, field_name)
+        for next_block_id, next_occurrence_id, next_text in collected:
             found.append(
                 _fragment(
                     document_id, profile_field, next_block_id, next_occurrence_id,
@@ -187,20 +211,27 @@ def _fragment(
 
 
 def _sibling_content(
-    rows: list[tuple[str, str, str]], index: int
-) -> tuple[str, str, str] | None:
-    """라벨 occurrence 다음에서 그 라벨이 지배하는 내용 occurrence 를 찾는다.
+    rows: list[tuple[str, str, str]], index: int, field_name: str
+) -> list[tuple[str, str, str]]:
+    """라벨 occurrence 다음에서 그 라벨이 지배하는 내용 occurrence 들을 모은다.
 
-    다음 라벨을 만나면 지배가 끝난다 — 남의 값을 가져오지 않는다.
+    첫 블록 하나만 가져오면 안 된다. 수행체계는 표 제목 블록
+    (``< 사업추진 체계도 >``)이 먼저 오고 실제 내용은 그 아래 중첩 표에 있어서,
+    하나만 가져오면 제목에서 끝난다. 제목 블록은 건너뛰되 거기서 멈추지 않는다.
+
+    다음 항목 라벨을 만나면 지배가 끝난다 — 남의 값을 가져오지 않는다.
     """
 
+    collected: list[tuple[str, str, str]] = []
     for block_id, occurrence_id, text in rows[index + 1 :]:
         if not text.strip():
             continue
         if starts_with_form_label(text):
-            return None
-        return block_id, occurrence_id, text
-    return None
+            break
+        if _is_delivery_caption(text, field_name):
+            continue
+        collected.append((block_id, occurrence_id, text))
+    return collected
 
 
 
