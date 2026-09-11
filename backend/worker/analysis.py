@@ -327,7 +327,12 @@ def run_analysis(
 
     profile = _profile_with_lineage(request_profile, common_ir)
     active_llm: LLMClient = llm_client or _UnavailableLLM()
-    model_profile, _, fit_model_profile, sim_model_profile = _resolve_model_profiles(
+    (
+        model_profile,
+        cpl_model_profile,
+        fit_model_profile,
+        sim_model_profile,
+    ) = _resolve_model_profiles(
         model_profile,
         cpl_model_profile=cpl_model_profile,
         fit_model_profile=fit_model_profile,
@@ -342,7 +347,7 @@ def run_analysis(
     cpl = analyze_cpl(
         profile,
         active_llm,
-        model_profile=model_profile,
+        model_profile=cpl_model_profile,
         common_ir=common_ir if isinstance(common_ir, Mapping) else None,
     )
 

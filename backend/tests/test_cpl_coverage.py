@@ -204,3 +204,39 @@ def test_without_the_source_the_result_is_unchanged() -> None:
     assert [row.representative_status for row in without.items] == [
         row.representative_status for row in baseline.items
     ]
+
+
+# --------------------------------------------------- 라벨 위치와 구역 내용
+
+# 셀 안 항목을 줄바꿈 없이 이어 쓴 서식이 있다. 줄머리만 보면 그런 문서는
+# 통째로 감지에서 빠진다. 실문서 10건은 라벨이 우연히 줄머리에 있어서 통과했다.
+def test_a_label_in_the_middle_of_a_paragraph_is_seen() -> None:
+    joined = (
+        "○ 사업기간 : 2026.1.1~2026.12.31"
+        "○ 사업예산 : 금 10억원"
+        "○ 사업목적 : 부산 관내 중소기업 지원"
+    )
+
+    assert detect_coverage_gaps(_profile([], "not_found"), _ir(joined))
+
+
+# 라벨만 찍히고 내용이 비어 있으면 문서가 그 구역을 비운 것이다. 문서의 빈칸을
+# 우리 결함으로 되돌리지 않는다.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "○ 사업목적 :\n○ 사업예산 : 금 10억원",
+        "○ 사업목적 : ○ 사업예산 : 금 10억원",
+        "○ 사업목적 :",
+    ],
+    ids=["다음 줄에 다른 항목", "같은 줄에 다음 항목", "끝"],
+)
+def test_a_labelled_but_empty_region_is_not_a_missed_extraction(text: str) -> None:
+    assert detect_coverage_gaps(_profile([], "not_found"), _ir(text)) == []
+
+
+# 본문 속에 같은 낱말이 나온 것은 라벨이 아니다.
+def test_the_word_inside_a_sentence_is_not_a_label() -> None:
+    assert detect_coverage_gaps(
+        _profile([], "not_found"), _ir("우리 사업목적은 아래와 같다")
+    ) == []

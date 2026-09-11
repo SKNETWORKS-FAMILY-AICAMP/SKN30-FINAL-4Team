@@ -318,7 +318,9 @@ class CoreAnalysisEngine:
         ml_models: Mapping[MlModelId, MlModel | None] | None = None,
     ) -> None:
         self._llm = llm_client
-        # CPL 의 의미 축 분류용. 구조화·FIT 과 다른 작업이라 프로필을 따로 둔다.
+        # CPL 의 의미 축 분류가 쓸 단계 프로필 이름이다. 지금 배포는 네 이름을
+        # 모두 같은 모델에 매핑하므로 별도 모델이 아니라 논리 라우팅이다.
+        # 단계별 모델이 실제로 필요해지면 그때 환경변수를 더한다.
         self._cpl_model_profile = cpl_model_profile
         self._fit_model_profile = fit_model_profile
         self._sim_model_profile = sim_model_profile

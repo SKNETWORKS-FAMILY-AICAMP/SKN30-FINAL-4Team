@@ -31,7 +31,14 @@ from .analysis_inputs import field_states_by_name, read_path
 
 # 글머리 기호·괄호·콜론은 서식마다 다르고 라벨 안 공백도 문서마다 다르다.
 # 라벨 단어 자체는 바꾸지 않는다.
-_LABEL_GRAMMAR = r"(?:^|\n)\s*[○□■●▪·\-]?\s*\(?\s*{label}\s*\)?\s*[:：)]?"
+# 줄머리로 한정하지 않는다. 셀 안 항목을 줄바꿈 없이 이어 쓴 서식이 있어서
+# (``○ 사업기간 … ○ 사업목적 : …``) 줄머리만 보면 그 문서를 통째로 놓친다.
+# 대신 글머리 기호나 줄 경계를 앞에 요구해 본문 속 같은 낱말과 섞이지 않게 한다.
+_LABEL_GRAMMAR = r"(?:^|\n|[○□■●▪·])\s*\(?\s*{label}\s*\)?\s*[:：)]?"
+# 라벨 뒤에 실제 내용이 있어야 한다. 라벨만 찍히고 비어 있는 구역은 문서가
+# 정말 비운 것이지 구조화가 놓친 것이 아니다.
+_NEXT_LABEL = re.compile(r"[\n○□■●▪]")
+_MIN_REGION_CHARS = 2
 
 # 필드 하나에 라벨 하나. 별칭이 필요하면 그 필드의 표기를 실제로 확인한 뒤 더한다.
 _FIELD_LABELS: dict[str, str] = {
@@ -68,6 +75,20 @@ def _block_texts(common_ir: Mapping[str, Any]) -> list[tuple[str, str]]:
     return rows
 
 
+def _region_has_content(text: str, start: int) -> bool:
+    """라벨 바로 뒤부터 다음 라벨·줄 경계까지 실제 글이 있는지 본다.
+
+    ``○ 사업목적 :`` 만 찍혀 있고 곧바로 다음 항목이 오면 문서가 그 구역을
+    비운 것이다. 그것을 추출 누락으로 표시하면 문서의 빈칸을 우리 결함으로
+    되돌린다.
+    """
+
+    rest = text[start:]
+    boundary = _NEXT_LABEL.search(rest)
+    region = rest[: boundary.start()] if boundary else rest
+    return len(region.strip()) >= _MIN_REGION_CHARS
+
+
 def detect_coverage_gaps(
     profile: Mapping[str, Any], common_ir: Mapping[str, Any]
 ) -> list[CoverageGap]:
@@ -87,7 +108,12 @@ def detect_coverage_gaps(
         if state == "not_applicable":
             continue
         found = tuple(
-            block_id for block_id, text in texts if pattern.search(text)
+            block_id
+            for block_id, text in texts
+            if any(
+                _region_has_content(text, match.end())
+                for match in pattern.finditer(text)
+            )
         )
         if found:
             gaps.append(
