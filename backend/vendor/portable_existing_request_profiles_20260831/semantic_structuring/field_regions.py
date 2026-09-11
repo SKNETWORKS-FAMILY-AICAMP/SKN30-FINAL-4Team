@@ -85,12 +85,12 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
     # 실제 문서에서 확인한 표기만 넣는다. 새 HWP 는 제목 블록 뒤에 체계도와
     # 절차표가 따로 온다(`□ 사업추진 체계 및 절차` / `ㅇ 사업추진체계` /
     # `ㅇ 사업추진절차`).
-    "delivery_relations": (
-        r"사업\s*추진\s*체계",
-        r"사업\s*추진\s*절차",
-        r"추진\s*체계",
-        r"추진\s*절차",
-    ),
+    #
+    # 체계만 구역으로 만든다. `delivery_relations` 는 기관과 그 역할·행위의
+    # 관계인데 절차표는 단계와 주요내용의 행 관계이고 기관이 없다. 절차는
+    # `_BOUNDARY_WORD` 에 있어 체계 구역을 끝내는 경계로는 계속 동작한다.
+    # 절차를 `delivery_methods` 같은 필드에 잇는 것은 별도 계약이다.
+    "delivery_relations": (r"사업\s*추진\s*체계", r"추진\s*체계"),
 }
 
 _PATTERNS: dict[str, re.Pattern[str]] = {
