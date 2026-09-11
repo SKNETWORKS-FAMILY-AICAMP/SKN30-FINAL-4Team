@@ -35,6 +35,11 @@ __all__ = [
     "NO_CONTENT",
     "NOT_APPLICABLE",
     "CPL_DISPLAY_STATUSES",
+    "PURPOSE_AXIS_CODES",
+    "PURPOSE_AXIS_UNRESOLVED",
+    "PurposeAxisCode",
+    "PurposeAxisAssignment",
+    "PurposeAxisClassification",
     "display_status",
     "aggregate_display",
     "CplEvidence",
@@ -161,6 +166,50 @@ def cpl_axis_code(field_code: "CplFieldCode") -> str:
     return f"CPL-{list(CplFieldCode).index(field_code) + 1:02d}"
 
 
+class PurposeAxisCode(StrEnum):
+    """사업목적 문장의 의미 축.
+
+    ``cpl_axis_code()`` 와 다른 층이다. 저쪽은 13항목 표시 코드(``CPL-01``)로
+    항목 하나를 가리키고, 이쪽은 fact 하나가 목적의 어느 의미를 말하는지를
+    가리킨다. 이름이 둘 다 "axis" 라서 겹쳐 보이지만 어휘를 공유하지 않는다.
+    한쪽을 고쳐도 다른 쪽이 조용히 바뀌지 않게 끝까지 분리해 둔다.
+    """
+
+    TARGET_CONDITION = "PURPOSE_TARGET_CONDITION"
+    DIRECTION = "PURPOSE_DIRECTION"
+
+
+PURPOSE_AXIS_CODES = frozenset(code.value for code in PurposeAxisCode)
+# 호출은 했는데 유효한 축을 하나도 만들지 못했다. 축이 없다는 사실이지
+# 값이 없다는 뜻이 아니다.
+PURPOSE_AXIS_UNRESOLVED = "PURPOSE_AXIS_UNRESOLVED"
+
+
+@dataclass(frozen=True, slots=True)
+class PurposeAxisAssignment:
+    """목적 fact 하나에 붙은 의미 축. 값·오프셋·근거를 새로 만들지 않는다."""
+
+    fact_id: str
+    axis_code: str
+    quoted_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class PurposeAxisClassification:
+    """의미 축 분류 1회의 기록.
+
+    ``attempted`` 는 호출 여부, ``reason_code`` 는 호출이 실패했거나 유효한
+    축을 하나도 만들지 못한 사유다. 문서당 한 번이며 같은 입력으로 재시도하지
+    않는다. 분류가 비어도 CPL 의 값·근거·상태는 그대로다 — 축은 값이 아니다.
+    """
+
+    attempted: bool
+    assignments: list[PurposeAxisAssignment] = field(default_factory=list)
+    reason_code: str | None = None
+    dropped: list[str] = field(default_factory=list)
+    prompt_version: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class CplEvidence:
     """Common IR 블록까지 내려가는 근거 한 줄. 접지가 없으면 만들지 않는다."""
@@ -204,6 +253,9 @@ class CplFact:
     member_index: int | None = field(
         default=None, repr=False, metadata={"serialize": False}
     )
+    # 의미 축. 한 원문이 축을 여럿 가지면 축마다 fact 를 따로 보존한다.
+    # 단수라야 소비 쪽 필터가 (field, axis) 한 쌍으로 끝난다.
+    axis_code: str | None = None
     # 요청 유형 체크박스 글리프. 서버가 원본 글리프로 정한 값이라
     # 표시 계층까지 원형으로 끌고 간다 (초안 §6).
     selection_glyph_raw: str | None = None
@@ -251,3 +303,8 @@ class CplResult:
     prompt_version: str | None
     unmapped_profile_fields: list[str] = field(default_factory=list)
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
+    # 의미 축 분류 기록. 결정적 빌더만 돌린 결과에는 attempted=False 로 남고,
+    # 값·근거·상태는 축이 없어도 그대로다.
+    purpose_axis: PurposeAxisClassification = field(
+        default_factory=lambda: PurposeAxisClassification(attempted=False)
+    )

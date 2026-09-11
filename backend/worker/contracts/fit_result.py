@@ -18,7 +18,7 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from .cpl_result import CplEvidence
+from .cpl_result import CplEvidence, PURPOSE_AXIS_UNRESOLVED
 from .profile_snapshot import (
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
@@ -137,7 +137,7 @@ NO_CONDITIONS_SPECIFIED = "NO_CONDITIONS_SPECIFIED"
 # 같은 축에서 좌우 값 집합이 다르다.
 NUMERIC_MISMATCH = "NUMERIC_MISMATCH"
 # 목적 의미 축 보완이 필요한 축을 만들어내지 못했다.
-PURPOSE_AXIS_UNRESOLVED = "PURPOSE_AXIS_UNRESOLVED"
+# 정의는 cpl_result 로 옮겼다. 축을 확정하는 쪽이 사유도 갖는다.
 # 좌우가 같은 fact 를 가리킨다. 자기 자신과 비교하지 않는다 (초안 §7.1).
 SELF_COMPARISON = "SELF_COMPARISON"
 # 한 축이 한쪽에만 있다. 충돌이 없다는 것이 대응했다는 뜻은 아니다.

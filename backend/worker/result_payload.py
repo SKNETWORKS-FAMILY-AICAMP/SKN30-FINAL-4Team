@@ -225,7 +225,15 @@ def build_result_payload(
             }
         )
         for subfield in item.subfields:
+            # 한 원문이 의미 축을 여럿 가지면 CPL 은 축마다 fact 를 남긴다.
+            # 근거는 그래도 한 줄이다 — 같은 값·같은 좌표를 축 수만큼 저장하면
+            # 프론트 근거 목록과 DB Evidence 행이 축 때문에 불어난다.
+            seen: set[tuple[str | None, str | None]] = set()
             for fact in subfield.facts:
+                key = (fact.fact_id, fact.value_raw)
+                if key in seen:
+                    continue
+                seen.add(key)
                 evidences.extend(
                     _evidence(
                         fact.evidence,

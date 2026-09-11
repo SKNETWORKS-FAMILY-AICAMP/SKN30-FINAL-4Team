@@ -11,7 +11,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
+
+from pydantic import BaseModel
+
+from .cpl_prompt import PURPOSE_AXIS_PROMPT_VERSION, purpose_axis_instruction
+from .llm_call import generate
+from .ports.llm import (
+    LLMClient,
+    LLMInvalidResponseError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+)
 
 from .analysis_inputs import (
     CPL_FIELD_SOURCES,
@@ -21,10 +33,19 @@ from .analysis_inputs import (
     read_path,
     unmapped_profile_fields,
 )
+from .contracts.profile_snapshot import (
+    LLM_INVALID_RESPONSE,
+    LLM_TIMEOUT,
+    LLM_UNAVAILABLE,
+)
 from .contracts.cpl_result import (
     NEEDS_CONFIRMATION,
     NO_PROFILE_FIELD,
     PROFILE_FIELD_STATE_MISSING,
+    PURPOSE_AXIS_CODES,
+    PURPOSE_AXIS_UNRESOLVED,
+    PurposeAxisAssignment,
+    PurposeAxisClassification,
     SERVER_RESOLVED_CHECKBOX,
     SERVER_DERIVED_HIERARCHY_STATE,
     UNMAPPED_PROFILE_FIELD,
@@ -235,4 +256,165 @@ def build_cpl_result(profile: dict[str, Any]) -> CplResult:
         prompt_version=metadata.get("prompt_version"),
         unmapped_profile_fields=unmapped,
         diagnostics=diagnostics,
+    )
+
+
+# --------------------------------------------------- 의미 축 (LLM 조립 계층)
+
+_PURPOSE_STAGE = "classify_purpose_axis"
+_PURPOSE_FIELD = "comparison_profile.purpose_goal"
+_TRANSPORT_REASONS = {
+    LLMUnavailableError: LLM_UNAVAILABLE,
+    LLMTimeoutError: LLM_TIMEOUT,
+    LLMInvalidResponseError: LLM_INVALID_RESPONSE,
+}
+
+
+class _AxisRow(BaseModel):
+    fact_id: str
+    axis_code: str
+    quoted_text: str
+
+
+class _AxisResponse(BaseModel):
+    # 엔벨로프 키는 필수다. 기본값을 주면 ``{}`` 가 "빈 배치" 로 조용히
+    # 통과해 최상위 오류가 정상 응답으로 둔갑한다.
+    assignments: list[_AxisRow]
+
+
+def _purpose_facts(result: CplResult) -> list[CplFact]:
+    return [
+        fact
+        for item in result.items
+        for subfield in item.subfields
+        if subfield.profile_field == _PURPOSE_FIELD
+        for fact in subfield.facts
+        if fact.fact_id
+    ]
+
+
+def _classify(
+    facts: list[CplFact],
+    llm_client: LLMClient,
+    *,
+    model_profile: str,
+) -> PurposeAxisClassification:
+    """축 이름과 인용문만 받는다. 값·오프셋·근거는 CPL 것을 그대로 쓴다.
+
+    서버가 fact_id 존재·어휘 소속·인용문 부분문자열을 검사하고, 통과하지
+    못한 행은 버린다. 버린 사실은 ``dropped`` 에 남긴다. 예산은 1 이며 같은
+    입력으로 재시도하지 않는다.
+    """
+
+    if not facts:
+        return PurposeAxisClassification(attempted=False)
+    try:
+        response = generate(
+            llm_client,
+            task_name="cpl_purpose_axis_classification",
+            instructions=purpose_axis_instruction(sorted(PURPOSE_AXIS_CODES)),
+            payload={
+                "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
+                "facts": [
+                    {"fact_id": fact.fact_id, "value_raw": fact.value_raw}
+                    for fact in facts
+                ],
+            },
+            response_schema=_AxisResponse,
+            model_profile=model_profile,
+        )
+    except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
+        return PurposeAxisClassification(
+            attempted=True,
+            reason_code=_TRANSPORT_REASONS[type(error)],
+            prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
+        )
+
+    by_id = {fact.fact_id: fact for fact in facts}
+    assignments: list[PurposeAxisAssignment] = []
+    dropped: list[str] = []
+    for row in response.assignments:
+        fact = by_id.get(row.fact_id)
+        if (
+            fact is None
+            or row.axis_code not in PURPOSE_AXIS_CODES
+            or not row.quoted_text
+            or row.quoted_text not in (fact.value_raw or "")
+        ):
+            dropped.append(row.fact_id)
+            continue
+        assignments.append(
+            PurposeAxisAssignment(
+                fact_id=row.fact_id,
+                axis_code=row.axis_code,
+                quoted_text=row.quoted_text,
+            )
+        )
+    return PurposeAxisClassification(
+        attempted=True,
+        assignments=assignments,
+        reason_code=None if assignments else PURPOSE_AXIS_UNRESOLVED,
+        dropped=dropped,
+        prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
+    )
+
+
+def _with_axes(
+    result: CplResult, classification: PurposeAxisClassification
+) -> CplResult:
+    """축이 붙은 목적 fact 를 축마다 한 줄로 보존한다.
+
+    한 원문이 축을 둘 가지면 fact 를 둘로 남긴다. 축이 단수라야 소비 쪽
+    필터가 (필드, 축) 한 쌍으로 끝난다. 축을 못 받은 fact 는 ``axis_code``
+    없이 그대로 남는다 — 축은 값이 아니므로 분류 실패가 값을 지우지 않는다.
+    """
+
+    if not classification.assignments:
+        return replace(result, purpose_axis=classification)
+    by_fact: dict[str, list[str]] = {}
+    for row in classification.assignments:
+        by_fact.setdefault(row.fact_id, []).append(row.axis_code)
+
+    def expand(subfield: CplSubfield) -> CplSubfield:
+        if subfield.profile_field != _PURPOSE_FIELD:
+            return subfield
+        facts: list[CplFact] = []
+        for fact in subfield.facts:
+            codes = by_fact.get(fact.fact_id or "")
+            if not codes:
+                facts.append(fact)
+                continue
+            facts.extend(replace(fact, axis_code=code) for code in codes)
+        return replace(subfield, facts=facts)
+
+    return replace(
+        result,
+        items=[
+            replace(item, subfields=[expand(row) for row in item.subfields])
+            for item in result.items
+        ],
+        purpose_axis=classification,
+    )
+
+
+def analyze_cpl(
+    profile: dict[str, Any],
+    llm_client: LLMClient,
+    *,
+    model_profile: str,
+) -> CplResult:
+    """CPL 13항목에 의미 축까지 확정한다. 예외를 던지지 않는다.
+
+    ``build_cpl_result`` 는 그대로 결정적이다. 축만 이 위에서 붙인다. 축이
+    비어도 13항목 값·근거·상태는 바뀌지 않으므로, LLM 이 죽어도 Rule 결과가
+    통째로 사라지지 않는다 (초안 §9.4).
+
+    축을 판정 시점이 아니라 확정 시점에 붙이는 이유는, 같은 원문을 소비하는
+    두 단계가 각자 다시 해석하면 화면과 판정이 갈라지기 때문이다.
+    """
+
+    result = build_cpl_result(profile)
+    return _with_axes(
+        result,
+        _classify(_purpose_facts(result), llm_client, model_profile=model_profile),
     )
