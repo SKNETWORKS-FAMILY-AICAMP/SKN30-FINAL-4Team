@@ -8,6 +8,7 @@ scripts must instead use the Compose-published loopback ports.
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from urllib.parse import quote
 
 
@@ -47,6 +48,10 @@ def load_local_supabase_settings(path: Path) -> dict[str, str]:
             "Supabase Compose host ports must be numeric"
         )
     username = quote(f"postgres.{tenant}", safe="")
+    if sys.platform == "win32":
+        # Docker Desktop exposes PostgreSQL directly to the Windows host.
+        username = "postgres"
+        database_port = "55432"
     database_url = (
         f"postgresql://{username}:{quote(password, safe='')}"
         f"@127.0.0.1:{database_port}/{quote(database, safe='')}?sslmode=disable"

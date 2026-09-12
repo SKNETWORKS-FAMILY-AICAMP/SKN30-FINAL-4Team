@@ -80,7 +80,7 @@ migration 후, 로컬 Swagger·프론트 수동 시험용 계정이 필요할 �
 ```bash
 cd /path/to/repository
 mkdir -p .runtime
-cp --update=none backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
+cp -n backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
 chmod 600 .runtime/pre-review-dev-auth.env
 # .runtime/pre-review-dev-auth.env의 빈 email/password를 로컬 전용 값으로 채움
 

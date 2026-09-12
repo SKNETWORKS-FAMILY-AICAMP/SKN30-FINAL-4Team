@@ -68,7 +68,7 @@ credential은 Git에서 제외되는 `.runtime/pre-review-dev-auth.env` 한 곳�
 ```bash
 cd /path/to/SKN30-FINAL-4Team
 mkdir -p .runtime
-cp --update=none backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
+cp -n backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
 chmod 600 .runtime/pre-review-dev-auth.env
 
 # 파일 안의 빈 값을 로컬 전용 email/password로 채운 뒤 실행한다.
