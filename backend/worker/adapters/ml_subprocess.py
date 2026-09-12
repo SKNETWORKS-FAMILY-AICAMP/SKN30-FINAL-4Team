@@ -50,6 +50,67 @@ __all__ = [
 _CHILD_ENTRYPOINT = Path(__file__).with_name("ml_child.py")
 MODEL1_SERVING_DIR_ENV = "PREREVIEW_MODEL1_SERVING_DIR"
 
+# The serving code is an external execution boundary.  It needs local model
+# paths and a small set of interpreter/GPU controls, but it never needs the
+# parent's database, Supabase, or OpenAI credentials.  Keep this list narrow:
+# adding a secret here would copy it into every short-lived model process.
+_CHILD_ENVIRONMENT_KEYS = frozenset(
+    {
+        "COMSPEC",
+        "DYLD_LIBRARY_PATH",
+        "HOME",
+        "HF_HOME",
+        "HF_HUB_CACHE",
+        "HF_HUB_DISABLE_TELEMETRY",
+        "HF_HUB_OFFLINE",
+        "LANG",
+        "LD_LIBRARY_PATH",
+        "PATH",
+        "PATHEXT",
+        "PREREVIEW_ML_ROOT",
+        MODEL1_SERVING_DIR_ENV,
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "TORCH_HOME",
+        "TRANSFORMERS_OFFLINE",
+        "TRANSFORMERS_CACHE",
+        "VIRTUAL_ENV",
+        "WINDIR",
+        "XDG_CACHE_HOME",
+    }
+)
+_CHILD_ENVIRONMENT_PREFIXES = (
+    "CUDA_",
+    "LC_",
+    "MKL_",
+    "NUMEXPR_",
+    "NVIDIA_",
+    "OMP_",
+    "PYTORCH_",
+    "TOKENIZERS_",
+)
+_SENSITIVE_ENVIRONMENT_SUFFIXES = (
+    "_API_KEY",
+    "_CREDENTIAL",
+    "_CREDENTIALS",
+    "_KEY",
+    "_PASS",
+    "_PASSWORD",
+    "_PWD",
+    "_SECRET",
+    "_TOKEN",
+)
+
+
+def _is_child_environment_key(name: str) -> bool:
+    normalized = name.upper()
+    return not normalized.endswith(_SENSITIVE_ENVIRONMENT_SUFFIXES) and (
+        normalized in _CHILD_ENVIRONMENT_KEYS
+        or normalized.startswith(_CHILD_ENVIRONMENT_PREFIXES)
+    )
+
 
 def _child_command(
     model: Literal["model1", "model2", "model3"],
@@ -111,8 +172,8 @@ class SubprocessJsonRunner:
     """Run one model command once per prediction.
 
     No serving package is imported in the parent.  ``command`` is executed
-    without a shell and inherits the environment unless explicit overrides are
-    provided.  A fresh process per call is intentional for this checkpoint:
+    without a shell and receives only an allow-listed runtime environment plus
+    explicit allow-listed overrides.  A fresh process per call is intentional:
     model-specific import caches and path mutations die with the child.
     """
 
@@ -131,7 +192,16 @@ class SubprocessJsonRunner:
         self.command = tuple(str(part) for part in command)
         self.timeout_seconds = float(timeout_seconds)
         self.cwd = None if cwd is None else str(cwd)
-        self.environment = None if environment is None else dict(environment)
+        supplied_environment = {} if environment is None else dict(environment)
+        unsafe_names = sorted(
+            name for name in supplied_environment if not _is_child_environment_key(name)
+        )
+        if unsafe_names:
+            raise ValueError(
+                "subprocess environment contains unsupported keys: "
+                + ", ".join(unsafe_names)
+            )
+        self.environment = supplied_environment
 
     def run(self, payload: Mapping[str, Any]) -> Any:
         try:
@@ -143,11 +213,19 @@ class SubprocessJsonRunner:
 
         # JSON is a UTF-8 wire contract even on Windows, where a Python child
         # otherwise inherits the console code page for stdout.
-        env = dict(os.environ)
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if _is_child_environment_key(name)
+        }
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUTF8"] = "1"
-        if self.environment is not None:
-            env.update(self.environment)
+        env.update(self.environment)
+        # All registered models are immutable local artifacts.  Network
+        # fallback would make one classification depend on mutable provider
+        # state, so fail closed when a local tokenizer/model is incomplete.
+        env["HF_HUB_OFFLINE"] = "1"
+        env["TRANSFORMERS_OFFLINE"] = "1"
         # Team imports can be numerous and mutable; never leave bytecode next
         # to vendored serving sources in the repository from a child call.
         # Keep this assignment after caller overrides so the cleanup contract

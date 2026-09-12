@@ -57,6 +57,12 @@ services:
       PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS:-120}"
       # rhwp의 native FreeType 호환성은 parser subprocess에만 적용된다.
       PREREVIEW_FREETYPE_LIB: "${PREREVIEW_FREETYPE_LIB:-/usr/lib/x86_64-linux-gnu/libfreetype.so.6}"
+      # ML은 child process로만 실행된다. 경로는 container 안에도
+      # 실제로 존재해야 하므로 external artifact는 read-only bind mount한다.
+      PREREVIEW_ML_ROOT: "${PREREVIEW_ML_ROOT:-}"
+      PREREVIEW_MODEL1_SERVING_DIR: "${PREREVIEW_MODEL1_SERVING_DIR:-}"
+      PREREVIEW_ML_PYTHON_EXECUTABLE: "${PREREVIEW_ML_PYTHON_EXECUTABLE:-}"
+      PREREVIEW_ML_TIMEOUT_SECONDS: "${PREREVIEW_ML_TIMEOUT_SECONDS:-180}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

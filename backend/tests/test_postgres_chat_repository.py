@@ -107,7 +107,7 @@ def _claim_row() -> dict[str, object]:
     }
 
 
-def test_claim_maps_migration_26_payload_for_storage_free_handler() -> None:
+def test_claim_maps_migration_27_payload_for_storage_free_handler() -> None:
     row = _claim_row()
     repository, factory = _repository([row])
 

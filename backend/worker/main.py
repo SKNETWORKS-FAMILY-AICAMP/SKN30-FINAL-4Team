@@ -291,7 +291,6 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
                 model1_root / "model" / "model.safetensors",
                 model1_root / "label_mapping.json",
                 settings.ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
-                settings.ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
             )
         )
         if missing is None and not (model1_root / "tokenizer").is_dir():
@@ -318,10 +317,6 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
             model2_root / "masking.py",
             model2_root / "cohort_reference.parquet",
             settings.ml_root / "serving" / "shared" / "preconsultation_adapter.py",
-            settings.ml_root
-            / "serving"
-            / "shared"
-            / "preconsultation_adapter.py",
             settings.ml_root / "models" / "model2_canonical" / "model2_p3_bundle.joblib",
         )
     )

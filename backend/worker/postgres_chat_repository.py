@@ -1,6 +1,6 @@
 """Trusted PostgreSQL queue adapter for asynchronous chat responses.
 
-Migration 26 owns the queue state machine and lease fencing.  This adapter is
+Migration 27 owns the queue state machine and lease fencing.  This adapter is
 only a transport boundary: one fresh psycopg connection per operation, no
 frontend credentials, and no database access from the chat handler itself.
 """
@@ -59,7 +59,7 @@ class ChatWorkerDatabaseUnavailable(RuntimeError):
 
 
 class ChatWorkerQueueContractError(RuntimeError):
-    """Migration 26 returned an unsafe or incomplete queue value."""
+    """Migration 27 returned an unsafe or incomplete queue value."""
 
 
 class _Cursor(Protocol):
@@ -145,7 +145,7 @@ def _evidence_ids(result: JobResult) -> list[UUID]:
     """Extract only UUID evidence references from the handler result.
 
     ``intent``, ``warnings`` and prompt metadata are intentionally not stored:
-    migration 26 has no corresponding user-facing columns.  Invalid or null
+    migration 27 has no corresponding user-facing columns.  Invalid or null
     IDs are ignored so a useful answer is not discarded because the LLM added
     one malformed reference.
     """
@@ -185,7 +185,7 @@ def _content(result: JobResult) -> str:
 
 
 class PostgresChatJobRepository:
-    """Migration-26-backed implementation of ``worker.runtime.JobRepository``."""
+    """Migration-27-backed implementation of ``worker.runtime.JobRepository``."""
 
     def __init__(
         self,
