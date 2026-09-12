@@ -84,6 +84,10 @@ class ProducedRequestProfile:
     profile_logical_id: str
     common_ir_schema: str
     profile_schema: str
+    # 그 실행이 실제로 쓴 CandidatePack. 정량 근거의 source_block_id 와 좌표가
+    # 가리키는 것이 이 팩이라, 아래 단계가 원문을 볼 때 다시 만들지 않는다.
+    # 팩을 나르지 않는 생산자도 있으므로 없으면 정량 맥락 파생만 건너뛴다.
+    candidate_pack: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +180,7 @@ class AnalysisEngine(Protocol):
         profile: Mapping[str, Any],
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
+        candidate_pack: Any = None,
     ) -> Mapping[str, Any]: ...
 
 
@@ -251,6 +256,7 @@ class VendoredRequestProfileProducer:
             profile_logical_id=profile_id,
             common_ir_schema=str(common.document.get("schema_version") or "common_ir_v1"),
             profile_schema=str(snapshot.profile.get("schema_version") or ""),
+            candidate_pack=pack,
         )
 
 
@@ -333,6 +339,7 @@ class CoreAnalysisEngine:
         profile: Mapping[str, Any],
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
+        candidate_pack: Any = None,
     ) -> Mapping[str, Any]:
         request = dict(profile)
         cpl: CplResult = analyze_cpl(
@@ -340,6 +347,7 @@ class CoreAnalysisEngine:
             self._llm,
             model_profile=self._cpl_model_profile,
             common_ir=common_ir,
+            candidate_pack=candidate_pack,
         )
         ml_result = run_ml_reference(
             request,
@@ -452,7 +460,7 @@ class AnalysisJobHandler:
                     analysis_run_id=run_id,
                     run_dir=root / "pipeline",
                 )
-            profile, common_ir = self._publish_profile(
+            profile, common_ir, candidate_pack = self._publish_profile(
                 run_id=run_id,
                 processing_id=processing_id,
                 source_bucket=bucket,
@@ -462,6 +470,9 @@ class AnalysisJobHandler:
         else:
             common_ir = self._load_json_artifact(cached.common_ir)
             profile = self._load_json_artifact(cached.structured_profile)
+            # 캐시로 이어받은 실행에는 그때 쓴 팩이 없다. 팩을 새로 만들어
+            # 좌표의 기준을 바꾸는 대신 정량 맥락 파생만 건너뛴다.
+            candidate_pack = None
         _validate_profile_lineage(
             profile=profile,
             common_ir=common_ir,
@@ -489,6 +500,7 @@ class AnalysisJobHandler:
             profile=profile,
             common_ir=common_ir,
             candidates=candidates,
+            candidate_pack=candidate_pack,
         )
         if not isinstance(result, Mapping):
             raise AnalysisJobContractError("analysis engine returned a non-object result")
@@ -518,7 +530,7 @@ class AnalysisJobHandler:
         source_bucket: str,
         source_object_key: str,
         produced: ProducedRequestProfile,
-    ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    ) -> tuple[Mapping[str, Any], Mapping[str, Any], Any]:
         if produced.profile_schema != REQUEST_PROFILE_SCHEMA:
             raise AnalysisJobContractError("request profile schema is not supported by the DB")
         common_ref = _derived_ref(
@@ -554,7 +566,7 @@ class AnalysisJobHandler:
             structured_profile=profile_ref,
             profile=produced.profile,
         )
-        return produced.profile, produced.common_ir
+        return produced.profile, produced.common_ir, produced.candidate_pack
 
     def _load_json_artifact(self, artifact: ArtifactRef) -> Mapping[str, Any]:
         content = self._storage.get(

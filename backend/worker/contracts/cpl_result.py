@@ -20,6 +20,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from ..quantities import QuantitySpan
+
 from .profile_snapshot import StageDiagnostic
 
 __all__ = [
@@ -286,6 +288,11 @@ class CplFact:
     # 않는다.
     member_index: int | None = field(
         default=None, repr=False, metadata={"serialize": False}
+    )
+    # 이 값 안의 정량 표현과 비교 맥락. FIT-7 이 같은 수량끼리만 비교하도록
+    # CPL 이 원문에서 파생한다. 내부 입력이라 공개 result_data 에는 싣지 않는다.
+    quantities: tuple["QuantitySpan", ...] = field(
+        default=(), repr=False, metadata={"serialize": False}
     )
     # 의미 축. 한 원문이 축을 여럿 가지면 축마다 fact 를 따로 보존한다.
     # 단수라야 소비 쪽 필터가 (field, axis) 한 쌍으로 끝난다.

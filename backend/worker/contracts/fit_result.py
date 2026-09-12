@@ -18,6 +18,7 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from ..quantities import QuantitySpan
 from .cpl_result import (
     CplAxisCode,
     CplEvidence,
@@ -165,6 +166,11 @@ class FitEvidenceRef:
     field_name: str
     value_raw: str | None
     evidence: list[CplEvidence] = field(default_factory=list)
+    # CPL 이 원문에서 파생한 정량 맥락. FIT 은 읽기만 한다 — 여기서 Common IR 을
+    # 다시 읽으면 CPL->FIT 책임 경계가 흐려진다. 공개 payload 에는 싣지 않는다.
+    quantities: tuple[QuantitySpan, ...] = field(
+        default=(), repr=False, metadata={"serialize": False}
+    )
     primary_component_id: str | None = None
 
 

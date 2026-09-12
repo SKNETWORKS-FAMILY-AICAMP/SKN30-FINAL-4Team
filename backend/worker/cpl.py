@@ -13,12 +13,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
+import re
 from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from .cpl_coverage import CplFragment, build_fragments, detect_coverage_gaps
+from .quantities import read_quantities
 from .cpl_delivery import (
     ALLOWED_MEMBER_KINDS,
     DeliveryPairOccurrence,
@@ -537,6 +539,66 @@ def _axis_fact(fragment: CplFragment, row: PurposeAxisAssignment) -> CplFact:
     )
 
 
+# 값 앞의 절 경계. 수식어를 이 너머로 끌어오지 않는다.
+_CLAUSE_START = re.compile(r"[\n○◦□■●▪‣]|(?:^|\s)-\s")
+
+
+def _with_quantities(result: CplResult, candidate_pack: Any | None) -> CplResult:
+    """값 안의 정량 표현에 비교 맥락을 붙인다. 값·상태·관계·근거는 그대로다.
+
+    맥락은 ``value_raw`` 만으로는 부족하다. ``- 기업당 한도: 최대 5,000만원``
+    에서 값이 된 것은 ``최대 5,000만원`` 뿐이라 대상 기준이 빠진다. 그래서 그
+    값이 나온 블록에서 **값 앞 절까지** 다시 읽고, 값 구간 안의 숫자만 남긴다.
+
+    원문은 **그 실행이 실제로 쓴 CandidatePack** 에서 읽는다. 정량 근거의
+    ``source_block_id`` 와 좌표가 가리키는 것이 그 팩이기 때문이다. 여기서 팩을
+    다시 만들면 "재생성 결과가 늘 같다" 는 가정이 하나 늘어난다.
+
+    팩이 없거나 좌표가 그 블록을 가리키지 않으면 그 값의 파생만 건너뛴다.
+
+    파생은 여기서 끝난다. FIT 은 결과를 읽기만 한다.
+    """
+
+    if candidate_pack is None:
+        return result
+    blocks = {row.block_id: row.text for row in candidate_pack.blocks}
+
+    def enrich(fact: CplFact) -> CplFact:
+        text = blocks.get(fact.source_block_id or "")
+        start, end = fact.start_char, fact.end_char
+        if text is None or start is None or end is None:
+            return fact
+        if text[start:end] != (fact.value_raw or ""):
+            # 좌표가 그 블록을 가리키지 않는다. 추측해서 읽지 않는다.
+            return fact
+        head = text[:start]
+        cuts = [row.end() for row in _CLAUSE_START.finditer(head)]
+        floor = cuts[-1] if cuts else 0
+        window = text[floor:end]
+        # 좌표를 블록 기준 절대값으로 되돌린다. 창 상대 좌표로 두면 서로 다른
+        # fact 의 숫자가 같은 자리인지 판별할 수 없어 자기비교를 못 막는다.
+        inside = tuple(
+            replace(row, start=row.start + floor, end=row.end + floor)
+            for row in read_quantities(window)
+            if row.start >= start - floor
+        )
+        return replace(fact, quantities=inside) if inside else fact
+
+    return replace(
+        result,
+        items=[
+            replace(
+                item,
+                subfields=[
+                    replace(subfield, facts=[enrich(row) for row in subfield.facts])
+                    for subfield in item.subfields
+                ],
+            )
+            for item in result.items
+        ],
+    )
+
+
 def _with_coverage_gaps(
     result: CplResult, profile: dict[str, Any], common_ir: Mapping[str, Any]
 ) -> CplResult:
@@ -998,6 +1060,7 @@ def analyze_cpl(
     *,
     model_profile: str,
     common_ir: Mapping[str, Any] | None = None,
+    candidate_pack: Any | None = None,
 ) -> CplResult:
     """CPL 13항목에 의미 축까지 확정한다. 예외를 던지지 않는다.
 
@@ -1010,6 +1073,7 @@ def analyze_cpl(
     """
 
     result = build_cpl_result(profile)
+    result = _with_quantities(result, candidate_pack)
     if common_ir is not None:
         result = _with_coverage_gaps(result, profile, common_ir)
     facts = _purpose_facts(result)

@@ -33,6 +33,7 @@ from .ports.llm import (
 )
 
 from .analysis_inputs import field_name_of
+from .quantities import comparison_key
 from .contracts.cpl_result import CplFact, CplResult
 from .contracts.fit_result import (
     COMPARISON_EVIDENCE_MISSING,
@@ -195,6 +196,7 @@ def _refs_at(cpl: CplResult, path: str) -> list[FitEvidenceRef]:
                     value_raw=fact.value_raw,
                     evidence=list(fact.evidence),
                     primary_component_id=fact.primary_component_id,
+                    quantities=fact.quantities,
                 )
             )
     return refs
@@ -244,6 +246,7 @@ def _delivery_sides(cpl: CplResult) -> tuple[FitSide, FitSide]:
                 value_raw=fact.value_raw,
                 evidence=list(fact.evidence),
                 primary_component_id=fact.primary_component_id,
+                quantities=fact.quantities,
             )
         )
     right.extend(_refs_at(cpl, _DELIVERY_METHODS_PATH))
@@ -390,9 +393,37 @@ def _quantities(value_raw: str | None) -> set[tuple[str, int]]:
     return found
 
 
+def _span_place(ref: FitEvidenceRef, span) -> tuple[str | None, int, int]:
+    """숫자 구간의 원문 자리. 같은 자리면 같은 근거다."""
+
+    block = ref.evidence[0].source_block_id if ref.evidence else None
+    return (block, span.start, span.end)
+
+
+def _shared_spans(
+    left: list[FitEvidenceRef], right: list[FitEvidenceRef]
+) -> frozenset[tuple[str | None, int, int]]:
+    """좌우가 함께 인용한 원문 구간. fact_id 가 달라도 자리가 같으면 같다."""
+
+    def places(refs: list[FitEvidenceRef]) -> set[tuple[str | None, int, int]]:
+        return {
+            _span_place(ref, span)
+            for ref in refs
+            for span in ref.quantities
+            if ref.evidence and ref.evidence[0].source_block_id
+        }
+
+    return frozenset(places(left) & places(right))
+
+
 def _axis_values(
     refs: list[FitEvidenceRef],
-) -> tuple[dict[str | None, dict[str, set[int]]], list[str]]:
+    shared: frozenset[tuple[str | None, int, int]] | None = None,
+) -> tuple[
+    dict[str | None, dict[tuple[str, tuple[str, ...]], set[int]]],
+    list[str],
+    list[str],
+]:
     """component → 축 → 값 집합. 정규화하지 못한 fact_id 를 함께 돌려준다.
 
     ``primary_component_id`` 가 None 인 fact 는 None 그룹에 남는다. 초안 §7.1
@@ -400,17 +431,31 @@ def _axis_values(
     이유로, 소속이 없는 값을 특정 component 값과 붙이지 않는다.
     """
 
-    grouped: dict[str | None, dict[str, set[int]]] = {}
+    grouped: dict[str | None, dict[tuple[str, tuple[str, ...]], set[int]]] = {}
     invalid: list[str] = []
+    withheld: list[str] = []
+    excluded = shared or frozenset()
     for ref in refs:
-        quantities = _quantities(ref.value_raw)
-        if not quantities:
+        if not ref.quantities:
             invalid.append(ref.fact_id)
             continue
-        axes = grouped.setdefault(ref.primary_component_id, {})
-        for axis, value in quantities:
-            axes.setdefault(axis, set()).add(value)
-    return grouped, invalid
+        used = False
+        for span in ref.quantities:
+            if _span_place(ref, span) in excluded:
+                # 좌우가 같은 자리를 인용했다. 숫자 구간 단위로만 뺀다 — 같은
+                # occurrence 의 다른 숫자까지 통째로 버리지 않는다.
+                continue
+            context = comparison_key(span)
+            if context is None:
+                # 값은 읽었지만 같은 수량이라고 말할 근거가 없다. 원문 부재와
+                # 다르므로 따로 센다. 기본값을 채워 비교에 넣지 않는다.
+                continue
+            used = True
+            axes = grouped.setdefault(ref.primary_component_id, {})
+            axes.setdefault((span.axis, context), set()).add(span.value)
+        if not used:
+            withheld.append(ref.fact_id)
+    return grouped, invalid, withheld
 
 
 def _fit7(cpl: CplResult) -> FitRelationResult:
@@ -438,8 +483,36 @@ def _fit7(cpl: CplResult) -> FitRelationResult:
     if not left.facts or not right.facts:
         return result(FitStatus.INSUFFICIENT, COMPARISON_EVIDENCE_MISSING)
 
-    left_groups, left_invalid = _axis_values(left.facts)
-    right_groups, right_invalid = _axis_values(right.facts)
+    shared = _shared_spans(left.facts, right.facts)
+    if shared:
+        diagnostics.append(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=sorted(shared)[0][0] or "",
+                reason_code=SELF_COMPARISON,
+                message=(
+                    "좌우가 같은 원문 구간을 인용했다. 그 값은 자기 자신과 "
+                    "비교되므로 제외한다. 같은 문구라도 자리가 다르면 남긴다."
+                ),
+            )
+        )
+    left_groups, left_invalid, left_withheld = _axis_values(left.facts, shared)
+    right_groups, right_invalid, right_withheld = _axis_values(right.facts, shared)
+    for fact_id in (*left_withheld, *right_withheld):
+        # 숫자는 읽었는데 같은 수량이라고 말할 근거가 없다. 정규화 실패와 구분해
+        # 내부 진단으로만 남긴다 — 공개 reason code 연결은 아직 확정 전이다.
+        diagnostics.append(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=fact_id,
+                reason_code=COMPARISON_EVIDENCE_MISSING,
+                message=(
+                    "정량 값의 비교 맥락(기간·대상·성격)을 확정하지 못해 "
+                    "비교에서 보류했다. 표현이 없다는 이유로 기본값을 채우지 "
+                    "않는다."
+                ),
+            )
+        )
     for fact_id in (*left_invalid, *right_invalid):
         diagnostics.append(
             StageDiagnostic(
@@ -475,7 +548,13 @@ def _fit7(cpl: CplResult) -> FitRelationResult:
                 mismatch = True
 
     if mismatch:
+        # 같은 맥락에서 확인된 불일치는 보존한다. 보류된 값이 있어도 이 판정은
+        # 이미 성립한 것이다.
         return result(FitStatus.NEEDS_REVIEW, NUMERIC_MISMATCH)
+    if left_withheld or right_withheld:
+        # 맥락을 확정하지 못해 뺀 값이 있으면, 남은 축이 모두 같아도 전체를
+        # 일치로 올리지 않는다. 뺀 값이 충돌이었을 수 있다.
+        return result(FitStatus.INSUFFICIENT, COMPARISON_EVIDENCE_MISSING)
     if left_invalid or right_invalid:
         # 인식하지 못해 버린 값이 있으면 남은 축의 일치를 전체 일치로 올리지
         # 않고, "한쪽에만 있다" 고 말하지도 않는다. 버린 값이 충돌이었을 수
