@@ -28,8 +28,9 @@ PURPOSE_AXIS_PROMPT_ENV = "CPL_PURPOSE_AXIS_PROMPT_PATH"
 # 달라 프롬프트도 따로 둔다. v0.2 부터 목적과 수행관계를 타입별 섹션으로 한 번에
 # 묻는다 — 문서당 재검 호출을 하나로 유지하기 위해서다. v0.3 은 문구가 아니라
 # 자기 버전 선언 줄만 더했다. 그래도 모델이 받는 문자열이 달라지므로 같은 이름을
-# 유지하지 않는다.
-RECHECK_PROMPT_VERSION = "cpl-recheck-v0.3"
+# 유지하지 않는다. v0.4 는 기대효과 섹션을 더했다 — 목적·수행관계 절 문구는 그대로
+# 옮겼지만 전체 입력이 달라지므로 버전을 올린다.
+RECHECK_PROMPT_VERSION = "cpl-recheck-v0.4"
 RECHECK_PROMPT_ENV = "CPL_RECHECK_PROMPT_PATH"
 # v0.1 은 목적만 묻고 응답 스키마도 달랐다. 새 요청에 그 파일을 끼우면 모델이
 # 수행관계 섹션을 통째로 못 본 채 조용히 절반만 답한다. fallback 으로 쓰지 않고,

@@ -40,10 +40,22 @@ from .analysis_inputs import field_states_by_name, read_path
 # 지금은 사업목적 하나다. 공용 ``FIELD_LABELS`` 에 다른 필드가 있다고 해서 여기를
 # 자동으로 늘리지 않는다. 재검기가 사업목적 의미 축을 대상으로 만들어져 있어서,
 # 다른 필드를 붙이면 재검 범위와 LLM 입력 계약이 함께 달라진다.
-_WATCHED_FIELDS: dict[str, str] = {
+# 구역을 찾을 대상. 프로파일 경로 -> 공용 계산기의 필드 이름.
+# 라벨 문법은 여기 없다. ``semantic_structuring.field_regions`` 한 곳에만 둔다.
+_FRAGMENT_FIELDS: dict[str, str] = {
+    "comparison_profile.purpose_goal": "purpose_goal",
+    "comparison_profile.delivery_relations": "delivery_relations",
+    "request_context.expected_effect": "expected_effect",
+}
+
+# 누락 상태를 판정할 대상. 구역을 찾는 것과 역할이 다르다 — 기대효과는 이미
+# 값이 있는 필드의 보완이라, 구역의 일부가 값이 안 됐다는 사실만으로
+# ``EXTRACTION_COVERAGE_GAP`` 을 붙이거나 상태를 낮추지 않는다.
+_GAP_FIELDS: dict[str, str] = {
     "comparison_profile.purpose_goal": "purpose_goal",
     "comparison_profile.delivery_relations": "delivery_relations",
 }
+
 
 # 수행체계 구역의 표 제목. 실제로 확인된 표본은 ``< 사업추진 체계도 >`` 하나다.
 # 제목은 구역 안에 있어도 내용이 아니므로 세지 않지만, 거기서 구역이 끝나지도
@@ -146,7 +158,7 @@ def build_fragments(
 ) -> list[CplFragment]:
     """그 필드의 라벨이 지배하는 원문 구역을 모은다. 값을 만들지 않는다."""
 
-    field_name = _WATCHED_FIELDS.get(profile_field)
+    field_name = _FRAGMENT_FIELDS.get(profile_field)
     if field_name is None:
         return []
     document_id = (common_ir.get("document") or {}).get("document_id")
@@ -285,7 +297,7 @@ def detect_coverage_gaps(
 
     states = field_states_by_name(profile)
     gaps: list[CoverageGap] = []
-    for path, field_name in _WATCHED_FIELDS.items():
+    for path, field_name in _GAP_FIELDS.items():
         name = path.rsplit(".", 1)[-1]
         rows = read_path(profile, path)
         if rows:

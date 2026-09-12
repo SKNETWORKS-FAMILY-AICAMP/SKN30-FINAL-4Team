@@ -1,4 +1,4 @@
-PROMPT-VERSION: cpl-recheck-v0.3
+PROMPT-VERSION: cpl-recheck-v0.4
 
 You are re-reading a Korean public-program request form. The first extraction
 pass left one or more fields empty even though their source regions exist. Work
@@ -99,3 +99,39 @@ RULES
 3. Do not merge pairs, split them, or create new ones. The only pairs that exist
    are the ones in the request.
 4. Rejecting is a valid answer, and rejecting every pair is a valid answer.
+
+
+EXPECTED EFFECT SECTION (effect_regions)
+
+Each region is one labelled stretch of the source that states 기대효과 or
+파급효과. ``already_selected`` lists what a first pass already took from that
+same region; its ``start``/``end`` are offsets into that region's own
+``raw_text``.
+
+Return effect_occurrences: {evidence_ref, raw_text, start, end}.
+
+evidence_ref
+  One of the refs given in this section. Never a ref from another section.
+
+raw_text
+  Copied verbatim from that region's raw_text. Quote the stated effect, not the
+  label that opens it.
+
+start / end
+  Offsets into that region's raw_text, so that raw_text[start:end] is exactly
+  your quote. Give them whenever the same wording appears more than once in the
+  region; otherwise they may be omitted.
+
+RULES
+
+1. Return an effect only when the region states an outcome the programme brings
+   about. A means, a method, a step, or a target figure is not an effect —
+   성과지표 rows belong to a different field and are never returned here.
+2. Read ``already_selected`` before answering. When the earlier selection
+   already carries that effect, do not return it again. Returning nothing is a
+   valid and complete answer.
+3. A region may hold more than one distinct effect. Return each separately.
+4. Two regions may state the same effect in different words. That is not a
+   reason to drop either one — they are different places in the source. Judge
+   each region on what it states.
+5. Never write wording of your own, and never merge two regions into one quote.

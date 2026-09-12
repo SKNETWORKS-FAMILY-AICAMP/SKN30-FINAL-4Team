@@ -21,6 +21,11 @@ from pydantic import BaseModel, Field
 
 from .cpl_coverage import CplFragment, build_fragments, detect_coverage_gaps
 from .quantities import read_quantities
+from .cpl_effect import (
+    EFFECT_FIELD,
+    EffectRegion,
+    build_effect_candidates,
+)
 from .cpl_delivery import (
     ALLOWED_MEMBER_KINDS,
     DeliveryPairOccurrence,
@@ -695,9 +700,19 @@ class _DeliveryDecision(BaseModel):
     member_kind: str | None = None
 
 
+class _EffectRow(BaseModel):
+    evidence_ref: str = ""
+    raw_text: str = ""
+    # 같은 문구가 구역에 두 번 나오면 어디를 고른 것인지 좌표로만 말할 수 있다.
+    # 좌표는 그 구역의 ``raw_text`` 기준이다.
+    start: int | None = None
+    end: int | None = None
+
+
 class _RecheckResponse(BaseModel):
     purpose_occurrences: list[_RecheckRow] = Field(default_factory=list)
     delivery_decisions: list[_DeliveryDecision] = Field(default_factory=list)
+    effect_occurrences: list[_EffectRow] = Field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -725,6 +740,9 @@ class _RecheckOutcome:
     delivery: list[DeliveryRelationDraft] = field(default_factory=list)
     delivery_reason: str | None = None
     delivery_dropped: list[str] = field(default_factory=list)
+    effect_facts: list[CplFact] = field(default_factory=list)
+    effect_reason: str | None = None
+    effect_dropped: list[str] = field(default_factory=list)
 
 
 def _accepted_delivery(candidates, decisions):
@@ -880,7 +898,80 @@ def _delivery_fact(draft, occurrence, *, member, index, relation_id):
     )
 
 
-def _recheck(fragments, candidates, llm_client, *, model_profile):
+def _recovered_effect_facts(regions, rows):
+    """기대효과로 확인된 추가 인용만 fact 로 만든다.
+
+    셋을 구분해 돌려준다 — 승격한 fact, 기존 근거와 같아 더하지 않은 중복,
+    검증에서 떨어진 행. 중복은 실패가 아니다. 모델이 "기존 근거로 충분하다" 고
+    판단하면 정상적으로 그런 응답이 온다.
+    """
+
+    by_ref = {row.evidence_ref: row for row in regions}
+    facts: list[CplFact] = []
+    duplicates = 0
+    dropped: list[str] = []
+    taken: set[tuple[str, int, int]] = set()
+    for row in rows:
+        region = by_ref.get(row.evidence_ref)
+        if region is None:
+            dropped.append(f"{row.evidence_ref}: 기대효과 섹션에 준 참조가 아니다")
+            continue
+        quote = row.raw_text or ""
+        if not quote:
+            dropped.append(f"{row.evidence_ref}: 인용문이 비었다")
+            continue
+        if row.start is not None and row.end is not None:
+            # 좌표를 줬으면 그 자리여야 한다. 틀렸다고 다른 자리를 찾아 살리면
+            # 모델이 가리킨 곳과 서버가 저장한 곳이 달라진다.
+            if region.raw_text[row.start : row.end] != quote:
+                dropped.append(f"{row.evidence_ref}: 좌표가 인용문과 맞지 않는다")
+                continue
+            offset = row.start
+        else:
+            first = region.raw_text.find(quote)
+            if first < 0:
+                dropped.append(f"{row.evidence_ref}: 구역 원문의 부분문자열이 아니다")
+                continue
+            if region.raw_text.find(quote, first + 1) >= 0:
+                dropped.append(f"{row.evidence_ref}: 같은 문구가 여럿이라 자리를 정할 수 없다")
+                continue
+            offset = first
+        place = (row.evidence_ref, offset, offset + len(quote))
+        if any(
+            (row.evidence_ref, span.start, span.end) == place and span.raw_text == quote
+            for span in region.already_selected
+        ):
+            duplicates += 1
+            continue
+        if place in taken:
+            duplicates += 1
+            continue
+        taken.add(place)
+        start = region.start_char + offset
+        facts.append(
+            CplFact(
+                fact_id=None,
+                evidence_ref=region.evidence_ref,
+                value_raw=quote,
+                status="identified",
+                source_block_id=region.common_ir_block_id,
+                start_char=start,
+                end_char=start + len(quote),
+                text_basis="cpl_effect_recheck",
+                evidence=[
+                    CplEvidence(
+                        source_block_id=region.common_ir_block_id,
+                        common_ir_document_id=region.common_ir_document_id,
+                        common_ir_block_id=region.common_ir_block_id,
+                        common_ir_occurrence_ids=[region.common_ir_occurrence_id],
+                    )
+                ],
+            )
+        )
+    return facts, duplicates, dropped
+
+
+def _recheck(fragments, candidates, effects, llm_client, *, model_profile):
     """문서당 한 번. 목적 구역과 수행관계 후보를 타입별 섹션으로 함께 묻는다.
 
     섹션을 나눠 호출하면 gap 이 둘 다 나온 문서에서 재검이 두 번 돌아 "문서당
@@ -890,7 +981,7 @@ def _recheck(fragments, candidates, llm_client, *, model_profile):
     """
 
     empty = _RecheckOutcome()
-    if not fragments and not candidates:
+    if not fragments and not candidates and not effects:
         return empty
     try:
         prompt = load_recheck_prompt()
@@ -898,6 +989,7 @@ def _recheck(fragments, candidates, llm_client, *, model_profile):
         return _RecheckOutcome(
             purpose_reason=PROMPT_UNAVAILABLE if fragments else None,
             delivery_reason=PROMPT_UNAVAILABLE if candidates else None,
+            effect_reason=PROMPT_UNAVAILABLE if effects else None,
         )
     try:
         response = generate(
@@ -925,6 +1017,21 @@ def _recheck(fragments, candidates, llm_client, *, model_profile):
                     }
                     for row in candidates
                 ],
+                "effect_regions": [
+                    {
+                        "evidence_ref": row.evidence_ref,
+                        "raw_text": row.raw_text,
+                        "already_selected": [
+                            {
+                                "start": span.start,
+                                "end": span.end,
+                                "raw_text": span.raw_text,
+                            }
+                            for span in row.already_selected
+                        ],
+                    }
+                    for row in effects
+                ],
             },
             response_schema=_RecheckResponse,
             model_profile=model_profile,
@@ -935,6 +1042,7 @@ def _recheck(fragments, candidates, llm_client, *, model_profile):
         return _RecheckOutcome(
             purpose_reason=reason if fragments else None,
             delivery_reason=reason if candidates else None,
+            effect_reason=reason if effects else None,
         )
 
     facts: list[CplFact] = []
@@ -956,6 +1064,18 @@ def _recheck(fragments, candidates, llm_client, *, model_profile):
         )
         delivery_reason = None if drafts else RECHECK_NO_VALID_OCCURRENCE
 
+    effect_facts: list[CplFact] = []
+    effect_reason = None
+    effect_dropped: list[str] = []
+    if effects:
+        effect_facts, duplicates, effect_dropped = _recovered_effect_facts(
+            effects, list(response.effect_occurrences)
+        )
+        # 추가가 없는 것과 검증이 다 떨어진 것은 다르다. 기존 근거만 다시
+        # 돌려줬거나 아무것도 안 골랐으면 정상이다.
+        if not effect_facts and effect_dropped and not duplicates:
+            effect_reason = RECHECK_NO_VALID_OCCURRENCE
+
     return _RecheckOutcome(
         facts=facts,
         purpose_reason=purpose_reason,
@@ -963,10 +1083,13 @@ def _recheck(fragments, candidates, llm_client, *, model_profile):
         delivery=drafts,
         delivery_reason=delivery_reason,
         delivery_dropped=delivery_dropped,
+        effect_facts=effect_facts,
+        effect_reason=effect_reason,
+        effect_dropped=effect_dropped,
     )
 
 
-def _with_recheck(result, common_ir, llm_client, *, model_profile):
+def _with_recheck(result, common_ir, llm_client, *, model_profile, candidate_pack=None):
     """구역 누락 후보가 있으면 그 구역만 한 번 재검한다."""
 
     def gapped(path):
@@ -989,11 +1112,22 @@ def _with_recheck(result, common_ir, llm_client, *, model_profile):
     candidates: list = []
     if delivery_target is not None:
         candidates, _ = build_delivery_pair_candidates(common_ir)
-    if not fragments and not candidates:
+    # 기대효과는 값이 없어서가 아니라 구역의 일부만 값이 돼서 묻는다. gap 과
+    # 무관하게 미대응 occurrence 가 있을 때만 후보가 선다.
+    effect_facts_now = [
+        fact
+        for item in result.items
+        for subfield in item.subfields
+        if subfield.profile_field == EFFECT_FIELD
+        for fact in subfield.facts
+    ]
+    effects = build_effect_candidates(common_ir, effect_facts_now, candidate_pack)
+    effect_regions = list(effects.regions) if effects.needs_recheck else []
+    if not fragments and not candidates and not effect_regions:
         return result
 
     outcome = _recheck(
-        fragments, candidates, llm_client, model_profile=model_profile
+        fragments, candidates, effect_regions, llm_client, model_profile=model_profile
     )
     # 이미 값이 있는 필드에는 재검 Fact 를 더하지 않는다. 1 차 추출이 낸 관계와
     # 재검이 낸 관계가 한 자리에서 섞이면 어느 쪽이 근거인지 알 수 없다.
@@ -1007,6 +1141,19 @@ def _with_recheck(result, common_ir, llm_client, *, model_profile):
     )
 
     def revise(subfield):
+        if subfield.profile_field == EFFECT_FIELD and effect_regions:
+            # 기존 Fact 는 보존하고 추가분만 더한다. 상태는 낮추지 않는다 —
+            # 미대응 occurrence 가 있었다는 사실이 값이 틀렸다는 뜻은 아니다.
+            codes = (
+                [*subfield.reason_codes, outcome.effect_reason]
+                if outcome.effect_reason
+                else list(subfield.reason_codes)
+            )
+            return replace(
+                subfield,
+                reason_codes=codes,
+                facts=[*subfield.facts, *outcome.effect_facts],
+            )
         if subfield is delivery_target:
             if not delivery_facts:
                 if outcome.delivery_reason:
@@ -1063,6 +1210,18 @@ def _with_recheck(result, common_ir, llm_client, *, model_profile):
         )
         if outcome.delivery_dropped:
             detail += f", 탈락 {len(outcome.delivery_dropped)}건"
+    if effect_regions:
+        detail += (
+            f" / 기대효과 구역 {len(effect_regions)}개: 추가 "
+            f"{len(outcome.effect_facts)}건"
+        )
+        if outcome.effect_dropped:
+            # 개수만 남기면 왜 떨어졌는지 사후에 알 수 없다. 목적 쪽과 같이
+            # 사유를 싣는다 — 추가가 있어 사유 코드가 안 붙는 경우에도 남는다.
+            detail += (
+                f", 탈락 {len(outcome.effect_dropped)}건 "
+                f"({'; '.join(outcome.effect_dropped[:3])})"
+            )
     diagnostics = [
         *result.diagnostics,
         StageDiagnostic(
@@ -1104,7 +1263,10 @@ def analyze_cpl(
         # 1 차 추출이 값을 못 냈고 구역은 있다. 축만 붙일 대상이 없으므로 값과
         # 축을 함께 되찾는 재검으로 간다. 재검은 문서당 한 번이고, 그 한 번이
         # 목적 구역과 수행관계 후보를 함께 나른다.
-        return _with_recheck(result, common_ir, llm_client, model_profile=model_profile)
+        return _with_recheck(
+        result, common_ir, llm_client,
+        model_profile=model_profile, candidate_pack=candidate_pack,
+    )
     fragments = _purpose_fragments(facts, common_ir)
     classification = _classify(fragments, llm_client, model_profile=model_profile)
     if facts and not fragments and classification.reason_code is None:
@@ -1119,4 +1281,7 @@ def analyze_cpl(
     # 목적은 1 차에서 나왔지만 수행체계 구역이 비어 있을 수 있다. 그 경우에도
     # 재검은 한 번이다 — 축 분류와 재검은 입력도 응답 스키마도 달라 한 호출에
     # 합치지 않는다. 재검할 것이 없으면 ``_with_recheck`` 가 호출 없이 돌아온다.
-    return _with_recheck(result, common_ir, llm_client, model_profile=model_profile)
+    return _with_recheck(
+        result, common_ir, llm_client,
+        model_profile=model_profile, candidate_pack=candidate_pack,
+    )

@@ -91,6 +91,11 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
     # `_BOUNDARY_WORD` 에 있어 체계 구역을 끝내는 경계로는 계속 동작한다.
     # 절차를 `delivery_methods` 같은 필드에 잇는 것은 별도 계약이다.
     "delivery_relations": (r"사업\s*추진\s*체계", r"추진\s*체계"),
+    # 새 HWP 는 기대효과를 두 곳에 싣는다. 요약표 셀의 ``◦(파급효과)`` 한 줄과
+    # 본문 ``□ 기대효과`` 아래 독립 문단들이다. 둘 다 이 라벨로 잡는다.
+    # ``성과지표`` 는 이미 ``_BOUNDARY_WORD`` 에 있어 구역을 끝낸다 — 수단·지표가
+    # 기대효과 구역으로 딸려 들어가지 않는다.
+    "expected_effect": (r"기대\s*효과", r"파급\s*효과"),
 }
 
 _PATTERNS: dict[str, re.Pattern[str]] = {
