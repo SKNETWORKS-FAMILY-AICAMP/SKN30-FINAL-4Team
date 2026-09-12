@@ -64,7 +64,7 @@ SHA-256·Common IR/candidate-pack 계보·Fact exact span 일치는 schema만으
 ## 사전 조건
 
 1. 공식 Supabase bundle과 pgvector override를 포함해 컨테이너가 healthy여야 한다.
-2. migration 01~28을 적용해 private `existing-kb` bucket과 `kb`, `retrieval` schema를
+2. migration 01~32를 적용해 private `existing-kb` bucket과 `kb`, `retrieval` schema를
    만들어야 한다.
 3. `backend/.venv`를 준비한다.
 4. `backend/.env`에 서버 전용 `SUPABASE_URL`, service/secret key,
@@ -74,6 +74,12 @@ SHA-256·Common IR/candidate-pack 계보·Fact exact span 일치는 schema만으
 현재 지원되는 writer는 `scripts/ingest_existing_profile.py`이며 batch 명령은 이를
 subprocess로 호출한다. 과거 `worker/kb_ingest.py`·`worker/kb_store.py`는 retired
 경로라 runtime image에 포함되지 않으므로 직접 실행해 KB를 변경하는 경로로 사용하지 않는다.
+
+migration 30·32의 current-set invalidation trigger는 충돌 시 SQLSTATE `40001`로 전체
+transaction을 중단한다. 따라서 임의 SQL·관리 도구의 generic writer는 statement만 다시
+실행하지 말고 transaction 전체를 rollback한 뒤 제한된 횟수로 재시도해야 한다. 반대로 이
+공식 importer는 첫 KB write 전 같은 transaction에서 classification → embedding blocking
+advisory lock을 선취하므로 해당 generic retry 경로를 쓰지 않는다.
 
 Supabase 설치·migration과 `.env` 준비는 [README](README.md)와
 [FastAPI·worker 운영 가이드](../fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 먼저 따른다.
@@ -194,14 +200,14 @@ docker compose run --rm --no-deps \
 
 ## 4. pgvector embedding
 
-migration 26은 `approved-facts-components-role-aware-v2` 조립 구성을 **비활성** 상태로
+migration 28은 `approved-facts-components-role-aware-v2` 조립 구성을 **비활성** 상태로
 만든다. 이 버전은 승인된 Fact에 더해
 `support_components[].name_raw`를 Existing·Request의 support 축에 동일하게 포함한다.
 v1 벡터는 자동 삭제되지 않고 rollback 가능한 활성 config로 남는다. worker는 v2만
 허용하므로 아래의 제한 없는 네 scope 명령이 100건 전체를 검증해 한 transaction으로
 v1을 비활성화하고 v2를 활성화하기 전에는 online analysis가 fail-closed 한다. 부분
 실행·OpenAI/DB 실패는 v2 진행분만 남기고 v1 config를 유지한다.
-v2 전환 뒤에 새로운/변경·삭제된 Existing current Profile을 import하면 migration 28이 v2를
+v2 전환 뒤에 새로운/변경·삭제된 Existing current Profile을 import하면 migration 30이 v2를
 즉시 v1으로 되돌린다. 해당 import가 끝난 뒤 전체 current set을 다시 v2로 backfill해야
 한다. 동일 SHA-256의 already-ingested Profile처럼 current set이 바뀌지 않는 실행은
 전환을 되돌리지 않는다.
@@ -209,14 +215,14 @@ v2 전환 뒤에 새로운/변경·삭제된 Existing current Profile을 import�
 `apply_migrations.sh`는 migration 20도 재실행한다. 이 migration은 알려진 초기 generic
 `existing-profile-v1`만 비활성화하며, 활성 v2/향후 assembly version을 내리지 않는다.
 활성 config가 전혀 없는 fresh bootstrap 상태에서만 v1을 fallback으로 활성화한다.
-migration 27도 불완전한 **활성** v2만 v1으로 되돌리며, inactive v2와 활성인 향후
+migration 29도 불완전한 **활성** v2만 v1으로 되돌리며, inactive v2와 활성인 향후
 assembly version은 보존한다.
 검증된 v2 backfill도 exact OpenAI/model/dimension/metric identity가 아닌 활성 config
 (같은 assembly label을 재사용한 foreign config 포함)를 발견하면 이를 내리지 않고 명시적으로
 실패한다. 활성 config가 전혀 없는 경우만 전체 byte/hash 검증을 통과한 v2를 활성화할 수 있다.
 
-migration 28을 처음 완전 설치하거나 함수·네 개 trigger가 drift한 상태로 재적용하면,
-27→28 사이의 구버전 writer 또는 수동 child-row 변경을 count만으로 판별할 수 없으므로
+migration 30을 처음 완전 설치하거나 함수·네 개 trigger가 drift한 상태로 재적용하면,
+29→30 사이의 구버전 writer 또는 수동 child-row 변경을 count만으로 판별할 수 없으므로
 active v2를 한 번 보수적으로 v1으로 되돌린다. 정상 설치 상태에서의 migration 재실행은
 v2를 내리지 않는다. 이후 전체 Profile byte/hash를 검증하는 제한 없는 embedding 명령이
 `promoted_v2`를 출력할 때만 v2 검색을 재개한다.

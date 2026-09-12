@@ -65,6 +65,11 @@ API와 same-server worker를 Docker Compose로 함께 기동할 때는 분석 `w
 `chat-worker`가 기본 service로 포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만
 호스트 포트로 publish하지 않는다.
 
+기본 Compose는 Model 1/2/3 artifact·ML Python을 mount하거나 설치하지 않는다. 따라서
+`.env`에 ML 경로만 설정해도 모델이 즉시 실행되는 것은 아니며, 설정이 없거나 container
+경로가 준비되지 않으면 ML 결과는 `unavailable`로 남는다. host Python 개발 실행 또는
+운영자 전용 Compose override 준비 절차는 운영 가이드를 따른다.
+
 ```bash
 cd backend
 # 위 절차로 .env 준비

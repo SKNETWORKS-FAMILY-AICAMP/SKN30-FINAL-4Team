@@ -1,6 +1,14 @@
 # FastAPI·worker 배포 및 운영 가이드
 
-마지막 검증: 2026-09-10
+마지막 문서 동기화: 2026-09-13
+
+이 날짜의 통합 checkout에서는 공식 `supabase/postgres:17.6.1.169` 임시 DB에 migration
+`01`~`32` fresh apply·전체 replay와 기존 committed migration 31 상태의 upgrade/replay를
+검증했다. 실제 repository SQL과 두 세션 `40001` lock retry도 통과했다. Existing 100건
+Model 1 실제 추론 backfill, v2 재임베딩, ML/채팅 OpenAI live E2E는 아직 실행하지 않았다.
+기본 backend 회귀 테스트 289건과 Supabase/self-hosted/Existing Model 1 중심 계약 테스트
+85건이 통과했으며, 생성 OpenAPI SHA-256은 `origin/develop`과 동일한
+`9461f69719b391ffdbec4d5f4f56011fa31079627f29ffc73a9cacccffe452b5`다.
 
 이 문서는 self-hosted Supabase가 준비된 뒤 FastAPI와 same-server polling worker를
 설정하고 운영하는 방법을 설명한다. Supabase 자체 설치·영속 볼륨·migration 절차는
@@ -25,7 +33,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
                claim → HWP/HWPX parse → OpenAI → 결과 저장
 ```
 
-`backend/compose.yaml`은 `api`와 `worker`만 실행한다. Supabase는 별도 Compose stack으로
+`backend/compose.yaml`은 `api`, analysis `worker`, `chat-worker`를 실행한다. Supabase는 별도 Compose stack으로
 먼저 실행되어 있어야 한다. Redis/RQ, Edge Function dispatch/callback, 외부 worker HTTP
 서버는 현재 경로에서 사용하지 않는다.
 
@@ -34,9 +42,9 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 다음 조건이 먼저 충족되어야 한다.
 
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
-- `backend/supabase/migrations/01`부터 `28`까지 적용되어 있다.
+- `backend/supabase/migrations/01`부터 `32`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
-- Existing Profile과 `retrieval.existing_profile_embedding` 데이터가 준비되어 있다.
+- Existing Profile 100건과 active Model 1 분류, v2 `retrieval.existing_profile_embedding`이 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
 - 서버에서 OpenAI API에 HTTPS로 접근할 수 있다.
 
@@ -48,13 +56,18 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 처음부터 재현할 때는 다음 순서를 지킨다.
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
-2. migration 01~28을 적용한다.
-3. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
-4. 실제 전체 분석이 필요하면 Existing KB와 embedding을 bootstrap한다. 로그인·`/me`만
-   확인할 때는 이 단계가 필요하지 않다.
-5. `backend/.env`를 준비한다.
-6. FastAPI `api`와 polling `worker`를 기동한다.
-7. Swagger에서 `sign-in` → `me` → HWP/HWPX upload → 상태 poll 순서로 확인한다.
+2. migration 01~32를 적용한다.
+3. server-only `backend/.env`와 Model 1 artifact/child Python을 준비한다.
+4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
+5. Existing current Profile 100건에 Model 1을 dry-run 후 backfill하고 분류 설정을 활성화한다.
+6. v2 embedding을 dry-run 후 100 × 4 scope로 backfill·활성화한다.
+7. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
+8. FastAPI `api`, analysis `worker`, `chat-worker`를 기동한다.
+9. Swagger/live E2E에서 `sign-in` → `me` → HWP/HWPX upload → 상태 poll → 결과/채팅 순서로 확인한다.
+
+전체 분석을 안 하고 로그인·`/me`만 확인할 때는 Existing import·Model 1·
+embedding을 생략할 수 있다. 전체 bootstrap에서는 `Existing import → Model 1
+분류 → v2 embedding → Auth/E2E`의 순서를 사용한다.
 
 Supabase 설치·migration 및 로컬 Auth 준비의 반대쪽 안내는
 [Supabase 운영 안내](../../supabase/README.md)에 있다.
@@ -68,7 +81,7 @@ credential은 Git에서 제외되는 `.runtime/pre-review-dev-auth.env` 한 곳�
 ```bash
 cd /path/to/SKN30-FINAL-4Team
 mkdir -p .runtime
-cp --update=none backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
+cp -n backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
 chmod 600 .runtime/pre-review-dev-auth.env
 
 # 파일 안의 빈 값을 로컬 전용 email/password로 채운 뒤 실행한다.
@@ -219,28 +232,304 @@ PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS=30
 PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS=10
 PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS=120
 PREREVIEW_FREETYPE_LIB=/usr/lib/x86_64-linux-gnu/libfreetype.so.6
+
+# worker ML subprocess (절대경로)
+PREREVIEW_ML_ROOT=/absolute/path/to/SKN30-FINAL-4Team/ml
+PREREVIEW_MODEL1_SERVING_DIR=/absolute/path/to/SKN30-FINAL-4Team/.runtime/model1-serving/model1
+PREREVIEW_ML_PYTHON_EXECUTABLE=/absolute/path/to/SKN30-FINAL-4Team/.runtime/ml-venv/bin/python
+PREREVIEW_ML_TIMEOUT_SECONDS=180
 ```
 
-### 필수 변수와 사용 주체
+### 환경 변수와 사용 주체
 
-| 변수 | API | worker | 설명 |
-|---|:---:|:---:|---|
-| `PREREVIEW_OFFLINE_MODE=false` | O | - | 실제 Supabase repository를 활성화 |
-| `PREREVIEW_AUTH_ALLOWED_ORIGINS` | O | - | 프론트의 정확한 origin 목록, 와일드카드 금지 |
-| `SUPABASE_URL` | O | O | Auth와 private Storage gateway |
-| `SUPABASE_ANON_KEY` | O | - | FastAPI가 Supabase Auth를 호출할 때 사용 |
-| `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY` | O | O | private Storage용 서버 비밀값 |
-| `DATABASE_URL` | O | O | FastAPI repository와 worker queue/result 저장 |
-| `OPENAI_API_KEY` | - | O | 구조화·embedding·비교 호출 |
-| `OPENAI_LLM_MODEL` | - | O | Request Profile·FIT·SIM 모델 |
-| `OPENAI_EMBEDDING_MODEL` | - | O | DB active embedding 설정과 일치해야 함 |
-| `PREREVIEW_FREETYPE_LIB` | - | O | `rhwp` parser subprocess에만 주입 |
+`O`는 그 process가 값을 읽는다는 뜻이며 필수 여부를 뜻하지 않는다.
+
+| 변수 | API | worker | live 필수 여부 | 설명 |
+|---|:---:|:---:|---|---|
+| `PREREVIEW_OFFLINE_MODE=false` | O | - | 필수 | 실제 Supabase repository를 활성화 |
+| `PREREVIEW_AUTH_ALLOWED_ORIGINS` | O | - | 브라우저 사용 시 필수 | 프론트의 정확한 origin 목록, 와일드카드 금지 |
+| `SUPABASE_URL` | O | O | 필수 | Auth와 private Storage gateway |
+| `SUPABASE_ANON_KEY` | O | - | 필수 | FastAPI가 Supabase Auth를 호출할 때 사용 |
+| `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY` | O | O | 필수 | private Storage용 서버 비밀값 |
+| `DATABASE_URL` | O | O | 필수 | FastAPI repository와 worker queue/result 저장 |
+| `OPENAI_API_KEY` | - | O | 분석 시 필수 | 구조화·embedding·비교 호출 |
+| `OPENAI_LLM_MODEL` | - | O | 선택(기본값 있음) | Request Profile·FIT·SIM 모델 |
+| `OPENAI_EMBEDDING_MODEL` | - | O | 선택(기본값 있음) | DB active embedding 설정과 일치해야 함 |
+| `PREREVIEW_FREETYPE_LIB` | - | O | 환경별 선택 | `rhwp` parser subprocess에만 주입 |
+| `PREREVIEW_ML_ROOT` | - | O | ML 실행 시 필수 | 현재 checkout의 `ml/`; pipelines·model 2·3 코드/산출물 root |
+| `PREREVIEW_MODEL1_SERVING_DIR` | - | O | Model 1 실행 시 필수 | 검증된 model 1 serving 디렉터리; `inference.py`와 `model/model.safetensors` 포함 |
+| `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O | 별도 venv 사용 시 필수 | `ml/serving/requirements.txt`를 설치한 child Python |
+| `PREREVIEW_ML_TIMEOUT_SECONDS` | - | O | 선택(기본 180초) | 각 ML child 호출의 hard timeout |
 
 호환 alias는 새 배포에서 가급적 사용하지 않는다. DB는 `DATABASE_URL`, anon key는
 `SUPABASE_ANON_KEY`를 사용한다. Storage 비밀값은
 `SUPABASE_SECRET_KEY`와 `SUPABASE_SERVICE_ROLE_KEY` 중 실제 배포가 제공하는 하나만
 설정한다. 둘을 서로 다른 값으로 동시에 설정하면 API와 worker의 선택 우선순위가 달라질
 수 있으므로 금지한다.
+
+### Model 1 artifact 준비 (`serving.zip`)
+
+최신 `develop`에는 worker adapter와 `ml/pipelines/`, model 1 wrapper·tokenizer·label
+mapping이 이미 있다. `/home/paim/serving.zip`에서 추가로 필요한 것은 Git에
+없는 `model1/model/model.safetensors`다. ZIP 전체를 checkout의 `ml/`에 풀거나
+압축 안의 Python 코드로 tracked 파일을 덮어쓰지 않는다. 현재 인수한 artifact의
+고정 digest는 다음과 같다. 다른 서버에서는 archive를 안전한 로컬 경로로 별도 전달하되
+아래 digest가 같은 바이트인지 확인한 뒤에만 명령의 archive 경로를 바꾼다.
+
+| 대상 | SHA-256 |
+|---|---|
+| `/home/paim/serving.zip` | `0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41` |
+| `model1/model/model.safetensors` | `8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779` |
+| Model 1 runtime manifest | `d44007342e06d7f20039d53e140e04221e8029b4cd6735dd3fbacc6864eb7912` |
+
+다음 절차는 tracked serving 코드를 Git에서 복사하고 442 MB weight 한 파일만
+Git에서 제외된 `.runtime/`에 새로 쓴다. 기존 디렉터리나 파일을 덮어쓰지
+않으며, ZIP과 weight digest를 둘 다 확인한다.
+
+```bash
+cd /absolute/path/to/SKN30-FINAL-4Team
+test ! -e .runtime/model1-serving
+install -d -m 700 .runtime/model1-serving/model1
+cp -a ml/serving/model1/. .runtime/model1-serving/model1/
+
+python3 - /home/paim/serving.zip \
+  .runtime/model1-serving/model1/model/model.safetensors <<'PY'
+from pathlib import Path
+import hashlib
+import shutil
+import sys
+import zipfile
+
+archive = Path(sys.argv[1])
+output = Path(sys.argv[2])
+archive_sha256 = "0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41"
+weight_sha256 = "8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779"
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+if digest(archive) != archive_sha256:
+    raise SystemExit("serving.zip SHA-256 mismatch")
+output.parent.mkdir(parents=True, exist_ok=True)
+created = False
+try:
+    with zipfile.ZipFile(archive) as bundle:
+        member = bundle.getinfo("model1/model/model.safetensors")
+        with bundle.open(member) as source, output.open("xb") as target:
+            created = True
+            shutil.copyfileobj(source, target, length=1024 * 1024)
+    if digest(output) != weight_sha256:
+        output.unlink()
+        created = False
+        raise SystemExit("model.safetensors SHA-256 mismatch")
+except Exception:
+    if created and output.exists():
+        output.unlink()
+    raise
+print("model1 artifact verified")
+PY
+
+chmod -R go-rwx .runtime/model1-serving
+```
+
+ML 의존성은 backend 부모 process와 분리한 child interpreter에 설치한다. 이
+경로도 `.runtime/`이므로 Git에 추가되지 않는다.
+
+```bash
+cd /absolute/path/to/SKN30-FINAL-4Team
+python3 -m venv .runtime/ml-venv
+.runtime/ml-venv/bin/python -m pip install -r ml/serving/requirements.txt
+```
+
+실제 문서나 비밀값 없이 model 1 child 경계를 검증한다. 성공 시 stdout은
+`support_type_pred`, `confidence`, `status`를 포함한 JSON object 하나여야 한다.
+
+```bash
+cd /absolute/path/to/SKN30-FINAL-4Team
+printf '%s' '{"title":"2026년 중소기업 판로 지원","purpose":"판로 개척","content":"전시회 참가비 지원","target_text":"중소기업"}' | \
+  env PREREVIEW_ML_ROOT="$PWD/ml" \
+      PREREVIEW_MODEL1_SERVING_DIR="$PWD/.runtime/model1-serving/model1" \
+      .runtime/ml-venv/bin/python backend/worker/adapters/ml_child.py --model model1
+```
+
+호스트 worker의 `.env.host.local`에는 위 세 경로를 모두 절대경로로 기록한다.
+Compose에서는 `PREREVIEW_ML_*`가 analysis worker에만 전달되지만, 그 값은
+**container 안의 경로**여야 한다. 외부 `ml/`, model 1 directory, ML interpreter를
+각각 read-only bind mount하고 같은 container 경로를 설정한다. 호스트에서 만든
+venv를 서로 다른 OS·Python ABI의 container에 그대로 mount하지 않고, worker
+이미지와 같은 환경에서 ML interpreter를 준비한다. **기본 `compose.yaml`에는 ML
+volume/ML 의존성 설치가 의도적으로 없다.** 따라서 `.env`에 경로만 넣은
+`docker compose up`은 Model 1/2/3을 즉시 실행하지 않으며, 해당 모델은
+`unavailable`로 처리되고 worker 기동 자체는 막지 않는다. Docker에서 ML을 사용할
+운영자는 Git에 넣지 않는 별도 Compose override/image에서 artifact와 container-호환
+interpreter를 read-only로 준비한 뒤에만 이 변수를 설정한다. 가장 단순한 개발 검증은
+아래의 호스트 Python 실행 경로다.
+
+ML child에는 DB·Supabase·OpenAI credential 환경변수를 넘기지 않고 Hugging Face/
+Transformers network fallback도 강제로 끈다. 다만 subprocess 자체는 filesystem sandbox가
+아니므로 `HOME` 아래 credential 파일까지 격리하지는 않는다. 운영에서는 전용 OS 계정과
+최소 read-only mount를 사용하고 worker 계정의 home에 불필요한 자격증명을 두지 않는다.
+
+### Existing 100건 Model 1 분류 backfill
+
+이 작업은 Request 분석을 실행하는 것이 아니라 현재 Existing Profile을 버전형
+KB 분류 결과로 보강하는 one-shot 운영 작업이다. 먼저 migration 31·32를 포함한
+전체 migration을 적용한다. `apply_migrations.sh`는 01~32를 순서대로 재적용하므로
+기존 DB는 운영 가이드의 backup/staging 절차를 먼저 따른다.
+
+```bash
+cd /absolute/path/to/SKN30-FINAL-4Team/.runtime/supabase-dev
+SUPABASE_DIR="$PWD" \
+  /absolute/path/to/SKN30-FINAL-4Team/backend/supabase/apply_migrations.sh
+```
+
+migration 31·32가 보장하는 inactive 설정의 UUID를 model ID, weight SHA-256, runtime
+manifest SHA-256, input assembly 버전 **네 값 모두로** 조회한다. manifest는 sorted
+compact JSON으로 고정한 다음 logical file→SHA-256 mapping이다: serving의
+`inference.py`, label mapping, model config/weight, tokenizer 두 파일, checkout의
+`pipelines/model1/dl07_m1_apply.py`, `serving/requirements.txt`와 backend의
+`classify_existing_model1.py`, Existing input assembler, ML child/normalizer,
+Model 1 contract/reference 파일이다. UUID를 임의로 만들거나 단순히 가장 최근 row를
+선택하지 않는다.
+
+```bash
+docker compose exec -T db psql -U postgres -d postgres -P pager=off -c "
+SELECT classification_config_pk, model_id, artifact_sha256,
+       runtime_manifest_sha256, input_assembly_version, producer_version, is_active
+FROM retrieval.classification_configuration
+WHERE model_id = 'model_1_support_type'
+  AND lower(artifact_sha256) =
+      '8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779'
+  AND lower(runtime_manifest_sha256) =
+      'd44007342e06d7f20039d53e140e04221e8029b4cd6735dd3fbacc6864eb7912'
+  AND input_assembly_version = 'existing-profile-model1-input-v1';
+"
+```
+
+조회 결과는 정확히 1행이어야 하고 최초 backfill 전 `is_active`는 `false`다. 출력된
+UUID만 비밀값이 아닌 임시 shell 변수에 넣는다.
+
+```bash
+export PREREVIEW_MODEL1_CONFIG_PK='<classification_config_pk UUID>'
+```
+
+Existing import·관계형 검증을 먼저 완료한 뒤, 모델이나 artifact를 열지 않는
+읽기 전용 dry-run으로 current Profile 수와 입력 조립 가능 여부를 확인한다. 고정
+팩은 `current_profiles: 100`, `predicted: 0`, `promoted: false`여야 한다.
+
+```bash
+cd /absolute/path/to/SKN30-FINAL-4Team
+backend/.venv/bin/python backend/scripts/classify_existing_model1.py \
+  --configuration-id "$PREREVIEW_MODEL1_CONFIG_PK" \
+  --supabase-compose-env .runtime/supabase-dev/.env \
+  --dry-run
+```
+
+실제 backfill은 위에서 검증한 serving directory와 ML child interpreter만 사용한다.
+스크립트는 설정에 등록된 weight SHA-256과 실제 weight byte, 그리고 위 fixed runtime
+file들의 manifest SHA-256을 모두 먼저 대조하고, 100건을 모두 성공·재검증한 뒤에만
+설정을 활성화한다. `PREREVIEW_ML_ROOT`는 현재 checkout의 `ml/`이어야 하며
+`PREREVIEW_MODEL1_SERVING_DIR`는 weight를 배치한 디렉터리여야 한다.
+
+```bash
+cd /absolute/path/to/SKN30-FINAL-4Team
+PREREVIEW_ML_ROOT="$PWD/ml" \
+PREREVIEW_MODEL1_SERVING_DIR="$PWD/.runtime/model1-serving/model1" \
+PREREVIEW_ML_PYTHON_EXECUTABLE="$PWD/.runtime/ml-venv/bin/python" \
+backend/.venv/bin/python backend/scripts/classify_existing_model1.py \
+  --configuration-id "$PREREVIEW_MODEL1_CONFIG_PK" \
+  --supabase-compose-env .runtime/supabase-dev/.env \
+  --timeout-seconds 180
+```
+
+최초 완료 JSON은 `status: completed`, `current_profiles: 100`, `predicted: 100`,
+`skipped: 0`, `promoted: true`를 예상한다. 같은 current Profile/input으로 재실행하면
+이미 검증된 row를 재사용하므로 `predicted: 0`, `skipped: 100`, `promoted: true`가
+정상이다. 중간 실패 시 불완전한 설정은 활성화되지 않으며, 원인을 해결한 뒤
+같은 명령을 재실행한다.
+
+다음 SQL을 위 Supabase directory의 `docker compose exec -T db psql -U postgres
+-d postgres -P pager=off`에 넘겨 검증한다. 먼저 active config와 current corpus의
+100/100 `OK` 완전성을 확인한다.
+
+```sql
+SELECT classification_config_pk, model_id, artifact_sha256,
+       runtime_manifest_sha256, input_assembly_version, producer_version, is_active
+FROM retrieval.classification_configuration
+ORDER BY is_active DESC, created_at;
+
+WITH current_profiles AS (
+    SELECT profile.profile_version_pk
+    FROM kb.profile_version AS profile
+    JOIN kb.source_version AS source
+      ON source.source_version_pk = profile.source_version_pk
+    WHERE profile.is_current AND source.is_current
+), active_config AS (
+    SELECT classification_config_pk
+    FROM retrieval.classification_configuration
+    WHERE is_active
+)
+SELECT (SELECT count(*) FROM current_profiles) AS current_profiles,
+       (SELECT count(*) FROM active_config) AS active_config_count,
+       count(classification.profile_version_pk) AS active_classification_rows,
+       count(classification.profile_version_pk) FILTER (
+           WHERE classification.execution_status = 'OK'
+       ) AS active_ok_rows
+FROM active_config AS config
+LEFT JOIN retrieval.existing_profile_classification AS classification
+  ON classification.classification_config_pk = config.classification_config_pk
+ AND classification.profile_version_pk IN (
+       SELECT profile_version_pk FROM current_profiles
+ );
+```
+
+고정 100건 정상 결과는 `current_profiles = 100`, `active_config_count = 1`,
+`active_classification_rows = 100`, `active_ok_rows = 100`이다. active config가 없더라도
+`current_profiles`는 실제 KB 건수를 유지하며 나머지 세 값이 0으로 보인다. 다음으로 raw
+실행 상태와 예측 tier 분포를 확인한다.
+
+```sql
+SELECT classification.execution_status,
+       classification.prediction_status,
+       count(*) AS profile_count
+FROM retrieval.existing_profile_classification AS classification
+JOIN retrieval.classification_configuration AS config
+  ON config.classification_config_pk = classification.classification_config_pk
+JOIN kb.profile_version AS profile
+  ON profile.profile_version_pk = classification.profile_version_pk
+JOIN kb.source_version AS source
+  ON source.source_version_pk = profile.source_version_pk
+WHERE config.is_active AND profile.is_current AND source.is_current
+GROUP BY classification.execution_status, classification.prediction_status
+ORDER BY classification.execution_status, classification.prediction_status;
+```
+
+마지막으로 서비스 전용 projection의 provenance와 실제 라벨을 확인한다. raw
+`support_type_pred`는 감사용으로 남지만 `판단보류`는 이 함수에서 `support_type =
+NULL`, `effective_status = UNAVAILABLE`, `effective_reason_code = PREDICTION_WITHHELD`로
+변환되어 Model 2·3/검색에 유효 라벨처럼 전달되지 않는다.
+
+```sql
+SELECT classification_config_pk, model_id, artifact_sha256,
+       runtime_manifest_sha256, input_assembly_version, confidence,
+       prediction_status, support_type, effective_status, effective_reason_code
+FROM retrieval.get_active_existing_profile_classifications()
+ORDER BY effective_status, support_type NULLS LAST, effective_reason_code;
+```
+
+Model 1 분류는 Existing current Profile/Fact만 읽으며 embedding을 조회하거나 OpenAI를
+호출하지 않는다. 따라서 v2 embedding backfill **전에** 실행해도 되며 fresh
+bootstrap에서는 그 순서를 권장한다. 분류 테이블·함수는 service-role 내부 경계이고
+FastAPI response model/OpenAPI에 추가되지 않으므로 프론트엔드 API 계약은 바뀌지 않는다.
+현재 FastAPI/worker에는 이 projection의 실제 소비자가 아직 없다. 다음 검색·Model 2·3
+연결에서는 반드시 `get_active_existing_profile_classifications()`를 통해 읽고 raw
+`existing_profile_classification.support_type_pred`를 조회하지 않는다. 지금은 같은
+`service_role`이 적재 권한도 가져 DB 권한만으로 이 규칙을 강제하지 못하므로, 소비자 연결
+시점에 read 전용 role을 분리하거나 raw table의 SELECT 권한을 축소하는 것을 배포 gate로 둔다.
 
 ### 주소 선택
 
@@ -306,13 +595,13 @@ docker compose up -d --build
 재생성한다.
 
 ```bash
-docker compose up -d --force-recreate api worker
+docker compose up -d --force-recreate api worker chat-worker
 ```
 
 설정 변경 없이 프로세스만 재시작할 때 사용한다.
 
 ```bash
-docker compose restart api worker
+docker compose restart api worker chat-worker
 ```
 
 worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배포 전 새 업로드를 잠시
@@ -321,7 +610,7 @@ worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배�
 시간을 준다.
 
 ```bash
-docker compose stop -t 600 api worker
+docker compose stop -t 600 api worker chat-worker
 ```
 
 `docker compose down -v`나 Supabase stack의 volume 삭제 명령은 사용하지 않는다.
@@ -364,7 +653,7 @@ LIMIT 20;
 
 ### Operator용 HWP/HWPX live E2E
 
-로컬 Supabase·migration 01~28·Existing KB/embedding·`backend/.env`가 준비된 개발
+로컬 Supabase·migration 01~32·Existing KB/Model 1 분류/v2 embedding·`backend/.env`가 준비된 개발
 환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue →
 worker → polling/result read를 한 번에 검증할 수 있다. PDF는 받지 않고 HWP·HWPX만
 받는다.
@@ -522,7 +811,7 @@ Cookie Secure를 반드시 활성화한다.
 | 로그인 응답은 200인데 다음 요청이 401 | 프론트 `credentials: include`, Cookie Secure/SameSite, HTTP/HTTPS 불일치 |
 | Auth가 503 | 컨테이너에서 `SUPABASE_URL` 접근 가능 여부와 anon key |
 | 업로드가 503 | service-role/secret key, `request-temp`, DB 연결과 migration |
-| 요청이 계속 `queued` | worker 컨테이너·로그, DB URL, migration 21~25, queue claim |
+| 요청이 계속 `queued` | worker 컨테이너·로그, DB URL, migration 21~26, queue claim |
 | worker가 바로 종료 | 필수 환경변수 이름 누락; worker는 설정 오류 시 exit code 2 |
 | HWP/HWPX parser가 `FT_Palette_Data_Get` 오류 | 이미지 재빌드와 `PREREVIEW_FREETYPE_LIB` 경로 |
 | OpenAI HTTP 200 후 `LLM_INVALID_RESPONSE` | HTTP 성공과 domain 구조 검증 성공은 다름. finish/refusal, JSON root, cross-field validation 단계를 확인하되 raw 응답·원문은 로그에 남기지 않음 |

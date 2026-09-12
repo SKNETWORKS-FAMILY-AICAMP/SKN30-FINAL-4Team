@@ -1,6 +1,6 @@
 # Backend rebuild 구현 현황
 
-마지막 갱신: 2026-09-10
+마지막 갱신: 2026-09-13
 
 ## 현재 선택한 운영 구조
 
@@ -15,12 +15,38 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 호출하지 않는다. Redis/RQ, external worker HTTP dispatch/callback, SSE/Realtime은 현재
 운영 경로에서 사용하지 않는다.
 
+## 2026-09-13 통합 상태
+
+`origin/develop`의 Model 1/2/3 결과 저장과 비동기 채팅 queue를 이 브랜치의 FastAPI·worker
+경계에 통합했다. 현재 migration 번호는 Model 결과 `26`, 채팅 queue `27`, component-name
+embedding v2 `28`, v2 활성화 보정 `29`, Existing KB 변경 직렬화/trigger `30`, versioned
+Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/promotion hardening
+`32`이다.
+
+- Existing Model 1 분류는 `retrieval.classification_configuration`과
+  `retrieval.existing_profile_classification`에 immutable weight/runtime-manifest/input configuration·input SHA-256·raw label·신뢰도·
+  실행 이력을 남긴다. 100건 current corpus 전체가 `OK`일 때만 configuration을 활성화한다.
+  raw `판단보류`는 보존하지만 service projection에서는 지원 유형으로 사용하지 않는다.
+- `serving.zip`의 model weight는 Git이 아닌 ignored runtime 경로에 배치하고 weight와
+  serving/pipeline/backend runtime manifest SHA-256을 검증한 뒤 backfill한다. 정확한 환경 변수·backfill·검증 순서는
+  [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)에 있다.
+- 공식 `supabase/postgres:17.6.1.169` 임시 DB에서 migration `01`~`32`의 fresh apply와
+  전체 replay, 기존 committed migration 31 상태에서 31·32 upgrade/replay를 검증했다.
+  실제 repository SQL과 두 세션 classification/embedding invalidation의 `40001` 전체
+  transaction retry도 검증했다. 다만 Existing 100건 Model 1 실제 추론 backfill,
+  v2 재임베딩, 실제 ML/채팅 OpenAI E2E는 아직 실행하지 않았다. 아래 2026-09-10 결과는
+  통합 전 번호 체계와 로컬 runtime에 대한 역사적 검증 기록이다.
+- 기본 backend 회귀 테스트 289건과 Supabase/self-hosted/Existing Model 1 중심 계약 테스트
+  85건이 통과했다. 생성된 OpenAPI는 `origin/develop`과 byte-canonical SHA-256
+  `9461f69719b391ffdbec4d5f4f56011fa31079627f29ffc73a9cacccffe452b5`로 동일하다.
+  Python compile, shell syntax, Compose config와 `git diff --check`도 통과했다.
+
 ## 완료된 기반
 
 - self-hosted Supabase와 private buckets: `existing-kb`, `request-temp`, `analysis-reports`
 - pgvector 기반 Existing Profile 임베딩: `text-embedding-3-small`, 1,536 dimensions,
   `purpose`/`target`/`support`/`combined` 네 scope
-- migration 26의 `approved-facts-components-role-aware-v2` 조립 규칙: 승인 Fact와
+- migration 28의 `approved-facts-components-role-aware-v2` 조립 규칙: 승인 Fact와
   `support_components[].name_raw`를 Existing/Request 양쪽에 동일하게 반영하고,
   구 버전 벡터와의 혼용은 fail-closed
 - Existing 공고 100건의 Profile·artifact·관계형 KB 적재 및 retrieval 검증
@@ -56,7 +82,11 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 - parser 120초 hard deadline/process-group kill, HWPX declared unpacked-size 상한,
   parser 자식 프로세스의 DB/OpenAI/Storage 비밀값 차단
 
-## 2026-09-10 검증 결과
+## 2026-09-10 통합 전 역사적 검증 결과
+
+아래 기록에서 언급하는 migration 26/27/28은 당시 backend-rebuild 단독 브랜치의 번호다.
+현재 통합 번호로는 각각 28/29/30에 해당한다. 당시 실제 DB는 Model 결과·채팅 queue·Existing
+Model 1 분류 migration을 포함하지 않았다.
 
 - 전체 backend 회귀 테스트: `226 passed`
 - Request Profile vendor 계약 테스트: `58 passed`
@@ -153,7 +183,8 @@ migration 25 최종 적용 직전의 최신 백업은
 DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 
 PDF/OCR은 현재 요청 처리 범위에서 제외한다. 채팅은 별도 queue/API/worker와
-결과 근거 제한 로직까지 구현했으며, migration 26 적용 후 실제 LLM E2E를 확인해야 한다.
+결과 근거 제한 로직까지 구현했으며, 현재 번호의 migration 27 적용 후 실제 LLM E2E를
+확인해야 한다.
 PDF 생성은 데이터 모델은 있지만 별도 queue/API 구현 전이라 E2E 완료 범위가 아니다.
 
 현재 이 체크아웃에는 mode `600`인 `backend/.env`가 준비되어 있고 API·worker가 online으로
@@ -166,6 +197,9 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 - Existing Profile 100건을 `approved-facts-components-role-aware-v2`로 재임베딩하고
   scope별 100건(총 400행) 및 live retrieval을 다시 검증
+- migration 31·32를 적용한 뒤 Existing current Profile 100건의 Model 1 분류 backfill과
+  active-configuration gate를 검증
+- 통합된 Model 1/2/3 결과 저장과 채팅 worker를 실제 DB/LLM으로 각각 E2E 검증
 - 수정된 Request Profile v0.1.3으로 실제 Hancom HWP live E2E를 재실행해 사업명,
   사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검
 - password recovery link를 HttpOnly session cookie로 교환하는 callback/PKCE 흐름

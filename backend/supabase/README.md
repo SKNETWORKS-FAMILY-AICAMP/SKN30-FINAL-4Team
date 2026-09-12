@@ -29,6 +29,10 @@ PostgreSQL polling worker는 장시간 분석 경계다.
 `self-hosted/v0.8.0`을 sparse clone하되 예상 commit SHA와 정확히 일치하는지 먼저
 검증하고, 새 target에서 공식 key 생성 script를 조용히 실행한 뒤 pgvector override와
 resolved commit 기록을 설치한다. tag가 같은 이름으로 이동하면 설치는 fail-closed한다.
+`self-hosted/v0.8.0`은 annotated tag이므로 remote tag object
+`e1af732589cd468edb49500ebc04e4367d4c56ad`가 아니라, 그것이 peel된 실제 commit
+`241bb11c0627f2981746d37033f57dbfa81d29b0`을 pin으로 사용한다. installer의
+`git rev-parse HEAD`와 Auth bootstrap marker 검증도 모두 이 peeled commit을 비교한다.
 
 ```bash
 cd /path/to/repository
@@ -49,6 +53,11 @@ backend/supabase/install_selfhosted_local.sh \
 경로·기존 non-empty target을 거부한다. secret 값은 출력하지 않으며 최종 `.env`는 mode
 `600`이다. staging 검증이 끝나기 전에는 target을 채우지 않는다.
 
+Windows에서는 Git Bash와 Docker Desktop으로 installer를 실행할 수 있다. NTFS의 Git
+Bash mount는 POSIX mode `0750`을 강제하지 못할 수 있어 installer가 경고를 출력한다.
+그 경우 `.runtime` parent는 Windows ACL로 보호한다. DB/Storage bind volume의 권한과
+운영 배포는 WSL 또는 Linux/EC2에서 검증하는 것을 권장한다.
+
 이 installer는 **container 기동, migration, DB reset, data seed를 하지 않는다.** 생성된
 `.env`의 URL/SMTP 설정을 검토한 뒤 아래 순서로 진행한다.
 
@@ -63,6 +72,16 @@ SUPABASE_DIR="$PWD" \
 SUPABASE_DIR="$PWD" \
   /path/to/repository/backend/supabase/run_worker_queue_validation.sh
 ```
+
+`apply_migrations.sh`는 official Storage table owner와 project schema owner를
+분리한다. local `supabase_admin` peer로 접속해 일반 migration은 `postgres` role로
+실행하고, migration 11/14의 `storage.buckets`·`storage.objects` DML/policy만
+transaction-local `supabase_storage_admin` role로 실행한다. 따라서 script 대신
+`psql -U postgres`로 직접 재적용하지 않는다. migration 14의
+`workspace.can_manage_own_reserved_source`는 Storage role window 밖에서 생성되어
+`postgres`가 계속 SECURITY DEFINER owner다. 정책 표현식을 parse할 때만 필요한
+`auth`/`workspace` schema usage는 같은 transaction에서 좁게 부여·회수되므로 Storage
+role에 영구 권한을 추가하지 않는다.
 
 `docker compose ps`에서 최소 DB가 healthy가 된 뒤 migration을 적용하고, Auth·Storage까지
 healthy인지 확인한 뒤 FastAPI를 연결한다.
@@ -80,7 +99,7 @@ migration 후, 로컬 Swagger·프론트 수동 시험용 계정이 필요할 �
 ```bash
 cd /path/to/repository
 mkdir -p .runtime
-cp --update=none backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
+cp -n backend/supabase/dev-auth.env.example .runtime/pre-review-dev-auth.env
 chmod 600 .runtime/pre-review-dev-auth.env
 # .runtime/pre-review-dev-auth.env의 빈 email/password를 로컬 전용 값으로 채움
 
@@ -115,7 +134,8 @@ manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~28·same-server worker와 묶어 검증된 위 스크립트만 사용한다.
+override·migration 01~32·same-server worker 경로에 맞춘 위 스크립트만 사용한다. `01`~`32`
+fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미 검증됐다고 간주하지 않는다.
 
 ## 데이터 위치
 
@@ -134,27 +154,39 @@ Profile만 `purpose`, `target`, `support`, `combined` 네 scope로 영속화한�
 - embedding: OpenAI `text-embedding-3-small`, 1,536차원, cosine
 - 입력: `identified`, `partial`, `partially_identified` Fact의 승인된 `value_raw`와
   원문 근거가 있는 `support_components[].name_raw`
-- 조립 버전: `approved-facts-components-role-aware-v2`; migration 26은 v2를
+- 조립 버전: `approved-facts-components-role-aware-v2`; migration 28은 v2를
   **inactive**으로 준비하고 v1을 rollback 가능한 활성 config로 보존한다. worker는 v2만
   허용하므로 backfill 중에는 candidate 0건을 정상 결과로 만들지 않고 fail-closed 한다.
   전체 Existing Profile의 네 scope backfill과 SHA-256 검증이 끝난
   `embed_existing_profiles.py`만 v1→v2를 원자적으로 전환한다. 부분 실행·실패 시 v1이
   계속 활성 상태다. 이후 Existing importer가 current source/profile을 실제 변경·삭제하면
-  migration 28 trigger가 같은 transaction에서 v2를 v1으로 되돌려 재backfill 전
+  migration 30 trigger가 같은 transaction에서 v2를 v1으로 되돌려 재backfill 전
   worker가 fail-closed 하게 만든다. `fact_occurrence`·`support_component`의 current
-  Profile 하위 변경도 같은 규칙이다. migration 28을 **처음 완전 설치**하거나 함수·네 개
-  trigger가 drift한 상태로 재적용하면, 27→28 사이의 구버전 writer/수동 변경을 보수적으로
+  Profile 하위 변경도 같은 규칙이다. migration 30을 **처음 완전 설치**하거나 함수·네 개
+  trigger가 drift한 상태로 재적용하면, 29→30 사이의 구버전 writer/수동 변경을 보수적으로
   흡수하기 위해 active v2를 한 번 v1으로 demote한다. 정상 설치 상태의 migration 재실행은
   v2를 건드리지 않는다. byte/hash를 재검증하는 전체 embed 명령의 `promoted_v2` 결과 전에는
   v2를 다시 쓰지 않는다. 이미 current인 동일 Profile 재적재는 되돌리지 않는다.
   migration 20의 재실행은 알려진 초기 generic `existing-profile-v1`만 비활성화하고,
   이미 활성인 v2나 이후 assembly version은 보존한다. 활성 config가 전혀 없을 때만
-  v1 bootstrap을 수행한다. migration 27도 불완전한 **활성** v2만 v1으로 되돌리며,
+  v1 bootstrap을 수행한다. migration 29도 불완전한 **활성** v2만 v1으로 되돌리며,
   inactive v2와 활성 v3(이후 version)의 조합은 변경하지 않는다.
   검증된 v2 backfill도 exact OpenAI/model/dimension/metric identity가 아닌 활성 config
   (같은 assembly label을 재사용한 foreign config 포함)를 발견하면 이를 내리지 않고
   명시적으로 실패한다. 활성 config가 없는 상태만 예외로, 전체 byte/hash 검증을 통과한
   v2가 안전하게 활성화된다.
+
+### Existing KB current-set writer 규칙
+
+migration 30·32의 current-set invalidation trigger는 row/tuple lock을 이미 잡은 뒤에는
+advisory lock을 기다리지 않고 SQLSTATE `40001`로 중단한다. 따라서 임의 SQL·관리 도구 같은
+generic writer는 `40001`을 받으면 **해당 transaction 전체를 rollback한 뒤** 제한된 횟수만
+새 transaction으로 재시도해야 하며, statement 하나만 재시도하면 안 된다. 운영에서 지원하는
+공식 Existing importer(`scripts/ingest_existing_profile.py`, batch는 이를 subprocess로 호출)는
+첫 KB write 전에 동일 transaction의 blocking advisory lock을 classification → embedding 순서로
+선취하므로 이 generic retry 경로를 사용하지 않는다. retired `worker/kb_ingest.py`·`worker/kb_store.py`
+는 runtime image에 포함되지 않으므로 writer로 취급하지 않는다.
+
 - 상한: scope당 8,192 tokens. 초과 시 Fact/줄 경계 chunk와 token-weighted average 사용
 - `2,048`은 token 상한이 아니라 API 입력 배열 수에 관한 과거 혼동값이다.
 
@@ -257,7 +289,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`28` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`32` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤
