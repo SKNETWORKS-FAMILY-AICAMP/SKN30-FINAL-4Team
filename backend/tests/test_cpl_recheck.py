@@ -168,9 +168,16 @@ def test_a_transport_failure_is_told_apart_from_an_empty_answer() -> None:
 # 값이 이미 있으면 재검 대상이 아니다. 축만 붙이는 1차 분류로 간다.
 def test_an_extracted_field_is_never_rechecked() -> None:
     profile = {
-        "comparison_profile": {"purpose_goal": [
-            {"fact_id": "fact_1", "value_raw": "부산 관내 제조 중소기업", "status": "identified"}
-        ]},
+        "comparison_profile": {"purpose_goal": [{
+            "fact_id": "fact_1", "value_raw": "부산 관내 제조 중소기업",
+            "status": "identified",
+            "evidence": [{
+                "source_block_id": "hwpx:t4",
+                "common_ir_document_id": "hwpx:d1",
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_occurrence_ids": ["occ:1"],
+            }],
+        }]},
         "field_states": [{"field_name": "purpose_goal", "status": "identified"}],
     }
     llm = _Llm([])
@@ -497,6 +504,13 @@ def _delivery_only_ir() -> dict[str, Any]:
         "document": {"document_id": "hwp:d5"},
         "blocks": [
             {
+                "block_id": "hwp:b0", "reading_order": 0,
+                "occurrences": [{
+                    "occurrence_id": "occ:p0",
+                    "text": "○ (사업목적) 중소기업의 기술경쟁력을 강화",
+                }],
+            },
+            {
                 "block_id": "hwp:b1", "reading_order": 1,
                 "occurrences": [{"occurrence_id": "occ:p1", "text": "  ㅇ 사업추진체계"}],
             },
@@ -523,7 +537,13 @@ def _delivery_only_profile() -> dict[str, Any]:
         "comparison_profile": {
             "purpose_goal": [{
                 "fact_id": "fact_1", "value_raw": "중소기업의 기술경쟁력을 강화",
-                "value_source": {"source_block_id": "hwp:b0", "start_char": 0, "end_char": 14},
+                "value_source": {"source_block_id": "hwp:b0", "start_char": 9, "end_char": 23},
+                "evidence": [{
+                    "source_block_id": "hwp:b0",
+                    "common_ir_document_id": "hwp:d5",
+                    "common_ir_block_id": "hwp:b0",
+                    "common_ir_occurrence_ids": ["occ:p0"],
+                }],
             }],
             "delivery_relations": [],
         },
@@ -572,7 +592,7 @@ def test_a_failed_delivery_recheck_keeps_the_purpose_axes() -> None:
 
     assert llm.tasks == ["cpl_purpose_axis_classification", "cpl_recheck"]
     _row, purpose = _purpose(result)
-    # 1 차 값은 그대로 남는다. 재검 실패가 목적을 낮추지 않는다.
+    # 축 호출은 성공했다. 재검 실패가 목적을 낮추지 않는다.
     assert [fact.value_raw for fact in purpose.facts] == ["중소기업의 기술경쟁력을 강화"]
     assert RECHECK_NO_VALID_OCCURRENCE not in purpose.reason_codes
     _item, delivery = _delivery(result)
@@ -583,7 +603,7 @@ def _two_member_ir() -> dict[str, Any]:
     """멤버 칸에 문단이 둘인 문서. 순번이 실제로 갈리는 유일한 형태."""
 
     ir = _delivery_only_ir()
-    table = ir["blocks"][1]
+    table = next(row for row in ir["blocks"] if row["block_id"] == "hwp:t2")
     table["cells"][1]["text_occurrence_ids"] = ["occ:t2:c1", "occ:t2:c1b"]
     table["occurrences"].append({"occurrence_id": "occ:t2:c1b", "text": "사후관리"})
     return ir

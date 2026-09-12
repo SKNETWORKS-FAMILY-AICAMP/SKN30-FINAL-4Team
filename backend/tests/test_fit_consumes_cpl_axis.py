@@ -22,14 +22,39 @@ from worker.fit import analyze_fit
 _VALUE = "부산 관내 제조 중소기업의 기술경쟁력을 강화하여 매출 성장을 달성"
 _TARGET = "부산 관내 제조 중소기업"
 _DIRECTION = "매출 성장을 달성"
+_REGION = "○ (사업목적) " + _VALUE
+
+
+def _ir() -> dict[str, Any]:
+    return {
+        "document": {"document_id": "hwpx:d1"},
+        "blocks": [{
+            "block_id": "hwpx:t4",
+            "occurrences": [{"occurrence_id": "occ:p0", "text": _REGION}],
+        }],
+    }
+
+
+def _ref() -> str:
+    from worker.cpl_coverage import build_fragments
+
+    return build_fragments(
+        _ir(), profile_field="comparison_profile.purpose_goal"
+    )[0].evidence_ref
 
 
 def _profile() -> dict[str, Any]:
     return {
         "comparison_profile": {
-            "purpose_goal": [
-                {"fact_id": "fact_1", "value_raw": _VALUE, "status": "identified"}
-            ],
+            "purpose_goal": [{
+                "fact_id": "fact_1", "value_raw": _VALUE, "status": "identified",
+                "evidence": [{
+                    "source_block_id": "hwpx:t4",
+                    "common_ir_document_id": "hwpx:d1",
+                    "common_ir_block_id": "hwpx:t4",
+                    "common_ir_occurrence_ids": ["occ:p0"],
+                }],
+            }],
             "support_target": [
                 {"fact_id": "fact_2", "value_raw": "부산 소재 중소기업", "status": "identified"}
             ],
@@ -60,11 +85,18 @@ class _Recorder:
 
 def _rows() -> list[dict[str, str]]:
     return [
-        {"fact_id": "fact_1", "axis_code": CplAxisCode.TARGET_CONDITION.value,
+        {"evidence_ref": _ref(), "axis_code": CplAxisCode.TARGET_CONDITION.value,
          "quoted_text": _TARGET},
-        {"fact_id": "fact_1", "axis_code": CplAxisCode.DIRECTION.value,
+        {"evidence_ref": _ref(), "axis_code": CplAxisCode.DIRECTION.value,
          "quoted_text": _DIRECTION},
     ]
+
+
+def _cpl(assignments: list[dict[str, str]] | None = None):
+    return analyze_cpl(
+        _profile(), _Recorder(assignments if assignments is not None else _rows()),
+        model_profile="default", common_ir=_ir(),
+    )
 
 
 def _left(fit, relation_id: FitRelationId):
@@ -72,7 +104,7 @@ def _left(fit, relation_id: FitRelationId):
 
 
 def test_fit_carries_the_cpl_classification_record_as_is() -> None:
-    cpl = analyze_cpl(_profile(), _Recorder(_rows()), model_profile="default")
+    cpl = _cpl()
 
     fit = analyze_fit(cpl, _Recorder(), model_profile="default")
 
@@ -81,7 +113,7 @@ def test_fit_carries_the_cpl_classification_record_as_is() -> None:
 
 # FIT 단계에서 축 분류 호출이 일어나면 두 곳이 다시 각자 분류하는 것이다.
 def test_fit_never_calls_the_axis_classifier() -> None:
-    cpl = analyze_cpl(_profile(), _Recorder(_rows()), model_profile="default")
+    cpl = _cpl()
     fit_llm = _Recorder()
 
     analyze_fit(cpl, fit_llm, model_profile="default")
@@ -92,9 +124,9 @@ def test_fit_never_calls_the_axis_classifier() -> None:
 
 # CPL 축과 반대되는 응답을 줄 LLM 을 FIT 에 넣어도 CPL 축만 쓰인다.
 def test_a_contradicting_model_at_fit_time_changes_nothing() -> None:
-    cpl = analyze_cpl(_profile(), _Recorder(_rows()), model_profile="default")
+    cpl = _cpl()
     hostile = _Recorder([
-        {"fact_id": "fact_1", "axis_code": CplAxisCode.DIRECTION.value,
+        {"evidence_ref": _ref(), "axis_code": CplAxisCode.DIRECTION.value,
          "quoted_text": _TARGET},
     ])
 
@@ -127,7 +159,7 @@ def test_missing_axes_end_as_insufficient_without_reclassifying(cpl_factory) -> 
 
 
 def test_the_seven_relation_output_shape_is_unchanged() -> None:
-    cpl = analyze_cpl(_profile(), _Recorder(_rows()), model_profile="default")
+    cpl = _cpl()
 
     fit = analyze_fit(cpl, _Recorder(), model_profile="default")
 

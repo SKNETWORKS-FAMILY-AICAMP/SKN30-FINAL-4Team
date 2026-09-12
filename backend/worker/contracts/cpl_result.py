@@ -213,9 +213,14 @@ RECHECK_NO_VALID_OCCURRENCE = "RECHECK_NO_VALID_OCCURRENCE"
 
 @dataclass(frozen=True, slots=True)
 class PurposeAxisAssignment:
-    """목적 fact 하나에 붙은 의미 축. 값·오프셋·근거를 새로 만들지 않는다."""
+    """목적 구역 하나에서 고른 의미 축과 그 인용문.
 
-    fact_id: str
+    fact 가 아니라 구역을 가리킨다. 1 차 값이 구역의 일부만 담을 수 있어서,
+    fact 에 매달면 인용문과 좌표가 어긋난다. 좌표는 승격할 때 구역 안에서
+    다시 찾는다.
+    """
+
+    evidence_ref: str
     axis_code: str
     quoted_text: str
 

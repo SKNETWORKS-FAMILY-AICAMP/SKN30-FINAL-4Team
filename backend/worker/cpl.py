@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .cpl_coverage import build_fragments, detect_coverage_gaps
+from .cpl_coverage import CplFragment, build_fragments, detect_coverage_gaps
 from .cpl_delivery import (
     ALLOWED_MEMBER_KINDS,
     DeliveryPairOccurrence,
@@ -308,7 +308,7 @@ _TRANSPORT_REASONS = {
 
 
 class _AxisRow(BaseModel):
-    fact_id: str
+    evidence_ref: str
     axis_code: str
     quoted_text: str
 
@@ -330,20 +330,57 @@ def _purpose_facts(result: CplResult) -> list[CplFact]:
     ]
 
 
+def _purpose_fragments(
+    facts: list[CplFact], common_ir: Mapping[str, Any] | None
+) -> list[CplFragment]:
+    """축을 고를 원문 구역. 값이 아니라 구역을 준다.
+
+    구조화가 구역의 일부만 값으로 고르는 것이 관측됐다. mockup_08 사업목적은
+    구역 73 자 중 21 자만 값이 된 실행이 30 회 중 16 회였고, 남은 앞부분에 대상과
+    방향이 둘 다 들어 있었다. 그 잘린 문자열만 주면 모델이 고를 수 있는 축이
+    남은 절에 갇혀, FIT-1 이 ``지원기업 120개사`` 를 대상 조건으로 쓰는 결과가
+    나온다. 근거가 부족해서가 아니라 잘린 입력으로 확정한 판정이다.
+
+    이미 값이 나온 구역만 고른다. 값이 하나도 없는 구역은 축이 아니라 재검
+    대상이고, 그 경로는 따로 있다.
+    """
+
+    if common_ir is None:
+        return []
+    occurrences = {
+        occurrence_id
+        for fact in facts
+        for evidence in fact.evidence
+        for occurrence_id in evidence.common_ir_occurrence_ids
+    }
+    # 정확히 같은 occurrence 만 붙인다. 구조화가 셀을 근거로 적으면 구역 계산도
+    # 셀에서 구역을 찾으므로 계층이 갈리지 않는다 (저장 프로필 10 건과 트레이스
+    # 38 건 모두 정확 일치). 계층까지 허용하면 부모 하나가 자식 구역 여럿에
+    # 걸릴 때 어느 구역인지 추측하게 되고, 그 추측이 잘못된 근거 연결을 만든다.
+    return [
+        fragment
+        for fragment in build_fragments(common_ir, profile_field=_PURPOSE_FIELD)
+        if fragment.common_ir_occurrence_id in occurrences
+    ]
+
+
 def _classify(
-    facts: list[CplFact],
+    fragments: list[CplFragment],
     llm_client: LLMClient,
     *,
     model_profile: str,
 ) -> PurposeAxisClassification:
-    """축 이름과 인용문만 받는다. 값·오프셋·근거는 CPL 것을 그대로 쓴다.
+    """구역 원문에서 축과 인용문을 받는다. 재검과 같은 occurrence 계약이다.
 
-    서버가 fact_id 존재·어휘 소속·인용문 부분문자열을 검사하고, 통과하지
-    못한 행은 버린다. 버린 사실은 ``dropped`` 에 남긴다. 예산은 1 이며 같은
-    입력으로 재시도하지 않는다.
+    서버가 요청한 ``evidence_ref`` 인지, 어휘에 있는 축인지, 인용문이 그 구역
+    원문의 부분문자열인지 검사하고 통과하지 못한 행은 버린다. 버린 사실은
+    ``dropped`` 에 남긴다. 예산은 1 이며 같은 입력으로 재시도하지 않는다.
+
+    인용문의 좌표는 승격할 때 구역 안에서 다시 찾는다. 잘린 값의 좌표를 그대로
+    물려받으면 FIT 이 쓰는 문구와 역추적하는 자리가 어긋난다.
     """
 
-    if not facts:
+    if not fragments:
         return PurposeAxisClassification(attempted=False)
     try:
         prompt = load_purpose_axis_prompt()
@@ -360,9 +397,12 @@ def _classify(
             instructions=prompt.text,
             payload={
                 "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
-                "facts": [
-                    {"fact_id": fact.fact_id, "value_raw": fact.value_raw}
-                    for fact in facts
+                "purpose_regions": [
+                    {
+                        "evidence_ref": fragment.evidence_ref,
+                        "raw_text": fragment.raw_text,
+                    }
+                    for fragment in fragments
                 ],
             },
             response_schema=_AxisResponse,
@@ -376,22 +416,22 @@ def _classify(
             prompt_sha256=prompt.sha256,
         )
 
-    by_id = {fact.fact_id: fact for fact in facts}
+    by_ref = {fragment.evidence_ref: fragment for fragment in fragments}
     assignments: list[PurposeAxisAssignment] = []
     dropped: list[str] = []
     for row in response.assignments:
-        fact = by_id.get(row.fact_id)
+        fragment = by_ref.get(row.evidence_ref)
         if (
-            fact is None
+            fragment is None
             or row.axis_code not in PURPOSE_AXIS_CODES
             or not row.quoted_text
-            or row.quoted_text not in (fact.value_raw or "")
+            or row.quoted_text not in fragment.raw_text
         ):
-            dropped.append(row.fact_id)
+            dropped.append(row.evidence_ref)
             continue
         assignments.append(
             PurposeAxisAssignment(
-                fact_id=row.fact_id,
+                evidence_ref=row.evidence_ref,
                 axis_code=row.axis_code,
                 quoted_text=row.quoted_text,
             )
@@ -407,35 +447,48 @@ def _classify(
 
 
 def _with_axes(
-    result: CplResult, classification: PurposeAxisClassification
+    result: CplResult,
+    classification: PurposeAxisClassification,
+    fragments: list[CplFragment],
 ) -> CplResult:
-    """축이 붙은 목적 fact 를 축마다 한 줄로 보존한다.
+    """축마다 인용 구간을 가리키는 fact 를 새로 만든다.
 
-    한 원문이 축을 둘 가지면 fact 를 둘로 남긴다. 축이 단수라야 소비 쪽
-    필터가 (필드, 축) 한 쌍으로 끝난다. 축을 못 받은 fact 는 ``axis_code``
-    없이 그대로 남는다 — 축은 값이 아니므로 분류 실패가 값을 지우지 않는다.
+    잘린 1 차 값에 ``axis_quoted_text`` 만 덧붙이면 안 된다. 인용문이 그 값
+    밖에서 나올 수 있는데, 그러면 FIT 은 ``[9,27)`` 문구를 쓰면서 근거 id 와
+    span 은 ``[61,82)`` 를 가리킨다. 값은 좋아져도 근거 역추적이 틀어진다.
+
+    그래서 재검과 같은 계약으로 승격한다: ``value_raw`` 는 인용문, ``fact_id``
+    는 없음, ``evidence_ref`` 는 구역 참조, 좌표는 구역 안에서 다시 찾은 실제
+    인용 위치다. 없는 id 를 지어내지 않는다.
+
+    한 구역이 축을 여럿 가지면 축마다 fact 를 남긴다. 축이 단수라야 소비 쪽
+    필터가 (필드, 축) 한 쌍으로 끝난다.
     """
 
     if not classification.assignments:
         return replace(result, purpose_axis=classification)
-    by_fact: dict[str, list[tuple[str, str]]] = {}
+    by_ref = {fragment.evidence_ref: fragment for fragment in fragments}
+    promoted: list[CplFact] = []
+    materialized: set[str] = set()
     for row in classification.assignments:
-        by_fact.setdefault(row.fact_id, []).append((row.axis_code, row.quoted_text))
+        fragment = by_ref.get(row.evidence_ref)
+        if fragment is None:
+            continue
+        promoted.append(_axis_fact(fragment, row))
+        materialized.add(fragment.common_ir_occurrence_id)
 
     def expand(subfield: CplSubfield) -> CplSubfield:
         if subfield.profile_field != _PURPOSE_FIELD:
             return subfield
-        facts: list[CplFact] = []
-        for fact in subfield.facts:
-            assigned = by_fact.get(fact.fact_id or "")
-            if not assigned:
-                facts.append(fact)
-                continue
-            facts.extend(
-                replace(fact, axis_code=code, axis_quoted_text=quoted)
-                for code, quoted in assigned
-            )
-        return replace(subfield, facts=facts)
+        # 축이 구체화한 구역의 1 차 값은 승격된 fact 가 대신한다. 축을 하나도
+        # 못 받은 값은 축 없이 그대로 남는다 — 축은 값이 아니므로 분류 실패가
+        # 값을 지우지 않는다.
+        kept = [
+            fact
+            for fact in subfield.facts
+            if not _covers(fact, materialized)
+        ]
+        return replace(subfield, facts=[*kept, *promoted])
 
     return replace(
         result,
@@ -444,6 +497,43 @@ def _with_axes(
             for item in result.items
         ],
         purpose_axis=classification,
+    )
+
+
+def _covers(fact: CplFact, occurrence_ids: set[str]) -> bool:
+    return any(
+        occurrence_id in occurrence_ids
+        for evidence in fact.evidence
+        for occurrence_id in evidence.common_ir_occurrence_ids
+    )
+
+
+def _axis_fact(fragment: CplFragment, row: PurposeAxisAssignment) -> CplFact:
+    """인용문 하나를 그 자리 좌표와 함께 fact 로 올린다."""
+
+    offset = fragment.raw_text.index(row.quoted_text)
+    start = fragment.start_char + offset
+    return CplFact(
+        # 구조화가 만든 값이 아니다. 가짜 id 를 지어내지 않고 그 인용문이 나온
+        # 구역 참조를 그대로 둔다.
+        fact_id=None,
+        evidence_ref=fragment.evidence_ref,
+        value_raw=row.quoted_text,
+        status="identified",
+        source_block_id=fragment.common_ir_block_id,
+        start_char=start,
+        end_char=start + len(row.quoted_text),
+        text_basis="cpl_purpose_axis",
+        evidence=[
+            CplEvidence(
+                source_block_id=fragment.common_ir_block_id,
+                common_ir_document_id=fragment.common_ir_document_id,
+                common_ir_block_id=fragment.common_ir_block_id,
+                common_ir_occurrence_ids=[fragment.common_ir_occurrence_id],
+            )
+        ],
+        axis_code=row.axis_code,
+        axis_quoted_text=row.quoted_text,
     )
 
 
@@ -928,7 +1018,15 @@ def analyze_cpl(
         # 축을 함께 되찾는 재검으로 간다. 재검은 문서당 한 번이고, 그 한 번이
         # 목적 구역과 수행관계 후보를 함께 나른다.
         return _with_recheck(result, common_ir, llm_client, model_profile=model_profile)
-    result = _with_axes(result, _classify(facts, llm_client, model_profile=model_profile))
+    fragments = _purpose_fragments(facts, common_ir)
+    classification = _classify(fragments, llm_client, model_profile=model_profile)
+    if facts and not fragments and classification.reason_code is None:
+        # 값은 있는데 그 값이 나온 구역을 짚을 수 없다. 축을 ``value_raw`` 로
+        # 대신 물으면 좌표 없는 축이 다시 생긴다. 묻지 않고 미해결로 남긴다.
+        classification = replace(
+            classification, reason_code=PURPOSE_AXIS_UNRESOLVED
+        )
+    result = _with_axes(result, classification, fragments)
     if common_ir is None:
         return result
     # 목적은 1 차에서 나왔지만 수행체계 구역이 비어 있을 수 있다. 그 경우에도

@@ -80,7 +80,13 @@ def test_a_different_but_usable_prompt_is_accepted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     path = tmp_path / "custom.txt"
-    path.write_text("이 배포만 쓰는 축 분류 문구", encoding="utf-8")
+    # 버전 선언은 있어야 한다. 이름이 같은 옛 파일이 조용히 끼는 것을 막는
+    # 장치이지 내용을 고정하는 장치가 아니다.
+    path.write_text(
+        f"""PROMPT-VERSION: {PURPOSE_AXIS_PROMPT_VERSION}
+이 배포만 쓰는 축 분류 문구""",
+        encoding="utf-8",
+    )
     monkeypatch.setenv(PURPOSE_AXIS_PROMPT_ENV, str(path))
 
     prompts = check_prompts_ready()

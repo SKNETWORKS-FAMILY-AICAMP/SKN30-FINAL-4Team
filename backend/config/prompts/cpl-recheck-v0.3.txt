@@ -1,3 +1,5 @@
+PROMPT-VERSION: cpl-recheck-v0.3
+
 You are re-reading a Korean public-program request form. The first extraction
 pass left one or more fields empty even though their source regions exist. Work
 only from what the request gives you.

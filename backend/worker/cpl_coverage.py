@@ -236,6 +236,20 @@ def _sibling_content(
 
 
 
+def is_nested_occurrence(outer: str, inner: str) -> bool:
+    """``inner`` 가 ``outer`` 안에 있는 표 계층인가.
+
+    표는 한 본문을 부모·셀·문단 occurrence 로 다시 싣는다
+    (``occ:rhwp:t4`` / ``occ:rhwp:t4:c5`` / ``occ:rhwp:t4:c5:p0``). 같은 자리를
+    계층 수만큼 싣는 것을 접으려면 계층을 알아야 한다.
+
+    구분자 경계까지 본다. 맨 글자 접두사로 보면 ``…:p1`` 이 ``…:p10`` 의
+    부모가 되고 ``…:c5`` 가 ``…:c50`` 의 부모가 된다. 둘 다 형제다.
+    """
+
+    return outer != inner and inner.startswith(outer + ":")
+
+
 def _drop_nested_duplicates(fragments: list[CplFragment]) -> list[CplFragment]:
     """표 계층이 같은 자리를 다시 실은 것만 접는다.
 
@@ -254,9 +268,8 @@ def _drop_nested_duplicates(fragments: list[CplFragment]) -> list[CplFragment]:
         nested = any(
             other.common_ir_block_id == fragment.common_ir_block_id
             and other.raw_text == fragment.raw_text
-            and other.common_ir_occurrence_id != fragment.common_ir_occurrence_id
-            and other.common_ir_occurrence_id.startswith(
-                fragment.common_ir_occurrence_id
+            and is_nested_occurrence(
+                fragment.common_ir_occurrence_id, other.common_ir_occurrence_id
             )
             for other in kept
         )

@@ -3,7 +3,7 @@
 문구를 코드 상수로 두지 않는 이유는 배포 없이 바꾸기 위해서가 아니다. 오히려
 그 반대다: 같은 버전 이름으로 내용이 바뀌면 같은 이름의 산출물이 서로 다른
 분류를 담게 되어 재현성이 깨진다. 그래서 파일을 읽되 내용 해시를 함께 남기고,
-문구를 고치면 ``v0.3`` 파일을 새로 만들어 버전도 같이 올린다.
+문구를 고치면 다음 번호 파일을 새로 만들어 버전도 같이 올린다.
 
 경로는 저장소 안의 버전 파일이 기본이다. ``CPL_PURPOSE_AXIS_PROMPT_PATH`` 와
 ``CPL_RECHECK_PROMPT_PATH`` 로
@@ -22,17 +22,23 @@ import os
 from pathlib import Path
 
 
-PURPOSE_AXIS_PROMPT_VERSION = "cpl-purpose-axis-v0.2"
+PURPOSE_AXIS_PROMPT_VERSION = "cpl-purpose-axis-v0.3"
 PURPOSE_AXIS_PROMPT_ENV = "CPL_PURPOSE_AXIS_PROMPT_PATH"
 # 재검은 구역 원문에서 값과 축을 함께 받는다. 축만 붙이는 1차 분류와 입력이
 # 달라 프롬프트도 따로 둔다. v0.2 부터 목적과 수행관계를 타입별 섹션으로 한 번에
-# 묻는다 — 문서당 재검 호출을 하나로 유지하기 위해서다.
-RECHECK_PROMPT_VERSION = "cpl-recheck-v0.2"
+# 묻는다 — 문서당 재검 호출을 하나로 유지하기 위해서다. v0.3 은 문구가 아니라
+# 자기 버전 선언 줄만 더했다. 그래도 모델이 받는 문자열이 달라지므로 같은 이름을
+# 유지하지 않는다.
+RECHECK_PROMPT_VERSION = "cpl-recheck-v0.3"
 RECHECK_PROMPT_ENV = "CPL_RECHECK_PROMPT_PATH"
 # v0.1 은 목적만 묻고 응답 스키마도 달랐다. 새 요청에 그 파일을 끼우면 모델이
 # 수행관계 섹션을 통째로 못 본 채 조용히 절반만 답한다. fallback 으로 쓰지 않고,
 # 옛 변수만 설정된 배포는 원인이 보이는 설정 오류로 멈춘다.
 _RETIRED_RECHECK_PROMPT_ENV = "CPL_PURPOSE_RECHECK_PROMPT_PATH"
+
+# 프롬프트 파일이 자기 버전을 선언하는 줄.
+_VERSION_MARKER = "PROMPT-VERSION"
+
 
 def _prompt_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "config" / "prompts"
@@ -71,6 +77,15 @@ def _load(version: str, env_name: str) -> Prompt:
         raise PromptUnavailableError(f"프롬프트가 UTF-8 이 아니다: {path}") from error
     if not text.strip():
         raise PromptUnavailableError(f"프롬프트가 비어 있다: {path}")
+    # 파일이 스스로 어느 버전인지 말하게 한다. 환경변수 이름은 버전을 바꿔도
+    # 그대로라, 외부에서 옛 파일을 가리키면 기록에는 새 버전이 남고 모델은 옛
+    # 지시를 받는다. 그 상태는 트레이스만 봐서는 드러나지 않는다.
+    declared = f"{_VERSION_MARKER}: {version}"
+    if declared not in text:
+        raise PromptUnavailableError(
+            f"프롬프트가 {version} 이라고 선언하지 않았다: {path}. "
+            f"첫 줄에 '{declared}' 가 있어야 한다"
+        )
     return Prompt(
         version=version,
         text=text,

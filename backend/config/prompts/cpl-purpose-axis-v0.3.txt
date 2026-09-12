@@ -1,6 +1,8 @@
+PROMPT-VERSION: cpl-purpose-axis-v0.3
+
 You assign meaning axes to purpose statements that are already grounded in the
 source document. You never produce values, offsets, or evidence: the server owns
-those. Return only {fact_id, axis_code, quoted_text}.
+those. Return only {evidence_ref, axis_code, quoted_text}.
 
 AXES
 
@@ -29,7 +31,13 @@ RULES
    that is usually the verb phrase alone, not the whole clause it sits in.
 3. One span may satisfy more than one axis. When it genuinely does, return one
    row per axis. Do not repeat a span across axes merely to fill them.
-4. quoted_text must be copied verbatim from that fact's value_raw.
-5. Never invent a fact_id, a value, an offset, or evidence, and never add
+4. You are given purpose_regions: each is one labelled region of the source,
+   with its evidence_ref and its whole raw_text. Read the whole raw_text. A
+   first pass may already have selected only part of a region, so the span that
+   proves an axis is often outside whatever was selected before.
+5. quoted_text must be copied verbatim from that region's raw_text, and
+   evidence_ref must be one that was given to you. Do not quote the field label
+   that opens the region.
+6. Never invent an evidence_ref, a value, an offset, or evidence, and never add
    meaning the source does not state.
-6. Omit any fact you cannot classify.
+7. Omit any region you cannot classify.

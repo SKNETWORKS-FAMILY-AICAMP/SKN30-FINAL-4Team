@@ -567,3 +567,34 @@ def test_a_compound_delivery_heading_is_not_a_region() -> None:
         fragment.label_occurrence_id
         for fragment in build_fragments(ir, profile_field=_DELIVERY)
     } == {"occ:p1"}
+
+
+# --- occurrence 계층 판정 ---------------------------------------------------
+# 중복 제거는 계층을 쓴다. 목적 fact 접지는 정확 일치만 쓴다 — 부모 하나가
+# 자식 구역 여럿에 걸리면 어느 구역인지 추측하게 되기 때문이다.
+
+
+@pytest.mark.parametrize(
+    ("outer", "inner", "nested"),
+    [
+        ("occ:t4", "occ:t4:c5", True),
+        ("occ:t4:c5", "occ:t4:c5:p0", True),
+        ("occ:t4", "occ:t4:c5:p0", True),
+        ("occ:t4:c5", "occ:t4:c5", False),
+        ("occ:t4:c5:p1", "occ:t4:c5:p10", False),
+        ("occ:t4:c5", "occ:t4:c50", False),
+        ("occ:t4:c5:p1", "occ:t4:c5:p1x", False),
+        ("occ:t4:c5:p0", "occ:t4:c5", False),
+        ("occ:p8", "occ:p9", False),
+    ],
+    ids=[
+        "표-셀", "셀-문단", "표-문단", "자기자신",
+        "p1 vs p10", "c5 vs c50", "구분자 없는 꼬리", "방향 반대", "남남",
+    ],
+)
+def test_nesting_needs_a_separator_boundary(
+    outer: str, inner: str, nested: bool
+) -> None:
+    from worker.cpl_coverage import is_nested_occurrence
+
+    assert is_nested_occurrence(outer, inner) is nested
