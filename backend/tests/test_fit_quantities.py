@@ -16,9 +16,15 @@ import pytest
 
 from worker.contracts.cpl_result import CplEvidence
 from worker.contracts.fit_result import FitEvidenceRef
-from worker.fit import _axis_values, _quantities
+from worker.fit import _axis_values
 from worker.fit import _shared_spans
 from worker.quantities import QuantitySpan, read_quantities
+
+
+def _quantities(text: str | None) -> set[tuple[str, int]]:
+    """축·값 쌍만 본다. 맥락은 다른 절에서 따로 고정한다."""
+
+    return {(row.axis, row.value) for row in read_quantities(text)}
 
 
 # --- 읽어야 하는 것 ---------------------------------------------------------
@@ -33,12 +39,21 @@ from worker.quantities import QuantitySpan, read_quantities
         ("최대 5,000만원", {("AMOUNT_KRW", 50_000_000)}),
         ("1,500,000,000원", {("AMOUNT_KRW", 1_500_000_000)}),
         ("3천원", {("AMOUNT_KRW", 3_000)}),
+        # 백만원은 행정 예산 문서의 표준 단위다 (총사업비 6,600백만원).
+        ("6,000백만원", {("AMOUNT_KRW", 6_000_000_000)}),
+        ("총사업비 6,600백만원", {("AMOUNT_KRW", 6_600_000_000)}),
+        ("35,300백만원", {("AMOUNT_KRW", 35_300_000_000)}),
+        ("1백만원", {("AMOUNT_KRW", 1_000_000)}),
         ("120개사", {("COUNT:개사", 120)}),
         ("연 40개사", {("COUNT:개사", 40)}),
         ("15개", {("COUNT:개", 15)}),
         ("240명", {("COUNT:명", 240)}),
         ("90건", {("COUNT:건", 90)}),
-        ("총 8회", {("TIMES:TOTAL", 8)}),
+        # 미지원: '총' 을 기간 수식어로 읽지 못한다. 그래서 명시적인 '총 8회'
+        # 가 수식어 없는 '8회' 와 같은 축으로 묶인다. 합의한 것은 수식어 없는
+        # 횟수를 임의로 TOTAL 로 만들지 않는 것이었지, 명시된 총횟수를 포기하는
+        # 것이 아니다. 지금은 둘 다 비교 보류라 거짓 판정은 나지 않는다.
+        ("총 8회", {("TIMES:UNQUALIFIED", 8)}),
         ("월 2회", {("TIMES:월", 2)}),
     ],
     ids=lambda v: v if isinstance(v, str) else "",
@@ -64,6 +79,7 @@ def test_prose_around_a_number_does_not_block_it() -> None:
     ("raw", "reason"),
     [
         ("9~15억원", "범위의 뒤쪽만 읽으면 9 가 사라진다"),
+        ("3천만원", "천과 만이 겹친 복합 단위"),
         ("과제당 총 9~15억원", "범위 + 수식어"),
         ("1억 5000만원", "복합 단위를 부분값으로 만들지 않는다"),
         ("10~20개사", "개수 범위"),
@@ -87,8 +103,6 @@ def test_a_number_the_rule_cannot_read_discards_the_whole_value(
 @pytest.mark.parametrize(
     ("raw", "note"),
     [
-        ("6,000백만원", "백만 단위. 예산 문서의 표준 표기"),
-        ("총사업비 6,600백만원", "같은 단위"),
         ("80%", "비율. 축과 비교 의미를 함께 정해야 한다"),
         ("보조율: 80%, 자부담률: 20%", "성격이 다른 비율 둘"),
     ],
@@ -160,7 +174,7 @@ def test_a_value_without_a_component_stays_in_its_own_bucket() -> None:
 def test_an_unreadable_value_is_reported_not_silently_dropped() -> None:
     grouped, invalid, withheld = _axis_values([
         _ref("f1", "기업당 한도 5,000만원", "component_1"),
-        _ref("f2", "6,000백만원", "component_1"),
+        _ref("f2", "기업당 한도 9~15억원", "component_1"),
     ])
 
     # 읽지 못한 값은 진단으로 남는다. 호출부가 그 사실을 사용자에게 알린다.
@@ -428,3 +442,21 @@ def test_coordinates_that_miss_the_block_are_not_guessed() -> None:
 
     (fact,) = _scale_facts(result)
     assert fact.quantities == ()
+
+
+# --- 백만원이 다른 단위를 밀어내지 않는다 -----------------------------------
+
+
+def test_the_longer_unit_wins_over_its_prefix() -> None:
+    # '백만' 을 '만' 보다 뒤에 두면 6,000백만원이 6,000만원으로 읽힌다.
+    assert _quantities("6,000백만원") != _quantities("6,000만원")
+    assert _quantities("6,000만원") == {("AMOUNT_KRW", 60_000_000)}
+
+
+def test_a_million_unit_keeps_its_comparison_context() -> None:
+    (span,) = read_quantities("- 총 지원규모: 6,000백만원")
+
+    # 단위만 넓혔다. 맥락 파생 규칙은 그대로다.
+    assert (span.axis, span.value) == ("AMOUNT_KRW", 6_000_000_000)
+    assert span.dimension("scope") == "묶음전체"
+    assert span.dimension("nature") is None
