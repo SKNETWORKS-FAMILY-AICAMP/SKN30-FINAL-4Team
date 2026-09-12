@@ -17,9 +17,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 
-import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -312,85 +310,10 @@ def _fit5_reason(cpl: CplResult, left: FitSide) -> str | None:
 
 
 # --------------------------------------------------------- FIT-7 정량 비교
-
-# 금액 단위. ponytail: 이 정규식들은 단위 하나짜리 값만 읽는다. "1억 5000만원"
-# 처럼 단위가 두 번 붙은 복합 표현은 읽지 못한다 — 그리고 **읽지 못한 것을
-# 부분값으로 만들지 않는다** (아래 숫자 시퀀스 소비 규칙). 복합 단위가 필요해
-# 지면 정규식에 예외를 더하는 대신 금액 파서를 따로 둔다.
-_AMOUNT_SCALES = {"조": 10**12, "억": 10**8, "만": 10**4, "천": 10**3}
-_AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([조억만천])?\s*원")
-_COUNT_RE = re.compile(r"(\d[\d,]*)\s*개?\s*(팀|명|개사|건|개)")
-# 기간 수식어가 붙은 횟수(월 2회)는 총 횟수(총 8회)와 같은 축이 아니다.
-_TIMES_RE = re.compile(r"([월주년일])?\s*(\d[\d,]*)\s*회")
-_DIGITS_RE = re.compile(r"\d+")
-
-
-# 천 단위 쉼표는 세 자리씩만 인정한다. 정규식의 [\d,]* 가 자리수를 보지 않아
-# "1,2,3만원" 이 1,230,000 원으로, "1,,000원" 이 1,000 원으로 조용히 바뀐다.
-# 잘못된 표기에서 유효한 숫자를 만들지 않는다 (숫자 소비 규칙과 같은 취지).
-_GROUPED_NUMBER_RE = re.compile(r"^\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$")
-
-
-def _plain_number(literal: str) -> str | None:
-    """쉼표 문법이 올바르면 쉼표를 뗀 문자열, 아니면 None."""
-
-    if not _GROUPED_NUMBER_RE.match(literal):
-        return None
-    return literal.replace(",", "")
-
-
-def _quantities(value_raw: str | None) -> set[tuple[str, int]]:
-    """원문에서 (축, 정규화 값) 집합을 뽑는다. Rule 만 쓴다.
-
-    축을 함께 달아 두는 이유는 금액과 팀수가 절대 같은 자리에서 비교되지
-    않게 하기 위해서다. 인식하지 못하면 빈 집합이고, 호출자가 그 사실을
-    진단으로 남긴다.
-
-    **숫자 시퀀스 소비 규칙**: 원문의 숫자 하나라도 어떤 매치에도 걸리지
-    않았으면 이 값 전체를 버린다. 문자열 전체를 소비하라는 뜻이 아니라
-    (설명 문구는 무방하다) 숫자 문법을 일부만 읽고 다른 값을 만들지 말라는
-    뜻이다. "10~20개사" 에서 20 만, "1억 5000만원" 에서 5000만원만 읽으면
-    서로 다른 값이 일치로 판정된다.
-    """
-
-    if not value_raw:
-        return set()
-    found: set[tuple[str, int]] = set()
-    spans: list[tuple[int, int]] = []
-    for match in _AMOUNT_RE.finditer(value_raw):
-        # float 로 곱하면 0.29억원이 28,999,999 가 되어 2,900만원과 불일치로
-        # 판정된다. 같은 금액을 다르게 만드는 것은 B 와 같은 종류의 오판이라
-        # 10 진 고정소수로 계산한다.
-        literal = _plain_number(match.group(1))
-        if literal is None:
-            return set()
-        number = Decimal(literal)
-        won = number * _AMOUNT_SCALES.get(match.group(2), 1)
-        if won != won.to_integral_value():
-            # 원 단위 정수가 아니면 반올림 방향을 추측하지 않고 값을 버린다.
-            return set()
-        found.add(("AMOUNT_KRW", int(won)))
-        spans.append(match.span())
-    for match in _COUNT_RE.finditer(value_raw):
-        literal = _plain_number(match.group(1))
-        if literal is None:
-            return set()
-        found.add((f"COUNT:{match.group(2)}", int(literal)))
-        spans.append(match.span())
-    for match in _TIMES_RE.finditer(value_raw):
-        period = match.group(1) or "TOTAL"
-        literal = _plain_number(match.group(2))
-        if literal is None:
-            return set()
-        found.add((f"TIMES:{period}", int(literal)))
-        spans.append(match.span())
-
-    for digits in _DIGITS_RE.finditer(value_raw):
-        if not any(
-            start <= digits.start() and digits.end() <= end for start, end in spans
-        ):
-            return set()
-    return found
+#
+# 정량 표현을 읽고 비교 맥락을 붙이는 일은 ``worker.quantities`` 가 하고, CPL 이
+# 그것을 fact 에 붙여 둔다. 여기서는 그 결과를 읽기만 한다 — 원문을 다시 파싱하면
+# 같은 문법이 두 벌이 되어 한쪽만 고쳐지는 상태가 생긴다.
 
 
 def _span_place(ref: FitEvidenceRef, span) -> tuple[str | None, int, int]:
