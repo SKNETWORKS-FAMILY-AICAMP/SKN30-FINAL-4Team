@@ -34,6 +34,23 @@ ponytail: editable install 대신 sys.path 삽입이다. ``profile_structuring``
   않는다. ``role`` 은 닫힌 enum 이라 ``rhwp_cell`` 을 그대로 쓴다. 회귀는
   ``backend/tests/test_rhwp_cell_paragraphs.py`` 가 잠근다.
 
+- 2026-09-12 ``field_regions.FIELD_LABELS`` 에 네 필드를 더했다.
+  ``applicant_eligibility`` · ``beneficiary`` · ``participation_requirements``
+  · ``support_methods``. 구역을 만들기 위해서가 아니라 라벨이 문서에 있는지
+  묻기 위해서다. 이 넷은 요청서(서식 1)에 대응 행이 없어 늘 ``not_found`` 로
+  나오는데, 그 상태가 ``aggregate_display`` 를 통해 CPL-10·11 항목 전체를
+  ``needs_confirmation`` 으로 끌어내렸다. 판별기준 §11.3 · §12.3 은 "조건이
+  별도로 없다고 해서 자동으로 오류로 판단하지 않는다" 고 못 박는다.
+
+  라벨 표기는 관측한 것만 넣었다. 요청서 Common IR 58 건에서 이 넷은 라벨
+  자리에 0 회, 같은 문서들의 ``지원대상`` 은 199 회 · ``지원조건`` 115 회다.
+  ``실제 수혜자`` 는 공고 서식에서 확인된 표기라 함께 뒀다.
+
+  ``build_field_regions`` 는 언제나 명시적 ``field_name`` 으로만 불리므로
+  구역 생성 범위는 넓어지지 않는다. ``_ANY_LABEL`` 은 넓어지는데, 넷 중
+  ``지원방식`` 만 ``_BOUNDARY_WORD`` 에 없던 낱말이고 그것이 앞 구역을 끊는
+  것은 옳다. 회귀는 ``backend/tests/test_cpl_form_absence.py`` 가 잠근다.
+
 - 2026-09-11 ``shared.GENERATOR_VERSION`` 1.0.1 -> 1.1.0.
   위 문단 분리로 산출물 구조가 바뀌었는데 버전이 그대로면 어떤 방식으로 만든
   근거인지 나중에 구분할 수 없다. ``markdown_fixture`` 는 자기 상수를 쓰고

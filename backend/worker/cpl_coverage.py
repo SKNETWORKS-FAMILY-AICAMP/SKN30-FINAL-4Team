@@ -56,6 +56,25 @@ _GAP_FIELDS: dict[str, str] = {
     "comparison_profile.delivery_relations": "delivery_relations",
 }
 
+# 요청서 양식에 대응 행이 있는지 물을 대상. 구역을 만들 대상도, 누락을 판정할
+# 대상도 아니다 — 라벨이 문서에 **한 번도 안 나오는가** 만 본다.
+#
+# 실측 근거: 요청서 Common IR 58 건에서 이 넷의 라벨은 0 회, 같은 문서들의
+# ``지원대상`` 은 199 회다. 값이 안 나오는 게 아니라 칸이 없다.
+#
+# ``support_target`` · ``eligibility_conditions`` 는 여기 없다. 그 둘은 라벨이
+# 실제로 있고 값도 나오므로, 비었다면 그것은 추출 문제다.
+#
+# ``delivery_methods`` 도 여기 없다. 서식이 ``- 수행방식:`` 처럼 하이픈 뒤에
+# 쓰는데 ``_LABEL_BULLETS`` 는 하이픈을 라벨 자리로 보지 않는다. 문법을
+# 넓히면 구역 경계 전체가 바뀌므로 별건으로 다룬다.
+_FORM_SLOT_FIELDS: dict[str, str] = {
+    "comparison_profile.applicant_eligibility": "applicant_eligibility",
+    "comparison_profile.beneficiary": "beneficiary",
+    "comparison_profile.participation_requirements": "participation_requirements",
+    "comparison_profile.support_methods": "support_methods",
+}
+
 
 # 수행체계 구역의 표 제목. 실제로 확인된 표본은 ``< 사업추진 체계도 >`` 하나다.
 # 제목은 구역 안에 있어도 내용이 아니므로 세지 않지만, 거기서 구역이 끝나지도
@@ -107,6 +126,31 @@ def _occurrences(common_ir: Mapping[str, Any]) -> list[tuple[str, str, str]]:
                     str(occurrence["text"]),
                 ))
     return rows
+
+
+
+def absent_form_fields(common_ir: Mapping[str, Any]) -> frozenset[str]:
+    """이 문서의 양식에 대응 행이 없는 프로파일 경로들.
+
+    "라벨이 한 번도 안 나온다" 는 결정적으로 셀 수 있는 사실이다. 값이 비었다는
+    사실과 합쳐야 비로소 ``not_applicable`` 이 되며, 그 판정은 부르는 쪽이 한다 —
+    여기서는 양식 사실만 말한다.
+
+    라벨이 **있는데** 값이 빈 경우는 여기 안 들어온다. 그것은 추출을 놓친
+    것이고 ``detect_coverage_gaps`` 의 일이다. 둘을 한 신호로 합치면 "칸이
+    없어서 없음" 과 "못 찾아서 없음" 이 다시 한 덩어리가 된다.
+    """
+
+    texts = [text for _, _, text in _occurrences(common_ir)]
+    absent: set[str] = set()
+    for path, field_name in _FORM_SLOT_FIELDS.items():
+        found = any(
+            find_text_regions(text, field_name=field_name, include_empty=True)
+            for text in texts
+        )
+        if not found:
+            absent.add(path)
+    return frozenset(absent)
 
 
 def evidence_ref(
@@ -330,6 +374,7 @@ def detect_coverage_gaps(
 
 __all__ = [
     "CoverageGap",
+    "absent_form_fields",
     "CplFragment",
     "build_fragments",
     "detect_coverage_gaps",

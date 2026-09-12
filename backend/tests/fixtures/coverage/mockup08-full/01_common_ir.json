@@ -1,0 +1,1345 @@
+{
+  "blocks": [
+    {
+      "block_id": "hwpx:b0",
+      "boundary_markers": [],
+      "kind": "paragraph",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/0"
+          },
+          "role": "rhwp_text",
+          "text": "【서식 1】 사전협의 요청서"
+        }
+      ],
+      "page": null,
+      "provenance": {
+        "bbox": null,
+        "coordinate_space": null,
+        "method": "rhwp",
+        "page": null,
+        "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/0"
+      },
+      "reading_order": 0,
+      "section_path": "section[0]/para[0]",
+      "source_block_label": "paragraph",
+      "structure_status": "explicit",
+      "text": "【서식 1】 사전협의 요청서",
+      "text_occurrence_ids": [
+        "occ:rhwp:p0"
+      ]
+    },
+    {
+      "block_id": "hwpx:b1",
+      "boundary_markers": [],
+      "kind": "paragraph",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/1"
+          },
+          "role": "rhwp_text",
+          "text": "중소기업지원사업 사전협의 요청서"
+        }
+      ],
+      "page": null,
+      "provenance": {
+        "bbox": null,
+        "coordinate_space": null,
+        "method": "rhwp",
+        "page": null,
+        "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/1"
+      },
+      "reading_order": 1,
+      "section_path": "section[0]/para[1]",
+      "source_block_label": "paragraph",
+      "structure_status": "explicit",
+      "text": "중소기업지원사업 사전협의 요청서",
+      "text_occurrence_ids": [
+        "occ:rhwp:p1"
+      ]
+    },
+    {
+      "block_id": "hwpx:b2",
+      "boundary_markers": [],
+      "kind": "paragraph",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/2"
+          },
+          "role": "rhwp_text",
+          "text": "< 부산광역시 >"
+        }
+      ],
+      "page": null,
+      "provenance": {
+        "bbox": null,
+        "coordinate_space": null,
+        "method": "rhwp",
+        "page": null,
+        "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/2"
+      },
+      "reading_order": 2,
+      "section_path": "section[0]/para[2]",
+      "source_block_label": "paragraph",
+      "structure_status": "explicit",
+      "text": "< 부산광역시 >",
+      "text_occurrence_ids": [
+        "occ:rhwp:p2"
+      ]
+    },
+    {
+      "block_id": "hwpx:t4",
+      "boundary_markers": [],
+      "cells": [
+        {
+          "cell_id": "hwpx:t4:c0",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c0"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/0"
+          },
+          "row_index": 0,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c0"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c1",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c1"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/1"
+          },
+          "row_index": 0,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c1:p0",
+            "occ:rhwp:t4:c1:p1"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c2",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c2"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/2"
+          },
+          "row_index": 1,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c2"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c3",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c3"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/3"
+          },
+          "row_index": 1,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c3:p0",
+            "occ:rhwp:t4:c3:p1",
+            "occ:rhwp:t4:c3:p2"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c4",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c4"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/4"
+          },
+          "row_index": 2,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c4"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c5",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c5"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5"
+          },
+          "row_index": 2,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c5:p0",
+            "occ:rhwp:t4:c5:p1",
+            "occ:rhwp:t4:c5:p2",
+            "occ:rhwp:t4:c5:p3",
+            "occ:rhwp:t4:c5:p4"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c6",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c6"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/6"
+          },
+          "row_index": 3,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c6"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c7",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c7"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7"
+          },
+          "row_index": 3,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c7:p0",
+            "occ:rhwp:t4:c7:p1",
+            "occ:rhwp:t4:c7:p2",
+            "occ:rhwp:t4:c7:p3",
+            "occ:rhwp:t4:c7:p4",
+            "occ:rhwp:t4:c7:p5",
+            "occ:rhwp:t4:c7:p6",
+            "occ:rhwp:t4:c7:p7",
+            "occ:rhwp:t4:c7:p8",
+            "occ:rhwp:t4:c7:p9",
+            "occ:rhwp:t4:c7:p10",
+            "occ:rhwp:t4:c7:p11",
+            "occ:rhwp:t4:c7:p12",
+            "occ:rhwp:t4:c7:p13",
+            "occ:rhwp:t4:c7:p14",
+            "occ:rhwp:t4:c7:p15",
+            "occ:rhwp:t4:c7:p16",
+            "occ:rhwp:t4:c7:p17",
+            "occ:rhwp:t4:c7:p18",
+            "occ:rhwp:t4:c7:p19",
+            "occ:rhwp:t4:c7:p20",
+            "occ:rhwp:t4:c7:p21",
+            "occ:rhwp:t4:c7:p22",
+            "occ:rhwp:t4:c7:p23",
+            "occ:rhwp:t4:c7:p24",
+            "occ:rhwp:t4:c7:p25"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c8",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c8"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/8"
+          },
+          "row_index": 4,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c8"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c9",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c9"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9"
+          },
+          "row_index": 4,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c9:p0",
+            "occ:rhwp:t4:c9:p1",
+            "occ:rhwp:t4:c9:p2",
+            "occ:rhwp:t4:c9:p3",
+            "occ:rhwp:t4:c9:p4",
+            "occ:rhwp:t4:c9:p5"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c10",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c10"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/10"
+          },
+          "row_index": 5,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c10"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c11",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c11"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/11"
+          },
+          "row_index": 5,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c11:p0",
+            "occ:rhwp:t4:c11:p1",
+            "occ:rhwp:t4:c11:p2",
+            "occ:rhwp:t4:c11:p3"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c12",
+          "col_index": 0,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c12"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/12"
+          },
+          "row_index": 6,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c12"
+          ]
+        },
+        {
+          "cell_id": "hwpx:t4:c13",
+          "col_index": 1,
+          "col_span": 1,
+          "evidence_ids": [
+            "occ:rhwp:t4:c13"
+          ],
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13"
+          },
+          "row_index": 6,
+          "row_span": 1,
+          "text_occurrence_ids": [
+            "occ:rhwp:t4:c13:p0",
+            "occ:rhwp:t4:c13:p1",
+            "occ:rhwp:t4:c13:p2",
+            "occ:rhwp:t4:c13:p3",
+            "occ:rhwp:t4:c13:p4"
+          ]
+        }
+      ],
+      "kind": "table",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:t4",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4"
+          },
+          "role": "rhwp_text",
+          "text": "사전협의 요청사유\n□ 세부사업 신설  ■ 내역사업 신설  □ 내내역사업 신설\n□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)\n사업명\n(세부) 부산광역시 중소기업 기술혁신 지원사업\n(내역) 2026년 부산광역시 제조·정보통신 중소기업 스마트 기술사업화 지원\n(내내역) 내역사업 신설 시 미기재\n신설·변경 필요성(사유)\n○ (사업목적) 부산 관내 제조·정보통신 중소기업의 기술경쟁력을 강화하고 시제품 사업화까지의 단계를 지원하여 지원기업 120개사의 매출 성장을 달성\n○ (사업필요성) 관내 제조·정보통신 중소기업의 디지털 전환 수준이 전국 평균 대비 낮아 생산성 향상에 제약이 발생하고 있으며, 이는 내부 전담인력 부족과 초기 투자여력 부재에서 비롯됨. 이에 시제품 사업화 단계의 직접 지원이 필요\n- 근거자료: 2025년 부산 중소기업 실태조사(부산연구원), 디지털 전환 도입률 31.2%로 전국 평균 44.6% 대비 13.4%p 낮음\n○ (지원근거) 「중소기업진흥에 관한 법률」 제62조의2, 「부산광역시 중소기업 육성 및 지원 조례」 제9조\n○ (연계정책) 국정과제 [Ⅱ-45] 중소기업 디지털 전환 촉진, 제4차 중소기업 기술혁신 촉진계획(2024~2028), 부산 디지털 경제혁신 기본계획\n신설·변경 주요내용\n○ (사업기간) 2026. 01. 01. ~ 2028. 12. 31. (3년, 다년도 사업)\n○ (사업예산) 총사업비 6,600백만원 (지원금 6,000백만원 + 운영·평가비 600백만원) / 연차별 2026년 2,200백만원, 2027년 2,200백만원, 2028년 2,200백만원\n○ (연차별·내역사업별 추진계획)\n- 1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사\n- 2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사\n- 내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행\n○ (지원대상) 부산광역시 소재 제조업 및 정보통신업 영위 중소기업\n○ (지원조건)\n- 지역: 부산광역시 내 본사 또는 주된 사업장 보유\n- 업종: 한국표준산업분류 C(제조업), J(정보통신업)\n- 업력: 업력 3년 이상 10년 이내\n- 매출액: 최근 3개년 연평균 매출액 10억원 이상 300억원 이하\n- 종사자 수: 상시 근로자 10명 이상 300명 미만\n- 기업규모: 「중소기업기본법」 제2조에 따른 중소기업\n- 인증: 벤처기업 또는 이노비즈·메인비즈 인증 보유\n- 기타: 국세 및 지방세 완납\n- 제외조건: 휴·폐업 기업, 국세 체납 기업, 최근 3년 내 동일 지원사업 수혜기업\n○ (지원내용) 제조·정보통신 중소기업 120개사에 시제품 제작비, 공인 시험인증비, 판로개척 마케팅비를 지원\n- 지원기업수: 120개사 (연 40개사)\n- 기업당 한도: 최대 5,000만원 (단가 5,000만원)\n- 보조율: 80%, 자부담률: 20%\n- 총 지원규모: 6,000백만원\n○ (수행기관) 부산테크노파크(주관), 부산상공회의소(협력)\n- 수행방식: 시 출연기관 위탁(보조)\n- 수행절차: 공고 → 신청·접수 → 서면·현장평가 → 선정 → 협약 체결 → 지원금 집행 → 사후관리\n- 단계별 역할: 공고·선정은 부산광역시, 접수·평가·협약·집행은 부산테크노파크, 사후관리 및 성과조사는 부산상공회의소\n기대효과\n○ (파급효과) 참여기업의 기술경쟁력 강화 및 신규 시장 진출 확대, 지역 제조·정보통신 생태계의 디지털 전환 가속\n○ (성과지표)\n- 사업화 성공률: 목표값 30%, 기준연도 2025년, 측정시점 사업 종료 후 1년\n- 신규 고용창출: 목표값 240명, 기준연도 2025년\n- 기술이전 및 인증 획득: 목표값 90건\n- 수혜기업 매출증가율: 목표값 15%\n타 제도 협의·심사여부(해당 시)\n제 도 명: 지방재정 자체투자심사\n협의부처: 부산광역시 기획조정실\n협의일시: 2025. 10. 15.\n협의결과: 적정(가결)\n사업담당자(부처, 기관)\n담당부서: 부산광역시 기업지원과\n직급: 지방행정사무관\n성명: 김검토\n연락처: 051-888-0000\n전자메일: sample@korea.kr"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/0"
+          },
+          "role": "rhwp_cell",
+          "text": "사전협의 요청사유"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/1"
+          },
+          "role": "rhwp_cell",
+          "text": "□ 세부사업 신설  ■ 내역사업 신설  □ 내내역사업 신설\n□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c1:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/1/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "□ 세부사업 신설  ■ 내역사업 신설  □ 내내역사업 신설"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c1:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/1/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/2"
+          },
+          "role": "rhwp_cell",
+          "text": "사업명"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c3",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/3"
+          },
+          "role": "rhwp_cell",
+          "text": "(세부) 부산광역시 중소기업 기술혁신 지원사업\n(내역) 2026년 부산광역시 제조·정보통신 중소기업 스마트 기술사업화 지원\n(내내역) 내역사업 신설 시 미기재"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c3:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/3/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "(세부) 부산광역시 중소기업 기술혁신 지원사업"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c3:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/3/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "(내역) 2026년 부산광역시 제조·정보통신 중소기업 스마트 기술사업화 지원"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c3:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/3/blocks/2"
+          },
+          "role": "rhwp_cell",
+          "text": "(내내역) 내역사업 신설 시 미기재"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c4",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/4"
+          },
+          "role": "rhwp_cell",
+          "text": "신설·변경 필요성(사유)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (사업목적) 부산 관내 제조·정보통신 중소기업의 기술경쟁력을 강화하고 시제품 사업화까지의 단계를 지원하여 지원기업 120개사의 매출 성장을 달성\n○ (사업필요성) 관내 제조·정보통신 중소기업의 디지털 전환 수준이 전국 평균 대비 낮아 생산성 향상에 제약이 발생하고 있으며, 이는 내부 전담인력 부족과 초기 투자여력 부재에서 비롯됨. 이에 시제품 사업화 단계의 직접 지원이 필요\n- 근거자료: 2025년 부산 중소기업 실태조사(부산연구원), 디지털 전환 도입률 31.2%로 전국 평균 44.6% 대비 13.4%p 낮음\n○ (지원근거) 「중소기업진흥에 관한 법률」 제62조의2, 「부산광역시 중소기업 육성 및 지원 조례」 제9조\n○ (연계정책) 국정과제 [Ⅱ-45] 중소기업 디지털 전환 촉진, 제4차 중소기업 기술혁신 촉진계획(2024~2028), 부산 디지털 경제혁신 기본계획"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (사업목적) 부산 관내 제조·정보통신 중소기업의 기술경쟁력을 강화하고 시제품 사업화까지의 단계를 지원하여 지원기업 120개사의 매출 성장을 달성"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (사업필요성) 관내 제조·정보통신 중소기업의 디지털 전환 수준이 전국 평균 대비 낮아 생산성 향상에 제약이 발생하고 있으며, 이는 내부 전담인력 부족과 초기 투자여력 부재에서 비롯됨. 이에 시제품 사업화 단계의 직접 지원이 필요"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5/blocks/2"
+          },
+          "role": "rhwp_cell",
+          "text": "- 근거자료: 2025년 부산 중소기업 실태조사(부산연구원), 디지털 전환 도입률 31.2%로 전국 평균 44.6% 대비 13.4%p 낮음"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5:p3",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5/blocks/3"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (지원근거) 「중소기업진흥에 관한 법률」 제62조의2, 「부산광역시 중소기업 육성 및 지원 조례」 제9조"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c5:p4",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/5/blocks/4"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (연계정책) 국정과제 [Ⅱ-45] 중소기업 디지털 전환 촉진, 제4차 중소기업 기술혁신 촉진계획(2024~2028), 부산 디지털 경제혁신 기본계획"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c6",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/6"
+          },
+          "role": "rhwp_cell",
+          "text": "신설·변경 주요내용"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (사업기간) 2026. 01. 01. ~ 2028. 12. 31. (3년, 다년도 사업)\n○ (사업예산) 총사업비 6,600백만원 (지원금 6,000백만원 + 운영·평가비 600백만원) / 연차별 2026년 2,200백만원, 2027년 2,200백만원, 2028년 2,200백만원\n○ (연차별·내역사업별 추진계획)\n- 1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사\n- 2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사\n- 내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행\n○ (지원대상) 부산광역시 소재 제조업 및 정보통신업 영위 중소기업\n○ (지원조건)\n- 지역: 부산광역시 내 본사 또는 주된 사업장 보유\n- 업종: 한국표준산업분류 C(제조업), J(정보통신업)\n- 업력: 업력 3년 이상 10년 이내\n- 매출액: 최근 3개년 연평균 매출액 10억원 이상 300억원 이하\n- 종사자 수: 상시 근로자 10명 이상 300명 미만\n- 기업규모: 「중소기업기본법」 제2조에 따른 중소기업\n- 인증: 벤처기업 또는 이노비즈·메인비즈 인증 보유\n- 기타: 국세 및 지방세 완납\n- 제외조건: 휴·폐업 기업, 국세 체납 기업, 최근 3년 내 동일 지원사업 수혜기업\n○ (지원내용) 제조·정보통신 중소기업 120개사에 시제품 제작비, 공인 시험인증비, 판로개척 마케팅비를 지원\n- 지원기업수: 120개사 (연 40개사)\n- 기업당 한도: 최대 5,000만원 (단가 5,000만원)\n- 보조율: 80%, 자부담률: 20%\n- 총 지원규모: 6,000백만원\n○ (수행기관) 부산테크노파크(주관), 부산상공회의소(협력)\n- 수행방식: 시 출연기관 위탁(보조)\n- 수행절차: 공고 → 신청·접수 → 서면·현장평가 → 선정 → 협약 체결 → 지원금 집행 → 사후관리\n- 단계별 역할: 공고·선정은 부산광역시, 접수·평가·협약·집행은 부산테크노파크, 사후관리 및 성과조사는 부산상공회의소"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (사업기간) 2026. 01. 01. ~ 2028. 12. 31. (3년, 다년도 사업)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (사업예산) 총사업비 6,600백만원 (지원금 6,000백만원 + 운영·평가비 600백만원) / 연차별 2026년 2,200백만원, 2027년 2,200백만원, 2028년 2,200백만원"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/2"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (연차별·내역사업별 추진계획)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p3",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/3"
+          },
+          "role": "rhwp_cell",
+          "text": "- 1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p4",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/4"
+          },
+          "role": "rhwp_cell",
+          "text": "- 2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p5",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/5"
+          },
+          "role": "rhwp_cell",
+          "text": "- 내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p6",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/6"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (지원대상) 부산광역시 소재 제조업 및 정보통신업 영위 중소기업"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p7",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/7"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (지원조건)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p8",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/8"
+          },
+          "role": "rhwp_cell",
+          "text": "- 지역: 부산광역시 내 본사 또는 주된 사업장 보유"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p9",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/9"
+          },
+          "role": "rhwp_cell",
+          "text": "- 업종: 한국표준산업분류 C(제조업), J(정보통신업)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p10",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/10"
+          },
+          "role": "rhwp_cell",
+          "text": "- 업력: 업력 3년 이상 10년 이내"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p11",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/11"
+          },
+          "role": "rhwp_cell",
+          "text": "- 매출액: 최근 3개년 연평균 매출액 10억원 이상 300억원 이하"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p12",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/12"
+          },
+          "role": "rhwp_cell",
+          "text": "- 종사자 수: 상시 근로자 10명 이상 300명 미만"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p13",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/13"
+          },
+          "role": "rhwp_cell",
+          "text": "- 기업규모: 「중소기업기본법」 제2조에 따른 중소기업"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p14",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/14"
+          },
+          "role": "rhwp_cell",
+          "text": "- 인증: 벤처기업 또는 이노비즈·메인비즈 인증 보유"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p15",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/15"
+          },
+          "role": "rhwp_cell",
+          "text": "- 기타: 국세 및 지방세 완납"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p16",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/16"
+          },
+          "role": "rhwp_cell",
+          "text": "- 제외조건: 휴·폐업 기업, 국세 체납 기업, 최근 3년 내 동일 지원사업 수혜기업"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p17",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/17"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (지원내용) 제조·정보통신 중소기업 120개사에 시제품 제작비, 공인 시험인증비, 판로개척 마케팅비를 지원"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p18",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/18"
+          },
+          "role": "rhwp_cell",
+          "text": "- 지원기업수: 120개사 (연 40개사)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p19",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/19"
+          },
+          "role": "rhwp_cell",
+          "text": "- 기업당 한도: 최대 5,000만원 (단가 5,000만원)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p20",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/20"
+          },
+          "role": "rhwp_cell",
+          "text": "- 보조율: 80%, 자부담률: 20%"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p21",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/21"
+          },
+          "role": "rhwp_cell",
+          "text": "- 총 지원규모: 6,000백만원"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p22",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/22"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (수행기관) 부산테크노파크(주관), 부산상공회의소(협력)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p23",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/23"
+          },
+          "role": "rhwp_cell",
+          "text": "- 수행방식: 시 출연기관 위탁(보조)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p24",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/24"
+          },
+          "role": "rhwp_cell",
+          "text": "- 수행절차: 공고 → 신청·접수 → 서면·현장평가 → 선정 → 협약 체결 → 지원금 집행 → 사후관리"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c7:p25",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/7/blocks/25"
+          },
+          "role": "rhwp_cell",
+          "text": "- 단계별 역할: 공고·선정은 부산광역시, 접수·평가·협약·집행은 부산테크노파크, 사후관리 및 성과조사는 부산상공회의소"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c8",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/8"
+          },
+          "role": "rhwp_cell",
+          "text": "기대효과"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (파급효과) 참여기업의 기술경쟁력 강화 및 신규 시장 진출 확대, 지역 제조·정보통신 생태계의 디지털 전환 가속\n○ (성과지표)\n- 사업화 성공률: 목표값 30%, 기준연도 2025년, 측정시점 사업 종료 후 1년\n- 신규 고용창출: 목표값 240명, 기준연도 2025년\n- 기술이전 및 인증 획득: 목표값 90건\n- 수혜기업 매출증가율: 목표값 15%"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (파급효과) 참여기업의 기술경쟁력 강화 및 신규 시장 진출 확대, 지역 제조·정보통신 생태계의 디지털 전환 가속"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "○ (성과지표)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9/blocks/2"
+          },
+          "role": "rhwp_cell",
+          "text": "- 사업화 성공률: 목표값 30%, 기준연도 2025년, 측정시점 사업 종료 후 1년"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9:p3",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9/blocks/3"
+          },
+          "role": "rhwp_cell",
+          "text": "- 신규 고용창출: 목표값 240명, 기준연도 2025년"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9:p4",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9/blocks/4"
+          },
+          "role": "rhwp_cell",
+          "text": "- 기술이전 및 인증 획득: 목표값 90건"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c9:p5",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/9/blocks/5"
+          },
+          "role": "rhwp_cell",
+          "text": "- 수혜기업 매출증가율: 목표값 15%"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c10",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/10"
+          },
+          "role": "rhwp_cell",
+          "text": "타 제도 협의·심사여부(해당 시)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c11",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/11"
+          },
+          "role": "rhwp_cell",
+          "text": "제 도 명: 지방재정 자체투자심사\n협의부처: 부산광역시 기획조정실\n협의일시: 2025. 10. 15.\n협의결과: 적정(가결)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c11:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/11/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "제 도 명: 지방재정 자체투자심사"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c11:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/11/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "협의부처: 부산광역시 기획조정실"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c11:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/11/blocks/2"
+          },
+          "role": "rhwp_cell",
+          "text": "협의일시: 2025. 10. 15."
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c11:p3",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/11/blocks/3"
+          },
+          "role": "rhwp_cell",
+          "text": "협의결과: 적정(가결)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c12",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/12"
+          },
+          "role": "rhwp_cell",
+          "text": "사업담당자(부처, 기관)"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13"
+          },
+          "role": "rhwp_cell",
+          "text": "담당부서: 부산광역시 기업지원과\n직급: 지방행정사무관\n성명: 김검토\n연락처: 051-888-0000\n전자메일: sample@korea.kr"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13:p0",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13/blocks/0"
+          },
+          "role": "rhwp_cell",
+          "text": "담당부서: 부산광역시 기업지원과"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13:p1",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13/blocks/1"
+          },
+          "role": "rhwp_cell",
+          "text": "직급: 지방행정사무관"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13:p2",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13/blocks/2"
+          },
+          "role": "rhwp_cell",
+          "text": "성명: 김검토"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13:p3",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13/blocks/3"
+          },
+          "role": "rhwp_cell",
+          "text": "연락처: 051-888-0000"
+        },
+        {
+          "occurrence_id": "occ:rhwp:t4:c13:p4",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4/cells/13/blocks/4"
+          },
+          "role": "rhwp_cell",
+          "text": "전자메일: sample@korea.kr"
+        }
+      ],
+      "page": null,
+      "provenance": {
+        "bbox": null,
+        "coordinate_space": null,
+        "method": "rhwp",
+        "page": null,
+        "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/4"
+      },
+      "reading_order": 3,
+      "section_path": "section[0]/para[3]",
+      "structure_status": "explicit",
+      "text": "사전협의 요청사유\n□ 세부사업 신설  ■ 내역사업 신설  □ 내내역사업 신설\n□ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)\n사업명\n(세부) 부산광역시 중소기업 기술혁신 지원사업\n(내역) 2026년 부산광역시 제조·정보통신 중소기업 스마트 기술사업화 지원\n(내내역) 내역사업 신설 시 미기재\n신설·변경 필요성(사유)\n○ (사업목적) 부산 관내 제조·정보통신 중소기업의 기술경쟁력을 강화하고 시제품 사업화까지의 단계를 지원하여 지원기업 120개사의 매출 성장을 달성\n○ (사업필요성) 관내 제조·정보통신 중소기업의 디지털 전환 수준이 전국 평균 대비 낮아 생산성 향상에 제약이 발생하고 있으며, 이는 내부 전담인력 부족과 초기 투자여력 부재에서 비롯됨. 이에 시제품 사업화 단계의 직접 지원이 필요\n- 근거자료: 2025년 부산 중소기업 실태조사(부산연구원), 디지털 전환 도입률 31.2%로 전국 평균 44.6% 대비 13.4%p 낮음\n○ (지원근거) 「중소기업진흥에 관한 법률」 제62조의2, 「부산광역시 중소기업 육성 및 지원 조례」 제9조\n○ (연계정책) 국정과제 [Ⅱ-45] 중소기업 디지털 전환 촉진, 제4차 중소기업 기술혁신 촉진계획(2024~2028), 부산 디지털 경제혁신 기본계획\n신설·변경 주요내용\n○ (사업기간) 2026. 01. 01. ~ 2028. 12. 31. (3년, 다년도 사업)\n○ (사업예산) 총사업비 6,600백만원 (지원금 6,000백만원 + 운영·평가비 600백만원) / 연차별 2026년 2,200백만원, 2027년 2,200백만원, 2028년 2,200백만원\n○ (연차별·내역사업별 추진계획)\n- 1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사\n- 2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사\n- 내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행\n○ (지원대상) 부산광역시 소재 제조업 및 정보통신업 영위 중소기업\n○ (지원조건)\n- 지역: 부산광역시 내 본사 또는 주된 사업장 보유\n- 업종: 한국표준산업분류 C(제조업), J(정보통신업)\n- 업력: 업력 3년 이상 10년 이내\n- 매출액: 최근 3개년 연평균 매출액 10억원 이상 300억원 이하\n- 종사자 수: 상시 근로자 10명 이상 300명 미만\n- 기업규모: 「중소기업기본법」 제2조에 따른 중소기업\n- 인증: 벤처기업 또는 이노비즈·메인비즈 인증 보유\n- 기타: 국세 및 지방세 완납\n- 제외조건: 휴·폐업 기업, 국세 체납 기업, 최근 3년 내 동일 지원사업 수혜기업\n○ (지원내용) 제조·정보통신 중소기업 120개사에 시제품 제작비, 공인 시험인증비, 판로개척 마케팅비를 지원\n- 지원기업수: 120개사 (연 40개사)\n- 기업당 한도: 최대 5,000만원 (단가 5,000만원)\n- 보조율: 80%, 자부담률: 20%\n- 총 지원규모: 6,000백만원\n○ (수행기관) 부산테크노파크(주관), 부산상공회의소(협력)\n- 수행방식: 시 출연기관 위탁(보조)\n- 수행절차: 공고 → 신청·접수 → 서면·현장평가 → 선정 → 협약 체결 → 지원금 집행 → 사후관리\n- 단계별 역할: 공고·선정은 부산광역시, 접수·평가·협약·집행은 부산테크노파크, 사후관리 및 성과조사는 부산상공회의소\n기대효과\n○ (파급효과) 참여기업의 기술경쟁력 강화 및 신규 시장 진출 확대, 지역 제조·정보통신 생태계의 디지털 전환 가속\n○ (성과지표)\n- 사업화 성공률: 목표값 30%, 기준연도 2025년, 측정시점 사업 종료 후 1년\n- 신규 고용창출: 목표값 240명, 기준연도 2025년\n- 기술이전 및 인증 획득: 목표값 90건\n- 수혜기업 매출증가율: 목표값 15%\n타 제도 협의·심사여부(해당 시)\n제 도 명: 지방재정 자체투자심사\n협의부처: 부산광역시 기획조정실\n협의일시: 2025. 10. 15.\n협의결과: 적정(가결)\n사업담당자(부처, 기관)\n담당부서: 부산광역시 기업지원과\n직급: 지방행정사무관\n성명: 김검토\n연락처: 051-888-0000\n전자메일: sample@korea.kr",
+      "text_occurrence_ids": [
+        "occ:rhwp:t4"
+      ]
+    },
+    {
+      "block_id": "hwpx:b5",
+      "boundary_markers": [],
+      "kind": "paragraph",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:p5",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/5"
+          },
+          "role": "rhwp_text",
+          "text": "첨 부 : 1. 제출자료 자체 점검표 1부"
+        }
+      ],
+      "page": null,
+      "provenance": {
+        "bbox": null,
+        "coordinate_space": null,
+        "method": "rhwp",
+        "page": null,
+        "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/5"
+      },
+      "reading_order": 4,
+      "section_path": "section[0]/para[4]",
+      "source_block_label": "paragraph",
+      "structure_status": "explicit",
+      "text": "첨 부 : 1. 제출자료 자체 점검표 1부",
+      "text_occurrence_ids": [
+        "occ:rhwp:p5"
+      ]
+    },
+    {
+      "block_id": "hwpx:b6",
+      "boundary_markers": [],
+      "kind": "paragraph",
+      "occurrences": [
+        {
+          "occurrence_id": "occ:rhwp:p6",
+          "provenance": {
+            "bbox": null,
+            "coordinate_space": null,
+            "method": "rhwp",
+            "page": null,
+            "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/6"
+          },
+          "role": "rhwp_text",
+          "text": "        2. 2026년도 사업계획서(안) 또는 예산 설명자료 및 참고자료 등"
+        }
+      ],
+      "page": null,
+      "provenance": {
+        "bbox": null,
+        "coordinate_space": null,
+        "method": "rhwp",
+        "page": null,
+        "source_location": "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json#/ir/body/6"
+      },
+      "reading_order": 5,
+      "section_path": "section[0]/para[5]",
+      "source_block_label": "paragraph",
+      "structure_status": "explicit",
+      "text": "        2. 2026년도 사업계획서(안) 또는 예산 설명자료 및 참고자료 등",
+      "text_occurrence_ids": [
+        "occ:rhwp:p6"
+      ]
+    }
+  ],
+  "conflicts": [],
+  "document": {
+    "artifact_role": "production",
+    "document_id": "hwpx:da4c079c-fb78-4333-ab85-7f74304b92d6",
+    "page_count": 238,
+    "provenance": {
+      "bbox": null,
+      "coordinate_space": null,
+      "generator": "common_ir_v1_adapters",
+      "generator_version": "1.1.0",
+      "method": "rhwp",
+      "page": null,
+      "parser": "rhwp",
+      "parser_core_version": "0.7.17",
+      "parser_version": "0.8.1",
+      "schema_version": "common_ir_v1",
+      "source_location": "C:\\Users\\playdata2\\AppData\\Local\\Temp\\pre-review-worker-qzcpsppq\\source.hwpx",
+      "source_sha256": "0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb"
+    },
+    "raw_artifact_ids": [
+      "raw\\rhwp_full_ir\\da4c079c-fb78-4333-ab85-7f74304b92d6.hwpx.json"
+    ],
+    "source_kind": "hwpx"
+  },
+  "relations": [],
+  "schema_version": "common_ir_v1"
+}

@@ -19,7 +19,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .cpl_coverage import CplFragment, build_fragments, detect_coverage_gaps
+from .cpl_coverage import (
+    CplFragment,
+    absent_form_fields,
+    build_fragments,
+    detect_coverage_gaps,
+)
 from .quantities import read_quantities
 from .cpl_effect import (
     EFFECT_FIELD,
@@ -94,6 +99,7 @@ def _subfield(
     profile: dict[str, Any],
     path: str,
     states: dict[str, dict[str, Any]],
+    code: CplFieldCode,
 ) -> CplSubfield:
     """경로 하나를 하위 필드 하나로 옮긴다.
 
@@ -105,6 +111,8 @@ def _subfield(
     if name == "request_type":
         return _request_type_subfield(profile, path)
     if path == "program_hierarchy.nodes":
+        if code is CplFieldCode.NEW_OR_CHANGED_CONTENT:
+            return _new_unit_subfield(profile, path)
         return _program_nodes_subfield(profile, path)
     state = states.get(name)
     if state is None:
@@ -151,6 +159,65 @@ def _request_type_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
         profile_field_name="request_type",
         status=status,
         reason_codes=[SERVER_RESOLVED_CHECKBOX],
+        facts=facts,
+    )
+
+
+# 요청유형이 지목한 신설 등급 -> 그 등급의 계층 노드.
+# 어휘는 벤더 ``RequestTypeCode`` · ``ProgramLevel`` 이 1:1 로 짝짓는다.
+_NEW_UNIT_LEVEL = {
+    "detail_program_new": "detail_program",
+    "sub_program_new": "sub_program",
+    "sub_sub_program_new": "sub_sub_program",
+}
+PRIOR_PLAN_UNAVAILABLE = "PRIOR_PLAN_UNAVAILABLE"
+
+
+def _new_unit_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
+    """신설·변경 주요내용(CPL-05)의 계층 하위 필드.
+
+    ``_program_nodes_subfield`` 와 경로는 같지만 묻는 것이 다르다. 저쪽은
+    "내역사업별 추진계획을 볼 수 있는가" 라서 AGENTS.md 계약대로 세부사업만
+    있으면 확인 필요로 둔다. 여기서는 "요청한 신설 단위가 문서에 있는가" 이므로,
+    세부사업 신설 요청에 세부사업 노드가 있으면 그것으로 충분하다. 같은 경로에
+    같은 규칙을 쓰면 세부사업 신설이 영영 확인되지 않는다.
+
+    ``program_content_change`` 는 판별기준 §6.2 가 기존 사업계획과의 비교를
+    요구하는데 그 입력이 파이프라인에 없다. 계층이 있다고 변경내용을 확인한
+    것처럼 올리지 않고, 근거를 못 대는 이유를 사유로 남긴다.
+    """
+
+    facts = facts_at(profile, path)
+    name = field_name_of(path)
+    selected = read_path(profile, "request_type.selected_code")
+    nodes = read_path(profile, path)
+    rows = [row for row in nodes if isinstance(row, dict)] if isinstance(nodes, list) else []
+
+    if selected == "program_content_change":
+        return CplSubfield(
+            profile_field=path,
+            profile_field_name=name,
+            status="mentioned_unresolved" if rows else "not_found",
+            reason_codes=[PRIOR_PLAN_UNAVAILABLE],
+            facts=facts,
+        )
+
+    wanted = _NEW_UNIT_LEVEL.get(selected or "")
+    if wanted is None:
+        # 요청유형을 못 읽었다. 어느 등급을 찾아야 하는지 모르므로 계층이
+        # 있다는 사실만으로 확인됨으로 올리지 않는다.
+        status = "mentioned_unresolved" if rows else "not_found"
+    elif any(row.get("level") == wanted for row in rows):
+        status = "identified"
+    elif rows:
+        status = "mentioned_unresolved"
+    else:
+        status = "not_found"
+    return CplSubfield(
+        profile_field=path,
+        profile_field_name=name,
+        status=status,
+        reason_codes=[SERVER_DERIVED_HIERARCHY_STATE],
         facts=facts,
     )
 
@@ -243,7 +310,7 @@ def build_cpl_result(profile: dict[str, Any]) -> CplResult:
     items: list[CplItem] = []
     diagnostics: list[StageDiagnostic] = []
     for code, paths in CPL_FIELD_SOURCES.items():
-        subfields = [_subfield(profile, path, states) for path in paths]
+        subfields = [_subfield(profile, path, states, code) for path in paths]
         status, reason = _representative(subfields)
         items.append(
             CplItem(
@@ -624,6 +691,86 @@ def _with_quantities(
             for item in result.items
         ],
     )
+
+
+FORM_SLOT_ABSENT = "FORM_SLOT_ABSENT"
+
+
+def _with_form_absence(
+    result: CplResult, common_ir: Mapping[str, Any]
+) -> CplResult:
+    """양식에 칸이 없어 빈 하위 필드를 ``not_applicable`` 로 올린다.
+
+    판별기준 §11.3 은 "지원조건이 별도로 없다고 해서 자동으로 오류로 판단하지
+    않는다", §12.3 은 "일부 정보가 없을 경우 지원내용 부적절로 판단하지
+    않는다" 고 못 박는다. 그런데 칸이 없는 필드가 ``not_found`` 로 남아 있으면
+    ``aggregate_display`` 가 항목 전체를 끌어내린다 — 서식에 없는 행을
+    "확인 필요" 로 표시하는 것이다.
+
+    승격 조건은 셋 다 필요하다.
+
+    1. 문서 어디에도 그 필드의 라벨이 없다 (``absent_form_fields``)
+    2. 구조화가 그 필드를 ``not_found`` 로 냈다
+    3. 그 필드에 값이 하나도 없다
+
+    3 을 함께 보는 이유는, 라벨 없이도 값이 나왔다면 그 값이 사실이기 때문이다.
+    라벨이 **있는데** 빈 경우는 여기 안 온다 — 그것은 추출 누락이고
+    ``EXTRACTION_COVERAGE_GAP`` 이 맡는다.
+    """
+
+    absent = absent_form_fields(common_ir)
+    if not absent:
+        return result
+
+    promoted: list[str] = []
+
+    def mark(subfield: CplSubfield) -> CplSubfield:
+        if subfield.profile_field not in absent or subfield.status != "not_found":
+            return subfield
+        if subfield.facts:
+            # 라벨은 없는데 값은 있다. 값이 이긴다 — 없는 칸을 근거 있는 값보다
+            # 위에 두지 않는다.
+            return subfield
+        promoted.append(subfield.profile_field)
+        return replace(
+            subfield,
+            status="not_applicable",
+            reason_codes=[*subfield.reason_codes, FORM_SLOT_ABSENT],
+        )
+
+    items = []
+    for item in result.items:
+        subfields = [mark(row) for row in item.subfields]
+        if subfields == item.subfields:
+            items.append(item)
+            continue
+        status, reason = _representative(subfields)
+        items.append(
+            replace(
+                item,
+                subfields=subfields,
+                representative_status=status,
+                status_reason=reason,
+            )
+        )
+    if not promoted:
+        return result
+    diagnostics = [
+        *result.diagnostics,
+        *(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=path,
+                reason_code=FORM_SLOT_ABSENT,
+                message=(
+                    "요청서 원문에 이 필드의 라벨 구역이 없다. 추출 실패가 아니라 "
+                    "양식에 대응 행이 없는 것으로 본다."
+                ),
+            )
+            for path in promoted
+        ),
+    ]
+    return replace(result, items=items, diagnostics=diagnostics)
 
 
 def _with_coverage_gaps(
@@ -1257,6 +1404,9 @@ def analyze_cpl(
     result = build_cpl_result(profile)
     result = _with_quantities(result, candidate_pack, quantity_hold_reason)
     if common_ir is not None:
+        # 순서가 계약이다. 칸이 없는 필드를 먼저 해당 없음으로 확정해야
+        # 누락 감지가 그 자리에 추출 실패 사유를 달지 않는다.
+        result = _with_form_absence(result, common_ir)
         result = _with_coverage_gaps(result, profile, common_ir)
     facts = _purpose_facts(result)
     if not facts and common_ir is not None:

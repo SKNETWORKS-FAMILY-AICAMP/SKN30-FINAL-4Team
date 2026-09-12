@@ -1,0 +1,832 @@
+{
+  "comparison_profile": {
+    "applicant_eligibility": [],
+    "beneficiary": [],
+    "cost_sharing": [],
+    "delivery_methods": [],
+    "delivery_relations": [],
+    "eligibility_conditions": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:b59",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p59"
+            ],
+            "source_block_id": "hwp:b59"
+          }
+        ],
+        "fact_id": "f15",
+        "field_name": "eligibility_conditions",
+        "primary_component_id": "sc2",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "고성장 가능성(신시장 진출가능성, 협업 R&D 가능성 등)을 평가 후",
+        "value_source": {
+          "end_char": 54,
+          "source_block_id": "hwp:b59",
+          "start_char": 16,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "exclusions": [],
+    "participation_requirements": [],
+    "program_period": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c7",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p0"
+            ],
+            "source_block_id": "hwp:t4#r3c1p0"
+          }
+        ],
+        "fact_id": "f5",
+        "field_name": "program_period",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "`24~`28년",
+        "value_source": {
+          "end_char": 16,
+          "source_block_id": "hwp:t4#r3c1p0",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "purpose_goal": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c5",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p0"
+            ],
+            "source_block_id": "hwp:t4#r2c1p0"
+          }
+        ],
+        "fact_id": "f1",
+        "field_name": "purpose_goal",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "ICT혁신기업이 신시장 창출 동력 확보를 위한 전략적 협업을 통해 고성장 기업으로 도약할 수 있도록 시장・수요예측 기반 단계별 기술개발 지원",
+        "value_source": {
+          "end_char": 86,
+          "source_block_id": "hwp:t4#r2c1p0",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_activities": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:b56",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p56"
+            ],
+            "source_block_id": "hwp:b56"
+          }
+        ],
+        "fact_id": "f11",
+        "field_name": "support_activities",
+        "primary_component_id": "sc1",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "先시장・수요검증",
+        "value_source": {
+          "end_char": 64,
+          "source_block_id": "hwp:b56",
+          "start_char": 56,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:b56",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p56"
+            ],
+            "source_block_id": "hwp:b56"
+          }
+        ],
+        "fact_id": "f12",
+        "field_name": "support_activities",
+        "primary_component_id": "sc1",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "後기술개발 추진",
+        "value_source": {
+          "end_char": 75,
+          "source_block_id": "hwp:b56",
+          "start_char": 67,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:b59",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p59"
+            ],
+            "source_block_id": "hwp:b59"
+          }
+        ],
+        "fact_id": "f14",
+        "field_name": "support_activities",
+        "primary_component_id": "sc2",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "3년차 추가 기술개발",
+        "value_source": {
+          "end_char": 66,
+          "source_block_id": "hwp:b59",
+          "start_char": 55,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_content": [],
+    "support_items": [],
+    "support_methods": [],
+    "support_period": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:b48",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p48"
+            ],
+            "source_block_id": "hwp:b48"
+          }
+        ],
+        "fact_id": "f8",
+        "field_name": "support_period",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "최대 3년(2년+1년)",
+        "value_source": {
+          "end_char": 21,
+          "source_block_id": "hwp:b48",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_scale": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c7",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p4"
+            ],
+            "source_block_id": "hwp:t4#r3c1p4"
+          }
+        ],
+        "fact_id": "f9",
+        "field_name": "support_scale",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "과제당 총 9~15억원",
+        "value_source": {
+          "end_char": 14,
+          "source_block_id": "hwp:t4#r3c1p4",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c7",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p4"
+            ],
+            "source_block_id": "hwp:t4#r3c1p4"
+          }
+        ],
+        "fact_id": "f10",
+        "field_name": "support_scale",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "연간 6억원",
+        "value_source": {
+          "end_char": 22,
+          "source_block_id": "hwp:t4#r3c1p4",
+          "start_char": 16,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_target": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c7",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p2"
+            ],
+            "source_block_id": "hwp:t4#r3c1p2"
+          }
+        ],
+        "fact_id": "f7",
+        "field_name": "support_target",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "전략적 제휴완료 또는 예정인 ICT중소・벤처기업(법인)",
+        "value_source": {
+          "end_char": 38,
+          "source_block_id": "hwp:t4#r3c1p2",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t46",
+            "common_ir_cell_id": "hwp:t46:c3",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t46:c3"
+            ],
+            "source_block_id": "hwp:t46#r1c1p0"
+          }
+        ],
+        "fact_id": "f18",
+        "field_name": "support_target",
+        "primary_component_id": "sc3",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "신시장 선점을 위하여 중소-중소 기업간 M&A를 한 ICT중소기업",
+        "value_source": {
+          "end_char": 38,
+          "source_block_id": "hwp:t46#r1c1p0",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t46",
+            "common_ir_cell_id": "hwp:t46:c5",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t46:c5"
+            ],
+            "source_block_id": "hwp:t46#r2c1p0"
+          }
+        ],
+        "fact_id": "f19",
+        "field_name": "support_target",
+        "primary_component_id": "sc4",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "신시장 진출을 위하여 중소-중소 기업간 전략적 제휴를 계획하고 있는 ICT중소기업(컨소시엄)",
+        "value_source": {
+          "end_char": 53,
+          "source_block_id": "hwp:t46#r2c1p0",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "total_budget": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c7",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p1"
+            ],
+            "source_block_id": "hwp:t4#r3c1p1"
+          }
+        ],
+        "fact_id": "f6",
+        "field_name": "total_budget",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "35,300백만원",
+        "value_source": {
+          "end_char": 17,
+          "source_block_id": "hwp:t4#r3c1p1",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "derived_projections": [],
+  "field_states": [
+    {
+      "fact_ids": [
+        "f1"
+      ],
+      "field_name": "purpose_goal",
+      "status": "identified"
+    },
+    {
+      "field_name": "applicant_eligibility",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "f7",
+        "f18",
+        "f19"
+      ],
+      "field_name": "support_target",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f15"
+      ],
+      "field_name": "eligibility_conditions",
+      "status": "identified"
+    },
+    {
+      "field_name": "beneficiary",
+      "status": "not_found"
+    },
+    {
+      "field_name": "exclusions",
+      "status": "not_found"
+    },
+    {
+      "field_name": "participation_requirements",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "f5"
+      ],
+      "field_name": "program_period",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f8"
+      ],
+      "field_name": "support_period",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f11",
+        "f12",
+        "f14"
+      ],
+      "field_name": "support_activities",
+      "status": "identified"
+    },
+    {
+      "field_name": "support_methods",
+      "status": "not_found"
+    },
+    {
+      "field_name": "support_items",
+      "status": "not_found"
+    },
+    {
+      "field_name": "support_content",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "f9",
+        "f10"
+      ],
+      "field_name": "support_scale",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f6"
+      ],
+      "field_name": "total_budget",
+      "status": "identified"
+    },
+    {
+      "field_name": "cost_sharing",
+      "status": "not_found"
+    },
+    {
+      "field_name": "implementation_plan",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "f2"
+      ],
+      "field_name": "business_need",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f3"
+      ],
+      "field_name": "legal_basis",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f4"
+      ],
+      "field_name": "linked_policy",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f16"
+      ],
+      "field_name": "expected_effect",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "f17"
+      ],
+      "field_name": "performance_indicator",
+      "status": "identified"
+    },
+    {
+      "field_name": "delivery_relations",
+      "status": "not_found"
+    },
+    {
+      "field_name": "delivery_methods",
+      "status": "not_found"
+    },
+    {
+      "component_ids": [
+        "sc1",
+        "sc2",
+        "sc3",
+        "sc4"
+      ],
+      "field_name": "support_components",
+      "status": "identified"
+    }
+  ],
+  "identity": {
+    "source_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+    "title_raw": null
+  },
+  "processing_metadata": {
+    "candidate_pack": {
+      "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+      "candidate_pack_generator_version": "1",
+      "candidate_pack_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff-request-v0.1.2",
+      "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+      "common_ir_source_sha256": "48b1c2909efaca3710642020901071260592fa4c9b763b905ec21c9f905b9228",
+      "text_basis": "common_ir_v1_candidate_pack"
+    },
+    "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+    "common_ir_generator": "common_ir_v1_adapters",
+    "common_ir_generator_version": "1.1.0",
+    "common_ir_schema_version": "common_ir_v1",
+    "common_ir_source_sha256": "48b1c2909efaca3710642020901071260592fa4c9b763b905ec21c9f905b9228",
+    "input_contract": "common_ir_v1",
+    "model_id": "gpt-5.6-terra",
+    "pipeline_version": "request_profile_v0.1.2_scaffold",
+    "processed_at": "2026-09-11T21:35:04.047163+00:00",
+    "prompt_version": "request_source_selection_v0.1.2",
+    "structured_schema_version": "pre_review_request_profile/v0.1"
+  },
+  "profile_id": "request:31585f71-5f28-4a2d-a481-b57c355769ff",
+  "profile_type": "pre_review_request",
+  "program_hierarchy": {
+    "nodes": [
+      {
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c3",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c3"
+            ],
+            "source_block_id": "hwp:t4#r1c1p0"
+          }
+        ],
+        "level": "detail_program",
+        "name_raw": "ICT지원사업",
+        "parent_node_id": null,
+        "program_node_id": "pn1",
+        "value_source": {
+          "end_char": 7,
+          "source_block_id": "hwp:t4#r1c1p0",
+          "start_char": 0,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "request_context": {
+    "business_need": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c5",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p1"
+            ],
+            "source_block_id": "hwp:t4#r2c1p1"
+          }
+        ],
+        "fact_id": "f2",
+        "field_name": "business_need",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "ICT혁신기업이 전략적 협업을 통해 기술혁신 속도戰을 리드하여 동력을 확보하여 고성장 기업으로 도약할 수 있는 성장지향형 R&D 필요",
+        "value_source": {
+          "end_char": 81,
+          "source_block_id": "hwp:t4#r2c1p1",
+          "start_char": 7,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "expected_effect": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c9",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p0"
+            ],
+            "source_block_id": "hwp:t4#r4c1p0"
+          }
+        ],
+        "fact_id": "f16",
+        "field_name": "expected_effect",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "ICT분야 창업→기술혁신→M&A성장→매출확보로 이어지는 전주기 지원으로 ICT 혁신 생태계 고도화 및 R&D 투자 효율성 제고에 기여",
+        "value_source": {
+          "end_char": 82,
+          "source_block_id": "hwp:t4#r4c1p0",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "implementation_plan": [],
+    "legal_basis": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c5",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p3"
+            ],
+            "source_block_id": "hwp:t4#r2c1p3"
+          }
+        ],
+        "fact_id": "f3",
+        "field_name": "legal_basis",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "정보통신진흥및융합활성화등에관한특별법 제18조, 제32조",
+        "value_source": {
+          "end_char": 38,
+          "source_block_id": "hwp:t4#r2c1p3",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "linked_policy": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c5",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p4"
+            ],
+            "source_block_id": "hwp:t4#r2c1p4"
+          }
+        ],
+        "fact_id": "f4",
+        "field_name": "linked_policy",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "(국정과제) 78. 세계 최고의 네트워크 구축 및 디지털 혁신 가속화",
+        "value_source": {
+          "end_char": 46,
+          "source_block_id": "hwp:t4#r2c1p4",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "performance_indicator": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwp:t4",
+            "common_ir_cell_id": "hwp:t4:c9",
+            "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p1"
+            ],
+            "source_block_id": "hwp:t4#r4c1p1"
+          }
+        ],
+        "fact_id": "f17",
+        "field_name": "performance_indicator",
+        "program_node_id": "pn1",
+        "status": "identified",
+        "value_raw": "사업화성공률, 10억원당 사업화 매출액, 전략적 제휴 건수, 시장수요적용률 등",
+        "value_source": {
+          "end_char": 51,
+          "source_block_id": "hwp:t4#r4c1p1",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "request_type": {
+    "evidence": [
+      {
+        "common_ir_block_id": "hwp:t4",
+        "common_ir_cell_id": "hwp:t4:c1",
+        "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+        "common_ir_occurrence_ids": [
+          "occ:rhwp:t4:c1:p0"
+        ],
+        "source_block_id": "hwp:t4#r0c1p0"
+      }
+    ],
+    "selected_code": "detail_program_new",
+    "selection_source": {
+      "end_char": 1,
+      "glyph_raw": "",
+      "source_block_id": "hwp:t4#r0c1p0",
+      "start_char": 0,
+      "text_basis": "common_ir_v1_candidate_pack"
+    },
+    "value_raw": "세부사업 신설",
+    "value_source": {
+      "end_char": 9,
+      "source_block_id": "hwp:t4#r0c1p0",
+      "start_char": 2,
+      "text_basis": "common_ir_v1_candidate_pack"
+    }
+  },
+  "schema_version": "pre_review_request_profile/v0.1",
+  "source_documents": [
+    {
+      "common_ir": {
+        "artifact_role": "production",
+        "document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+        "schema_version": "common_ir_v1",
+        "source_kind": "hwp",
+        "source_location": "C:\\Users\\playdata2\\AppData\\Local\\Temp\\pre-review-worker-d7wceb2_\\source.hwp",
+        "source_sha256": "48b1c2909efaca3710642020901071260592fa4c9b763b905ec21c9f905b9228"
+      },
+      "format": "hwp"
+    }
+  ],
+  "support_components": [
+    {
+      "component_kind": "support_package",
+      "evidence": [
+        {
+          "common_ir_block_id": "hwp:b54",
+          "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:p54"
+          ],
+          "source_block_id": "hwp:b54"
+        }
+      ],
+      "name_raw": "시장수요최적화기술개발",
+      "support_component_id": "sc1",
+      "value_source": {
+        "end_char": 20,
+        "source_block_id": "hwp:b54",
+        "start_char": 9,
+        "text_basis": "common_ir_v1_candidate_pack"
+      }
+    },
+    {
+      "component_kind": "support_package",
+      "evidence": [
+        {
+          "common_ir_block_id": "hwp:b54",
+          "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:p54"
+          ],
+          "source_block_id": "hwp:b54"
+        }
+      ],
+      "name_raw": "고성장기업도약기술개발",
+      "support_component_id": "sc2",
+      "value_source": {
+        "end_char": 40,
+        "source_block_id": "hwp:b54",
+        "start_char": 29,
+        "text_basis": "common_ir_v1_candidate_pack"
+      }
+    },
+    {
+      "component_kind": "participation_type",
+      "evidence": [
+        {
+          "common_ir_block_id": "hwp:t46",
+          "common_ir_cell_id": "hwp:t46:c2",
+          "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:t46:c2"
+          ],
+          "source_block_id": "hwp:t46#r1c0p0"
+        }
+      ],
+      "name_raw": "기업혁신형",
+      "support_component_id": "sc3",
+      "value_source": {
+        "end_char": 5,
+        "source_block_id": "hwp:t46#r1c0p0",
+        "start_char": 0,
+        "text_basis": "common_ir_v1_candidate_pack"
+      }
+    },
+    {
+      "component_kind": "participation_type",
+      "evidence": [
+        {
+          "common_ir_block_id": "hwp:t46",
+          "common_ir_cell_id": "hwp:t46:c4",
+          "common_ir_document_id": "hwp:31585f71-5f28-4a2d-a481-b57c355769ff",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:t46:c4"
+          ],
+          "source_block_id": "hwp:t46#r2c0p0"
+        }
+      ],
+      "name_raw": "시장개척형",
+      "support_component_id": "sc4",
+      "value_source": {
+        "end_char": 5,
+        "source_block_id": "hwp:t46#r2c0p0",
+        "start_char": 0,
+        "text_basis": "common_ir_v1_candidate_pack"
+      }
+    }
+  ],
+  "unresolved_relations": []
+}

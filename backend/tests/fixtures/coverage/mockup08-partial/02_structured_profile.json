@@ -1,0 +1,1452 @@
+{
+  "comparison_profile": {
+    "applicant_eligibility": [],
+    "beneficiary": [],
+    "cost_sharing": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p20"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p20"
+          }
+        ],
+        "fact_id": "fact_23",
+        "field_name": "cost_sharing",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "20%",
+        "value_source": {
+          "end_char": 21,
+          "source_block_id": "hwpx:t4#r3c1p20",
+          "start_char": 18,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "delivery_methods": [
+      {
+        "canonical_method": "commissioned",
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p23"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p23"
+          }
+        ],
+        "fact_id": "delivery_method_1",
+        "field_name": "delivery_methods",
+        "status": "identified",
+        "value_raw": "시 출연기관 위탁(보조)",
+        "value_source": {
+          "end_char": 21,
+          "source_block_id": "hwpx:t4#r3c1p23",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "delivery_relations": [
+      {
+        "actions": [],
+        "actor": {
+          "canonical_actor_type": "public_agency",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p22"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p22"
+            }
+          ],
+          "value_raw": "부산테크노파크",
+          "value_source": {
+            "end_char": 16,
+            "source_block_id": "hwpx:t4#r3c1p22",
+            "start_char": 9,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        },
+        "delivery_relation_id": "delivery_1",
+        "relation_container": {
+          "common_ir_block_id": "hwpx:t4",
+          "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+          "container_type": "table_row",
+          "row_index": 3
+        },
+        "role": {
+          "canonical_role": "operating_agency",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p22"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p22"
+            }
+          ],
+          "value_raw": "주관",
+          "value_source": {
+            "end_char": 19,
+            "source_block_id": "hwpx:t4#r3c1p22",
+            "start_char": 17,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        }
+      },
+      {
+        "actions": [],
+        "actor": {
+          "canonical_actor_type": "other",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p22"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p22"
+            }
+          ],
+          "value_raw": "부산상공회의소",
+          "value_source": {
+            "end_char": 29,
+            "source_block_id": "hwpx:t4#r3c1p22",
+            "start_char": 22,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        },
+        "delivery_relation_id": "delivery_2",
+        "relation_container": {
+          "common_ir_block_id": "hwpx:t4",
+          "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+          "container_type": "table_row",
+          "row_index": 3
+        },
+        "role": {
+          "canonical_role": "cooperating_organization",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p22"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p22"
+            }
+          ],
+          "value_raw": "협력",
+          "value_source": {
+            "end_char": 32,
+            "source_block_id": "hwpx:t4#r3c1p22",
+            "start_char": 30,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        }
+      },
+      {
+        "actions": [
+          {
+            "canonical_action": "announce",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "공고",
+            "value_source": {
+              "end_char": 12,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 10,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          },
+          {
+            "canonical_action": "select",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "선정",
+            "value_source": {
+              "end_char": 15,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 13,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          }
+        ],
+        "actor": {
+          "canonical_actor_type": "local_government",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p25"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p25"
+            }
+          ],
+          "value_raw": "부산광역시",
+          "value_source": {
+            "end_char": 22,
+            "source_block_id": "hwpx:t4#r3c1p25",
+            "start_char": 17,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        },
+        "delivery_relation_id": "delivery_3",
+        "relation_container": {
+          "common_ir_block_id": "hwpx:t4",
+          "common_ir_cell_id": "hwpx:t4:c7",
+          "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:t4:c7:p25"
+          ],
+          "container_type": "paragraph",
+          "source_block_id": "hwpx:t4#r3c1p25"
+        },
+        "role": null
+      },
+      {
+        "actions": [
+          {
+            "canonical_action": "receive",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "접수",
+            "value_source": {
+              "end_char": 26,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 24,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          },
+          {
+            "canonical_action": "evaluate",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "평가",
+            "value_source": {
+              "end_char": 29,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 27,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          },
+          {
+            "canonical_action": "agreement",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "협약",
+            "value_source": {
+              "end_char": 32,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 30,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          },
+          {
+            "canonical_action": "disburse",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "집행",
+            "value_source": {
+              "end_char": 35,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 33,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          }
+        ],
+        "actor": {
+          "canonical_actor_type": "public_agency",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p25"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p25"
+            }
+          ],
+          "value_raw": "부산테크노파크",
+          "value_source": {
+            "end_char": 44,
+            "source_block_id": "hwpx:t4#r3c1p25",
+            "start_char": 37,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        },
+        "delivery_relation_id": "delivery_4",
+        "relation_container": {
+          "common_ir_block_id": "hwpx:t4",
+          "common_ir_cell_id": "hwpx:t4:c7",
+          "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:t4:c7:p25"
+          ],
+          "container_type": "paragraph",
+          "source_block_id": "hwpx:t4#r3c1p25"
+        },
+        "role": null
+      },
+      {
+        "actions": [
+          {
+            "canonical_action": "follow_up",
+            "evidence": [
+              {
+                "common_ir_block_id": "hwpx:t4",
+                "common_ir_cell_id": "hwpx:t4:c7",
+                "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+                "common_ir_occurrence_ids": [
+                  "occ:rhwp:t4:c7:p25"
+                ],
+                "source_block_id": "hwpx:t4#r3c1p25"
+              }
+            ],
+            "value_raw": "사후관리",
+            "value_source": {
+              "end_char": 50,
+              "source_block_id": "hwpx:t4#r3c1p25",
+              "start_char": 46,
+              "text_basis": "common_ir_v1_candidate_pack"
+            }
+          }
+        ],
+        "actor": {
+          "canonical_actor_type": "other",
+          "evidence": [
+            {
+              "common_ir_block_id": "hwpx:t4",
+              "common_ir_cell_id": "hwpx:t4:c7",
+              "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+              "common_ir_occurrence_ids": [
+                "occ:rhwp:t4:c7:p25"
+              ],
+              "source_block_id": "hwpx:t4#r3c1p25"
+            }
+          ],
+          "value_raw": "부산상공회의소",
+          "value_source": {
+            "end_char": 66,
+            "source_block_id": "hwpx:t4#r3c1p25",
+            "start_char": 59,
+            "text_basis": "common_ir_v1_candidate_pack"
+          }
+        },
+        "delivery_relation_id": "delivery_5",
+        "relation_container": {
+          "common_ir_block_id": "hwpx:t4",
+          "common_ir_cell_id": "hwpx:t4:c7",
+          "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+          "common_ir_occurrence_ids": [
+            "occ:rhwp:t4:c7:p25"
+          ],
+          "container_type": "paragraph",
+          "source_block_id": "hwpx:t4#r3c1p25"
+        },
+        "role": null
+      }
+    ],
+    "eligibility_conditions": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p8"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p8"
+          }
+        ],
+        "fact_id": "fact_10",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "부산광역시 내 본사 또는 주된 사업장 보유",
+        "value_source": {
+          "end_char": 29,
+          "source_block_id": "hwpx:t4#r3c1p8",
+          "start_char": 6,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p9"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p9"
+          }
+        ],
+        "fact_id": "fact_11",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "한국표준산업분류 C(제조업), J(정보통신업)",
+        "value_source": {
+          "end_char": 31,
+          "source_block_id": "hwpx:t4#r3c1p9",
+          "start_char": 6,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p10"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p10"
+          }
+        ],
+        "fact_id": "fact_12",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "업력 3년 이상 10년 이내",
+        "value_source": {
+          "end_char": 21,
+          "source_block_id": "hwpx:t4#r3c1p10",
+          "start_char": 6,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p11"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p11"
+          }
+        ],
+        "fact_id": "fact_13",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "최근 3개년 연평균 매출액 10억원 이상 300억원 이하",
+        "value_source": {
+          "end_char": 38,
+          "source_block_id": "hwpx:t4#r3c1p11",
+          "start_char": 7,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p12"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p12"
+          }
+        ],
+        "fact_id": "fact_14",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "상시 근로자 10명 이상 300명 미만",
+        "value_source": {
+          "end_char": 30,
+          "source_block_id": "hwpx:t4#r3c1p12",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p13"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p13"
+          }
+        ],
+        "fact_id": "fact_15",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "「중소기업기본법」 제2조에 따른 중소기업",
+        "value_source": {
+          "end_char": 30,
+          "source_block_id": "hwpx:t4#r3c1p13",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p14"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p14"
+          }
+        ],
+        "fact_id": "fact_16",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "벤처기업 또는 이노비즈·메인비즈 인증 보유",
+        "value_source": {
+          "end_char": 29,
+          "source_block_id": "hwpx:t4#r3c1p14",
+          "start_char": 6,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p15"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p15"
+          }
+        ],
+        "fact_id": "fact_17",
+        "field_name": "eligibility_conditions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "국세 및 지방세 완납",
+        "value_source": {
+          "end_char": 17,
+          "source_block_id": "hwpx:t4#r3c1p15",
+          "start_char": 6,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "exclusions": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p16"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p16"
+          }
+        ],
+        "fact_id": "fact_18",
+        "field_name": "exclusions",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "휴·폐업 기업, 국세 체납 기업, 최근 3년 내 동일 지원사업 수혜기업",
+        "value_source": {
+          "end_char": 47,
+          "source_block_id": "hwpx:t4#r3c1p16",
+          "start_char": 8,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "participation_requirements": [],
+    "program_period": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p0"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p0"
+          }
+        ],
+        "fact_id": "fact_5",
+        "field_name": "program_period",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "2026. 01. 01. ~ 2028. 12. 31",
+        "value_source": {
+          "end_char": 37,
+          "source_block_id": "hwpx:t4#r3c1p0",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "purpose_goal": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c5",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p0"
+            ],
+            "source_block_id": "hwpx:t4#r2c1p0"
+          }
+        ],
+        "fact_id": "fact_1",
+        "field_name": "purpose_goal",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "지원기업 120개사의 매출 성장을 달성",
+        "value_source": {
+          "end_char": 82,
+          "source_block_id": "hwpx:t4#r2c1p0",
+          "start_char": 61,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_activities": [],
+    "support_content": [],
+    "support_items": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p17"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p17"
+          }
+        ],
+        "fact_id": "fact_19",
+        "field_name": "support_items",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "시제품 제작비, 공인 시험인증비, 판로개척 마케팅비",
+        "value_source": {
+          "end_char": 57,
+          "source_block_id": "hwpx:t4#r3c1p17",
+          "start_char": 29,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_methods": [],
+    "support_period": [],
+    "support_scale": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p18"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p18"
+          }
+        ],
+        "fact_id": "fact_20",
+        "field_name": "support_scale",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "120개사",
+        "value_source": {
+          "end_char": 14,
+          "source_block_id": "hwpx:t4#r3c1p18",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p19"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p19"
+          }
+        ],
+        "fact_id": "fact_21",
+        "field_name": "support_scale",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "최대 5,000만원",
+        "value_source": {
+          "end_char": 20,
+          "source_block_id": "hwpx:t4#r3c1p19",
+          "start_char": 10,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p20"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p20"
+          }
+        ],
+        "fact_id": "fact_22",
+        "field_name": "support_scale",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "80%",
+        "value_source": {
+          "end_char": 10,
+          "source_block_id": "hwpx:t4#r3c1p20",
+          "start_char": 7,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p21"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p21"
+          }
+        ],
+        "fact_id": "fact_24",
+        "field_name": "support_scale",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "6,000백만원",
+        "value_source": {
+          "end_char": 18,
+          "source_block_id": "hwpx:t4#r3c1p21",
+          "start_char": 10,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_target": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p6"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p6"
+          }
+        ],
+        "fact_id": "fact_9",
+        "field_name": "support_target",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "부산광역시 소재 제조업 및 정보통신업 영위 중소기업",
+        "value_source": {
+          "end_char": 37,
+          "source_block_id": "hwpx:t4#r3c1p6",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "total_budget": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p1"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p1"
+          }
+        ],
+        "fact_id": "fact_6",
+        "field_name": "total_budget",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "총사업비 6,600백만원",
+        "value_source": {
+          "end_char": 22,
+          "source_block_id": "hwpx:t4#r3c1p1",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "derived_projections": [],
+  "field_states": [
+    {
+      "fact_ids": [
+        "fact_1"
+      ],
+      "field_name": "purpose_goal",
+      "status": "identified"
+    },
+    {
+      "field_name": "applicant_eligibility",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "fact_9"
+      ],
+      "field_name": "support_target",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_10",
+        "fact_11",
+        "fact_12",
+        "fact_13",
+        "fact_14",
+        "fact_15",
+        "fact_16",
+        "fact_17"
+      ],
+      "field_name": "eligibility_conditions",
+      "status": "identified"
+    },
+    {
+      "field_name": "beneficiary",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "fact_18"
+      ],
+      "field_name": "exclusions",
+      "status": "identified"
+    },
+    {
+      "field_name": "participation_requirements",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "fact_5"
+      ],
+      "field_name": "program_period",
+      "status": "identified"
+    },
+    {
+      "field_name": "support_period",
+      "status": "not_found"
+    },
+    {
+      "field_name": "support_activities",
+      "status": "not_found"
+    },
+    {
+      "field_name": "support_methods",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "fact_19"
+      ],
+      "field_name": "support_items",
+      "status": "identified"
+    },
+    {
+      "field_name": "support_content",
+      "status": "not_found"
+    },
+    {
+      "fact_ids": [
+        "fact_20",
+        "fact_21",
+        "fact_22",
+        "fact_24"
+      ],
+      "field_name": "support_scale",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_6"
+      ],
+      "field_name": "total_budget",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_23"
+      ],
+      "field_name": "cost_sharing",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_7",
+        "fact_8"
+      ],
+      "field_name": "implementation_plan",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_2"
+      ],
+      "field_name": "business_need",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_3"
+      ],
+      "field_name": "legal_basis",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_4"
+      ],
+      "field_name": "linked_policy",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_25"
+      ],
+      "field_name": "expected_effect",
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "fact_26",
+        "fact_27",
+        "fact_28",
+        "fact_29"
+      ],
+      "field_name": "performance_indicator",
+      "status": "identified"
+    },
+    {
+      "field_name": "delivery_relations",
+      "relation_ids": [
+        "delivery_1",
+        "delivery_2",
+        "delivery_3",
+        "delivery_4",
+        "delivery_5"
+      ],
+      "status": "identified"
+    },
+    {
+      "fact_ids": [
+        "delivery_method_1"
+      ],
+      "field_name": "delivery_methods",
+      "status": "identified"
+    },
+    {
+      "field_name": "support_components",
+      "status": "not_found"
+    }
+  ],
+  "identity": {
+    "source_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+    "title_raw": null
+  },
+  "processing_metadata": {
+    "candidate_pack": {
+      "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+      "candidate_pack_generator_version": "1",
+      "candidate_pack_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4-request-v0.1.2",
+      "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+      "common_ir_source_sha256": "0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb",
+      "text_basis": "common_ir_v1_candidate_pack"
+    },
+    "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+    "common_ir_generator": "common_ir_v1_adapters",
+    "common_ir_generator_version": "1.1.0",
+    "common_ir_schema_version": "common_ir_v1",
+    "common_ir_source_sha256": "0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb",
+    "input_contract": "common_ir_v1",
+    "model_id": "gpt-5.6-terra",
+    "pipeline_version": "request_profile_v0.1.2_scaffold",
+    "processed_at": "2026-09-11T19:52:52.732643+00:00",
+    "prompt_version": "request_source_selection_v0.1.2",
+    "structured_schema_version": "pre_review_request_profile/v0.1"
+  },
+  "profile_id": "request:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+  "profile_type": "pre_review_request",
+  "program_hierarchy": {
+    "nodes": [
+      {
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c3",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c3:p0"
+            ],
+            "source_block_id": "hwpx:t4#r1c1p0"
+          }
+        ],
+        "level": "detail_program",
+        "name_raw": "부산광역시 중소기업 기술혁신 지원사업",
+        "parent_node_id": null,
+        "program_node_id": "program_1",
+        "value_source": {
+          "end_char": 25,
+          "source_block_id": "hwpx:t4#r1c1p0",
+          "start_char": 5,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c3",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c3:p1"
+            ],
+            "source_block_id": "hwpx:t4#r1c1p1"
+          }
+        ],
+        "level": "sub_program",
+        "name_raw": "2026년 부산광역시 제조·정보통신 중소기업 스마트 기술사업화 지원",
+        "parent_node_id": "program_1",
+        "program_node_id": "program_2",
+        "value_source": {
+          "end_char": 42,
+          "source_block_id": "hwpx:t4#r1c1p1",
+          "start_char": 5,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "request_context": {
+    "business_need": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c5",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p1"
+            ],
+            "source_block_id": "hwpx:t4#r2c1p1"
+          }
+        ],
+        "fact_id": "fact_2",
+        "field_name": "business_need",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "관내 제조·정보통신 중소기업의 디지털 전환 수준이 전국 평균 대비 낮아 생산성 향상에 제약이 발생하고 있으며, 이는 내부 전담인력 부족과 초기 투자여력 부재에서 비롯됨. 이에 시제품 사업화 단계의 직접 지원이 필요",
+        "value_source": {
+          "end_char": 129,
+          "source_block_id": "hwpx:t4#r2c1p1",
+          "start_char": 10,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "expected_effect": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c9",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p0"
+            ],
+            "source_block_id": "hwpx:t4#r4c1p0"
+          }
+        ],
+        "fact_id": "fact_25",
+        "field_name": "expected_effect",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "참여기업의 기술경쟁력 강화 및 신규 시장 진출 확대, 지역 제조·정보통신 생태계의 디지털 전환 가속",
+        "value_source": {
+          "end_char": 64,
+          "source_block_id": "hwpx:t4#r4c1p0",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "implementation_plan": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p3"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p3"
+          }
+        ],
+        "fact_id": "fact_7",
+        "field_name": "implementation_plan",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사",
+        "value_source": {
+          "end_char": 46,
+          "source_block_id": "hwpx:t4#r3c1p3",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c7",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c7:p4"
+            ],
+            "source_block_id": "hwpx:t4#r3c1p4"
+          }
+        ],
+        "fact_id": "fact_8",
+        "field_name": "implementation_plan",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사",
+        "value_source": {
+          "end_char": 40,
+          "source_block_id": "hwpx:t4#r3c1p4",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "legal_basis": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c5",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p3"
+            ],
+            "source_block_id": "hwpx:t4#r2c1p3"
+          }
+        ],
+        "fact_id": "fact_3",
+        "field_name": "legal_basis",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "「중소기업진흥에 관한 법률」 제62조의2, 「부산광역시 중소기업 육성 및 지원 조례」 제9조",
+        "value_source": {
+          "end_char": 60,
+          "source_block_id": "hwpx:t4#r2c1p3",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "linked_policy": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c5",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c5:p4"
+            ],
+            "source_block_id": "hwpx:t4#r2c1p4"
+          }
+        ],
+        "fact_id": "fact_4",
+        "field_name": "linked_policy",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "국정과제 [Ⅱ-45] 중소기업 디지털 전환 촉진, 제4차 중소기업 기술혁신 촉진계획(2024~2028), 부산 디지털 경제혁신 기본계획",
+        "value_source": {
+          "end_char": 84,
+          "source_block_id": "hwpx:t4#r2c1p4",
+          "start_char": 9,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "performance_indicator": [
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c9",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p2"
+            ],
+            "source_block_id": "hwpx:t4#r4c1p2"
+          }
+        ],
+        "fact_id": "fact_26",
+        "field_name": "performance_indicator",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "사업화 성공률: 목표값 30%, 기준연도 2025년, 측정시점 사업 종료 후 1년",
+        "value_source": {
+          "end_char": 47,
+          "source_block_id": "hwpx:t4#r4c1p2",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c9",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p3"
+            ],
+            "source_block_id": "hwpx:t4#r4c1p3"
+          }
+        ],
+        "fact_id": "fact_27",
+        "field_name": "performance_indicator",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "신규 고용창출: 목표값 240명, 기준연도 2025년",
+        "value_source": {
+          "end_char": 31,
+          "source_block_id": "hwpx:t4#r4c1p3",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c9",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p4"
+            ],
+            "source_block_id": "hwpx:t4#r4c1p4"
+          }
+        ],
+        "fact_id": "fact_28",
+        "field_name": "performance_indicator",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "기술이전 및 인증 획득: 목표값 90건",
+        "value_source": {
+          "end_char": 23,
+          "source_block_id": "hwpx:t4#r4c1p4",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "context_source_block_ids": [],
+        "evidence": [
+          {
+            "common_ir_block_id": "hwpx:t4",
+            "common_ir_cell_id": "hwpx:t4:c9",
+            "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:t4:c9:p5"
+            ],
+            "source_block_id": "hwpx:t4#r4c1p5"
+          }
+        ],
+        "fact_id": "fact_29",
+        "field_name": "performance_indicator",
+        "program_node_id": "program_2",
+        "status": "identified",
+        "value_raw": "수혜기업 매출증가율: 목표값 15%",
+        "value_source": {
+          "end_char": 21,
+          "source_block_id": "hwpx:t4#r4c1p5",
+          "start_char": 2,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "request_type": {
+    "evidence": [
+      {
+        "common_ir_block_id": "hwpx:t4",
+        "common_ir_cell_id": "hwpx:t4:c1",
+        "common_ir_document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+        "common_ir_occurrence_ids": [
+          "occ:rhwp:t4:c1:p0"
+        ],
+        "source_block_id": "hwpx:t4#r0c1p0"
+      }
+    ],
+    "selected_code": "sub_program_new",
+    "selection_source": {
+      "end_char": 12,
+      "glyph_raw": "■",
+      "source_block_id": "hwpx:t4#r0c1p0",
+      "start_char": 11,
+      "text_basis": "common_ir_v1_candidate_pack"
+    },
+    "value_raw": "내역사업 신설",
+    "value_source": {
+      "end_char": 20,
+      "source_block_id": "hwpx:t4#r0c1p0",
+      "start_char": 13,
+      "text_basis": "common_ir_v1_candidate_pack"
+    }
+  },
+  "schema_version": "pre_review_request_profile/v0.1",
+  "source_documents": [
+    {
+      "common_ir": {
+        "artifact_role": "production",
+        "document_id": "hwpx:e935538d-3742-4d3b-b99d-1c315ead2fe4",
+        "schema_version": "common_ir_v1",
+        "source_kind": "hwpx",
+        "source_location": "C:\\Users\\playdata2\\AppData\\Local\\Temp\\pre-review-worker-u3kql890\\source.hwpx",
+        "source_sha256": "0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb"
+      },
+      "format": "hwpx"
+    }
+  ],
+  "support_components": [],
+  "unresolved_relations": []
+}

@@ -95,10 +95,10 @@ class FitStatus(StrEnum):
 # 다섯째 값은 출력 경계에서만 존재한다.
 #
 # 뜻은 "비교축 자체가 이 문서에 적용되지 않음" 이다. 근거를 못 구한
-# ``INSUFFICIENT`` 와 다르다. FIT-4 는 계층 비교 기준 표본을 확보하기 전까지
-# 항상 ``INSUFFICIENT / HIERARCHY_COMPARISON_NOT_AVAILABLE`` (AGENTS.md) 인데
-# 그것은 기준 미확보이지 미적용이 아니므로 여기로 옮기지 않는다. 그래서 지금
-# 이 값을 만들어내는 판정 경로는 없다 — 어휘만 열어 둔다.
+# ``INSUFFICIENT`` 와 다르다. FIT-4 는 명시된 parent-child edge 를 대상으로
+# 느슨한 알파 이상징후 탐지를 수행하며, 계층이 없을 때는 일반적인
+# ``COMPARISON_EVIDENCE_MISSING`` 으로 남긴다. 이 값은 기존 표시 계약·저장
+# 결과의 호환을 위해 어휘로만 유지한다.
 FIT_NOT_APPLICABLE = "NOT_APPLICABLE"
 
 FIT_DISPLAY_STATUSES = frozenset(
@@ -121,7 +121,8 @@ COMPARISON_EVIDENCE_MISSING = "COMPARISON_EVIDENCE_MISSING"
 COMPARISON_VALUE_INVALID = "COMPARISON_VALUE_INVALID"
 # 근거로 인용된 fact_id 가 프로파일에 없다.
 EVIDENCE_REF_UNRESOLVED = "EVIDENCE_REF_UNRESOLVED"
-# FIT-4 정책 게이트. 계층 노드가 있다는 이유만으로 열리지 않는다 (초안 §7.1).
+# 예전 FIT-4 정책 게이트의 reason code. 현재 FIT-4는 명시된 parent-child edge를
+# 직접 비교하며, 기존 저장 결과와의 호환 때문에 상수만 유지한다.
 HIERARCHY_COMPARISON_NOT_AVAILABLE = "HIERARCHY_COMPARISON_NOT_AVAILABLE"
 # 문서가 조건을 적지 않았다. 조건 추출 실패와 구분한다 (초안 §7.1 FIT-5).
 NO_CONDITIONS_SPECIFIED = "NO_CONDITIONS_SPECIFIED"

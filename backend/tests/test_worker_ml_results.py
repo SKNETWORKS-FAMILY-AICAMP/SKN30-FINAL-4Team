@@ -6,7 +6,14 @@ from typing import Any
 
 from worker import analysis_job
 from worker.contracts.fit_result import FitResult, PurposeAxisClassification
-from worker.ml_reference import FakeMlModel
+from worker.ml_reference import (
+    MODEL_3_ALLOWED_LEVELS,
+    MODEL_3_LEVEL_SENTENCES,
+    MODEL_3_TYPICAL_LEVEL,
+    FakeMlModel,
+    _estimate_phrase,
+    _validate_reference,
+)
 from worker.contracts.ml_result import MlModelId
 from worker.contracts.sim_result import SimCommonProfile, SimComparisonResult
 
@@ -136,7 +143,11 @@ def test_core_engine_runs_all_ml_models_and_exposes_only_public_fields(
     )
     model_2 = FakeMlModel(
         MlModelId.MODEL_2_AMOUNT,
-        {"pred_won": 5_000_000, "percentile_rank": 0.5},
+        {
+            "pred_won": 5_000_000,
+            "stated_per_recipient_won": 8_000_000,
+            "percentile_rank": 0.5,
+        },
     )
     model_3 = FakeMlModel(
         MlModelId.MODEL_3_ANOMALY,
@@ -160,20 +171,26 @@ def test_core_engine_runs_all_ml_models_and_exposes_only_public_fields(
         "model_1": {
             "status": "OK",
             "support_type": "융자",
-            "message": "유사 사업의 지원유형 참고 분류는 '융자' 계열이다.",
+            "message": "과거 비슷한 사업들과 견주면 이 사업은 '융자' 성격에 가깝습니다.",
             "reason_code": None,
         },
         "model_2": {
             "status": "OK",
             "predicted_amount_won": 5_000_000,
-            "message": "비교군 기준 참고 예측 지원액은 500만원 수준이다.",
+            "message": (
+                "사전협의안에 적힌 기업당 지원액은 800만원입니다. "
+                "조건이 비슷한 과거 사업들은 기업당 약 500만원 수준이었습니다."
+            ),
             "reason_code": None,
         },
         "model_3": {
             "status": "OK",
             "anomaly_level": "확인 필요",
             "cause_axes": ["지원비율"],
-            "message": "비교군 대비 확인 필요 — 관련 축: 지원비율.",
+            "message": (
+                "과거 비슷한 사업들과 다소 차이가 있어 한 번 확인해 볼 만합니다. "
+                "가장 크게 차이 나는 항목은 지원비율입니다."
+            ),
             "reason_code": None,
         },
     }
@@ -199,3 +216,25 @@ def test_profile_title_uses_structured_detail_program_when_identity_is_empty() -
     }
 
     assert analysis_job._profile_title(profile) == "세부 지원사업"
+
+
+def test_prediction_phrase_drops_false_precision_and_covers_every_level() -> None:
+    """예측 금액은 유효숫자 두 자리, 표시 어휘는 전부 문장이 있어야 한다.
+
+    ``8,520,390원`` 이 문장에 그대로 나가면 추정치가 확정 금액으로 읽힌다.
+    표시 어휘에 문장이 없으면 그 level 은 사용자에게 내보낼 수 없다.
+    """
+
+    assert _estimate_phrase(8_520_390) == "850만원"
+    assert _estimate_phrase(1_234_567_890) == "12억원"
+    for rejected in (0, -1, float("nan"), True, None):
+        assert _estimate_phrase(rejected) is None
+
+    assert set(MODEL_3_ALLOWED_LEVELS) <= set(MODEL_3_LEVEL_SENTENCES)
+    assert MODEL_3_TYPICAL_LEVEL in MODEL_3_LEVEL_SENTENCES
+    # 통상 범위 안이면 축을 말하지 않는다 — 정상 사례를 이례 사례로 읽게 된다.
+    typical = _validate_reference(
+        MlModelId.MODEL_3_ANOMALY,
+        {"level": MODEL_3_TYPICAL_LEVEL, "cause_axes": ["지원비율"]},
+    )
+    assert typical == MODEL_3_LEVEL_SENTENCES[MODEL_3_TYPICAL_LEVEL]

@@ -9,7 +9,8 @@ E2E test and in the trusted worker process.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
@@ -46,6 +47,36 @@ SOURCE_MAX_BYTES = 50 * 1024 * 1024
 DERIVED_MAX_BYTES = 200 * 1024 * 1024
 REQUEST_PROFILE_SCHEMA = "pre_review_request_profile/v0.1"
 EMBEDDING_ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
+
+StageCallback = Callable[[str, str, str | None], None]
+
+
+def _notify_stage(
+    callback: StageCallback | None,
+    stage: str,
+    status: str,
+    detail: str | None = None,
+) -> None:
+    if callback is None:
+        return
+    try:
+        callback(stage, status, detail)
+    except Exception:
+        # Progress reporting must never change the worker result.
+        return
+
+
+@contextmanager
+def _stage(callback: StageCallback | None, name: str) -> Iterator[None]:
+    _notify_stage(callback, name, "started")
+    try:
+        yield
+    except Exception as error:
+        detail = f"{type(error).__name__}: {error}"[:240]
+        _notify_stage(callback, name, "failed", detail)
+        raise
+    else:
+        _notify_stage(callback, name, "succeeded")
 
 
 class AnalysisJobContractError(RuntimeError):
@@ -196,14 +227,24 @@ class VendoredRequestProfileProducer:
         model_id: str,
         max_repairs: int = 1,
         parse_timeout_seconds: float = DEFAULT_PARSE_TIMEOUT_SECONDS,
+        stage_callback: StageCallback | None = None,
+        diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
         self._llm = llm_client
         self._model_profile = model_profile
         self._model_id = model_id
         self._max_repairs = max_repairs
+        self._stage_callback = stage_callback
+        self._diagnostics_sink = diagnostics_sink
         if parse_timeout_seconds <= 0:
             raise ValueError("parse timeout must be positive")
         self._parse_timeout_seconds = float(parse_timeout_seconds)
+
+    def set_stage_callback(self, callback: StageCallback | None) -> None:
+        self._stage_callback = callback
+
+    def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
+        self._diagnostics_sink = sink
 
     def produce(
         self,
@@ -213,41 +254,55 @@ class VendoredRequestProfileProducer:
         analysis_run_id: str,
         run_dir: Path,
     ) -> ProducedRequestProfile:
-        common = parse_to_common_ir(
-            input_path=source_path,
-            notice_id=analysis_run_id,
-            source_kind=source_kind,
-            run_dir=run_dir,
-            timeout_seconds=self._parse_timeout_seconds,
-        )
-        pack = build_pack(common.document)
-        profile_id = f"request:{analysis_run_id}"
-        selector = make_vllm_selector(
-            self._llm,
-            model_profile=self._model_profile,
-            pack=pack,
-            document=common.document,
-            profile_id=profile_id,
-        )
-        snapshot = structure_request_profile(
-            document=common.document,
-            pack=pack,
-            profile_id=profile_id,
-            selector=selector,
-            model_id=self._model_id,
-            max_repairs=self._max_repairs,
-            common_ir=common,
-        )
-        if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
-            reasons = sorted(
-                {
-                    row.reason_code
-                    for row in snapshot.diagnostics
-                    if row.reason_code
-                }
+        with _stage(self._stage_callback, "parse"):
+            common = parse_to_common_ir(
+                input_path=source_path,
+                notice_id=analysis_run_id,
+                source_kind=source_kind,
+                run_dir=run_dir,
+                timeout_seconds=self._parse_timeout_seconds,
             )
-            suffix = f" ({','.join(reasons)})" if reasons else ""
-            raise AnalysisJobContractError(f"request profile materialisation failed{suffix}")
+        with _stage(self._stage_callback, "common_ir"):
+            if not isinstance(common.document, Mapping):
+                raise AnalysisJobContractError("Common IR document is not an object")
+        with _stage(self._stage_callback, "structured_profile"):
+            pack = build_pack(common.document)
+            profile_id = f"request:{analysis_run_id}"
+            selector = make_vllm_selector(
+                self._llm,
+                model_profile=self._model_profile,
+                pack=pack,
+                document=common.document,
+                profile_id=profile_id,
+            )
+            snapshot = structure_request_profile(
+                document=common.document,
+                pack=pack,
+                profile_id=profile_id,
+                selector=selector,
+                model_id=self._model_id,
+                max_repairs=self._max_repairs,
+                common_ir=common,
+            )
+            if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
+                # 예외 메시지에는 reason code 만 실린다. 어떤 검증이 왜 깨졌는지는
+                # ``snapshot.diagnostics`` 에만 있어서, 여기서 흘리면 실패한
+                # 실행에서 그 이유가 어디에도 남지 않는다.
+                if self._diagnostics_sink is not None and snapshot.diagnostics:
+                    self._diagnostics_sink(
+                        "structured_profile", list(snapshot.diagnostics)
+                    )
+                reasons = sorted(
+                    {
+                        row.reason_code
+                        for row in snapshot.diagnostics
+                        if row.reason_code
+                    }
+                )
+                suffix = f" ({','.join(reasons)})" if reasons else ""
+                raise AnalysisJobContractError(
+                    f"request profile materialisation failed{suffix}"
+                )
         return ProducedRequestProfile(
             common_ir=common.document,
             profile=snapshot.profile,
@@ -328,6 +383,7 @@ class CoreAnalysisEngine:
         sim_model_profile: str,
         max_repairs: int = 1,
         ml_models: Mapping[MlModelId, MlModel | None] | None = None,
+        stage_callback: StageCallback | None = None,
         diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
         self._llm = llm_client
@@ -339,7 +395,11 @@ class CoreAnalysisEngine:
         self._sim_model_profile = sim_model_profile
         self._max_repairs = max_repairs
         self._ml_models = dict(ml_models or {})
+        self._stage_callback = stage_callback
         self._diagnostics_sink = diagnostics_sink
+
+    def set_stage_callback(self, callback: StageCallback | None) -> None:
+        self._stage_callback = callback
 
     def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
         self._diagnostics_sink = sink
@@ -354,73 +414,83 @@ class CoreAnalysisEngine:
         quantity_hold_reason: str | None = None,
     ) -> Mapping[str, Any]:
         request = dict(profile)
-        cpl: CplResult = analyze_cpl(
-            request,
-            self._llm,
-            model_profile=self._cpl_model_profile,
-            common_ir=common_ir,
-            candidate_pack=candidate_pack,
-            quantity_hold_reason=quantity_hold_reason,
-        )
+        with _stage(self._stage_callback, "cpl"):
+            cpl: CplResult = analyze_cpl(
+                request,
+                self._llm,
+                model_profile=self._cpl_model_profile,
+                common_ir=common_ir,
+                candidate_pack=candidate_pack,
+                quantity_hold_reason=quantity_hold_reason,
+            )
         if self._diagnostics_sink is not None and cpl.diagnostics:
             # 재검 탈락 사유처럼 결과 payload 에 실리지 않는 기록이다. 어디에
             # 적을지는 받는 쪽이 정한다.
             self._diagnostics_sink("cpl", list(cpl.diagnostics))
-        ml_result = run_ml_reference(
-            request,
-            self._ml_models,
-            cpl_result=cpl,
-            common_ir=_common_ir_artifact(common_ir),
-            title=_profile_title(request),
-        )
-        fit: FitResult = analyze_fit(
-            cpl,
-            self._llm,
-            model_profile=self._fit_model_profile,
-            max_repairs=self._max_repairs,
-        )
-        request_common = build_common_profile(
-            request, self._llm, model_profile=self._sim_model_profile
-        )
-        candidate_commons: list[SimCommonProfile] = []
-        sim_profiles: dict[str, SimCommonProfile] = {
-            request_common.source_profile_id or "": request_common
-        }
-        titles: dict[str, str | None] = {}
-        similarities: dict[str, float] = {}
-        profile_version_ids: dict[str, str] = {}
-        for document in candidates:
-            candidate_common = build_common_profile(
-                dict(document.profile),
+        with _stage(self._stage_callback, "fit"):
+            fit: FitResult = analyze_fit(
+                cpl,
+                self._llm,
+                model_profile=self._fit_model_profile,
+                max_repairs=self._max_repairs,
+            )
+        with _stage(self._stage_callback, "sim"):
+            request_common = build_common_profile(
+                request, self._llm, model_profile=self._sim_model_profile
+            )
+            candidate_commons: list[SimCommonProfile] = []
+            sim_profiles: dict[str, SimCommonProfile] = {
+                request_common.source_profile_id or "": request_common
+            }
+            titles: dict[str, str | None] = {}
+            similarities: dict[str, float] = {}
+            profile_version_ids: dict[str, str] = {}
+            for document in candidates:
+                candidate_common = build_common_profile(
+                    dict(document.profile),
+                    self._llm,
+                    model_profile=self._sim_model_profile,
+                )
+                if not candidate_common.source_profile_id:
+                    raise AnalysisJobContractError(
+                        "existing profile has no source_profile_id"
+                    )
+                if candidate_common.source_profile_id != document.candidate.source_profile_id:
+                    raise AnalysisJobContractError(
+                        "existing profile identity does not match its DB lineage"
+                    )
+                candidate_commons.append(candidate_common)
+                sim_profiles[candidate_common.source_profile_id] = candidate_common
+                titles[candidate_common.source_profile_id] = document.candidate.title
+                similarities[candidate_common.source_profile_id] = (
+                    document.candidate.average_similarity
+                )
+                profile_version_ids[candidate_common.source_profile_id] = (
+                    document.candidate.profile_version_id
+                )
+
+            sim: SimComparisonResult = compare_candidates(
+                request_common,
+                candidate_commons,
                 self._llm,
                 model_profile=self._sim_model_profile,
+                max_repairs=self._max_repairs,
             )
-            if not candidate_common.source_profile_id:
-                raise AnalysisJobContractError("existing profile has no source_profile_id")
-            if candidate_common.source_profile_id != document.candidate.source_profile_id:
-                raise AnalysisJobContractError("existing profile identity does not match its DB lineage")
-            candidate_commons.append(candidate_common)
-            sim_profiles[candidate_common.source_profile_id] = candidate_common
-            titles[candidate_common.source_profile_id] = document.candidate.title
-            similarities[candidate_common.source_profile_id] = document.candidate.average_similarity
-            profile_version_ids[candidate_common.source_profile_id] = (
-                document.candidate.profile_version_id
+            sim = replace(
+                sim,
+                candidates=[
+                    replace(row, title=titles.get(row.candidate_profile_id or ""))
+                    for row in sim.candidates
+                ],
             )
-
-        sim: SimComparisonResult = compare_candidates(
-            request_common,
-            candidate_commons,
-            self._llm,
-            model_profile=self._sim_model_profile,
-            max_repairs=self._max_repairs,
-        )
-        sim = replace(
-            sim,
-            candidates=[
-                replace(row, title=titles.get(row.candidate_profile_id or ""))
-                for row in sim.candidates
-            ],
-        )
+        with _stage(self._stage_callback, "ml"):
+            ml_result = run_ml_reference(
+                request,
+                self._ml_models,
+                cpl_result=cpl,
+                common_ir=_common_ir_artifact(common_ir),
+                title=_profile_title(request),
+            )
         return build_result_payload(
             profile=request,
             cpl=cpl,
@@ -446,6 +516,7 @@ class AnalysisJobHandler:
         analysis_engine: AnalysisEngine,
         top_k: int = 5,
         request_bucket: str = "request-temp",
+        stage_callback: StageCallback | None = None,
     ) -> None:
         if not 1 <= top_k <= 100:
             raise ValueError("top_k must be between 1 and 100")
@@ -456,6 +527,29 @@ class AnalysisJobHandler:
         self._engine = analysis_engine
         self._top_k = top_k
         self._request_bucket = request_bucket
+        self._stage_callback = None
+        self.set_stage_callback(stage_callback)
+
+    def set_stage_callback(self, callback: StageCallback | None) -> None:
+        """Attach optional operator progress reporting to this worker graph."""
+
+        self._stage_callback = callback
+        for component in (self._producer, self._engine):
+            setter = getattr(component, "set_stage_callback", None)
+            if callable(setter):
+                setter(callback)
+
+    def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
+        """Collect stage diagnostics from every component that offers them.
+
+        구조화 실패 진단은 생산자에, CPL 진단은 엔진에 있다. 호출부가 둘을
+        따로 찾아 꽂게 두면 한쪽을 빠뜨렸다는 사실이 드러나지 않는다.
+        """
+
+        for component in (self._producer, self._engine):
+            setter = getattr(component, "set_diagnostics_sink", None)
+            if callable(setter):
+                setter(sink)
 
     def handle(self, job: ClaimedJob) -> Mapping[str, Any]:
         run_id = str(job.job_pk)

@@ -18,8 +18,23 @@ from .contracts.cpl_result import CplEvidence, CplFact, CplFieldCode
 
 # 초안 §6 의 연결표. 값은 프로파일 안의 점 표기 경로다.
 #
-# NEW_OR_CHANGED_CONTENT 는 대응 필드가 없다. 빈 튜플이 그 사실 자체다.
-# 억지로 근사 필드를 붙이면 "변경내용" 근거가 없는데 있는 것처럼 보인다.
+# NEW_OR_CHANGED_CONTENT 는 판별기준 §6 을 따른다. "요청유형에 따라 의미를
+# 다르게 본다" 가 그 절의 첫 문장이라 필드 하나로 옮겨지지 않는다.
+#
+# §6.1 신설사업: "새로 만드는 **사업단위**의 핵심 설계정보를 구조화한다."
+# 주어가 사업단위다. 그 단위의 이름과 등급은 ``program_hierarchy.nodes`` 와
+# ``support_components`` 에 있고, 설계정보(사업기간·예산·지원대상·조건·내용
+# ·수행기관)는 이미 CPL-04·09·10·11·12 의 하위 필드다. 여기서 그 여섯을
+# 다시 나열하면 CPL-05 는 다른 항목들의 AND 가 되어 새로 말하는 것이 없고,
+# 같은 근거가 항목마다 중복해 실린다.
+#
+# 알파 골든(``samples/golden/mockup_08.json``)의 유일한 ``CHANGE_CONTENT``
+# 근거도 사업단위 줄이다: "내역사업 「스마트 기술사업화 지원」: 시제품
+# 제작비, 시험인증비, 판로개척비 3개 항목으로 구성하여 단계별 집행".
+#
+# §6.2 변경사업은 기존 사업계획과의 비교를 요구하는데 그 입력이 파이프라인에
+# 없다. 상태 판정은 ``_new_unit_subfield`` 가 요청유형을 보고 따로 가른다 —
+# 경로표는 "어디를 보는가" 만 말한다.
 #
 # BUSINESS_PERIOD 는 program_period 만 받는다. support_period 는 초안 §6 이
 # "program_period 와 구분" 이라고 명시해 두었으므로 매핑하지 않고,
@@ -33,7 +48,10 @@ CPL_FIELD_SOURCES: dict[CplFieldCode, tuple[str, ...]] = {
         "support_components",
     ),
     CplFieldCode.BUSINESS_PERIOD: ("comparison_profile.program_period",),
-    CplFieldCode.NEW_OR_CHANGED_CONTENT: (),
+    CplFieldCode.NEW_OR_CHANGED_CONTENT: (
+        "program_hierarchy.nodes",
+        "support_components",
+    ),
     CplFieldCode.BUSINESS_NEED: ("request_context.business_need",),
     CplFieldCode.LEGAL_BASIS: ("request_context.legal_basis",),
     CplFieldCode.LINKED_POLICY: ("request_context.linked_policy",),
@@ -138,6 +156,8 @@ def normalise_fact(entry: dict[str, Any]) -> CplFact:
         text_basis=source.get("text_basis"),
         evidence=_evidence(entry),
         program_node_id=entry.get("program_node_id"),
+        program_level=entry.get("level"),
+        parent_program_node_id=entry.get("parent_node_id"),
         primary_component_id=entry.get("primary_component_id"),
         id_source_key=id_key,
         selection_glyph_raw=selection.get("glyph_raw"),

@@ -84,7 +84,10 @@ class OpenAIConfig:
     llm_model: str
     embedding_model: str
     timeout_seconds: float = 60.0
-    max_repairs: int = 1
+    # 보완 호출은 검증이 깨졌을 때만 나간다. 1 회는 근거 span 선택이 한 번
+    # 어긋나면 그대로 실행 전체가 실패한다는 뜻이라, 같은 문서가 어떤 날은
+    # 되고 어떤 날은 안 된다. 정상 실행의 비용은 그대로다.
+    max_repairs: int = 2
 
     @classmethod
     def from_env(cls) -> "OpenAIConfig":
@@ -93,7 +96,7 @@ class OpenAIConfig:
             llm_model=_required("OPENAI_LLM_MODEL"),
             embedding_model=_required("OPENAI_EMBEDDING_MODEL"),
             timeout_seconds=_float("OPENAI_TIMEOUT_SECONDS", 60.0),
-            max_repairs=_int("OPENAI_MAX_REPAIRS", 1),
+            max_repairs=_int("OPENAI_MAX_REPAIRS", 2),
         )
 
     def llm_model_profiles(self, *names: str) -> dict[str, str]:

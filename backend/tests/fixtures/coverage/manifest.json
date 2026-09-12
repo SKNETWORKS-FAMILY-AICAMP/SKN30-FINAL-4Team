@@ -1,0 +1,70 @@
+{
+  "note": "라이브 실행 산출물을 가공 없이 보존한다. 재생성·축약 금지.",
+  "captured_at": "2026-09-12",
+  "fixtures": [
+    {
+      "dir": "mockup08-partial",
+      "source_trace": ".runtime/pipeline-traces/manual-test-terra19-mock08",
+      "input_document": "mockup_08 (hwpx)",
+      "reproduces": "사업목적 구역 73자 중 21자만 선택 — occurrence 하나 안에서의 부분 선택",
+      "files": {
+        "01_common_ir.json": {
+          "sha256": "cd8525171c1f5b5c67d6aa8a5864d1038102598dd85e1b41979da9526c693426",
+          "bytes": 62149
+        },
+        "02_structured_profile.json": {
+          "sha256": "8f79753907cdc1a27826e0fece457605a726dfacfb67a4f3be49c15fba96a5b5",
+          "bytes": 47741
+        }
+      }
+    },
+    {
+      "dir": "mockup08-full",
+      "source_trace": ".runtime/pipeline-traces/manual-test-terra20-mock08",
+      "input_document": "mockup_08 (hwpx)",
+      "reproduces": "같은 문서·같은 구역이 73자 전부 선택 — A 의 대조군",
+      "files": {
+        "01_common_ir.json": {
+          "sha256": "c50a3a47ce49810009ee742703c40f6d930bc6f8e826550bc5db3336d14373a9",
+          "bytes": 62149
+        },
+        "02_structured_profile.json": {
+          "sha256": "860e69445b939ae663c94e45c584d86c350ecbc406cbc488c980d5cc8d6e4a63",
+          "bytes": 49211
+        }
+      }
+    },
+    {
+      "dir": "new-hwp-summary-only",
+      "source_trace": ".runtime/pipeline-traces/manual-test-terra24-delivery",
+      "input_document": "사전협의서_예시.hwp",
+      "reproduces": "기대효과가 요약표 한 줄만 선택 — 본문 occurrence 3건 누락",
+      "files": {
+        "01_common_ir.json": {
+          "sha256": "d68e1e53f06129d2e33d5200486d3aee1a1107cf4e3633d4b99bf6282a7b7cc9",
+          "bytes": 314020
+        },
+        "02_structured_profile.json": {
+          "sha256": "a069d77c1a3b3d4218afc793c7db48e66ba84b25ab2b14d7017a4569d758a3ae",
+          "bytes": 25504
+        }
+      }
+    },
+    {
+      "dir": "new-hwp-body-selected",
+      "source_trace": ".runtime/pipeline-traces/manual-test-terra11",
+      "input_document": "사전협의서_예시.hwp",
+      "reproduces": "기대효과가 본문 occ:rhwp:p79 를 선택 — 요약표와 본문 나머지 2건 누락",
+      "files": {
+        "01_common_ir.json": {
+          "sha256": "0a2d8d76d3c03c9aeb53a0832f0481ad5b09d14f7bf6025348a5134ac83261b1",
+          "bytes": 314020
+        },
+        "02_structured_profile.json": {
+          "sha256": "55289716b0495483a957ec64a0bd1ac7d2f24035a12e47b03bc4bbbab7127568",
+          "bytes": 24426
+        }
+      }
+    }
+  ]
+}

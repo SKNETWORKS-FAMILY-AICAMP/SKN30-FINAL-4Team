@@ -41,6 +41,9 @@ TEST_ORIGIN = "http://e2e.local"
 # Deployment default, and the retrieval breadth the stored traces under
 # .runtime/pipeline-traces were produced with.  Keep runs comparable.
 DEFAULT_TOP_K = 5
+# 워커는 큐에서 가장 오래된 잡을 집는다. 앞에 밀린 잡이 있으면 내 run 에 닿기까지
+# 그만큼 더 돌려야 한다. 무한정 도는 것과 구별하려고 상한을 둔다.
+MAX_WORKER_CYCLES = 10
 
 
 class E2EFailure(RuntimeError):
@@ -106,6 +109,10 @@ def _configure_environment(
         ),
         "PREREVIEW_WORKER_TOP_K": str(top_k),
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
+        # 기본 10 초. ML 단계는 400MB 가중치를 자식 프로세스에서 올리는 동안
+        # 호스트를 바쁘게 만들고, Docker Desktop 이 게시한 포트는 그때 느려진다.
+        # 로컬 DB 인데도 연결이 10 초를 넘길 수 있어 여유를 준다.
+        "PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS": "20",
     }
     if sys.platform != "win32":
         # The parser subprocess preloads the host FreeType build; Windows
@@ -208,6 +215,37 @@ def _write_trace(
         )
 
 
+async def _run_state(client: httpx.AsyncClient, run_id: str) -> dict[str, object]:
+    polled = await client.get(f"/api/v1/analysis-runs/{run_id}")
+    if polled.status_code != 200:
+        raise E2EFailure(
+            f"FastAPI status polling failed with HTTP {polled.status_code}"
+        )
+    state = polled.json()
+    if not isinstance(state, dict):
+        raise E2EFailure("FastAPI status response contract is invalid")
+    return state
+
+
+def _cached_artifacts(handler: object, run_id: str) -> tuple[object, object]:
+    """워커가 남긴 중간 산출물. 없으면 ``(None, None)`` — 다시 만들지 않는다.
+
+    실패를 기록하다가 터지면 원래 실패가 이 예외에 가려진다. 캐시가 없거나
+    반쯤 쓰인 상태도 여기서는 "없음" 이다.
+    """
+
+    try:
+        cached = handler._store.cached_request_profile(analysis_run_id=run_id)
+        if cached is None:
+            return None, None
+        return (
+            handler._load_json_artifact(cached.common_ir),
+            handler._load_json_artifact(cached.structured_profile),
+        )
+    except Exception:  # noqa: BLE001 - 기록이 원래 실패를 대신하지 않는다
+        return None, None
+
+
 async def _run(
     source: Path,
     *,
@@ -221,7 +259,7 @@ async def _run(
     # intentionally read their deployment configuration at construction time.
     from main import create_app
     from worker.main import build_worker
-    from worker.runtime import WorkerRuntime
+    from worker.runtime import RunOutcome, WorkerRuntime
 
     user_id, email, password = await _create_confirmed_test_user()
     app = create_app()
@@ -264,12 +302,12 @@ async def _run(
             raise E2EFailure("FastAPI upload response contract is invalid")
 
         composition = build_worker()
-        # CPL 진단은 결과 payload 에 실리지 않는다. 실행 중에 받아 두지 않으면
-        # 재검 탈락 사유가 어디에도 남지 않는다. 분석을 다시 돌리지 않는다.
+        # 단계 진단은 결과 payload 에 실리지 않는다. 실행 중에 받아 두지 않으면
+        # 재검 탈락 사유도, 구조화가 어떤 검증에서 깨졌는지도 어디에도 남지
+        # 않는다. 분석을 다시 돌리지 않는다.
         collected: list[dict[str, object]] = []
-        engine = getattr(composition.handler, "_engine", None)
-        if engine is not None and hasattr(engine, "set_diagnostics_sink"):
-            engine.set_diagnostics_sink(
+        if hasattr(composition.handler, "set_diagnostics_sink"):
+            composition.handler.set_diagnostics_sink(
                 lambda stage, rows: collected.extend(
                     {
                         "stage": row.stage,
@@ -281,6 +319,18 @@ async def _run(
                     for row in rows
                 )
             )
+        # 한 번 도는 데 몇 분이 걸린다. 진행 상황을 안 찍으면 붙어 있는 쪽은
+        # 멈춘 것과 도는 것을 구별할 수 없다. 단계 이벤트는 엔진이 이미
+        # 만들고 있으므로(analysis_job._stage) 여기서는 받아 적기만 한다.
+        # stdout 은 마지막 요약 JSON 한 줄의 몫이라 stderr 로 내보낸다.
+        if hasattr(composition.handler, "set_stage_callback"):
+            composition.handler.set_stage_callback(
+                lambda stage, status, detail: print(
+                    f"[{stage}] {status}" + (f" — {detail}" if detail else ""),
+                    file=sys.stderr,
+                    flush=True,
+                )
+            )
         runtime = WorkerRuntime(
             composition.repository,
             composition.handler,
@@ -289,18 +339,48 @@ async def _run(
             lease_seconds=composition.settings.lease_seconds,
             idle_poll_seconds=composition.settings.idle_poll_seconds,
         )
-        worker_outcome = await asyncio.to_thread(runtime.run_once)
-
-        polled = await client.get(f"/api/v1/analysis-runs/{run_id}")
-        if polled.status_code != 200:
+        # run_once 는 큐에서 가장 오래된 잡 하나만 처리한다. 앞에 밀린 잡이
+        # 있으면 이 실행은 그것을 처리하고 내 run 은 queued 로 남아, 파이프라인이
+        # 매번 정상으로 도는데도 보고만 실패가 된다. 그 한 칸은 다음 실행으로
+        # 그대로 밀린다. 내 run 이 큐를 벗어날 때까지 돌린다.
+        drained = 0
+        for _cycle in range(MAX_WORKER_CYCLES):
+            worker_outcome = await asyncio.to_thread(runtime.run_once)
+            state = await _run_state(client, run_id)
+            if state.get("status") != "queued":
+                break
+            if worker_outcome is RunOutcome.IDLE:
+                # 큐가 비었는데 내 run 이 아직 queued 면 더 돌려도 같다.
+                break
+            drained += 1
+        else:
             raise E2EFailure(
-                f"FastAPI status polling failed with HTTP {polled.status_code}"
+                f"this run was still queued after {MAX_WORKER_CYCLES} worker cycles"
             )
-        state = polled.json()
+
         if state.get("status") != "succeeded":
+            # 실패야말로 산출물이 필요한 순간이다. 성공했을 때만 트레이스를
+            # 쓰면 "왜 실패했는가" 가 통째로 사라진다.
+            if trace_dir is not None:
+                common_ir_doc, structured = _cached_artifacts(
+                    composition.handler, run_id
+                )
+                _write_trace(
+                    trace_dir,
+                    upload=payload,
+                    common_ir=common_ir_doc,
+                    structured_profile=structured,
+                    result={"run_status": state},
+                    cpl_diagnostics={
+                        "analysis_run_id": run_id,
+                        "diagnostics": collected,
+                    },
+                )
             raise E2EFailure(
-                f"worker did not complete the run: outcome={worker_outcome.value}, "
-                f"status={state.get('status')}"
+                f"this run did not succeed: status={state.get('status')}, "
+                f"last_worker_outcome={worker_outcome.value}, "
+                f"other_queued_jobs_processed={drained}"
+                + (f", trace={trace_dir}" if trace_dir is not None else "")
             )
         case_id = state.get("analysis_case_id")
         if not isinstance(case_id, str) or not case_id:
@@ -317,18 +397,16 @@ async def _run(
         if trace_dir is not None:
             # The persisted artifacts are the exact structure consumed by the
             # worker below; exporting them here avoids a second parse/LLM run.
-            cached = composition.handler._store.cached_request_profile(
-                analysis_run_id=run_id
+            common_ir_doc, structured = _cached_artifacts(
+                composition.handler, run_id
             )
-            if cached is None:
+            if structured is None:
                 raise E2EFailure("worker did not persist the structured profile")
             _write_trace(
                 trace_dir,
                 upload=payload,
-                common_ir=composition.handler._load_json_artifact(cached.common_ir),
-                structured_profile=composition.handler._load_json_artifact(
-                    cached.structured_profile
-                ),
+                common_ir=common_ir_doc,
+                structured_profile=structured,
                 result=body,
                 cpl_diagnostics={"analysis_run_id": run_id, "diagnostics": collected},
             )

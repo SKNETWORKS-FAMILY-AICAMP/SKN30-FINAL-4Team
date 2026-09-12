@@ -276,6 +276,15 @@ class CplFact:
     text_basis: str | None
     evidence: list[CplEvidence] = field(default_factory=list)
     program_node_id: str | None = None
+    # 계층 FIT 이 명시적인 parent-child edge 를 소비할 수 있게 보존한다.
+    # Structured Profile 의 ``program_hierarchy.nodes`` 에서만 채워지며,
+    # 결과 JSON에는 노출하지 않는 내부 좌표다.
+    program_level: str | None = field(
+        default=None, repr=False, metadata={"serialize": False}
+    )
+    parent_program_node_id: str | None = field(
+        default=None, repr=False, metadata={"serialize": False}
+    )
     primary_component_id: str | None = None
     id_source_key: str | None = None
     # ``delivery_relations`` 는 actor·role·actions 가 한 relation 안에 중첩돼

@@ -9,7 +9,7 @@
 수단 배치는 초안 §7.1 표 그대로다.
 
 - FIT-1·2·3·5·6: 의미 비교라 LLM. 표현이 열려 있어 Rule 로 닫히지 않는다.
-- FIT-4: 비교 기준이 확정되지 않았다. 호출 자체를 하지 않는다.
+- FIT-4: 명시된 인접 parent-child 계층을 느슨한 알파 이상징후 탐지로 비교한다.
 - FIT-7: 정량 값 집합 비교라 Rule. LLM 으로 값을 추측하지 않는다.
 
 점수·확인율·비율·등급은 계산하지 않는다.
@@ -38,7 +38,6 @@ from .contracts.fit_result import (
     COMPARISON_VALUE_INVALID,
     EVIDENCE_REF_UNRESOLVED,
     FIT_REASON_CODES,
-    HIERARCHY_COMPARISON_NOT_AVAILABLE,
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
     LLM_UNAVAILABLE,
@@ -68,8 +67,8 @@ __all__ = [
 
 _STAGE = "analyze_fit"
 
-FIT_RULESET_VERSION = "fit-rules-v0.1"
-FIT_PROMPT_VERSION = "fit-relations-v0.1"
+FIT_RULESET_VERSION = "fit-rules-v0.2"
+FIT_PROMPT_VERSION = "fit-relations-v0.2"
 
 
 # ------------------------------------------------------------ 입력 경로표
@@ -98,6 +97,26 @@ _CONTENT_PATH = "comparison_profile.support_content"
 _SCALE_PATH = "comparison_profile.support_scale"
 _DELIVERY_PATH = "comparison_profile.delivery_relations"
 _DELIVERY_METHODS_PATH = "comparison_profile.delivery_methods"
+_HIERARCHY_PATH = "program_hierarchy.nodes"
+# FIT-4 원문 3축에 해당하는 하위 근거만 보낸다. 지원규모·예산·법적근거·
+# 성과지표는 계층 연결성 비교축이 아니므로 이름이 같은 사업이라도 섞지 않는다.
+_HIERARCHY_ALLOWED_PATHS = frozenset(
+    {
+        _PURPOSE_PATH,
+        *_TARGET_PATHS,
+        *_MEANS_PATHS,
+        _CONTENT_PATH,
+    }
+)
+
+# Structured Profile 이 정의한 계층 어휘의 순서. 명시적 parent_node_id 가
+# 고른 edge 자체가 우선이며, 여러 direct edge 를 함께 다룰 때 비교 시작
+# 레벨을 안정적으로 고르는 보조 기준으로만 사용한다.
+_PROGRAM_LEVEL_ORDER = {
+    "detail_program": 0,
+    "sub_program": 1,
+    "sub_sub_program": 2,
+}
 
 # 좌측이 목적 의미 축에서 오는 관계와, 그 관계가 요구하는 축.
 _PURPOSE_AXIS_OF = {
@@ -111,6 +130,10 @@ _RELATION_QUESTION = {
     FitRelationId.FIT_1: "목적이 말하는 대상 조건과 실제 지원 대상이 같은 대상을 가리키는가.",
     FitRelationId.FIT_2: "목적이 말하는 방향과 지원 활동·수단·품목이 같은 방향인가.",
     FitRelationId.FIT_3: "목적이 말하는 방향과 기대효과·성과지표가 같은 방향인가.",
+    FitRelationId.FIT_4: (
+        "상위사업과 하위사업이 명시된 parent-child 계층 관계에서, "
+        "하위사업이 상위사업을 구체화하거나 일부를 분담하는가."
+    ),
     FitRelationId.FIT_5: "지원 대상군과 신청 조건이 같은 집단을 가리키는가.",
     FitRelationId.FIT_6: "수행기관과 그 역할·절차·전달 방식이 서로 맞물리는가.",
 }
@@ -187,17 +210,121 @@ def _refs_at(cpl: CplResult, path: str) -> list[FitEvidenceRef]:
     for fact in _facts_at(cpl, path):
         fact_id = _fit_fact_id(fact)
         if fact_id:
-            refs.append(
-                FitEvidenceRef(
-                    fact_id=fact_id,
-                    field_name=name,
-                    value_raw=fact.value_raw,
-                    evidence=list(fact.evidence),
-                    primary_component_id=fact.primary_component_id,
-                    quantities=fact.quantities,
-                )
-            )
+            refs.append(_fit_ref(fact, name, fact_id=fact_id))
     return refs
+
+
+def _fit_ref(
+    fact: CplFact,
+    field_name: str,
+    *,
+    fact_id: str | None = None,
+) -> FitEvidenceRef:
+    """CPL fact 하나를 FIT 입력 근거로 옮긴다."""
+
+    return FitEvidenceRef(
+        fact_id=fact_id or _fit_fact_id(fact) or "",
+        field_name=field_name,
+        value_raw=fact.value_raw,
+        evidence=list(fact.evidence),
+        primary_component_id=fact.primary_component_id,
+        quantities=fact.quantities,
+    )
+
+
+def _hierarchy_sides(cpl: CplResult) -> tuple[FitSide, FitSide] | None:
+    """명시된 인접 계층 edge 하나를 FIT-4 좌우 근거로 만든다.
+
+    ``program_hierarchy.nodes`` 자체가 계층의 유일한 원천이다. 이름 순서나
+    문자열 포함으로 부모를 추측하지 않고, node 의 ``parent_node_id`` 를
+    실제 node id 와 대조한다. detail→sub 같은 동일한 인접 레벨의 형제 edge는
+    한 관계에 함께 넣을 수 있지만, chain 의 서로 다른 레벨은 같은 node 가
+    좌우에 동시에 들어가므로 가장 상위 인접 레벨 하나만 선택한다.
+    """
+
+    node_by_id: dict[str, CplFact] = {}
+    for fact in _facts_at(cpl, _HIERARCHY_PATH):
+        node_id = fact.program_node_id
+        if node_id and node_id not in node_by_id and (
+            isinstance(fact.value_raw, str) and fact.value_raw.strip()
+        ):
+            node_by_id[node_id] = fact
+    if not node_by_id:
+        return None
+
+    edges: list[tuple[CplFact, CplFact]] = []
+    for child in node_by_id.values():
+        parent_id = child.parent_program_node_id
+        parent = node_by_id.get(parent_id or "")
+        if parent is None:
+            continue
+        # parent_node_id 가 실제 node 를 가리키는 것이 직접적인 계층 근거다.
+        # 모델이 level 을 뒤집거나 누락해도 명시 edge 를 추측으로 무효화하지
+        # 않는다. level 은 아래에서 여러 edge를 안정적으로 고르는 데만 쓴다.
+        edges.append((parent, child))
+    if not edges:
+        return None
+
+    known_parent_levels = [
+        _PROGRAM_LEVEL_ORDER[parent.program_level]
+        for parent, _child in edges
+        if parent.program_level in _PROGRAM_LEVEL_ORDER
+    ]
+    selected_parent_level = min(known_parent_levels) if known_parent_levels else None
+    if selected_parent_level is not None:
+        edges = [
+            (parent, child)
+            for parent, child in edges
+            if _PROGRAM_LEVEL_ORDER.get(parent.program_level) == selected_parent_level
+        ]
+
+    parent_nodes: list[CplFact] = []
+    child_nodes: list[CplFact] = []
+    seen_parents: set[str] = set()
+    seen_children: set[str] = set()
+    for parent, child in edges:
+        if parent.program_node_id and parent.program_node_id not in seen_parents:
+            parent_nodes.append(parent)
+            seen_parents.add(parent.program_node_id)
+        if child.program_node_id and child.program_node_id not in seen_children:
+            child_nodes.append(child)
+            seen_children.add(child.program_node_id)
+
+    def side(nodes: list[CplFact], *, include_attached: bool) -> FitSide:
+        refs: list[FitEvidenceRef] = []
+        seen_fact_ids: set[str] = set()
+        field_names = [_HIERARCHY_PATH]
+        for node in nodes:
+            node_ref = _fit_ref(node, _HIERARCHY_PATH)
+            if node_ref.fact_id and node_ref.fact_id not in seen_fact_ids:
+                refs.append(node_ref)
+                seen_fact_ids.add(node_ref.fact_id)
+            if not include_attached or not node.program_node_id:
+                continue
+            for item in cpl.items:
+                for subfield in item.subfields:
+                    for fact in subfield.facts:
+                        if (
+                            fact is node
+                            or fact.program_node_id != node.program_node_id
+                            or subfield.profile_field not in _HIERARCHY_ALLOWED_PATHS
+                        ):
+                            continue
+                        ref = _fit_ref(fact, subfield.profile_field_name)
+                        if ref.fact_id and ref.fact_id not in seen_fact_ids:
+                            if isinstance(ref.value_raw, str) and ref.value_raw.strip():
+                                refs.append(ref)
+                                seen_fact_ids.add(ref.fact_id)
+                                if subfield.profile_field not in field_names:
+                                    field_names.append(subfield.profile_field)
+        return FitSide(
+            field_names=field_names,
+            facts=refs,
+        )
+
+    # Parent-side facts are included when they exist only if they were explicitly
+    # attached to that node; the node name alone is still valid comparison text.
+    return side(parent_nodes, include_attached=True), side(child_nodes, include_attached=True)
 
 
 def _side(cpl: CplResult, paths: tuple[str, ...]) -> FitSide:
@@ -503,6 +630,11 @@ _FIT_COMPARISON_INSTRUCTION = (
     f"status must be one of {[status.value for status in FitStatus]}. "
     "Cite only fact_ids that appear on that relation's own side in the payload. "
     "Never invent a fact_id, a value, or a relation that was not asked for. "
+    "For FIT-4, use a loose alpha anomaly-screening standard: an explicit parent-child "
+    "edge plus a visible minimum connection in the programme names or available grounded "
+    "facts is FIT when there is no explicit scope broadening, contradiction, or irrelevance. "
+    "Use NEEDS_REVIEW only for an explicit broadening, contradiction, or unrelated pair. "
+    "Use INSUFFICIENT only when the grounded comparison text is genuinely insufficient. "
     "Do not return any score, percentage, ratio, or grade."
 )
 
@@ -805,29 +937,14 @@ def analyze_fit(
     diagnostics: list[StageDiagnostic] = []
     results: dict[FitRelationId, FitRelationResult] = {}
 
-    # FIT-4: 정책 게이트. payload 를 만들지 않고 포트도 부르지 않는다.
-    # 계층 노드가 있다는 이유만으로 비교를 활성화하지 않는다 (초안 §7.1).
-    results[FitRelationId.FIT_4] = FitRelationResult(
-        relation_id=FitRelationId.FIT_4,
-        status=FitStatus.INSUFFICIENT,
-        reason_code=HIERARCHY_COMPARISON_NOT_AVAILABLE,
-        diagnostics=[
-            StageDiagnostic(
-                stage=_STAGE,
-                unit=FitRelationId.FIT_4.value,
-                reason_code=HIERARCHY_COMPARISON_NOT_AVAILABLE,
-                message=(
-                    "상위·하위 사업 계층 비교 기준이 확정되지 않았다. "
-                    "계층 노드 존재는 비교 활성화 근거가 아니다 (초안 §7.1)."
-                ),
-            )
-        ],
-    )
-
     # FIT-7: Rule. LLM 을 타지 않으므로 응답 실패의 영향도 받지 않는다.
     results[FitRelationId.FIT_7] = _fit7(cpl)
 
-    # 나머지 다섯 관계의 우측(그리고 FIT-5·6 의 좌측)은 CPL에서 바로 나온다.
+    # FIT-4 는 명시된 계층 edge 가 있을 때만 비교 입력을 만든다. edge 가
+    # 없으면 아래 공통 gate 가 COMPARISON_EVIDENCE_MISSING 으로 남긴다.
+    hierarchy_sides = _hierarchy_sides(cpl)
+
+    # 나머지 관계의 좌우 근거는 CPL에서 바로 나온다.
     delivery_left, delivery_right = _delivery_sides(cpl)
     sides: dict[FitRelationId, tuple[FitSide, FitSide]] = {
         FitRelationId.FIT_1: (FitSide(), _side(cpl, _TARGET_PATHS)),
@@ -839,6 +956,10 @@ def analyze_fit(
         ),
         FitRelationId.FIT_6: (delivery_left, delivery_right),
     }
+    # 마지막에 넣어 기존 관계 payload 의 순서는 유지하면서도 FIT-4 를 같은
+    # semantic LLM 배치에 포함한다. edge 가 없으면 빈 양쪽으로 공통 gate 를
+    # 태워 관계 결과는 유지하되 모델을 호출하지 않는다.
+    sides[FitRelationId.FIT_4] = hierarchy_sides or (FitSide(), FitSide())
 
     # 목적 의미 축 보완은 문서당 한 번이다. 우측 근거가 하나도 없으면 세
     # 관계 모두 어차피 게이트에서 걸리므로 호출하지 않는다.
@@ -874,7 +995,12 @@ def analyze_fit(
                         stage=_STAGE,
                         unit=relation_id.value,
                         reason_code=reason,
-                        message="비교 입력이 성립하지 않아 LLM 을 호출하지 않았다.",
+                        message=(
+                            "명시된 계층 edge 또는 비교 근거가 없어 "
+                            "FIT-4 비교 입력이 성립하지 않는다."
+                            if relation_id is FitRelationId.FIT_4
+                            else "비교 입력이 성립하지 않아 LLM 을 호출하지 않았다."
+                        ),
                     )
                 ],
             )

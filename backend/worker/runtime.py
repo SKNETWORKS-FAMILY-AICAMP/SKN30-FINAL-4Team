@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import signal
 import threading
+import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -157,6 +158,8 @@ class _Heartbeat:
         self._done = threading.Event()
         self.error: Exception | None = None
         self.lease_lost = False
+        # 리스는 claim 시점에 시작한다. 재시도 예산을 여기서부터 센다.
+        self._last_ok = time.monotonic()
         self._thread = threading.Thread(
             target=self._run,
             name=f"worker-heartbeat-{job.processing_run_pk}",
@@ -180,12 +183,27 @@ class _Heartbeat:
                     lease_seconds=self._lease_seconds,
                 )
             except Exception as error:  # repository errors are handled after the job
+                # 일시적인 DB 실패 한 번으로 **끝난 분석을 버리지 않는다.**
+                # 이 스레드가 죽으면 run_once 가 결과와 무관하게 실패를
+                # 기록한다. 리스는 마지막 성공 시점부터 lease_seconds 동안
+                # 살아 있으므로, 그 안에서는 다음 비트에 다시 시도한다.
+                # 한 비트만큼 여유를 남기고 포기해야 리스가 진짜 만료되기
+                # 전에 실패를 남길 수 있다.
+                budget = self._lease_seconds - self._heartbeat_seconds
+                if time.monotonic() - self._last_ok < budget:
+                    self._logger.warning(
+                        "worker heartbeat retrying processing_run_pk=%s error_type=%s",
+                        self._job.processing_run_pk,
+                        type(error).__name__,
+                    )
+                    continue
                 self.error = error
                 self._logger.exception(
                     "worker heartbeat failed processing_run_pk=%s",
                     self._job.processing_run_pk,
                 )
                 return
+            self._last_ok = time.monotonic()
             if not live:
                 self.lease_lost = True
                 self._logger.warning(
