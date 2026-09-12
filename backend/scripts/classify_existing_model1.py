@@ -11,6 +11,8 @@ It never exposes classifications through the browser API.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager
 from hashlib import sha256
 import json
 import os
@@ -29,6 +31,7 @@ from worker.existing_model1 import (
     ExistingModel1Backfill,
     ExistingModel1Prediction,
     ExistingModel1Profile,
+    current_model1_input_hashes,
 )
 
 try:
@@ -42,6 +45,54 @@ COMPONENT_NAME = "backfill_existing_model1"
 MODEL_ROLE = "existing_support_type_classification"
 MODEL1_SERVING_DIR_ENV = "PREREVIEW_MODEL1_SERVING_DIR"
 ML_PYTHON_EXECUTABLE_ENV = "PREREVIEW_ML_PYTHON_EXECUTABLE"
+ML_ROOT_ENV = "PREREVIEW_ML_ROOT"
+DEFAULT_ML_ROOT = BACKEND_ROOT.parent / "ml"
+
+# Logical keys—not host paths—are hashed.  This makes the runtime manifest
+# portable between the checked-out repository, an isolated serving mount, and
+# the backend image.  The second map deliberately includes every backend
+# module that assembles Model 1 input, invokes the child, or normalizes its
+# durable output; artifact bytes alone are not a reproducible classification
+# identity.
+SERVING_RUNTIME_MANIFEST_PATHS = {
+    "serving/inference.py": ("serving", "inference.py"),
+    "serving/label_mapping.json": ("serving", "label_mapping.json"),
+    "serving/model/config.json": ("serving", "model", "config.json"),
+    "serving/model/model.safetensors": ("serving", "model", "model.safetensors"),
+    "serving/tokenizer/tokenizer.json": ("serving", "tokenizer", "tokenizer.json"),
+    "serving/tokenizer/tokenizer_config.json": (
+        "serving", "tokenizer", "tokenizer_config.json"
+    ),
+    "pipeline/dl07_m1_apply.py": ("pipeline", "dl07_m1_apply.py"),
+    "runtime/requirements.txt": ("runtime", "requirements.txt"),
+}
+BACKEND_RUNTIME_MANIFEST_PATHS = {
+    "backend/scripts/classify_existing_model1.py": (
+        "scripts",
+        "classify_existing_model1.py",
+    ),
+    "backend/worker/existing_model1.py": ("worker", "existing_model1.py"),
+    "backend/worker/adapters/ml_child.py": (
+        "worker",
+        "adapters",
+        "ml_child.py",
+    ),
+    "backend/worker/adapters/ml_subprocess.py": (
+        "worker",
+        "adapters",
+        "ml_subprocess.py",
+    ),
+    "backend/worker/ml_reference.py": ("worker", "ml_reference.py"),
+    "backend/worker/contracts/ml_result.py": (
+        "worker",
+        "contracts",
+        "ml_result.py",
+    ),
+}
+RUNTIME_MANIFEST_PATHS = {
+    **SERVING_RUNTIME_MANIFEST_PATHS,
+    **BACKEND_RUNTIME_MANIFEST_PATHS,
+}
 
 
 def _load_dotenv() -> None:
@@ -92,6 +143,63 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _ml_root(env: Mapping[str, str] | None = None) -> Path:
+    values = os.environ if env is None else env
+    raw = values.get(ML_ROOT_ENV, "").strip()
+    return Path(raw).expanduser() if raw else DEFAULT_ML_ROOT
+
+
+def _runtime_manifest_files(
+    serving_root: Path,
+    ml_root: Path,
+    *,
+    backend_root: Path = BACKEND_ROOT,
+) -> dict[str, Path]:
+    """Map each fixed logical manifest name to its physical runtime file."""
+
+    serving_files = {
+        "serving/inference.py": serving_root / "inference.py",
+        "serving/label_mapping.json": serving_root / "label_mapping.json",
+        "serving/model/config.json": serving_root / "model" / "config.json",
+        "serving/model/model.safetensors": serving_root / "model" / "model.safetensors",
+        "serving/tokenizer/tokenizer.json": serving_root / "tokenizer" / "tokenizer.json",
+        "serving/tokenizer/tokenizer_config.json": serving_root
+        / "tokenizer"
+        / "tokenizer_config.json",
+        "pipeline/dl07_m1_apply.py": ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
+        "runtime/requirements.txt": ml_root / "serving" / "requirements.txt",
+    }
+    backend_files = {
+        logical_name: backend_root.joinpath(*relative_path)
+        for logical_name, relative_path in BACKEND_RUNTIME_MANIFEST_PATHS.items()
+    }
+    return {**serving_files, **backend_files}
+
+
+def _runtime_manifest_sha256(
+    serving_root: Path,
+    ml_root: Path,
+    *,
+    backend_root: Path = BACKEND_ROOT,
+) -> str:
+    """Hash the exact serving, pipeline, and backend Model 1 runtime."""
+
+    file_map = _runtime_manifest_files(
+        serving_root, ml_root, backend_root=backend_root
+    )
+    if set(file_map) != set(RUNTIME_MANIFEST_PATHS):  # defensive closed map check
+        raise RuntimeError("Model 1 runtime manifest file map is incomplete")
+    digests: dict[str, str] = {}
+    for logical_name, path in file_map.items():
+        if not path.is_file():
+            raise RuntimeError(f"Model 1 runtime manifest file is missing: {logical_name}")
+        digests[logical_name] = _sha256_file(path)
+    canonical = json.dumps(
+        digests, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return sha256(canonical).hexdigest()
+
+
 def _verify_model1_artifact(
     configuration: Mapping[str, Any], env: Mapping[str, str] | None = None
 ) -> tuple[Path, str]:
@@ -108,6 +216,19 @@ def _verify_model1_artifact(
     return root, actual
 
 
+def _verify_model1_runtime(
+    configuration: Mapping[str, Any], env: Mapping[str, str] | None = None
+) -> tuple[Path, str, str]:
+    """Verify the Model 1 weight and every code/config byte it executes."""
+
+    root, weight_sha256 = _verify_model1_artifact(configuration, env)
+    actual_manifest = _runtime_manifest_sha256(root, _ml_root(env))
+    expected_manifest = str(configuration.get("runtime_manifest_sha256") or "").strip().lower()
+    if actual_manifest != expected_manifest:
+        raise RuntimeError("Model 1 runtime manifest SHA-256 does not match configuration")
+    return root, weight_sha256, actual_manifest
+
+
 class PostgresExistingModel1Repository:
     """SQL implementation of the narrow backfill port.
 
@@ -120,8 +241,52 @@ class PostgresExistingModel1Repository:
         self._connection = connection
         self._configuration = dict(configuration)
 
+    def _rollback_preserving(self, primary_error: BaseException) -> None:
+        """Best-effort rollback without replacing the failure being handled."""
+
+        try:
+            self._connection.rollback()
+        except BaseException as rollback_error:
+            # Connection errors can contain DSNs or driver diagnostics. Keep
+            # only the exception class as a safe secondary diagnostic.
+            try:
+                primary_error.add_note(
+                    "database rollback also failed: "
+                    f"{type(rollback_error).__name__}"
+                )
+            except (AttributeError, TypeError):
+                pass
+
+    @contextmanager
+    def _mutating_cursor(self) -> Iterator[Any]:
+        """Commit one durable mutation or restore a usable connection.
+
+        PostgreSQL leaves a transaction aborted after any statement error.
+        Rolling back before re-raising preserves the original exception and
+        lets the backfill close its already-created processing run as failed.
+        """
+
+        try:
+            with self._connection.cursor() as cursor:
+                yield cursor
+            self._connection.commit()
+        except BaseException as error:
+            self._rollback_preserving(error)
+            raise
+
+    @contextmanager
+    def _reading_cursor(self) -> Iterator[Any]:
+        """Rollback a failed read so later audit mutations can still run."""
+
+        try:
+            with self._connection.cursor() as cursor:
+                yield cursor
+        except BaseException as error:
+            self._rollback_preserving(error)
+            raise
+
     def current_profiles(self) -> list[ExistingModel1Profile]:
-        with self._connection.cursor() as cursor:
+        with self._reading_cursor() as cursor:
             cursor.execute(
                 """
                 SELECT profile.profile_version_pk,
@@ -162,7 +327,7 @@ class PostgresExistingModel1Repository:
     def has_result(
         self, *, profile_version_id: str, configuration_id: str, input_sha256: str
     ) -> bool:
-        with self._connection.cursor() as cursor:
+        with self._reading_cursor() as cursor:
             cursor.execute(
                 """
                 SELECT 1
@@ -177,7 +342,7 @@ class PostgresExistingModel1Repository:
             return cursor.fetchone() is not None
 
     def start_run(self, *, configuration_id: str, profile_count: int) -> str:
-        with self._connection.cursor() as cursor:
+        with self._mutating_cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO ops.processing_run (
@@ -204,7 +369,6 @@ class PostgresExistingModel1Repository:
                 ),
             )
             run_id = cursor.fetchone()["processing_run_pk"]
-        self._connection.commit()
         return str(run_id)
 
     def record_invocation(
@@ -215,7 +379,7 @@ class PostgresExistingModel1Repository:
         output_sha256: str | None,
         status: str,
     ) -> None:
-        with self._connection.cursor() as cursor:
+        with self._mutating_cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO ops.model_invocation (
@@ -234,7 +398,6 @@ class PostgresExistingModel1Repository:
                     status,
                 ),
             )
-        self._connection.commit()
 
     def write_result(
         self,
@@ -248,7 +411,7 @@ class PostgresExistingModel1Repository:
         # ``판단보류`` is a successful model execution.  Its raw label/status
         # remain auditable; the migration's service query CASE-gates the
         # effective downstream support type to NULL.
-        with self._connection.cursor() as cursor:
+        with self._mutating_cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO retrieval.existing_profile_classification (
@@ -277,7 +440,6 @@ class PostgresExistingModel1Repository:
                     processing_run_id,
                 ),
             )
-        self._connection.commit()
 
     def write_failure(
         self,
@@ -290,7 +452,7 @@ class PostgresExistingModel1Repository:
     ) -> None:
         """Persist the local failure without manufacturing a prediction."""
 
-        with self._connection.cursor() as cursor:
+        with self._mutating_cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO retrieval.existing_profile_classification (
@@ -317,7 +479,6 @@ class PostgresExistingModel1Repository:
                     processing_run_id,
                 ),
             )
-        self._connection.commit()
 
     def verify_and_promote(
         self,
@@ -326,105 +487,89 @@ class PostgresExistingModel1Repository:
         expected_inputs: Mapping[str, str],
         processing_run_id: str,
     ) -> None:
-        try:
-            with self._connection.cursor() as cursor:
-                # Serialises config promotion with a changing current KB
-                # corpus.  Migration 31 uses this same named lock if profile
-                # activation starts to invalidate classifications in future.
-                cursor.execute(
-                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
-                    ("pre-review-existing-kb-current-and-classification-v1",),
-                )
-                cursor.execute(
-                    """
-                    SELECT classification_config_pk, model_id, artifact_sha256,
-                           input_assembly_version, is_active
-                    FROM retrieval.classification_configuration
-                    WHERE classification_config_pk = %s
-                    FOR UPDATE
-                    """,
-                    (configuration_id,),
-                )
-                config = cursor.fetchone()
-                if config is None:
-                    raise RuntimeError("classification configuration disappeared")
-                _validate_configuration(config)
-                cursor.execute(
-                    """
-                    SELECT profile.profile_version_pk
-                    FROM kb.profile_version AS profile
-                    JOIN kb.source_version AS source
-                      ON source.source_version_pk = profile.source_version_pk
-                    WHERE profile.is_current AND source.is_current
-                    ORDER BY profile.profile_version_pk
-                    """
-                )
-                current = {str(row["profile_version_pk"]) for row in cursor.fetchall()}
-                if current != set(expected_inputs):
-                    raise RuntimeError("current Existing corpus changed during Model 1 backfill")
-                cursor.execute(
-                    """
-                    SELECT profile_version_pk, lower(input_sha256) AS input_sha256,
-                           support_type_pred, confidence, prediction_status,
-                           execution_status
-                    FROM retrieval.existing_profile_classification AS classification
-                    JOIN kb.profile_version AS profile
-                      ON profile.profile_version_pk = classification.profile_version_pk
-                    JOIN kb.source_version AS source
-                      ON source.source_version_pk = profile.source_version_pk
-                    WHERE classification.classification_config_pk = %s
-                      AND profile.is_current AND source.is_current
-                    """,
-                    (configuration_id,),
-                )
-                rows = {str(row["profile_version_pk"]): row for row in cursor.fetchall()}
-                if set(rows) != current:
-                    raise RuntimeError("Model 1 backfill is not complete for the current Existing corpus")
-                for profile_id, expected_sha in expected_inputs.items():
-                    row = rows[profile_id]
-                    if (
-                        row["input_sha256"] != expected_sha.lower()
-                        or row["execution_status"] != "OK"
-                        or not isinstance(row["support_type_pred"], str)
-                        or row["confidence"] is None
-                        or not isinstance(row["prediction_status"], str)
-                    ):
-                        raise RuntimeError("Model 1 result verification failed")
-                cursor.execute(
-                    """
-                    UPDATE retrieval.classification_configuration
-                    SET is_active = FALSE
-                    WHERE is_active AND classification_config_pk <> %s
-                    """,
-                    (configuration_id,),
-                )
-                cursor.execute(
-                    """
-                    UPDATE retrieval.classification_configuration
-                    SET is_active = TRUE
-                    WHERE classification_config_pk = %s
-                    """,
-                    (configuration_id,),
-                )
-            self._connection.commit()
-        except Exception:
-            self._connection.rollback()
-            raise
+        with self._mutating_cursor() as cursor:
+            # Serialises config promotion with a changing current KB corpus.
+            # Migration 31 uses this same named lock for KB invalidation.
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                ("pre-review-existing-kb-current-and-classification-v1",),
+            )
+            cursor.execute(
+                """
+                SELECT classification_config_pk, model_id, artifact_sha256,
+                       runtime_manifest_sha256, input_assembly_version, is_active
+                FROM retrieval.classification_configuration
+                WHERE classification_config_pk = %s
+                FOR UPDATE
+                """,
+                (configuration_id,),
+            )
+            config = cursor.fetchone()
+            if config is None:
+                raise RuntimeError("classification configuration disappeared")
+            _validate_configuration(config)
+            # Re-read exact model inputs after obtaining the shared KB lock.
+            # A stable UUID set alone cannot catch changed titles/fact values.
+            current_inputs = current_model1_input_hashes(self.current_profiles())
+            if current_inputs != dict(expected_inputs):
+                raise RuntimeError("current Existing Model 1 inputs changed during backfill")
+            current = set(current_inputs)
+            cursor.execute(
+                """
+                SELECT classification.profile_version_pk,
+                       lower(classification.input_sha256) AS input_sha256,
+                       classification.support_type_pred,
+                       classification.confidence,
+                       classification.prediction_status,
+                       classification.execution_status
+                FROM retrieval.existing_profile_classification AS classification
+                JOIN kb.profile_version AS profile
+                  ON profile.profile_version_pk = classification.profile_version_pk
+                JOIN kb.source_version AS source
+                  ON source.source_version_pk = profile.source_version_pk
+                WHERE classification.classification_config_pk = %s
+                  AND profile.is_current AND source.is_current
+                """,
+                (configuration_id,),
+            )
+            rows = {str(row["profile_version_pk"]): row for row in cursor.fetchall()}
+            if set(rows) != current:
+                raise RuntimeError("Model 1 backfill is not complete for the current Existing corpus")
+            for profile_id, expected_sha in expected_inputs.items():
+                row = rows[profile_id]
+                if (
+                    row["input_sha256"] != expected_sha.lower()
+                    or row["execution_status"] != "OK"
+                    or not isinstance(row["support_type_pred"], str)
+                    or row["confidence"] is None
+                    or not isinstance(row["prediction_status"], str)
+                ):
+                    raise RuntimeError("Model 1 result verification failed")
+            # Migration 31 forbids direct inactive -> active updates.  The
+            # SECURITY DEFINER function is the single DB-side promotion gate
+            # and independently rechecks non-empty full-corpus completion.
+            cursor.execute(
+                "SELECT retrieval.promote_classification_configuration(%s)",
+                (configuration_id,),
+            )
+            cursor.fetchone()  # consume the SELECT void result before commit
 
     def finish_run(
         self, *, processing_run_id: str, succeeded: bool, error_code: str | None = None
     ) -> None:
-        with self._connection.cursor() as cursor:
+        with self._mutating_cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE ops.processing_run
                 SET status = %s, finished_at = now(), error_code = %s,
-                    error_message = CASE WHEN %s IS NULL THEN NULL ELSE 'Existing Model 1 backfill failed.' END
+                    error_message = CASE
+                        WHEN %s::TEXT IS NULL THEN NULL
+                        ELSE 'Existing Model 1 backfill failed.'
+                    END
                 WHERE processing_run_pk = %s AND status = 'running'
                 """,
                 ("succeeded" if succeeded else "failed", error_code, error_code, processing_run_id),
             )
-        self._connection.commit()
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -440,9 +585,14 @@ def _validate_configuration(row: Mapping[str, Any]) -> None:
         raise RuntimeError("configuration is not for model_1_support_type")
     if row.get("input_assembly_version") != MODEL1_EXISTING_INPUT_ASSEMBLY_VERSION:
         raise RuntimeError("classification configuration input assembly version does not match")
-    artifact = row.get("artifact_sha256")
-    if not isinstance(artifact, str) or len(artifact.strip()) != 64:
-        raise RuntimeError("classification configuration artifact SHA-256 is invalid")
+    for key in ("artifact_sha256", "runtime_manifest_sha256"):
+        value = row.get(key)
+        if (
+            not isinstance(value, str)
+            or len(value.strip()) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in value.strip())
+        ):
+            raise RuntimeError(f"classification configuration {key} is invalid")
 
 
 def _configuration(connection: Any, configuration_id: str) -> Mapping[str, Any]:
@@ -450,7 +600,8 @@ def _configuration(connection: Any, configuration_id: str) -> Mapping[str, Any]:
         cursor.execute(
             """
             SELECT classification_config_pk, model_id, artifact_sha256,
-                   input_assembly_version, producer_version, is_active
+                   runtime_manifest_sha256, input_assembly_version,
+                   producer_version, is_active
             FROM retrieval.classification_configuration
             WHERE classification_config_pk = %s
             """,
@@ -500,7 +651,7 @@ def main() -> int:
             ).strip() or sys.executable
         )
         if not args.dry_run:
-            _verify_model1_artifact(configuration)
+            _verify_model1_runtime(configuration)
         repository = PostgresExistingModel1Repository(connection, configuration=configuration)
         model = Model1SubprocessMlModel(
             model1_command(python_executable=python_executable),

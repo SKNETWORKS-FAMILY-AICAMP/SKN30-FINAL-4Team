@@ -92,12 +92,16 @@ DECLARE
     v2_pk UUID;
     v_touched_profile_pks UUID[];
 BEGIN
-    -- Parent and retrieval-input child mutations share this lock with the
-    -- backfill promoter.  It also makes the current-parent check below see a
-    -- serial order rather than an unrelated in-flight version transition.
-    PERFORM pg_advisory_xact_lock(
+    -- A row trigger can run after PostgreSQL acquired tuple locks.  Waiting
+    -- for an importer/promoter's embedding fence here can form a lock cycle,
+    -- so writers fail as retryable serialization conflicts instead. Trusted
+    -- importer/promoter paths still take their blocking locks in C→E order.
+    IF NOT pg_try_advisory_xact_lock(
         hashtextextended('pre-review-existing-kb-current-and-embedding-v1', 0)
-    );
+    ) THEN
+        RAISE EXCEPTION 'EMBEDDING_INVALIDATION_LOCK_UNAVAILABLE'
+            USING ERRCODE = '40001';
+    END IF;
 
     IF TG_TABLE_NAME IN ('support_component', 'fact_occurrence') THEN
         IF TG_OP = 'DELETE' THEN

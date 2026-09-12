@@ -50,7 +50,7 @@ PROFILE_SCHEMA = "existing_program_profile/v0.2"
 SOURCE_KINDS = frozenset({"hwp", "hwpx", "pdf", "markdown_fixture"})
 SHA256_PATTERN = re.compile(r"^[0-9A-Fa-f]{64}$")
 LEGACY_ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
-# Must remain byte-for-byte aligned with migration 28.  Existing KB current
+# Must remain byte-for-byte aligned with migration 30.  Existing KB current
 # version changes take this same transaction-scoped lock and demote v2 if they
 # occur after a completed backfill.  That makes the final verification and
 # promotion serial with every supported current-version transition.

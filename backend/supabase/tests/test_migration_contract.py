@@ -63,6 +63,7 @@ class MigrationContractTest:
         "29_repair_component_embedding_activation.sql",
         "30_serialise_existing_kb_embedding_activation.sql",
         "31_existing_profile_model1_classification.sql",
+        "32_existing_profile_model1_classification_hardening.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -392,6 +393,9 @@ class MigrationContractTest:
         assert "NEW.structured_artifact_pk" in activation_serialisation
         assert "TG_OP = 'DELETE'" in activation_serialisation
         assert "AFTER INSERT OR UPDATE OR DELETE" in activation_serialisation
+        assert "pg_try_advisory_xact_lock" in activation_serialisation
+        assert "EMBEDDING_INVALIDATION_LOCK_UNAVAILABLE" in activation_serialisation
+        assert "ERRCODE = '40001'" in activation_serialisation
         # Migration 30 is reapplied by the local bootstrap script.  It takes
         # a one-time revalidation gate before replacing triggers, so a
         # healthy reapply preserves a complete active v2 corpus while a
@@ -436,24 +440,116 @@ class MigrationContractTest:
 
     def test_existing_model1_classification_contract(self):
         """Existing Model 1 enrichment remains versioned and service-only."""
-        classification = (
+        legacy_classification = (
             self.MIGRATIONS_DIR / "31_existing_profile_model1_classification.sql"
         ).read_text()
+        classification = (
+            self.MIGRATIONS_DIR
+            / "32_existing_profile_model1_classification_hardening.sql"
+        ).read_text()
+        classification_all = legacy_classification + classification
 
-        assert "CREATE TABLE IF NOT EXISTS retrieval.classification_configuration" in classification
-        assert "CREATE TABLE IF NOT EXISTS retrieval.existing_profile_classification" in classification
-        assert "PRIMARY KEY (profile_version_pk, classification_config_pk)" in classification
-        assert "REFERENCES kb.profile_version(profile_version_pk) ON DELETE CASCADE" in classification
-        assert "REFERENCES ops.processing_run(processing_run_pk) ON DELETE SET NULL" in classification
-        assert "execution_status IN ('OK', 'UNAVAILABLE', 'FAILED')" in classification
-        assert "prediction_status IN ('판단보류', '참고용', '신뢰')" in classification
-        assert "uq_retrieval_one_active_classification_configuration" in classification
+        # m31 is replayed before m32 on every ledgerless apply. It must not
+        # commit an older trigger/projection boundary while m32 already exists.
+        assert "SECURITY DEFINER" in legacy_classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.assert_classification_configuration_complete()",
+            1,
+        )[1].split("$$;", 1)[0]
+        assert "pg_try_advisory_xact_lock" in legacy_classification
+        assert "CLASSIFICATION_INVALIDATION_LOCK_UNAVAILABLE" in legacy_classification
+        assert "CREATE TRIGGER trg_kb_support_component_classification_activation" not in legacy_classification
+        assert "classification_config_pk UUID" in legacy_classification
+
+        assert "CREATE TABLE IF NOT EXISTS retrieval.classification_configuration" in classification_all
+        assert "CREATE TABLE IF NOT EXISTS retrieval.existing_profile_classification" in classification_all
+        assert "PRIMARY KEY (profile_version_pk, classification_config_pk)" in classification_all
+        assert "REFERENCES kb.profile_version(profile_version_pk) ON DELETE CASCADE" in classification_all
+        assert "REFERENCES ops.processing_run(processing_run_pk) ON DELETE SET NULL" in classification_all
+        assert "execution_status IN ('OK', 'UNAVAILABLE', 'FAILED')" in classification_all
+        assert "prediction_status IN ('판단보류', '참고용', '신뢰')" in classification_all
+        assert "uq_retrieval_one_active_classification_configuration" in classification_all
+        assert "runtime_manifest_sha256" in classification_all
+        assert "d44007342e06d7f20039d53e140e04221e8029b4cd6735dd3fbacc6864eb7912" in classification_all
+        assert "pre-review-existing-model1-runtime-v2" in classification_all
+        assert "uq_retrieval_classification_configuration_identity" in classification
+        assert "CLASSIFICATION_CONFIGURATION_IDENTITY_IMMUTABLE" in classification
+        assert "CLASSIFICATION_CONFIGURATION_EMPTY_CURRENT_CORPUS" in classification
         assert "CLASSIFICATION_CONFIGURATION_INCOMPLETE" in classification
         assert "execution_status = 'OK'" in classification
         assert "PREDICTION_WITHHELD" in classification
-        assert "ALTER TABLE retrieval.classification_configuration ENABLE ROW LEVEL SECURITY" in classification
-        assert "ALTER TABLE retrieval.existing_profile_classification ENABLE ROW LEVEL SECURITY" in classification
-        assert "TO service_role" in classification
+        assert "ALTER TABLE retrieval.classification_configuration ENABLE ROW LEVEL SECURITY" in classification_all
+        assert "ALTER TABLE retrieval.existing_profile_classification ENABLE ROW LEVEL SECURITY" in classification_all
+        assert "TO service_role" in classification_all
+        assert "GRANT USAGE ON SCHEMA retrieval TO service_role" in classification
+        activation_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.assert_classification_configuration_complete()",
+            1,
+        )[1].split("$$;", 1)[0]
+        projection_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.get_active_existing_profile_classifications()",
+            1,
+        )[1].split("$$;", 1)[0]
+        assert "SECURITY DEFINER" in activation_function
+        assert "SET search_path = pg_catalog, retrieval, kb" in activation_function
+        assert "SECURITY DEFINER" in projection_function
+        assert "SET search_path = pg_catalog, retrieval, kb" in projection_function
+        assert "REVOKE ALL ON FUNCTION retrieval.assert_classification_configuration_complete()" in classification
+        assert "GRANT EXECUTE ON FUNCTION retrieval.get_active_existing_profile_classifications()" in classification
+        assert "CREATE OR REPLACE FUNCTION retrieval.promote_classification_configuration(" in classification
+        assert "CLASSIFICATION_CONFIGURATION_DIRECT_ACTIVATION_FORBIDDEN" in classification
+        promotion_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.promote_classification_configuration(",
+            1,
+        )[1].split("$$;", 1)[0]
+        assert "SECURITY DEFINER" in promotion_function
+        assert "pg_advisory_xact_lock" in promotion_function
+        assert "FOR UPDATE" in promotion_function
+        assert "GRANT EXECUTE ON FUNCTION retrieval.promote_classification_configuration(UUID)" in classification
+        invalidation_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.invalidate_active_classification_on_kb_change()",
+            1,
+        )[1].split("$$;", 1)[0]
+        # This one trigger function is attached to notice, source_profile,
+        # source_version, profile_version, and fact_occurrence. Accessing
+        # notice-only OLD/NEW fields in a compound boolean condition causes
+        # PostgreSQL to resolve them for source_version rows too.
+        assert "IF TG_TABLE_NAME = 'notice' THEN" in invalidation_function
+        assert "IF OLD.portal_metadata ->> 'title'" in invalidation_function
+        assert "pg_try_advisory_xact_lock" in invalidation_function
+        assert "CLASSIFICATION_INVALIDATION_LOCK_UNAVAILABLE" in invalidation_function
+        assert "ERRCODE = '40001'" in invalidation_function
+        assert "ELSIF TG_TABLE_NAME = 'source_profile' THEN" in invalidation_function
+        assert "trg_kb_source_profile_classification_notice_activation" in classification
+        assert "DROP TRIGGER IF EXISTS trg_kb_support_component_classification_activation" in classification
+        assert "CREATE TRIGGER trg_kb_support_component_classification_activation" not in classification
+
+    def test_storage_owner_windows_preserve_project_function_ownership(self):
+        """Storage policy DDL needs its official table owner, not postgres."""
+        storage_11 = (self.MIGRATIONS_DIR / "11_storage_policies.sql").read_text()
+        storage_14 = (self.MIGRATIONS_DIR / "14_storage_upload_hardening.sql").read_text()
+        apply_script = (self.MIGRATIONS_DIR.parent / "apply_migrations.sh").read_text()
+
+        assert "psql -U supabase_admin -d postgres" in apply_script
+        assert "SET ROLE postgres;" in apply_script
+        assert "SET LOCAL ROLE supabase_storage_admin;" in storage_11
+        assert "SET LOCAL ROLE supabase_storage_admin;" in storage_14
+        assert "DROP POLICY IF EXISTS request_temp_insert_own_prefix" in storage_11
+        assert "DROP POLICY IF EXISTS request_temp_delete_own_prefix" in storage_11
+        assert "CREATE POLICY request_temp_insert_own_prefix" not in storage_11
+        assert "CREATE POLICY request_temp_delete_own_prefix" not in storage_11
+        assert "pre_review.m14_storage_workspace_usage_preexisting" in storage_14
+        assert "pre_review.m14_storage_auth_usage_preexisting" in storage_14
+        assert "GRANT USAGE ON SCHEMA auth TO supabase_storage_admin" in storage_14
+        assert "REVOKE USAGE ON SCHEMA auth FROM supabase_storage_admin" in storage_14
+        assert "GRANT USAGE ON SCHEMA workspace TO supabase_storage_admin" in storage_14
+        assert "REVOKE USAGE ON SCHEMA workspace FROM supabase_storage_admin" in storage_14
+        function_start = storage_14.index(
+            "CREATE OR REPLACE FUNCTION workspace.can_manage_own_reserved_source"
+        )
+        before_function = storage_14[:function_start]
+        after_function = storage_14[function_start:]
+        assert "SET LOCAL ROLE postgres;" in before_function
+        assert "SET LOCAL ROLE supabase_storage_admin;" in after_function
 
     def test_analysis_worker_queue_contract(self):
         """The durable worker queue must be PostgreSQL-only and fenced."""

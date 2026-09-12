@@ -1175,8 +1175,11 @@ class FakeCursor:
     def __exit__(self, *_: Any) -> None:
         return None
 
-    def execute(self, query: Any, *_: Any) -> None:
+    def execute(self, query: Any, *params: Any) -> None:
         self.connection.queries.append(str(query))
+        self.connection.query_params.append(
+            params[0] if len(params) == 1 and isinstance(params[0], tuple) else params
+        )
         return None
 
     def fetchone(self) -> dict[str, str]:
@@ -1188,6 +1191,7 @@ class FakeConnection:
         self.commits = 0
         self.rollbacks = 0
         self.queries: list[str] = []
+        self.query_params: list[tuple[Any, ...]] = []
 
     def cursor(self) -> FakeCursor:
         return FakeCursor(self)
@@ -1219,16 +1223,28 @@ def test_single_record_db_writes_commit_only_at_transaction_boundary() -> None:
     before_already = len(connection.queries)
     already = run_transaction(database, lambda: {"status": "already_ingested"})
     already_queries = connection.queries[before_already:]
+    already_params = connection.query_params[before_already:]
     assert already == {"status": "already_ingested"}
     assert "pg_advisory_xact_lock" in already_queries[0]
+    assert "pg_advisory_xact_lock" in already_queries[1]
+    assert already_params[:2] == [
+        (single_cli.CLASSIFICATION_ACTIVATION_LOCK,),
+        (single_cli.CURRENT_VERSION_ACTIVATION_LOCK,),
+    ]
     assert not any("demoted_v2" in query for query in already_queries)
 
     before_ingested = len(connection.queries)
     result = run_transaction(database, lambda: {"status": "ingested"})
     ingested_queries = connection.queries[before_ingested:]
+    ingested_params = connection.query_params[before_ingested:]
     assert result == {"status": "ingested"}
     assert connection.commits == 2
     assert "pg_advisory_xact_lock" in ingested_queries[0]
+    assert "pg_advisory_xact_lock" in ingested_queries[1]
+    assert ingested_params[:2] == [
+        (single_cli.CLASSIFICATION_ACTIVATION_LOCK,),
+        (single_cli.CURRENT_VERSION_ACTIVATION_LOCK,),
+    ]
     assert any("demoted_v2" in query for query in ingested_queries)
 
 

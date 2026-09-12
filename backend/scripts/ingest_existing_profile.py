@@ -33,17 +33,26 @@ EXISTING_SPECIFIC = {
     "payment_terms", "duplicate_support_conditions", "applicable_entity", "delivery_roles",
 }
 CURRENT_VERSION_ACTIVATION_LOCK = "pre-review-existing-kb-current-and-embedding-v1"
+CLASSIFICATION_ACTIVATION_LOCK = "pre-review-existing-kb-current-and-classification-v1"
 
 
 def _lock_current_version_activation(database: "KnowledgeBase") -> None:
     """Serialise import with the staged v2 activation transaction.
 
-    Migration 28 enforces the same invariant for every SQL writer.  Keeping
+    Migration 30 enforces the same invariant for every SQL writer.  Keeping
     this lock/demotion boundary in the official importer also protects the
-    short upgrade window while migration 27/28 are being applied.
+    short upgrade window while migration 29/30 are being applied.
     """
 
     with database.connection.cursor() as cursor:
+        # Every KB write path takes classification first, then embedding.  The
+        # corresponding Model 1 promoter takes only the first lock; the v2
+        # embedding promoter takes only the second.  Reversing these here can
+        # deadlock an import against a future path that needs both.
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (CLASSIFICATION_ACTIVATION_LOCK,),
+        )
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (CURRENT_VERSION_ACTIVATION_LOCK,),

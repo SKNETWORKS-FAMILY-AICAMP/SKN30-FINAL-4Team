@@ -45,7 +45,8 @@ TARGET_FIELDS = (
     "duplicate_support_conditions",
     "participation_requirements",
 )
-APPROVED_FACT_STATUSES = frozenset({"identified", "partial", "partially_identified"})
+# ``kb.fact_occurrence.status`` is constrained to these exact two values.
+APPROVED_FACT_STATUSES = frozenset({"identified", "partial"})
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -92,6 +93,23 @@ class BackfillSummary:
     skipped: int
     dry_run: bool
     promoted: bool
+
+
+def current_model1_input_hashes(
+    profiles: Iterable[ExistingModel1Profile],
+) -> dict[str, str]:
+    """Assemble a complete current-corpus identity map for promotion checks.
+
+    The map deliberately contains the same four-field input hash that is sent
+    to the subprocess.  Rebuilding it under the promotion advisory lock makes
+    title/fact changes detectable even when the Profile UUID itself is stable.
+    """
+
+    values = [assemble_existing_model1_input(profile) for profile in profiles]
+    result = {item.profile_version_id: item.input_sha256 for item in values}
+    if len(result) != len(values):
+        raise ValueError("current Existing corpus has duplicate profile versions")
+    return result
 
 
 class ExistingModel1BackfillRepository(Protocol):
@@ -264,14 +282,11 @@ class ExistingModel1Backfill:
     def run(self, *, dry_run: bool = False) -> BackfillSummary:
         profiles = self._repository.current_profiles()
         inputs = [assemble_existing_model1_input(profile) for profile in profiles]
-        ids = [item.profile_version_id for item in inputs]
-        if len(ids) != len(set(ids)):
-            raise ValueError("current Existing corpus has duplicate profile versions")
+        expected = current_model1_input_hashes(profiles)
         if not inputs:
             raise ValueError("current Existing corpus is empty; refusing configuration promotion")
         if any(len(item.missing_fields) == len(MODEL1_FIELDS) for item in inputs):
             raise ValueError("an Existing profile has no approved Model 1 input")
-        expected = {item.profile_version_id: item.input_sha256 for item in inputs}
         if dry_run:
             return BackfillSummary(len(inputs), predicted=0, skipped=0, dry_run=True, promoted=False)
 
@@ -328,9 +343,20 @@ class ExistingModel1Backfill:
                 processing_run_id=run_id,
             )
         except Exception as error:
-            self._repository.finish_run(
-                processing_run_id=run_id, succeeded=False, error_code=type(error).__name__
-            )
+            try:
+                self._repository.finish_run(
+                    processing_run_id=run_id,
+                    succeeded=False,
+                    error_code=type(error).__name__,
+                )
+            except Exception as finish_error:
+                # Finalisation is best-effort after the real work has failed.
+                # Preserve the original traceback and expose only the finish
+                # exception type in its diagnostic note—never DB details.
+                error.add_note(
+                    "processing run failure finalization also failed: "
+                    f"{type(finish_error).__name__}"
+                )
             raise
         self._repository.finish_run(processing_run_id=run_id, succeeded=True)
         return BackfillSummary(len(inputs), predicted, skipped, dry_run=False, promoted=True)
