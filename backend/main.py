@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.auth import parse_allowed_origins
 from app.api.router import router as api_router
 from app.api.v1.openapi_models import HealthStatusResponse, error_responses
+from app.infrastructure.postgres_conversations import PostgresConversationRepository
 from app.infrastructure.postgres_analysis_runs import PostgresAnalysisRunRepository
 from app.infrastructure.postgres_results import PostgresResultRepository
 from app.infrastructure.supabase_storage import SupabasePrivateObjectStorage
@@ -38,8 +39,12 @@ def create_app() -> FastAPI:
 
     app.state.analysis_run_service = None
     app.state.result_repository = None
+    app.state.conversation_repository = None
     if not app.state.offline_mode and app.state.database_url:
         app.state.result_repository = PostgresResultRepository(app.state.database_url)
+        app.state.conversation_repository = PostgresConversationRepository(
+            app.state.database_url
+        )
     if (
         not app.state.offline_mode
         and app.state.supabase_url

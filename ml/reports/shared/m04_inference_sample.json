@@ -1,0 +1,38 @@
+{
+  "purpose": "학습·추론 입력을 눈으로 대조하기 위한 균등 표본",
+  "source_rows": 1570,
+  "sample_rows": 16,
+  "per_category": 2,
+  "categories": [
+    "경영",
+    "기술",
+    "수출",
+    "내수",
+    "창업",
+    "인력",
+    "금융",
+    "기타"
+  ],
+  "by_category": {
+    "경영": 2,
+    "기술": 2,
+    "수출": 2,
+    "내수": 2,
+    "창업": 2,
+    "인력": 2,
+    "금융": 2,
+    "기타": 2
+  },
+  "empty_fields": {
+    "purpose": 0,
+    "content": 0,
+    "target_text": 0
+  },
+  "n_chars_median": 312,
+  "train_n_chars_median": 181,
+  "rule": "summary_text 를 ☞ 로 분해해 제목+목적+내용+대상 순서로 재조립. 원본 target_text 는 학습의 ③대상과 내용이 달라 쓰지 않는다.",
+  "outputs": [
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/inference_sample_aligned.parquet",
+    "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports/m10_inference_sample.md"
+  ]
+}

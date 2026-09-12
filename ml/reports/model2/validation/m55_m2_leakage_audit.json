@@ -1,0 +1,148 @@
+{
+  "step": "STEP 2 — 제목 feature 누수 최종 점검",
+  "n": 1877,
+  "baselines": {
+    "program_stem": 0.531470956163669,
+    "normalized_title": 0.5498764671932799
+  },
+  "mask_probes": [
+    {
+      "input": "최대 1억원 지원 스마트공장 구축사업",
+      "expected": "최대 [AMOUNT] 지원 스마트공장 구축사업",
+      "got": "최대 [AMOUNT] 지원 스마트공장 구축사업"
+    },
+    {
+      "input": "기업당 3,000만원 이내 지원사업",
+      "expected": "기업당 [AMOUNT] 이내 지원사업",
+      "got": "기업당 [AMOUNT] 이내 지원사업"
+    },
+    {
+      "input": "자부담 50% 컨설팅 지원",
+      "expected": "자부담 [AMOUNT] 컨설팅 지원",
+      "got": "자부담 [AMOUNT] 컨설팅 지원"
+    },
+    {
+      "input": "5천만원 한도 융자 공고",
+      "expected": "[AMOUNT] 한도 융자 공고",
+      "got": "[AMOUNT] 한도 융자 공고"
+    },
+    {
+      "input": "2026년 중소기업 경영안정자금 지원 공고",
+      "expected": "2026년 중소기업 경영안정자금 지원 공고",
+      "got": "2026년 중소기업 경영안정자금 지원 공고"
+    }
+  ],
+  "title_pattern_hits": {
+    "금액(숫자+단위)": 0,
+    "금액(단위어 생략)": 0,
+    "비율(%)": 0,
+    "한도·최대·이내·상한": 0,
+    "기업당·업체당·과제당": 0
+  },
+  "titles_changed_by_masking": 0,
+  "results": {
+    "raw title": {
+      "MAE_log10": 0.4155,
+      "MedAE_log10": 0.3122,
+      "geo_mean_error_x": 2.603,
+      "within_2x": 0.4875,
+      "within_3x": 0.6761,
+      "improvement": 0.2182
+    },
+    "amount-masked title": {
+      "MAE_log10": 0.4155,
+      "MedAE_log10": 0.3122,
+      "geo_mean_error_x": 2.603,
+      "within_2x": 0.4875,
+      "within_3x": 0.6761,
+      "improvement": 0.2182
+    },
+    "엄격그룹(정규화제목)": {
+      "MAE_log10": 0.4356,
+      "MedAE_log10": 0.3399,
+      "geo_mean_error_x": 2.727,
+      "within_2x": 0.4486,
+      "within_3x": 0.6425,
+      "improvement": 0.2078
+    },
+    "엄격그룹 현행(M45)": {
+      "MAE_log10": 0.4858,
+      "MedAE_log10": 0.3775,
+      "geo_mean_error_x": 3.06,
+      "within_2x": 0.4182,
+      "within_3x": 0.6031,
+      "improvement": 0.1165
+    }
+  },
+  "ablation": {
+    "A. 구조화 feature 만 | program_stem": {
+      "MAE_log10": 0.4536,
+      "MedAE_log10": 0.3414,
+      "geo_mean_error_x": 2.842,
+      "within_2x": 0.4491,
+      "within_3x": 0.6308,
+      "improvement": 0.1465
+    },
+    "A. 구조화 feature 만 | normalized_title": {
+      "MAE_log10": 0.4758,
+      "MedAE_log10": 0.3642,
+      "geo_mean_error_x": 2.991,
+      "within_2x": 0.4326,
+      "within_3x": 0.6105,
+      "improvement": 0.1347
+    },
+    "B. 제목 feature 만 | program_stem": {
+      "MAE_log10": 0.5037,
+      "MedAE_log10": 0.3857,
+      "geo_mean_error_x": 3.189,
+      "within_2x": 0.406,
+      "within_3x": 0.5844,
+      "improvement": 0.0523
+    },
+    "B. 제목 feature 만 | normalized_title": {
+      "MAE_log10": 0.5376,
+      "MedAE_log10": 0.4167,
+      "geo_mean_error_x": 3.448,
+      "within_2x": 0.3841,
+      "within_3x": 0.5535,
+      "improvement": 0.0223
+    },
+    "C. 구조화 + 제목 | program_stem": {
+      "MAE_log10": 0.4155,
+      "MedAE_log10": 0.3122,
+      "geo_mean_error_x": 2.603,
+      "within_2x": 0.4875,
+      "within_3x": 0.6761,
+      "improvement": 0.2182
+    },
+    "C. 구조화 + 제목 | normalized_title": {
+      "MAE_log10": 0.4356,
+      "MedAE_log10": 0.3399,
+      "geo_mean_error_x": 2.727,
+      "within_2x": 0.4486,
+      "within_3x": 0.6425,
+      "improvement": 0.2078
+    }
+  },
+  "family": {
+    "n_groups_program_stem": 1748,
+    "n_groups_normalized_title": 1483,
+    "families_ge2": 224,
+    "rows_in_families_ge2": 618,
+    "largest_family": 12,
+    "families_split_across_folds_normalized": 0,
+    "families_split_across_folds_program_stem": 122
+  },
+  "mask_delta_MAE": 0.0,
+  "gain_kept_after_masking": 1.0,
+  "checks": {
+    "마스커 자체 점검 통과": true,
+    "제목에 금액·비율 문자열 없음": true,
+    "마스킹 후 개선 유지(개선분의 90% 이상)": true,
+    "정규화제목 그룹에서도 개선 유지(>=15%)": true,
+    "계열이 fold 를 넘지 않음": true,
+    "C(구조화+제목) 가 A·B 단독보다 우세": true,
+    "근거문 미사용": true
+  },
+  "verdict": "PASS"
+}

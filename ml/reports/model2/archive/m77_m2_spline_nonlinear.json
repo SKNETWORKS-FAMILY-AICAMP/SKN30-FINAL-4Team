@@ -1,0 +1,6911 @@
+{
+  "purpose": "연속형 사업설계 변수(선정기업 수·지원비율·사업기간)와 지원규모 사이의 비선형 곡선 관계를 명시적으로 모델링하면 M73(0.3563)에 추가 성능이 있는가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "target": "log10(per_recipient), basis=stated_cap",
+    "split": "GroupKFold(5), group=program_stem / normalized_title",
+    "features": "M69 G 단계 (m2-feat-v2 + 원천층 m2-source-v1 + 본문 SVD64)",
+    "routing": "M73 soft / ordinal_xgb (구간 33.3/66.7)",
+    "regressor": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    },
+    "bucket_cuts": [
+      33.333333333333336,
+      66.66666666666667
+    ]
+  },
+  "changed": "numeric feature 의 표현 하나 — 기존 컬럼 위에 spline basis 추가",
+  "spline_protocol": {
+    "candidate_spec": {
+      "degree": 3,
+      "n_knots": 4
+    },
+    "spec_fixed_before_data": true,
+    "sweep": [
+      {
+        "degree": 2,
+        "n_knots": 3
+      },
+      {
+        "degree": 2,
+        "n_knots": 5
+      },
+      {
+        "degree": 3,
+        "n_knots": 3
+      },
+      {
+        "degree": 3,
+        "n_knots": 5
+      }
+    ],
+    "sweep_role": "진단용 곡선. 여기서 최저값을 골라 승격 근거로 쓰지 않는다",
+    "knots": "quantile (outer train 분위수)",
+    "extrapolation": "linear",
+    "missing": "NaN 유지 — XGB 자체 분기. 대치하지 않는다",
+    "log1p_features": [
+      "support_count"
+    ],
+    "targets": [
+      "support_count",
+      "support_ratio",
+      "project_duration"
+    ]
+  },
+  "gam_implementation": {
+    "library": "pygam 미설치 — sklearn SplineTransformer + RidgeCV 로 동일 수식(가법 spline 회귀)을 직접 구성",
+    "spec": {
+      "degree": 3,
+      "n_knots": 8
+    },
+    "alphas": "logspace(-3, 4, 22), outer train RidgeCV",
+    "edf": "trace(H) = Σ s²/(s²+α)",
+    "band": "fold 5개 곡선의 ±1.96σ",
+    "G1": "numeric only",
+    "G2": "numeric + categorical one-hot",
+    "G3": "G2 + M73 global 예측 항 (train 쪽은 inner OOF)"
+  },
+  "diagnostic": {
+    "support_count": {
+      "label": "selected_count(선정기업 수)",
+      "pre_transform": "log1p",
+      "coverage": 0.6505,
+      "n_unique": 148,
+      "pearson_r": -0.1043,
+      "spearman_rho": -0.0699,
+      "monotone_minus_linear": -0.0344,
+      "bins": [
+        {
+          "bin": "[1, 2)",
+          "n": 89,
+          "x_median": 1.0,
+          "y_median": 7.3802,
+          "y_mean": 7.3383,
+          "y_iqr": 1.4559,
+          "median_won": 24000000
+        },
+        {
+          "bin": "[2, 3)",
+          "n": 84,
+          "x_median": 2.0,
+          "y_median": 8.0,
+          "y_mean": 7.9079,
+          "y_iqr": 1.449,
+          "median_won": 100000000,
+          "slope_vs_prev": 0.6198
+        },
+        {
+          "bin": "[3, 5)",
+          "n": 161,
+          "x_median": 3.0,
+          "y_median": 8.1761,
+          "y_mean": 8.0263,
+          "y_iqr": 1.5441,
+          "median_won": 150000000,
+          "slope_vs_prev": 0.1761
+        },
+        {
+          "bin": "[5, 7)",
+          "n": 125,
+          "x_median": 5.0,
+          "y_median": 8.0,
+          "y_mean": 7.9411,
+          "y_iqr": 1.3222,
+          "median_won": 100000000,
+          "slope_vs_prev": -0.08805
+        },
+        {
+          "bin": "[7, 10)",
+          "n": 97,
+          "x_median": 8.0,
+          "y_median": 7.8325,
+          "y_mean": 7.7632,
+          "y_iqr": 1.4472,
+          "median_won": 68000000,
+          "slope_vs_prev": -0.055833
+        },
+        {
+          "bin": "[10, 13)",
+          "n": 160,
+          "x_median": 10.0,
+          "y_median": 7.6761,
+          "y_mean": 7.6232,
+          "y_iqr": 1.301,
+          "median_won": 47434165,
+          "slope_vs_prev": -0.0782
+        },
+        {
+          "bin": "[13, 20)",
+          "n": 99,
+          "x_median": 15.0,
+          "y_median": 8.301,
+          "y_mean": 8.0133,
+          "y_iqr": 1.2218,
+          "median_won": 200000000,
+          "slope_vs_prev": 0.12498
+        },
+        {
+          "bin": "[20, 40)",
+          "n": 144,
+          "x_median": 25.0,
+          "y_median": 7.6021,
+          "y_mean": 7.5612,
+          "y_iqr": 1.357,
+          "median_won": 40000000,
+          "slope_vs_prev": -0.06989
+        },
+        {
+          "bin": "[40, 100)",
+          "n": 126,
+          "x_median": 55.0,
+          "y_median": 7.7889,
+          "y_mean": 7.8235,
+          "y_iqr": 0.9802,
+          "median_won": 61497967,
+          "slope_vs_prev": 0.006227
+        },
+        {
+          "bin": "[100, 8e+04]",
+          "n": 136,
+          "x_median": 323.5,
+          "y_median": 7.4771,
+          "y_mean": 7.4626,
+          "y_iqr": 1.5084,
+          "median_won": 30000000,
+          "slope_vs_prev": -0.001161
+        }
+      ],
+      "univariate_cv": {
+        "n": 1221,
+        "MAE": {
+          "const": 0.7605,
+          "linear": 0.758,
+          "spline": 0.7459,
+          "isotonic": 0.755
+        },
+        "curve_gain_vs_linear": 0.0121,
+        "linear_gain_vs_const": 0.0025,
+        "isotonic_gain_vs_linear": 0.003
+      }
+    },
+    "support_ratio": {
+      "label": "support_rate(지원비율)",
+      "pre_transform": "none",
+      "coverage": 0.4081,
+      "n_unique": 19,
+      "pearson_r": -0.0724,
+      "spearman_rho": -0.0948,
+      "monotone_minus_linear": 0.0223,
+      "bins": [
+        {
+          "bin": "[0, 50)",
+          "n": 14,
+          "x_median": 3.5,
+          "y_median": 8.1901,
+          "y_mean": 8.1375,
+          "y_iqr": 1.3452,
+          "median_won": 154919334
+        },
+        {
+          "bin": "[50, 70)",
+          "n": 115,
+          "x_median": 50.0,
+          "y_median": 8.1761,
+          "y_mean": 8.0915,
+          "y_iqr": 1.1322,
+          "median_won": 150000000,
+          "slope_vs_prev": -0.000301
+        },
+        {
+          "bin": "[70, 75)",
+          "n": 122,
+          "x_median": 70.0,
+          "y_median": 7.8601,
+          "y_mean": 7.8826,
+          "y_iqr": 0.9947,
+          "median_won": 72456884,
+          "slope_vs_prev": -0.0158
+        },
+        {
+          "bin": "[75, 80)",
+          "n": 93,
+          "x_median": 75.0,
+          "y_median": 8.301,
+          "y_mean": 8.3366,
+          "y_iqr": 0.7202,
+          "median_won": 200000000,
+          "slope_vs_prev": 0.08818
+        },
+        {
+          "bin": "[80, 90)",
+          "n": 267,
+          "x_median": 80.0,
+          "y_median": 8.301,
+          "y_mean": 8.1893,
+          "y_iqr": 1.0792,
+          "median_won": 200000000,
+          "slope_vs_prev": 0.0
+        },
+        {
+          "bin": "[90, 99]",
+          "n": 155,
+          "x_median": 90.0,
+          "y_median": 7.699,
+          "y_mean": 7.7087,
+          "y_iqr": 0.772,
+          "median_won": 50000000,
+          "slope_vs_prev": -0.0602
+        }
+      ],
+      "univariate_cv": {
+        "n": 766,
+        "MAE": {
+          "const": 0.6162,
+          "linear": 0.612,
+          "spline": 0.5887,
+          "isotonic": 0.614
+        },
+        "curve_gain_vs_linear": 0.0233,
+        "linear_gain_vs_const": 0.0042,
+        "isotonic_gain_vs_linear": -0.002
+      }
+    },
+    "project_duration": {
+      "label": "project_duration(사업기간)",
+      "pre_transform": "none",
+      "coverage": 0.4502,
+      "n_unique": 29,
+      "pearson_r": 0.1173,
+      "spearman_rho": 0.2483,
+      "monotone_minus_linear": 0.131,
+      "bins": [
+        {
+          "bin": "[0.08, 0.25)",
+          "n": 53,
+          "x_median": 0.08,
+          "y_median": 7.0,
+          "y_mean": 7.044,
+          "y_iqr": 0.699,
+          "median_won": 10000000
+        },
+        {
+          "bin": "[0.25, 1)",
+          "n": 97,
+          "x_median": 0.5,
+          "y_median": 7.301,
+          "y_mean": 7.2917,
+          "y_iqr": 1.1427,
+          "median_won": 20000000,
+          "slope_vs_prev": 0.716667
+        },
+        {
+          "bin": "[1, 2)",
+          "n": 122,
+          "x_median": 1.0,
+          "y_median": 8.0792,
+          "y_mean": 7.846,
+          "y_iqr": 1.6729,
+          "median_won": 120000000,
+          "slope_vs_prev": 1.5564
+        },
+        {
+          "bin": "[2, 3)",
+          "n": 192,
+          "x_median": 2.0,
+          "y_median": 8.4771,
+          "y_mean": 8.1554,
+          "y_iqr": 1.1739,
+          "median_won": 300000000,
+          "slope_vs_prev": 0.3979
+        },
+        {
+          "bin": "[3, 5)",
+          "n": 198,
+          "x_median": 3.0,
+          "y_median": 8.301,
+          "y_mean": 8.0729,
+          "y_iqr": 1.5441,
+          "median_won": 200000000,
+          "slope_vs_prev": -0.1761
+        },
+        {
+          "bin": "[5, 26]",
+          "n": 183,
+          "x_median": 5.0,
+          "y_median": 8.0414,
+          "y_mean": 8.0423,
+          "y_iqr": 1.6303,
+          "median_won": 110000000,
+          "slope_vs_prev": -0.1298
+        }
+      ],
+      "univariate_cv": {
+        "n": 845,
+        "MAE": {
+          "const": 0.877,
+          "linear": 0.8731,
+          "spline": 0.8174,
+          "isotonic": 0.8156
+        },
+        "curve_gain_vs_linear": 0.0557,
+        "linear_gain_vs_const": 0.0039,
+        "isotonic_gain_vs_linear": 0.0575
+      }
+    },
+    "self_burden_ratio": {
+      "label": "self_burden_rate(자부담비율)",
+      "pre_transform": "none",
+      "coverage": 0.4033,
+      "n_unique": 18,
+      "pearson_r": 0.0618,
+      "spearman_rho": 0.0939,
+      "monotone_minus_linear": 0.032,
+      "bins": [
+        {
+          "bin": "[1, 10)",
+          "n": 7,
+          "x_median": 5.0,
+          "y_median": 7.8293,
+          "y_mean": 8.074,
+          "y_iqr": 0.5642,
+          "median_won": 67500000
+        },
+        {
+          "bin": "[10, 20)",
+          "n": 152,
+          "x_median": 10.0,
+          "y_median": 7.699,
+          "y_mean": 7.6945,
+          "y_iqr": 0.8526,
+          "median_won": 50000000,
+          "slope_vs_prev": -0.02606
+        },
+        {
+          "bin": "[20, 25)",
+          "n": 259,
+          "x_median": 20.0,
+          "y_median": 8.301,
+          "y_mean": 8.1763,
+          "y_iqr": 1.0533,
+          "median_won": 200000000,
+          "slope_vs_prev": 0.0602
+        },
+        {
+          "bin": "[25, 30)",
+          "n": 93,
+          "x_median": 25.0,
+          "y_median": 8.301,
+          "y_mean": 8.3366,
+          "y_iqr": 0.7202,
+          "median_won": 200000000,
+          "slope_vs_prev": 0.0
+        },
+        {
+          "bin": "[30, 50)",
+          "n": 148,
+          "x_median": 30.0,
+          "y_median": 7.8865,
+          "y_mean": 7.9042,
+          "y_iqr": 1.1761,
+          "median_won": 77000000,
+          "slope_vs_prev": -0.0829
+        },
+        {
+          "bin": "[50, 100]",
+          "n": 98,
+          "x_median": 50.0,
+          "y_median": 8.0,
+          "y_mean": 8.0887,
+          "y_iqr": 0.9688,
+          "median_won": 100000000,
+          "slope_vs_prev": 0.005675
+        }
+      ],
+      "univariate_cv": {
+        "n": 757,
+        "MAE": {
+          "const": 0.6079,
+          "linear": 0.6088,
+          "spline": 0.5852,
+          "isotonic": 0.5928
+        },
+        "curve_gain_vs_linear": 0.0236,
+        "linear_gain_vs_const": -0.0009,
+        "isotonic_gain_vs_linear": 0.016
+      }
+    }
+  },
+  "diagnostic_verdict": "곡선 관계 있음",
+  "curve_gains": {
+    "support_count": 0.0121,
+    "support_ratio": 0.0233,
+    "project_duration": 0.0557,
+    "self_burden_ratio": 0.0236
+  },
+  "results": {
+    "program_stem": {
+      "baseline_MAE": 0.5223,
+      "variants": {
+        "S0/M73 baseline": {
+          "MAE_log10": 0.3563,
+          "MedAE_log10": 0.2548,
+          "geo_mean_error_x": 2.271,
+          "within_2x": 0.5642,
+          "within_3x": 0.7421,
+          "improvement": 0.3178,
+          "per_fold_MAE": [
+            0.3695,
+            0.3469,
+            0.371,
+            0.3747,
+            0.3191
+          ],
+          "fold_std": 0.021,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4111,
+              "within_2x": 0.4926
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2909,
+              "within_2x": 0.6345
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3685,
+              "within_2x": 0.5631
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.39
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3251
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4161
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3845
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3251
+              }
+            }
+          }
+        },
+        "S1/count": {
+          "MAE_log10": 0.3561,
+          "MedAE_log10": 0.2565,
+          "geo_mean_error_x": 2.271,
+          "within_2x": 0.5621,
+          "within_3x": 0.7491,
+          "improvement": 0.3182,
+          "per_fold_MAE": [
+            0.3703,
+            0.3455,
+            0.3682,
+            0.3759,
+            0.3208
+          ],
+          "fold_std": 0.0205,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4104,
+              "within_2x": 0.4894
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2906,
+              "within_2x": 0.625
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3692,
+              "within_2x": 0.5694
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3903
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3246
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4068
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3868
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3246
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": -0.0001,
+            "ci95": [
+              -0.0023,
+              0.0021
+            ],
+            "wilcoxon_p": 0.749,
+            "n_better": 920,
+            "n_worse": 957
+          },
+          "fold_wins_vs_base": 2
+        },
+        "S2/rate": {
+          "MAE_log10": 0.3563,
+          "MedAE_log10": 0.2594,
+          "geo_mean_error_x": 2.271,
+          "within_2x": 0.5669,
+          "within_3x": 0.7443,
+          "improvement": 0.3178,
+          "per_fold_MAE": [
+            0.3718,
+            0.3456,
+            0.3695,
+            0.3743,
+            0.32
+          ],
+          "fold_std": 0.0208,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4102,
+              "within_2x": 0.4959
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.293,
+              "within_2x": 0.6266
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3673,
+              "within_2x": 0.5757
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3908
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3244
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4125
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3862
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3244
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0,
+            "ci95": [
+              -0.0021,
+              0.0022
+            ],
+            "wilcoxon_p": 0.628,
+            "n_better": 965,
+            "n_worse": 912
+          },
+          "fold_wins_vs_base": 3
+        },
+        "S3/duration": {
+          "MAE_log10": 0.3562,
+          "MedAE_log10": 0.2542,
+          "geo_mean_error_x": 2.271,
+          "within_2x": 0.5647,
+          "within_3x": 0.7437,
+          "improvement": 0.318,
+          "per_fold_MAE": [
+            0.3718,
+            0.3439,
+            0.3696,
+            0.3744,
+            0.3214
+          ],
+          "fold_std": 0.0206,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4106,
+              "within_2x": 0.491
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2918,
+              "within_2x": 0.6297
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.368,
+              "within_2x": 0.571
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3921
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3231
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.416
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3871
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3231
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": -0.0,
+            "ci95": [
+              -0.0022,
+              0.0021
+            ],
+            "wilcoxon_p": 0.878,
+            "n_better": 942,
+            "n_worse": 935
+          },
+          "fold_wins_vs_base": 3
+        },
+        "S4/all": {
+          "MAE_log10": 0.3576,
+          "MedAE_log10": 0.255,
+          "geo_mean_error_x": 2.278,
+          "within_2x": 0.5626,
+          "within_3x": 0.7432,
+          "improvement": 0.3153,
+          "per_fold_MAE": [
+            0.3721,
+            0.3465,
+            0.3693,
+            0.3761,
+            0.3238
+          ],
+          "fold_std": 0.0198,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4084,
+              "within_2x": 0.4959
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2942,
+              "within_2x": 0.6266
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3717,
+              "within_2x": 0.5631
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3911
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3266
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4078
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3876
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3266
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0013,
+            "ci95": [
+              -0.0011,
+              0.0037
+            ],
+            "wilcoxon_p": 0.367,
+            "n_better": 924,
+            "n_worse": 953
+          },
+          "fold_wins_vs_base": 2
+        },
+        "SW/all/d2k3": {
+          "MAE_log10": 0.3572,
+          "MedAE_log10": 0.2577,
+          "geo_mean_error_x": 2.276,
+          "within_2x": 0.5674,
+          "within_3x": 0.7448,
+          "improvement": 0.3161,
+          "per_fold_MAE": [
+            0.3737,
+            0.3458,
+            0.3699,
+            0.3738,
+            0.3228
+          ],
+          "fold_std": 0.0201,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4111,
+              "within_2x": 0.4992
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2929,
+              "within_2x": 0.6266
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3693,
+              "within_2x": 0.5741
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3919
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3251
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4118
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3877
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3251
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0009,
+            "ci95": [
+              -0.0013,
+              0.0032
+            ],
+            "wilcoxon_p": 0.767,
+            "n_better": 960,
+            "n_worse": 917
+          },
+          "fold_wins_vs_base": 3
+        },
+        "SW/all/d2k5": {
+          "MAE_log10": 0.3556,
+          "MedAE_log10": 0.2574,
+          "geo_mean_error_x": 2.268,
+          "within_2x": 0.561,
+          "within_3x": 0.7464,
+          "improvement": 0.3191,
+          "per_fold_MAE": [
+            0.371,
+            0.3468,
+            0.3663,
+            0.3711,
+            0.3226
+          ],
+          "fold_std": 0.0188,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4089,
+              "within_2x": 0.5008
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2915,
+              "within_2x": 0.6187
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.368,
+              "within_2x": 0.5615
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.39
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3238
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4104
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3857
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3238
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": -0.0007,
+            "ci95": [
+              -0.0031,
+              0.0016
+            ],
+            "wilcoxon_p": 0.381,
+            "n_better": 974,
+            "n_worse": 903
+          },
+          "fold_wins_vs_base": 3
+        },
+        "SW/all/d3k3": {
+          "MAE_log10": 0.3566,
+          "MedAE_log10": 0.2518,
+          "geo_mean_error_x": 2.273,
+          "within_2x": 0.5621,
+          "within_3x": 0.7411,
+          "improvement": 0.3172,
+          "per_fold_MAE": [
+            0.3724,
+            0.346,
+            0.3677,
+            0.3739,
+            0.3231
+          ],
+          "fold_std": 0.0195,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4104,
+              "within_2x": 0.4992
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2928,
+              "within_2x": 0.6234
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3684,
+              "within_2x": 0.5615
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3911
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3248
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4049
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3882
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3248
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0004,
+            "ci95": [
+              -0.002,
+              0.0026
+            ],
+            "wilcoxon_p": 0.79,
+            "n_better": 928,
+            "n_worse": 949
+          },
+          "fold_wins_vs_base": 3
+        },
+        "SW/all/d3k5": {
+          "MAE_log10": 0.3564,
+          "MedAE_log10": 0.2587,
+          "geo_mean_error_x": 2.272,
+          "within_2x": 0.5621,
+          "within_3x": 0.7437,
+          "improvement": 0.3176,
+          "per_fold_MAE": [
+            0.3733,
+            0.346,
+            0.3689,
+            0.3735,
+            0.3201
+          ],
+          "fold_std": 0.0208,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4101,
+              "within_2x": 0.4894
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.2933,
+              "within_2x": 0.625
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3675,
+              "within_2x": 0.5694
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.3912
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3242
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4126
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.3867
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3242
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0001,
+            "ci95": [
+              -0.0024,
+              0.0028
+            ],
+            "wilcoxon_p": 0.55,
+            "n_better": 977,
+            "n_worse": 900
+          },
+          "fold_wins_vs_base": 3
+        }
+      },
+      "global_of_base": {
+        "MAE_log10": 0.3719,
+        "MedAE_log10": 0.2761,
+        "geo_mean_error_x": 2.355,
+        "within_2x": 0.5301,
+        "within_3x": 0.723,
+        "improvement": 0.2879,
+        "per_fold_MAE": [
+          0.3947,
+          0.3499,
+          0.3814,
+          0.3819,
+          0.3517
+        ],
+        "fold_std": 0.0179,
+        "buckets": {
+          "Low": {
+            "n": 611,
+            "MAE_log10": 0.4576,
+            "within_2x": 0.4288
+          },
+          "Mid": {
+            "n": 632,
+            "MAE_log10": 0.2755,
+            "within_2x": 0.6424
+          },
+          "High": {
+            "n": 634,
+            "MAE_log10": 0.3856,
+            "within_2x": 0.5158
+          }
+        },
+        "cohort": {
+          "cohort": {
+            "bizinfo": {
+              "n": 901,
+              "MAE": 0.4182
+            },
+            "taxonomy": {
+              "n": 976,
+              "MAE": 0.3292
+            }
+          },
+          "evidence_source": {
+            "api_summary": {
+              "n": 157,
+              "MAE": 0.4362
+            },
+            "document": {
+              "n": 744,
+              "MAE": 0.4144
+            },
+            "scale_text": {
+              "n": 976,
+              "MAE": 0.3292
+            }
+          }
+        }
+      },
+      "additive": {
+        "G1": {
+          "MAE_log10": 0.6503,
+          "MedAE_log10": 0.5357,
+          "geo_mean_error_x": 4.47,
+          "within_2x": 0.2989,
+          "within_3x": 0.4534,
+          "improvement": -0.2452,
+          "per_fold_MAE": [
+            0.6469,
+            0.6271,
+            0.6697,
+            0.6733,
+            0.6346
+          ],
+          "fold_std": 0.0184,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.8331,
+              "within_2x": 0.2029
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3638,
+              "within_2x": 0.4921
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.7597,
+              "within_2x": 0.1987
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.7599
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.5492
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.6813
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.7765
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.5492
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.2941,
+            "ci95": [
+              0.2711,
+              0.3171
+            ],
+            "wilcoxon_p": 3.62e-111,
+            "n_better": 546,
+            "n_worse": 1331
+          },
+          "fold_wins_vs_base": 0
+        },
+        "G2": {
+          "MAE_log10": 0.5031,
+          "MedAE_log10": 0.4053,
+          "geo_mean_error_x": 3.185,
+          "within_2x": 0.391,
+          "within_3x": 0.5647,
+          "improvement": 0.0367,
+          "per_fold_MAE": [
+            0.5188,
+            0.481,
+            0.5244,
+            0.5044,
+            0.4869
+          ],
+          "fold_std": 0.017,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.5952,
+              "within_2x": 0.3437
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3748,
+              "within_2x": 0.4794
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.5422,
+              "within_2x": 0.3486
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.5762
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.4357
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.5384
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.5841
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.4357
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.1469,
+            "ci95": [
+              0.1323,
+              0.1615
+            ],
+            "wilcoxon_p": 2.73e-63,
+            "n_better": 644,
+            "n_worse": 1233
+          },
+          "fold_wins_vs_base": 0
+        },
+        "G3": {
+          "MAE_log10": 0.3759,
+          "MedAE_log10": 0.2781,
+          "geo_mean_error_x": 2.376,
+          "within_2x": 0.5317,
+          "within_3x": 0.7246,
+          "improvement": 0.2802,
+          "per_fold_MAE": [
+            0.3974,
+            0.3547,
+            0.3917,
+            0.3795,
+            0.356
+          ],
+          "fold_std": 0.0177,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4463,
+              "within_2x": 0.4435
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3008,
+              "within_2x": 0.6155
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3828,
+              "within_2x": 0.5331
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4236
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3318
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4362
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4209
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3318
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0196,
+            "ci95": [
+              0.0119,
+              0.0276
+            ],
+            "wilcoxon_p": 4.29e-07,
+            "n_better": 847,
+            "n_worse": 1030
+          },
+          "fold_wins_vs_base": 0
+        },
+        "P2": {
+          "MAE_log10": 0.5052,
+          "MedAE_log10": 0.4052,
+          "geo_mean_error_x": 3.2,
+          "within_2x": 0.3841,
+          "within_3x": 0.5626,
+          "improvement": 0.0327,
+          "per_fold_MAE": [
+            0.5216,
+            0.4783,
+            0.5328,
+            0.5007,
+            0.4927
+          ],
+          "fold_std": 0.0197,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.5961,
+              "within_2x": 0.3388
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3737,
+              "within_2x": 0.4699
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.5487,
+              "within_2x": 0.3423
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.5787
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.4374
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.5396
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.5869
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.4374
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.149,
+            "ci95": [
+              0.1342,
+              0.1643
+            ],
+            "wilcoxon_p": 8.74e-65,
+            "n_better": 639,
+            "n_worse": 1238
+          },
+          "fold_wins_vs_base": 0
+        },
+        "P3": {
+          "MAE_log10": 0.5068,
+          "MedAE_log10": 0.4068,
+          "geo_mean_error_x": 3.212,
+          "within_2x": 0.3879,
+          "within_3x": 0.561,
+          "improvement": 0.0296,
+          "per_fold_MAE": [
+            0.5194,
+            0.4832,
+            0.5361,
+            0.5004,
+            0.4949
+          ],
+          "fold_std": 0.0187,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.5999,
+              "within_2x": 0.3339
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3766,
+              "within_2x": 0.4747
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.5469,
+              "within_2x": 0.3533
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.5814
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.438
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.5407
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.59
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.438
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.1505,
+            "ci95": [
+              0.1356,
+              0.166
+            ],
+            "wilcoxon_p": 1.12e-64,
+            "n_better": 648,
+            "n_worse": 1229
+          },
+          "fold_wins_vs_base": 0
+        }
+      },
+      "stage1_acc": {
+        "S0/M73 baseline": 0.7656,
+        "S1/count": 0.7688,
+        "S2/rate": 0.7698,
+        "S3/duration": 0.7682,
+        "S4/all": 0.7698,
+        "SW/all/d2k3": 0.7666,
+        "SW/all/d2k5": 0.7704,
+        "SW/all/d3k3": 0.7677,
+        "SW/all/d3k5": 0.7677
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "baseline_MAE": 0.5425,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186,
+            "SW/all/d2k3": 180,
+            "SW/all/d2k5": 186,
+            "SW/all/d3k3": 183,
+            "SW/all/d3k5": 189
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -3.0651,
+                  -1.8124,
+                  -0.5596,
+                  0.6931,
+                  1.9459,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6542
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4117
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4577
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -3.0651,
+                  -1.8124,
+                  -0.5596,
+                  0.6931,
+                  1.9459,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6542
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4117
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4577
+              }
+            },
+            "SW/all/d2k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": true,
+                "knots": [
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736
+                ],
+                "train_coverage": 0.6542
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4117
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0
+                ],
+                "train_coverage": 0.4577
+              }
+            },
+            "SW/all/d2k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014
+                ],
+                "train_coverage": 0.6542
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4117
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0
+                ],
+                "train_coverage": 0.4577
+              }
+            },
+            "SW/all/d3k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": true,
+                "knots": [
+                  -4.4211,
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736,
+                  37.9655
+                ],
+                "train_coverage": 0.6542
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -240.0,
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4117
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0,
+                  98.0
+                ],
+                "train_coverage": 0.4577
+              }
+            },
+            "SW/all/d3k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": true,
+                "knots": [
+                  -2.0557,
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014,
+                  34.8572
+                ],
+                "train_coverage": 0.6542
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4117
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4577
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 1.0,
+              "edf": 23.21,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 2.154434690031882,
+              "edf": 67.35,
+              "n_terms": 101
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.65,
+              "n_terms": 102
+            },
+            "P2": {
+              "alpha": 1.0,
+              "edf": 59.87,
+              "n_terms": 73
+            },
+            "P3": {
+              "alpha": 1.0,
+              "edf": 63.36,
+              "n_terms": 77
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3695,
+            "S1/count": 0.3703,
+            "S2/rate": 0.3718,
+            "S3/duration": 0.3718,
+            "S4/all": 0.3721,
+            "SW/all/d2k3": 0.3737,
+            "SW/all/d2k5": 0.371,
+            "SW/all/d3k3": 0.3724,
+            "SW/all/d3k5": 0.3733
+          },
+          "seconds": 491.2,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 1,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_won": [
+            20000000,
+            140000000
+          ],
+          "baseline_MAE": 0.4965,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186,
+            "SW/all/d2k3": 180,
+            "SW/all/d2k5": 186,
+            "SW/all/d3k3": 183,
+            "SW/all/d3k5": 189
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6436
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2,
+                  153.6
+                ],
+                "train_coverage": 0.4077
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4464
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6436
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2,
+                  153.6
+                ],
+                "train_coverage": 0.4077
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4464
+              }
+            },
+            "SW/all/d2k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": true,
+                "knots": [
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736
+                ],
+                "train_coverage": 0.6436
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2
+                ],
+                "train_coverage": 0.4077
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0
+                ],
+                "train_coverage": 0.4464
+              }
+            },
+            "SW/all/d2k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014
+                ],
+                "train_coverage": 0.6436
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2
+                ],
+                "train_coverage": 0.4077
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0
+                ],
+                "train_coverage": 0.4464
+              }
+            },
+            "SW/all/d3k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": true,
+                "knots": [
+                  -4.4211,
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736,
+                  37.9655
+                ],
+                "train_coverage": 0.6436
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -240.0,
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2,
+                  153.6
+                ],
+                "train_coverage": 0.4077
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0,
+                  98.0
+                ],
+                "train_coverage": 0.4464
+              }
+            },
+            "SW/all/d3k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": true,
+                "knots": [
+                  -2.0557,
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014,
+                  34.8572
+                ],
+                "train_coverage": 0.6436
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2,
+                  153.6
+                ],
+                "train_coverage": 0.4077
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4464
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.46415888336127775,
+              "edf": 25.25,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 4.6415888336127775,
+              "edf": 61.0,
+              "n_terms": 101
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.53,
+              "n_terms": 102
+            },
+            "P2": {
+              "alpha": 2.154434690031882,
+              "edf": 57.22,
+              "n_terms": 73
+            },
+            "P3": {
+              "alpha": 2.154434690031882,
+              "edf": 60.83,
+              "n_terms": 77
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3469,
+            "S1/count": 0.3455,
+            "S2/rate": 0.3456,
+            "S3/duration": 0.3439,
+            "S4/all": 0.3465,
+            "SW/all/d2k3": 0.3458,
+            "SW/all/d2k5": 0.3468,
+            "SW/all/d3k3": 0.346,
+            "SW/all/d3k5": 0.346
+          },
+          "seconds": 472.9,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 2,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "baseline_MAE": 0.5262,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186,
+            "SW/all/d2k3": 180,
+            "SW/all/d2k5": 186,
+            "SW/all/d3k3": 183,
+            "SW/all/d3k5": 189
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6505
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4075
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  23.0,
+                  43.0,
+                  63.0,
+                  83.0
+                ],
+                "train_coverage": 0.4481
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6505
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4075
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  23.0,
+                  43.0,
+                  63.0,
+                  83.0
+                ],
+                "train_coverage": 0.4481
+              }
+            },
+            "SW/all/d2k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": true,
+                "knots": [
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736
+                ],
+                "train_coverage": 0.6505
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4075
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  23.0,
+                  44.0,
+                  65.0
+                ],
+                "train_coverage": 0.4481
+              }
+            },
+            "SW/all/d2k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014
+                ],
+                "train_coverage": 0.6505
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4075
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  23.0,
+                  43.0,
+                  63.0
+                ],
+                "train_coverage": 0.4481
+              }
+            },
+            "SW/all/d3k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": true,
+                "knots": [
+                  -4.4211,
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736,
+                  37.9655
+                ],
+                "train_coverage": 0.6505
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -240.0,
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4075
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  23.0,
+                  44.0,
+                  65.0,
+                  86.0
+                ],
+                "train_coverage": 0.4481
+              }
+            },
+            "SW/all/d3k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": true,
+                "knots": [
+                  -2.0557,
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014,
+                  34.8572
+                ],
+                "train_coverage": 0.6505
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4075
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  23.0,
+                  43.0,
+                  63.0,
+                  83.0
+                ],
+                "train_coverage": 0.4481
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.46415888336127775,
+              "edf": 25.33,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 4.6415888336127775,
+              "edf": 60.88,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.69,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 10.0,
+              "edf": 46.53,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 10.0,
+              "edf": 49.78,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.371,
+            "S1/count": 0.3682,
+            "S2/rate": 0.3695,
+            "S3/duration": 0.3696,
+            "S4/all": 0.3693,
+            "SW/all/d2k3": 0.3699,
+            "SW/all/d2k5": 0.3663,
+            "SW/all/d3k3": 0.3677,
+            "SW/all/d3k5": 0.3689
+          },
+          "seconds": 469.0,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 3,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "baseline_MAE": 0.5243,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186,
+            "SW/all/d2k3": 180,
+            "SW/all/d2k5": 186,
+            "SW/all/d3k3": 183,
+            "SW/all/d3k5": 189
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  11.2898,
+                  19.6351,
+                  27.9805,
+                  36.3259
+                ],
+                "train_coverage": 0.6485
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4121
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4421
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  11.2898,
+                  19.6351,
+                  27.9805,
+                  36.3259
+                ],
+                "train_coverage": 0.6485
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4121
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4421
+              }
+            },
+            "SW/all/d2k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": true,
+                "knots": [
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736
+                ],
+                "train_coverage": 0.6485
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4121
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0
+                ],
+                "train_coverage": 0.4421
+              }
+            },
+            "SW/all/d2k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014
+                ],
+                "train_coverage": 0.6485
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4121
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0
+                ],
+                "train_coverage": 0.4421
+              }
+            },
+            "SW/all/d3k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": true,
+                "knots": [
+                  -4.4211,
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  11.2898,
+                  20.1817,
+                  29.0736,
+                  37.9655
+                ],
+                "train_coverage": 0.6485
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -240.0,
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4121
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0,
+                  98.0
+                ],
+                "train_coverage": 0.4421
+              }
+            },
+            "SW/all/d3k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": true,
+                "knots": [
+                  -2.0557,
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  11.2898,
+                  19.1456,
+                  27.0014,
+                  34.8572
+                ],
+                "train_coverage": 0.6485
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4121
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4421
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.21544346900318823,
+              "edf": 27.11,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 10.0,
+              "edf": 52.02,
+              "n_terms": 99
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.25,
+              "n_terms": 100
+            },
+            "P2": {
+              "alpha": 10.0,
+              "edf": 45.84,
+              "n_terms": 71
+            },
+            "P3": {
+              "alpha": 10.0,
+              "edf": 49.1,
+              "n_terms": 75
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3747,
+            "S1/count": 0.3759,
+            "S2/rate": 0.3743,
+            "S3/duration": 0.3744,
+            "S4/all": 0.3761,
+            "SW/all/d2k3": 0.3738,
+            "SW/all/d2k5": 0.3711,
+            "SW/all/d3k3": 0.3739,
+            "SW/all/d3k5": 0.3735
+          },
+          "seconds": 457.7,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 4,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_won": [
+            20000000,
+            150000000
+          ],
+          "baseline_MAE": 0.5218,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186,
+            "SW/all/d2k3": 180,
+            "SW/all/d2k5": 186,
+            "SW/all/d3k3": 183,
+            "SW/all/d3k5": 189
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  9.5751,
+                  16.2057,
+                  22.8363,
+                  29.4669
+                ],
+                "train_coverage": 0.6558
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4015
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4567
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  9.5751,
+                  16.2057,
+                  22.8363,
+                  29.4669
+                ],
+                "train_coverage": 0.6558
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4015
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4567
+              }
+            },
+            "SW/all/d2k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": true,
+                "knots": [
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  9.5751,
+                  16.7522,
+                  23.9294
+                ],
+                "train_coverage": 0.6558
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4015
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 3,
+                "log1p": false,
+                "knots": [
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0
+                ],
+                "train_coverage": 0.4567
+              }
+            },
+            "SW/all/d2k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  9.5751,
+                  15.7161,
+                  21.8572
+                ],
+                "train_coverage": 0.6558
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0
+                ],
+                "train_coverage": 0.4015
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  4.0,
+                  26.0,
+                  48.0,
+                  70.0
+                ],
+                "train_coverage": 0.4567
+              }
+            },
+            "SW/all/d3k3": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": true,
+                "knots": [
+                  -4.4211,
+                  -2.7163,
+                  -1.0116,
+                  0.6931,
+                  2.3979,
+                  9.5751,
+                  16.7522,
+                  23.9294,
+                  31.1065
+                ],
+                "train_coverage": 0.6558
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -240.0,
+                  -160.0,
+                  -80.0,
+                  0.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4015
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 4,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  26.0,
+                  50.0,
+                  74.0,
+                  98.0
+                ],
+                "train_coverage": 0.4567
+              }
+            },
+            "SW/all/d3k5": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": true,
+                "knots": [
+                  -2.0557,
+                  -1.1394,
+                  -0.2231,
+                  0.6931,
+                  1.6094,
+                  2.3979,
+                  3.434,
+                  9.5751,
+                  15.7161,
+                  21.8572,
+                  27.9983
+                ],
+                "train_coverage": 0.6558
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4015
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 6,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  2.0,
+                  4.0,
+                  26.0,
+                  48.0,
+                  70.0,
+                  92.0
+                ],
+                "train_coverage": 0.4567
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 1.0,
+              "edf": 23.46,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 10.0,
+              "edf": 52.54,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.58,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 10.0,
+              "edf": 46.4,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 10.0,
+              "edf": 49.55,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3191,
+            "S1/count": 0.3208,
+            "S2/rate": 0.32,
+            "S3/duration": 0.3214,
+            "S4/all": 0.3238,
+            "SW/all/d2k3": 0.3228,
+            "SW/all/d2k5": 0.3226,
+            "SW/all/d3k3": 0.3231,
+            "SW/all/d3k5": 0.3201
+          },
+          "seconds": 472.8,
+          "from_checkpoint": false
+        }
+      ],
+      "oracle_ceiling": {
+        "MAE_log10": 0.2317,
+        "MedAE_log10": 0.1848,
+        "geo_mean_error_x": 1.705,
+        "within_2x": 0.7246,
+        "within_3x": 0.8956,
+        "note": "실제 구간을 안다고 가정한 상한 — 서빙 불가, 진단 전용"
+      }
+    },
+    "normalized_title": {
+      "baseline_MAE": 0.5458,
+      "variants": {
+        "S0/M73 baseline": {
+          "MAE_log10": 0.3756,
+          "MedAE_log10": 0.2752,
+          "geo_mean_error_x": 2.375,
+          "within_2x": 0.5338,
+          "within_3x": 0.7171,
+          "improvement": 0.3118,
+          "per_fold_MAE": [
+            0.3782,
+            0.3707,
+            0.3899,
+            0.3591,
+            0.3803
+          ],
+          "fold_std": 0.0103,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4307,
+              "within_2x": 0.4581
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3095,
+              "within_2x": 0.6155
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.3887,
+              "within_2x": 0.5252
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4094
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3445
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4145
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4083
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3445
+              }
+            }
+          }
+        },
+        "S1/count": {
+          "MAE_log10": 0.3772,
+          "MedAE_log10": 0.2786,
+          "geo_mean_error_x": 2.383,
+          "within_2x": 0.5264,
+          "within_3x": 0.7128,
+          "improvement": 0.3089,
+          "per_fold_MAE": [
+            0.3798,
+            0.3718,
+            0.3881,
+            0.3641,
+            0.3823
+          ],
+          "fold_std": 0.0084,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4318,
+              "within_2x": 0.4433
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3092,
+              "within_2x": 0.6139
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.3925,
+              "within_2x": 0.5189
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4086
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3482
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4083
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4087
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3482
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0016,
+            "ci95": [
+              -0.0005,
+              0.0037
+            ],
+            "wilcoxon_p": 0.0671,
+            "n_better": 910,
+            "n_worse": 967
+          },
+          "fold_wins_vs_base": 1
+        },
+        "S2/rate": {
+          "MAE_log10": 0.3775,
+          "MedAE_log10": 0.2824,
+          "geo_mean_error_x": 2.385,
+          "within_2x": 0.5264,
+          "within_3x": 0.7144,
+          "improvement": 0.3084,
+          "per_fold_MAE": [
+            0.3771,
+            0.3748,
+            0.39,
+            0.3618,
+            0.3837
+          ],
+          "fold_std": 0.0095,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4322,
+              "within_2x": 0.4598
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3097,
+              "within_2x": 0.5997
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.3924,
+              "within_2x": 0.5173
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4102
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3472
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.417
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4088
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3472
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0018,
+            "ci95": [
+              -0.0002,
+              0.0039
+            ],
+            "wilcoxon_p": 0.00799,
+            "n_better": 884,
+            "n_worse": 993
+          },
+          "fold_wins_vs_base": 1
+        },
+        "S3/duration": {
+          "MAE_log10": 0.3773,
+          "MedAE_log10": 0.2794,
+          "geo_mean_error_x": 2.384,
+          "within_2x": 0.5237,
+          "within_3x": 0.7166,
+          "improvement": 0.3087,
+          "per_fold_MAE": [
+            0.3776,
+            0.3733,
+            0.3878,
+            0.3631,
+            0.3847
+          ],
+          "fold_std": 0.0087,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4342,
+              "within_2x": 0.4499
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.309,
+              "within_2x": 0.6044
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.3907,
+              "within_2x": 0.5142
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4087
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3483
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4097
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4085
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3483
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0017,
+            "ci95": [
+              -0.0004,
+              0.0036
+            ],
+            "wilcoxon_p": 0.2,
+            "n_better": 928,
+            "n_worse": 949
+          },
+          "fold_wins_vs_base": 2
+        },
+        "S4/all": {
+          "MAE_log10": 0.3754,
+          "MedAE_log10": 0.2749,
+          "geo_mean_error_x": 2.374,
+          "within_2x": 0.5349,
+          "within_3x": 0.7134,
+          "improvement": 0.3122,
+          "per_fold_MAE": [
+            0.3775,
+            0.3702,
+            0.3863,
+            0.361,
+            0.3821
+          ],
+          "fold_std": 0.009,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4298,
+              "within_2x": 0.4532
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3073,
+              "within_2x": 0.6187
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.391,
+              "within_2x": 0.5299
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4078
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3455
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4148
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4063
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3455
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": -0.0002,
+            "ci95": [
+              -0.0025,
+              0.002
+            ],
+            "wilcoxon_p": 0.998,
+            "n_better": 948,
+            "n_worse": 929
+          },
+          "fold_wins_vs_base": 3
+        }
+      },
+      "global_of_base": {
+        "MAE_log10": 0.3931,
+        "MedAE_log10": 0.293,
+        "geo_mean_error_x": 2.472,
+        "within_2x": 0.512,
+        "within_3x": 0.6878,
+        "improvement": 0.2798,
+        "per_fold_MAE": [
+          0.3724,
+          0.394,
+          0.4114,
+          0.3853,
+          0.4026
+        ],
+        "fold_std": 0.0135,
+        "buckets": {
+          "Low": {
+            "n": 609,
+            "MAE_log10": 0.4751,
+            "within_2x": 0.4269
+          },
+          "Mid": {
+            "n": 632,
+            "MAE_log10": 0.2879,
+            "within_2x": 0.6282
+          },
+          "High": {
+            "n": 636,
+            "MAE_log10": 0.4191,
+            "within_2x": 0.478
+          }
+        },
+        "cohort": {
+          "cohort": {
+            "bizinfo": {
+              "n": 901,
+              "MAE": 0.4334
+            },
+            "taxonomy": {
+              "n": 976,
+              "MAE": 0.3559
+            }
+          },
+          "evidence_source": {
+            "api_summary": {
+              "n": 157,
+              "MAE": 0.4443
+            },
+            "document": {
+              "n": 744,
+              "MAE": 0.4311
+            },
+            "scale_text": {
+              "n": 976,
+              "MAE": 0.3559
+            }
+          }
+        }
+      },
+      "additive": {
+        "G1": {
+          "MAE_log10": 0.6527,
+          "MedAE_log10": 0.5378,
+          "geo_mean_error_x": 4.495,
+          "within_2x": 0.2999,
+          "within_3x": 0.4539,
+          "improvement": -0.1959,
+          "per_fold_MAE": [
+            0.6747,
+            0.6821,
+            0.6711,
+            0.6333,
+            0.602
+          ],
+          "fold_std": 0.0304,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.8363,
+              "within_2x": 0.2053
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3669,
+              "within_2x": 0.4778
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.7609,
+              "within_2x": 0.2138
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.7631
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.5508
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.6812
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.7804
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.5508
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.2771,
+            "ci95": [
+              0.2536,
+              0.2992
+            ],
+            "wilcoxon_p": 6.05e-97,
+            "n_better": 585,
+            "n_worse": 1292
+          },
+          "fold_wins_vs_base": 0
+        },
+        "G2": {
+          "MAE_log10": 0.5111,
+          "MedAE_log10": 0.4115,
+          "geo_mean_error_x": 3.244,
+          "within_2x": 0.3879,
+          "within_3x": 0.5738,
+          "improvement": 0.0636,
+          "per_fold_MAE": [
+            0.5071,
+            0.5092,
+            0.5468,
+            0.4861,
+            0.5062
+          ],
+          "fold_std": 0.0197,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5943,
+              "within_2x": 0.33
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3864,
+              "within_2x": 0.4873
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.5553,
+              "within_2x": 0.3443
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.5805
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.447
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.5376
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.5895
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.447
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.1354,
+            "ci95": [
+              0.1204,
+              0.1499
+            ],
+            "wilcoxon_p": 1.28e-54,
+            "n_better": 671,
+            "n_worse": 1206
+          },
+          "fold_wins_vs_base": 0
+        },
+        "G3": {
+          "MAE_log10": 0.3978,
+          "MedAE_log10": 0.3071,
+          "geo_mean_error_x": 2.499,
+          "within_2x": 0.4923,
+          "within_3x": 0.6867,
+          "improvement": 0.2712,
+          "per_fold_MAE": [
+            0.3799,
+            0.4024,
+            0.4168,
+            0.3816,
+            0.4083
+          ],
+          "fold_std": 0.0147,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4594,
+              "within_2x": 0.4319
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3202,
+              "within_2x": 0.5696
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4159,
+              "within_2x": 0.4733
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.4365
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.3621
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.4361
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.4365
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.3621
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0222,
+            "ci95": [
+              0.0138,
+              0.0308
+            ],
+            "wilcoxon_p": 3.26e-06,
+            "n_better": 842,
+            "n_worse": 1035
+          },
+          "fold_wins_vs_base": 0
+        },
+        "P2": {
+          "MAE_log10": 0.5121,
+          "MedAE_log10": 0.4122,
+          "geo_mean_error_x": 3.252,
+          "within_2x": 0.3777,
+          "within_3x": 0.5615,
+          "improvement": 0.0617,
+          "per_fold_MAE": [
+            0.5048,
+            0.5086,
+            0.5477,
+            0.4869,
+            0.5127
+          ],
+          "fold_std": 0.0198,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5937,
+              "within_2x": 0.3333
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3836,
+              "within_2x": 0.4715
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.5618,
+              "within_2x": 0.327
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.5817
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.4479
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.5387
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.5908
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.4479
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.1365,
+            "ci95": [
+              0.1214,
+              0.1516
+            ],
+            "wilcoxon_p": 8.8e-56,
+            "n_better": 660,
+            "n_worse": 1217
+          },
+          "fold_wins_vs_base": 0
+        },
+        "P3": {
+          "MAE_log10": 0.5132,
+          "MedAE_log10": 0.4192,
+          "geo_mean_error_x": 3.26,
+          "within_2x": 0.382,
+          "within_3x": 0.5573,
+          "improvement": 0.0597,
+          "per_fold_MAE": [
+            0.5002,
+            0.5148,
+            0.5482,
+            0.4903,
+            0.5125
+          ],
+          "fold_std": 0.0196,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5965,
+              "within_2x": 0.3333
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3857,
+              "within_2x": 0.4747
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.5601,
+              "within_2x": 0.3365
+            }
+          },
+          "cohort": {
+            "cohort": {
+              "bizinfo": {
+                "n": 901,
+                "MAE": 0.583
+              },
+              "taxonomy": {
+                "n": 976,
+                "MAE": 0.4487
+              }
+            },
+            "evidence_source": {
+              "api_summary": {
+                "n": 157,
+                "MAE": 0.5396
+              },
+              "document": {
+                "n": 744,
+                "MAE": 0.5922
+              },
+              "scale_text": {
+                "n": 976,
+                "MAE": 0.4487
+              }
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.1375,
+            "ci95": [
+              0.1224,
+              0.1524
+            ],
+            "wilcoxon_p": 2.48e-56,
+            "n_better": 653,
+            "n_worse": 1224
+          },
+          "fold_wins_vs_base": 0
+        }
+      },
+      "stage1_acc": {
+        "S0/M73 baseline": 0.7597,
+        "S1/count": 0.7544,
+        "S2/rate": 0.7571,
+        "S3/duration": 0.7555,
+        "S4/all": 0.7587
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "baseline_MAE": 0.5105,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9786,
+                  11.2898,
+                  19.601,
+                  27.9121,
+                  36.2233
+                ],
+                "train_coverage": 0.6569
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2,
+                  153.6
+                ],
+                "train_coverage": 0.4171
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  23.0,
+                  43.0,
+                  63.0,
+                  83.0
+                ],
+                "train_coverage": 0.4557
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9786,
+                  11.2898,
+                  19.601,
+                  27.9121,
+                  36.2233
+                ],
+                "train_coverage": 0.6569
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  98.4,
+                  116.8,
+                  135.2,
+                  153.6
+                ],
+                "train_coverage": 0.4171
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  23.0,
+                  43.0,
+                  63.0,
+                  83.0
+                ],
+                "train_coverage": 0.4557
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.46415888336127775,
+              "edf": 25.39,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 10.0,
+              "edf": 52.58,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.65,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 10.0,
+              "edf": 46.44,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 4.6415888336127775,
+              "edf": 55.89,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3782,
+            "S1/count": 0.3798,
+            "S2/rate": 0.3771,
+            "S3/duration": 0.3776,
+            "S4/all": 0.3775
+          },
+          "seconds": 274.9,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 1,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_won": [
+            17600000,
+            120000000
+          ],
+          "baseline_MAE": 0.5577,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6556
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4111
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.449
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6556
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4111
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.449
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 1.0,
+              "edf": 23.4,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 10.0,
+              "edf": 52.25,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.33,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 10.0,
+              "edf": 46.02,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 10.0,
+              "edf": 49.19,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3707,
+            "S1/count": 0.3718,
+            "S2/rate": 0.3748,
+            "S3/duration": 0.3733,
+            "S4/all": 0.3702
+          },
+          "seconds": 269.1,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 2,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_won": [
+            20000000,
+            140000000
+          ],
+          "baseline_MAE": 0.5663,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6491
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4208
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4521
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  3.0445,
+                  11.2898,
+                  19.5351,
+                  27.7803,
+                  36.0256
+                ],
+                "train_coverage": 0.6491
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -210.0,
+                  -140.0,
+                  -70.0,
+                  0.0,
+                  70.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4208
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -2.68,
+                  -1.76,
+                  -0.84,
+                  0.08,
+                  1.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4521
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.46415888336127775,
+              "edf": 25.32,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 4.6415888336127775,
+              "edf": 60.76,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.61,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 4.6415888336127775,
+              "edf": 52.28,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 4.6415888336127775,
+              "edf": 55.67,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3899,
+            "S1/count": 0.3881,
+            "S2/rate": 0.39,
+            "S3/duration": 0.3878,
+            "S4/all": 0.3863
+          },
+          "seconds": 255.1,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 3,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "baseline_MAE": 0.5706,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  9.5751,
+                  16.2057,
+                  22.8363,
+                  29.4669
+                ],
+                "train_coverage": 0.6391
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.3908
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4467
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  9.5751,
+                  16.2057,
+                  22.8363,
+                  29.4669
+                ],
+                "train_coverage": 0.6391
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.3908
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4467
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.46415888336127775,
+              "edf": 25.2,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 10.0,
+              "edf": 52.36,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.37,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 10.0,
+              "edf": 46.2,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 21.54434690031882,
+              "edf": 41.9,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3591,
+            "S1/count": 0.3641,
+            "S2/rate": 0.3618,
+            "S3/duration": 0.3631,
+            "S4/all": 0.361
+          },
+          "seconds": 273.0,
+          "from_checkpoint": false
+        },
+        {
+          "fold": 4,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_won": [
+            20000000,
+            140000000
+          ],
+          "baseline_MAE": 0.524,
+          "n_features": {
+            "S0/M73 baseline": 171,
+            "S1/count": 176,
+            "S2/rate": 176,
+            "S3/duration": 176,
+            "S4/all": 186
+          },
+          "spline_fit": {
+            "S0/M73 baseline": {},
+            "S1/count": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  11.2898,
+                  19.6351,
+                  27.9805,
+                  36.3259
+                ],
+                "train_coverage": 0.6518
+              }
+            },
+            "S2/rate": {
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4008
+              }
+            },
+            "S3/duration": {
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4474
+              }
+            },
+            "S4/all": {
+              "support_count": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": true,
+                "knots": [
+                  -2.6027,
+                  -1.5041,
+                  -0.4055,
+                  0.6931,
+                  1.7918,
+                  2.9444,
+                  11.2898,
+                  19.6351,
+                  27.9805,
+                  36.3259
+                ],
+                "train_coverage": 0.6518
+              },
+              "support_ratio": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -225.0,
+                  -150.0,
+                  -75.0,
+                  0.0,
+                  75.0,
+                  80.0,
+                  99.0,
+                  118.0,
+                  137.0,
+                  156.0
+                ],
+                "train_coverage": 0.4008
+              },
+              "project_duration": {
+                "fitted": true,
+                "n_cols": 5,
+                "log1p": false,
+                "knots": [
+                  -5.68,
+                  -3.76,
+                  -1.84,
+                  0.08,
+                  2.0,
+                  3.0,
+                  26.0,
+                  49.0,
+                  72.0,
+                  95.0
+                ],
+                "train_coverage": 0.4474
+              }
+            }
+          },
+          "gam": {
+            "G1": {
+              "alpha": 0.46415888336127775,
+              "edf": 25.1,
+              "n_terms": 40
+            },
+            "G2": {
+              "alpha": 4.6415888336127775,
+              "edf": 60.47,
+              "n_terms": 100
+            },
+            "G3": {
+              "alpha": 21.54434690031882,
+              "edf": 43.37,
+              "n_terms": 101
+            },
+            "P2": {
+              "alpha": 4.6415888336127775,
+              "edf": 52.32,
+              "n_terms": 72
+            },
+            "P3": {
+              "alpha": 4.6415888336127775,
+              "edf": 55.74,
+              "n_terms": 76
+            }
+          },
+          "MAE": {
+            "S0/M73 baseline": 0.3803,
+            "S1/count": 0.3823,
+            "S2/rate": 0.3837,
+            "S3/duration": 0.3847,
+            "S4/all": 0.3821
+          },
+          "seconds": 285.4,
+          "from_checkpoint": false
+        }
+      ],
+      "oracle_ceiling": {
+        "MAE_log10": 0.2459,
+        "MedAE_log10": 0.1975,
+        "geo_mean_error_x": 1.761,
+        "within_2x": 0.6915,
+        "within_3x": 0.878,
+        "note": "실제 구간을 안다고 가정한 상한 — 서빙 불가, 진단 전용"
+      }
+    }
+  },
+  "curves": {
+    "G1": {
+      "support_count": {
+        "x_scale": "log1p",
+        "grid": [
+          0.6931,
+          0.8731,
+          1.0531,
+          1.2331,
+          1.4131,
+          1.5931,
+          1.7731,
+          1.9531,
+          2.1331,
+          2.3132,
+          2.4932,
+          2.6732,
+          2.8532,
+          3.0332,
+          3.2132,
+          3.3932,
+          3.5732,
+          3.7532,
+          3.9332,
+          4.1132,
+          4.2932,
+          4.4732,
+          4.6532,
+          4.8332,
+          5.0132,
+          5.1932,
+          5.3732,
+          5.5532,
+          5.7332,
+          5.9132,
+          6.0932,
+          6.2732,
+          6.4532,
+          6.6332,
+          6.8132,
+          6.9932,
+          7.1732,
+          7.3532,
+          7.5332,
+          7.7132
+        ],
+        "grid_original": [
+          1.0,
+          1.3944,
+          1.8667,
+          2.432,
+          3.1089,
+          3.9192,
+          4.8894,
+          6.0509,
+          7.4414,
+          9.1062,
+          11.0993,
+          13.4855,
+          16.3423,
+          19.7626,
+          23.8573,
+          28.7596,
+          34.6287,
+          41.6553,
+          50.0677,
+          60.1392,
+          72.1969,
+          86.6327,
+          103.9154,
+          124.6066,
+          149.3784,
+          179.0357,
+          214.5419,
+          257.0506,
+          307.9428,
+          368.8718,
+          441.8171,
+          529.1485,
+          633.7032,
+          758.8779,
+          908.7393,
+          1088.1561,
+          1302.957,
+          1560.1205,
+          1868.0011,
+          2236.6013
+        ],
+        "mean": [
+          -0.0015,
+          0.1213,
+          0.218,
+          0.2961,
+          0.3517,
+          0.3695,
+          0.3189,
+          0.1855,
+          0.0576,
+          0.0472,
+          0.1292,
+          0.1895,
+          0.1912,
+          0.1576,
+          0.1135,
+          0.0789,
+          0.056,
+          0.0417,
+          0.0328,
+          0.0261,
+          0.0188,
+          0.0096,
+          -0.0015,
+          -0.0143,
+          -0.0288,
+          -0.0449,
+          -0.0624,
+          -0.0812,
+          -0.1013,
+          -0.1224,
+          -0.1445,
+          -0.1676,
+          -0.1914,
+          -0.2159,
+          -0.2409,
+          -0.2664,
+          -0.2922,
+          -0.3182,
+          -0.3444,
+          -0.3705
+        ],
+        "band_lo": [
+          -0.0668,
+          0.0368,
+          0.1604,
+          0.2441,
+          0.2986,
+          0.3442,
+          0.2848,
+          0.1408,
+          0.0176,
+          0.007,
+          0.0814,
+          0.1366,
+          0.1407,
+          0.1155,
+          0.0811,
+          0.0476,
+          0.02,
+          0.0005,
+          -0.0123,
+          -0.0211,
+          -0.0291,
+          -0.0382,
+          -0.0484,
+          -0.0594,
+          -0.0712,
+          -0.0836,
+          -0.0965,
+          -0.1099,
+          -0.1239,
+          -0.1389,
+          -0.156,
+          -0.1793,
+          -0.2095,
+          -0.2432,
+          -0.2787,
+          -0.3156,
+          -0.3534,
+          -0.3921,
+          -0.4313,
+          -0.4711
+        ],
+        "band_hi": [
+          0.0637,
+          0.2059,
+          0.2755,
+          0.3481,
+          0.4047,
+          0.3947,
+          0.353,
+          0.2303,
+          0.0975,
+          0.0874,
+          0.177,
+          0.2425,
+          0.2417,
+          0.1996,
+          0.146,
+          0.1102,
+          0.0919,
+          0.0828,
+          0.0778,
+          0.0733,
+          0.0667,
+          0.0574,
+          0.0454,
+          0.0308,
+          0.0135,
+          -0.0062,
+          -0.0283,
+          -0.0525,
+          -0.0786,
+          -0.106,
+          -0.1331,
+          -0.1559,
+          -0.1733,
+          -0.1885,
+          -0.2031,
+          -0.2172,
+          -0.2309,
+          -0.2444,
+          -0.2574,
+          -0.27
+        ],
+        "fold_sd_mean": 0.0226,
+        "range_log10": 0.74,
+        "range_x": 5.5,
+        "stability": 32.74,
+        "monotone": false,
+        "n_sign_changes": 3
+      },
+      "support_ratio": {
+        "x_scale": "raw",
+        "grid": [
+          3.5,
+          5.7179,
+          7.9359,
+          10.1538,
+          12.3718,
+          14.5897,
+          16.8077,
+          19.0256,
+          21.2436,
+          23.4615,
+          25.6795,
+          27.8974,
+          30.1154,
+          32.3333,
+          34.5513,
+          36.7692,
+          38.9872,
+          41.2051,
+          43.4231,
+          45.641,
+          47.859,
+          50.0769,
+          52.2949,
+          54.5128,
+          56.7308,
+          58.9487,
+          61.1667,
+          63.3846,
+          65.6026,
+          67.8205,
+          70.0385,
+          72.2564,
+          74.4744,
+          76.6923,
+          78.9103,
+          81.1282,
+          83.3462,
+          85.5641,
+          87.7821,
+          90.0
+        ],
+        "grid_original": [
+          3.5,
+          5.7179,
+          7.9359,
+          10.1538,
+          12.3718,
+          14.5897,
+          16.8077,
+          19.0256,
+          21.2436,
+          23.4615,
+          25.6795,
+          27.8974,
+          30.1154,
+          32.3333,
+          34.5513,
+          36.7692,
+          38.9872,
+          41.2051,
+          43.4231,
+          45.641,
+          47.859,
+          50.0769,
+          52.2949,
+          54.5128,
+          56.7308,
+          58.9487,
+          61.1667,
+          63.3846,
+          65.6026,
+          67.8205,
+          70.0385,
+          72.2564,
+          74.4744,
+          76.6923,
+          78.9103,
+          81.1282,
+          83.3462,
+          85.5641,
+          87.7821,
+          90.0
+        ],
+        "mean": [
+          -0.252,
+          -0.2417,
+          -0.2303,
+          -0.218,
+          -0.2047,
+          -0.1907,
+          -0.176,
+          -0.1608,
+          -0.1451,
+          -0.1291,
+          -0.1128,
+          -0.0964,
+          -0.0799,
+          -0.0635,
+          -0.0472,
+          -0.0312,
+          -0.0156,
+          -0.0005,
+          0.0141,
+          0.028,
+          0.0411,
+          0.0533,
+          0.0646,
+          0.0755,
+          0.0865,
+          0.0981,
+          0.1108,
+          0.1261,
+          0.1461,
+          0.174,
+          0.2159,
+          0.2707,
+          0.3113,
+          0.3066,
+          0.2485,
+          0.148,
+          0.0542,
+          -0.0201,
+          -0.0695,
+          -0.0884
+        ],
+        "band_lo": [
+          -0.4016,
+          -0.3893,
+          -0.3758,
+          -0.3613,
+          -0.3459,
+          -0.3297,
+          -0.3126,
+          -0.2946,
+          -0.2759,
+          -0.2564,
+          -0.236,
+          -0.2149,
+          -0.1929,
+          -0.1702,
+          -0.1467,
+          -0.1228,
+          -0.0988,
+          -0.0753,
+          -0.0537,
+          -0.0362,
+          -0.0253,
+          -0.0228,
+          -0.0281,
+          -0.0379,
+          -0.0482,
+          -0.0553,
+          -0.0561,
+          -0.0473,
+          -0.0267,
+          0.0075,
+          0.0584,
+          0.1201,
+          0.1495,
+          0.1064,
+          0.0586,
+          0.0159,
+          -0.1,
+          -0.1425,
+          -0.1326,
+          -0.1583
+        ],
+        "band_hi": [
+          -0.1025,
+          -0.0942,
+          -0.0848,
+          -0.0746,
+          -0.0635,
+          -0.0518,
+          -0.0395,
+          -0.027,
+          -0.0143,
+          -0.0018,
+          0.0104,
+          0.0221,
+          0.0331,
+          0.0432,
+          0.0523,
+          0.0603,
+          0.0675,
+          0.0744,
+          0.0819,
+          0.0922,
+          0.1075,
+          0.1294,
+          0.1574,
+          0.189,
+          0.2212,
+          0.2515,
+          0.2777,
+          0.2996,
+          0.3188,
+          0.3406,
+          0.3733,
+          0.4214,
+          0.4731,
+          0.5068,
+          0.4385,
+          0.2801,
+          0.2085,
+          0.1023,
+          -0.0064,
+          -0.0186
+        ],
+        "fold_sd_mean": 0.0645,
+        "range_log10": 0.5634,
+        "range_x": 3.66,
+        "stability": 8.74,
+        "monotone": false,
+        "n_sign_changes": 1
+      },
+      "project_duration": {
+        "x_scale": "raw",
+        "grid": [
+          0.08,
+          0.6421,
+          1.2041,
+          1.7662,
+          2.3282,
+          2.8903,
+          3.4523,
+          4.0144,
+          4.5764,
+          5.1385,
+          5.7005,
+          6.2626,
+          6.8246,
+          7.3867,
+          7.9487,
+          8.5108,
+          9.0728,
+          9.6349,
+          10.1969,
+          10.759,
+          11.321,
+          11.8831,
+          12.4451,
+          13.0072,
+          13.5692,
+          14.1313,
+          14.6933,
+          15.2554,
+          15.8174,
+          16.3795,
+          16.9415,
+          17.5036,
+          18.0656,
+          18.6277,
+          19.1897,
+          19.7518,
+          20.3138,
+          20.8759,
+          21.4379,
+          22.0
+        ],
+        "grid_original": [
+          0.08,
+          0.6421,
+          1.2041,
+          1.7662,
+          2.3282,
+          2.8903,
+          3.4523,
+          4.0144,
+          4.5764,
+          5.1385,
+          5.7005,
+          6.2626,
+          6.8246,
+          7.3867,
+          7.9487,
+          8.5108,
+          9.0728,
+          9.6349,
+          10.1969,
+          10.759,
+          11.321,
+          11.8831,
+          12.4451,
+          13.0072,
+          13.5692,
+          14.1313,
+          14.6933,
+          15.2554,
+          15.8174,
+          16.3795,
+          16.9415,
+          17.5036,
+          18.0656,
+          18.6277,
+          19.1897,
+          19.7518,
+          20.3138,
+          20.8759,
+          21.4379,
+          22.0
+        ],
+        "mean": [
+          -0.8638,
+          -0.4171,
+          -0.2228,
+          -0.1439,
+          -0.1847,
+          -0.2045,
+          -0.0769,
+          0.0153,
+          0.0777,
+          0.1236,
+          0.1622,
+          0.1946,
+          0.2211,
+          0.242,
+          0.2574,
+          0.2678,
+          0.2732,
+          0.274,
+          0.2704,
+          0.2626,
+          0.251,
+          0.2357,
+          0.217,
+          0.1952,
+          0.1705,
+          0.1432,
+          0.1135,
+          0.0816,
+          0.0479,
+          0.0126,
+          -0.0241,
+          -0.062,
+          -0.1007,
+          -0.14,
+          -0.1797,
+          -0.2196,
+          -0.2593,
+          -0.2986,
+          -0.3372,
+          -0.375
+        ],
+        "band_lo": [
+          -0.9475,
+          -0.6102,
+          -0.3388,
+          -0.2645,
+          -0.3186,
+          -0.3666,
+          -0.2739,
+          -0.2086,
+          -0.1184,
+          -0.0222,
+          0.0619,
+          0.1301,
+          0.1747,
+          0.1889,
+          0.1857,
+          0.1764,
+          0.1645,
+          0.1513,
+          0.1372,
+          0.1224,
+          0.1071,
+          0.0913,
+          0.075,
+          0.0582,
+          0.041,
+          0.0231,
+          0.0045,
+          -0.0153,
+          -0.037,
+          -0.0618,
+          -0.0918,
+          -0.1294,
+          -0.1756,
+          -0.2289,
+          -0.2871,
+          -0.3483,
+          -0.4111,
+          -0.4746,
+          -0.5381,
+          -0.601
+        ],
+        "band_hi": [
+          -0.7801,
+          -0.224,
+          -0.1068,
+          -0.0234,
+          -0.0508,
+          -0.0423,
+          0.1201,
+          0.2391,
+          0.2738,
+          0.2694,
+          0.2624,
+          0.2591,
+          0.2675,
+          0.295,
+          0.3292,
+          0.3591,
+          0.3818,
+          0.3966,
+          0.4035,
+          0.4028,
+          0.3948,
+          0.3801,
+          0.3591,
+          0.3322,
+          0.3001,
+          0.2633,
+          0.2225,
+          0.1786,
+          0.1329,
+          0.087,
+          0.0436,
+          0.0055,
+          -0.0258,
+          -0.0512,
+          -0.0724,
+          -0.0909,
+          -0.1074,
+          -0.1225,
+          -0.1363,
+          -0.149
+        ],
+        "fold_sd_mean": 0.0635,
+        "range_log10": 1.1378,
+        "range_x": 13.73,
+        "stability": 17.93,
+        "monotone": false,
+        "n_sign_changes": 3
+      },
+      "self_burden_ratio": {
+        "x_scale": "raw",
+        "grid": [
+          10.0,
+          11.2103,
+          12.4205,
+          13.6308,
+          14.841,
+          16.0513,
+          17.2615,
+          18.4718,
+          19.6821,
+          20.8923,
+          22.1026,
+          23.3128,
+          24.5231,
+          25.7333,
+          26.9436,
+          28.1538,
+          29.3641,
+          30.5744,
+          31.7846,
+          32.9949,
+          34.2051,
+          35.4154,
+          36.6256,
+          37.8359,
+          39.0462,
+          40.2564,
+          41.4667,
+          42.6769,
+          43.8872,
+          45.0974,
+          46.3077,
+          47.5179,
+          48.7282,
+          49.9385,
+          51.1487,
+          52.359,
+          53.5692,
+          54.7795,
+          55.9897,
+          57.2
+        ],
+        "grid_original": [
+          10.0,
+          11.2103,
+          12.4205,
+          13.6308,
+          14.841,
+          16.0513,
+          17.2615,
+          18.4718,
+          19.6821,
+          20.8923,
+          22.1026,
+          23.3128,
+          24.5231,
+          25.7333,
+          26.9436,
+          28.1538,
+          29.3641,
+          30.5744,
+          31.7846,
+          32.9949,
+          34.2051,
+          35.4154,
+          36.6256,
+          37.8359,
+          39.0462,
+          40.2564,
+          41.4667,
+          42.6769,
+          43.8872,
+          45.0974,
+          46.3077,
+          47.5179,
+          48.7282,
+          49.9385,
+          51.1487,
+          52.359,
+          53.5692,
+          54.7795,
+          55.9897,
+          57.2
+        ],
+        "mean": [
+          -0.1073,
+          -0.1204,
+          -0.1274,
+          -0.129,
+          -0.126,
+          -0.1191,
+          -0.109,
+          -0.0966,
+          -0.0826,
+          -0.0651,
+          -0.0424,
+          -0.0233,
+          -0.0168,
+          -0.0312,
+          -0.0635,
+          -0.1016,
+          -0.1336,
+          -0.1476,
+          -0.1414,
+          -0.1224,
+          -0.0979,
+          -0.0711,
+          -0.0436,
+          -0.0162,
+          0.0106,
+          0.036,
+          0.0595,
+          0.0812,
+          0.1009,
+          0.1186,
+          0.1343,
+          0.1481,
+          0.1598,
+          0.1695,
+          0.1773,
+          0.1832,
+          0.1872,
+          0.1895,
+          0.1902,
+          0.1892
+        ],
+        "band_lo": [
+          -0.1988,
+          -0.2328,
+          -0.2684,
+          -0.2981,
+          -0.3144,
+          -0.3104,
+          -0.2805,
+          -0.2232,
+          -0.1698,
+          -0.1971,
+          -0.174,
+          -0.1419,
+          -0.1611,
+          -0.1878,
+          -0.1956,
+          -0.2091,
+          -0.2499,
+          -0.2768,
+          -0.2606,
+          -0.2198,
+          -0.1756,
+          -0.1329,
+          -0.0931,
+          -0.0586,
+          -0.0314,
+          -0.0107,
+          0.0062,
+          0.0209,
+          0.034,
+          0.0457,
+          0.0559,
+          0.0646,
+          0.0717,
+          0.0771,
+          0.081,
+          0.0834,
+          0.0844,
+          0.084,
+          0.0823,
+          0.0794
+        ],
+        "band_hi": [
+          -0.0157,
+          -0.008,
+          0.0136,
+          0.0401,
+          0.0624,
+          0.0722,
+          0.0624,
+          0.03,
+          0.0046,
+          0.067,
+          0.0892,
+          0.0953,
+          0.1275,
+          0.1253,
+          0.0686,
+          0.0058,
+          -0.0174,
+          -0.0185,
+          -0.0221,
+          -0.025,
+          -0.0203,
+          -0.0094,
+          0.0058,
+          0.0262,
+          0.0526,
+          0.0826,
+          0.1128,
+          0.1414,
+          0.1677,
+          0.1915,
+          0.2128,
+          0.2316,
+          0.2479,
+          0.2619,
+          0.2736,
+          0.283,
+          0.2901,
+          0.2951,
+          0.2981,
+          0.2991
+        ],
+        "fold_sd_mean": 0.0536,
+        "range_log10": 0.3378,
+        "range_x": 2.18,
+        "stability": 6.3,
+        "monotone": false,
+        "n_sign_changes": 4
+      }
+    },
+    "G2": {
+      "support_count": {
+        "x_scale": "log1p",
+        "grid": [
+          0.6931,
+          0.8731,
+          1.0531,
+          1.2331,
+          1.4131,
+          1.5931,
+          1.7731,
+          1.9531,
+          2.1331,
+          2.3132,
+          2.4932,
+          2.6732,
+          2.8532,
+          3.0332,
+          3.2132,
+          3.3932,
+          3.5732,
+          3.7532,
+          3.9332,
+          4.1132,
+          4.2932,
+          4.4732,
+          4.6532,
+          4.8332,
+          5.0132,
+          5.1932,
+          5.3732,
+          5.5532,
+          5.7332,
+          5.9132,
+          6.0932,
+          6.2732,
+          6.4532,
+          6.6332,
+          6.8132,
+          6.9932,
+          7.1732,
+          7.3532,
+          7.5332,
+          7.7132
+        ],
+        "grid_original": [
+          1.0,
+          1.3944,
+          1.8667,
+          2.432,
+          3.1089,
+          3.9192,
+          4.8894,
+          6.0509,
+          7.4414,
+          9.1062,
+          11.0993,
+          13.4855,
+          16.3423,
+          19.7626,
+          23.8573,
+          28.7596,
+          34.6287,
+          41.6553,
+          50.0677,
+          60.1392,
+          72.1969,
+          86.6327,
+          103.9154,
+          124.6066,
+          149.3784,
+          179.0357,
+          214.5419,
+          257.0506,
+          307.9428,
+          368.8718,
+          441.8171,
+          529.1485,
+          633.7032,
+          758.8779,
+          908.7393,
+          1088.1561,
+          1302.957,
+          1560.1205,
+          1868.0011,
+          2236.6013
+        ],
+        "mean": [
+          0.1485,
+          0.189,
+          0.2282,
+          0.2596,
+          0.2752,
+          0.2669,
+          0.2272,
+          0.1553,
+          0.0823,
+          0.0474,
+          0.0474,
+          0.052,
+          0.0488,
+          0.0401,
+          0.0283,
+          0.0161,
+          0.0044,
+          -0.0069,
+          -0.0176,
+          -0.0277,
+          -0.0373,
+          -0.0465,
+          -0.0553,
+          -0.0636,
+          -0.0716,
+          -0.0793,
+          -0.0865,
+          -0.0934,
+          -0.0999,
+          -0.1061,
+          -0.1119,
+          -0.1174,
+          -0.1225,
+          -0.1273,
+          -0.1317,
+          -0.1359,
+          -0.1396,
+          -0.1431,
+          -0.1463,
+          -0.1491
+        ],
+        "band_lo": [
+          0.1075,
+          0.1538,
+          0.204,
+          0.2429,
+          0.2545,
+          0.2371,
+          0.1949,
+          0.128,
+          0.0482,
+          -0.0038,
+          -0.0266,
+          -0.0329,
+          -0.0276,
+          -0.0172,
+          -0.0096,
+          -0.0111,
+          -0.0195,
+          -0.0301,
+          -0.0401,
+          -0.049,
+          -0.0575,
+          -0.0662,
+          -0.075,
+          -0.0839,
+          -0.0927,
+          -0.1014,
+          -0.1098,
+          -0.1179,
+          -0.1257,
+          -0.1331,
+          -0.1402,
+          -0.147,
+          -0.1535,
+          -0.1596,
+          -0.1655,
+          -0.171,
+          -0.1763,
+          -0.1813,
+          -0.1861,
+          -0.1905
+        ],
+        "band_hi": [
+          0.1894,
+          0.2242,
+          0.2524,
+          0.2762,
+          0.2959,
+          0.2966,
+          0.2596,
+          0.1826,
+          0.1165,
+          0.0985,
+          0.1215,
+          0.137,
+          0.1252,
+          0.0973,
+          0.0662,
+          0.0433,
+          0.0283,
+          0.0164,
+          0.0049,
+          -0.0065,
+          -0.0171,
+          -0.0268,
+          -0.0355,
+          -0.0433,
+          -0.0505,
+          -0.0572,
+          -0.0633,
+          -0.0689,
+          -0.0742,
+          -0.0791,
+          -0.0836,
+          -0.0877,
+          -0.0915,
+          -0.0949,
+          -0.098,
+          -0.1007,
+          -0.103,
+          -0.1049,
+          -0.1065,
+          -0.1077
+        ],
+        "fold_sd_mean": 0.017,
+        "range_log10": 0.4243,
+        "range_x": 2.66,
+        "stability": 24.99,
+        "monotone": false,
+        "n_sign_changes": 3
+      },
+      "support_ratio": {
+        "x_scale": "raw",
+        "grid": [
+          3.5,
+          5.7179,
+          7.9359,
+          10.1538,
+          12.3718,
+          14.5897,
+          16.8077,
+          19.0256,
+          21.2436,
+          23.4615,
+          25.6795,
+          27.8974,
+          30.1154,
+          32.3333,
+          34.5513,
+          36.7692,
+          38.9872,
+          41.2051,
+          43.4231,
+          45.641,
+          47.859,
+          50.0769,
+          52.2949,
+          54.5128,
+          56.7308,
+          58.9487,
+          61.1667,
+          63.3846,
+          65.6026,
+          67.8205,
+          70.0385,
+          72.2564,
+          74.4744,
+          76.6923,
+          78.9103,
+          81.1282,
+          83.3462,
+          85.5641,
+          87.7821,
+          90.0
+        ],
+        "grid_original": [
+          3.5,
+          5.7179,
+          7.9359,
+          10.1538,
+          12.3718,
+          14.5897,
+          16.8077,
+          19.0256,
+          21.2436,
+          23.4615,
+          25.6795,
+          27.8974,
+          30.1154,
+          32.3333,
+          34.5513,
+          36.7692,
+          38.9872,
+          41.2051,
+          43.4231,
+          45.641,
+          47.859,
+          50.0769,
+          52.2949,
+          54.5128,
+          56.7308,
+          58.9487,
+          61.1667,
+          63.3846,
+          65.6026,
+          67.8205,
+          70.0385,
+          72.2564,
+          74.4744,
+          76.6923,
+          78.9103,
+          81.1282,
+          83.3462,
+          85.5641,
+          87.7821,
+          90.0
+        ],
+        "mean": [
+          -0.0957,
+          -0.0886,
+          -0.081,
+          -0.0731,
+          -0.0649,
+          -0.0564,
+          -0.0479,
+          -0.0393,
+          -0.0308,
+          -0.0224,
+          -0.0142,
+          -0.0062,
+          0.0013,
+          0.0084,
+          0.0151,
+          0.0211,
+          0.0264,
+          0.0309,
+          0.0346,
+          0.0374,
+          0.0392,
+          0.0399,
+          0.0394,
+          0.0378,
+          0.0352,
+          0.0315,
+          0.0269,
+          0.0217,
+          0.017,
+          0.0137,
+          0.0138,
+          0.0215,
+          0.0496,
+          0.1046,
+          0.1237,
+          0.0413,
+          -0.0229,
+          -0.0547,
+          -0.0658,
+          -0.0681
+        ],
+        "band_lo": [
+          -0.1921,
+          -0.1831,
+          -0.1733,
+          -0.1629,
+          -0.152,
+          -0.1405,
+          -0.1287,
+          -0.1165,
+          -0.1042,
+          -0.0917,
+          -0.0792,
+          -0.0667,
+          -0.0544,
+          -0.0422,
+          -0.0305,
+          -0.0191,
+          -0.0085,
+          0.0013,
+          0.0098,
+          0.0162,
+          0.0195,
+          0.0186,
+          0.0138,
+          0.0061,
+          -0.0034,
+          -0.0138,
+          -0.0247,
+          -0.0349,
+          -0.0429,
+          -0.0473,
+          -0.0476,
+          -0.0449,
+          -0.0456,
+          -0.0575,
+          -0.074,
+          -0.0839,
+          -0.0996,
+          -0.1161,
+          -0.1234,
+          -0.1243
+        ],
+        "band_hi": [
+          0.0008,
+          0.006,
+          0.0114,
+          0.0168,
+          0.0223,
+          0.0276,
+          0.0329,
+          0.0379,
+          0.0426,
+          0.0469,
+          0.0508,
+          0.0542,
+          0.057,
+          0.0591,
+          0.0606,
+          0.0612,
+          0.0612,
+          0.0605,
+          0.0594,
+          0.0585,
+          0.0588,
+          0.0611,
+          0.065,
+          0.0696,
+          0.0737,
+          0.0768,
+          0.0784,
+          0.0784,
+          0.0768,
+          0.0747,
+          0.0752,
+          0.0879,
+          0.1448,
+          0.2667,
+          0.3214,
+          0.1665,
+          0.0537,
+          0.0068,
+          -0.0081,
+          -0.012
+        ],
+        "fold_sd_mean": 0.0337,
+        "range_log10": 0.2194,
+        "range_x": 1.66,
+        "stability": 6.5,
+        "monotone": false,
+        "n_sign_changes": 3
+      },
+      "project_duration": {
+        "x_scale": "raw",
+        "grid": [
+          0.08,
+          0.6421,
+          1.2041,
+          1.7662,
+          2.3282,
+          2.8903,
+          3.4523,
+          4.0144,
+          4.5764,
+          5.1385,
+          5.7005,
+          6.2626,
+          6.8246,
+          7.3867,
+          7.9487,
+          8.5108,
+          9.0728,
+          9.6349,
+          10.1969,
+          10.759,
+          11.321,
+          11.8831,
+          12.4451,
+          13.0072,
+          13.5692,
+          14.1313,
+          14.6933,
+          15.2554,
+          15.8174,
+          16.3795,
+          16.9415,
+          17.5036,
+          18.0656,
+          18.6277,
+          19.1897,
+          19.7518,
+          20.3138,
+          20.8759,
+          21.4379,
+          22.0
+        ],
+        "grid_original": [
+          0.08,
+          0.6421,
+          1.2041,
+          1.7662,
+          2.3282,
+          2.8903,
+          3.4523,
+          4.0144,
+          4.5764,
+          5.1385,
+          5.7005,
+          6.2626,
+          6.8246,
+          7.3867,
+          7.9487,
+          8.5108,
+          9.0728,
+          9.6349,
+          10.1969,
+          10.759,
+          11.321,
+          11.8831,
+          12.4451,
+          13.0072,
+          13.5692,
+          14.1313,
+          14.6933,
+          15.2554,
+          15.8174,
+          16.3795,
+          16.9415,
+          17.5036,
+          18.0656,
+          18.6277,
+          19.1897,
+          19.7518,
+          20.3138,
+          20.8759,
+          21.4379,
+          22.0
+        ],
+        "mean": [
+          -0.2292,
+          -0.1294,
+          -0.0932,
+          -0.088,
+          0.0105,
+          0.0723,
+          -0.0393,
+          -0.0924,
+          -0.1022,
+          -0.0934,
+          -0.083,
+          -0.0729,
+          -0.063,
+          -0.0534,
+          -0.044,
+          -0.0349,
+          -0.0261,
+          -0.0175,
+          -0.0091,
+          -0.0011,
+          0.0067,
+          0.0141,
+          0.0213,
+          0.0282,
+          0.0347,
+          0.041,
+          0.0469,
+          0.0526,
+          0.0578,
+          0.0628,
+          0.0674,
+          0.0717,
+          0.0756,
+          0.0792,
+          0.0824,
+          0.0852,
+          0.0877,
+          0.0898,
+          0.0915,
+          0.0928
+        ],
+        "band_lo": [
+          -0.358,
+          -0.2165,
+          -0.1539,
+          -0.1519,
+          -0.0916,
+          -0.031,
+          -0.0988,
+          -0.1417,
+          -0.1503,
+          -0.1406,
+          -0.1294,
+          -0.1182,
+          -0.107,
+          -0.0956,
+          -0.0841,
+          -0.0725,
+          -0.0606,
+          -0.0487,
+          -0.0368,
+          -0.0249,
+          -0.0134,
+          -0.0027,
+          0.0064,
+          0.0132,
+          0.0172,
+          0.0193,
+          0.0199,
+          0.0197,
+          0.0188,
+          0.0174,
+          0.0156,
+          0.0135,
+          0.0111,
+          0.0085,
+          0.0058,
+          0.003,
+          0.0001,
+          -0.0028,
+          -0.0056,
+          -0.0084
+        ],
+        "band_hi": [
+          -0.1004,
+          -0.0423,
+          -0.0326,
+          -0.0242,
+          0.1125,
+          0.1757,
+          0.0202,
+          -0.0431,
+          -0.054,
+          -0.0461,
+          -0.0367,
+          -0.0276,
+          -0.0191,
+          -0.0112,
+          -0.0039,
+          0.0026,
+          0.0085,
+          0.0138,
+          0.0185,
+          0.0227,
+          0.0267,
+          0.031,
+          0.0362,
+          0.0432,
+          0.0522,
+          0.0627,
+          0.0739,
+          0.0854,
+          0.0969,
+          0.1082,
+          0.1192,
+          0.1299,
+          0.1401,
+          0.1498,
+          0.159,
+          0.1675,
+          0.1753,
+          0.1824,
+          0.1886,
+          0.194
+        ],
+        "fold_sd_mean": 0.0275,
+        "range_log10": 0.322,
+        "range_x": 2.1,
+        "stability": 11.71,
+        "monotone": false,
+        "n_sign_changes": 2
+      },
+      "self_burden_ratio": {
+        "x_scale": "raw",
+        "grid": [
+          10.0,
+          11.2103,
+          12.4205,
+          13.6308,
+          14.841,
+          16.0513,
+          17.2615,
+          18.4718,
+          19.6821,
+          20.8923,
+          22.1026,
+          23.3128,
+          24.5231,
+          25.7333,
+          26.9436,
+          28.1538,
+          29.3641,
+          30.5744,
+          31.7846,
+          32.9949,
+          34.2051,
+          35.4154,
+          36.6256,
+          37.8359,
+          39.0462,
+          40.2564,
+          41.4667,
+          42.6769,
+          43.8872,
+          45.0974,
+          46.3077,
+          47.5179,
+          48.7282,
+          49.9385,
+          51.1487,
+          52.359,
+          53.5692,
+          54.7795,
+          55.9897,
+          57.2
+        ],
+        "grid_original": [
+          10.0,
+          11.2103,
+          12.4205,
+          13.6308,
+          14.841,
+          16.0513,
+          17.2615,
+          18.4718,
+          19.6821,
+          20.8923,
+          22.1026,
+          23.3128,
+          24.5231,
+          25.7333,
+          26.9436,
+          28.1538,
+          29.3641,
+          30.5744,
+          31.7846,
+          32.9949,
+          34.2051,
+          35.4154,
+          36.6256,
+          37.8359,
+          39.0462,
+          40.2564,
+          41.4667,
+          42.6769,
+          43.8872,
+          45.0974,
+          46.3077,
+          47.5179,
+          48.7282,
+          49.9385,
+          51.1487,
+          52.359,
+          53.5692,
+          54.7795,
+          55.9897,
+          57.2
+        ],
+        "mean": [
+          -0.0948,
+          -0.1096,
+          -0.1263,
+          -0.1428,
+          -0.157,
+          -0.1671,
+          -0.1709,
+          -0.1666,
+          -0.152,
+          -0.1268,
+          -0.0966,
+          -0.0669,
+          -0.0432,
+          -0.0305,
+          -0.0281,
+          -0.0311,
+          -0.0347,
+          -0.0338,
+          -0.0271,
+          -0.0165,
+          -0.0041,
+          0.0091,
+          0.0223,
+          0.0353,
+          0.0478,
+          0.0596,
+          0.0708,
+          0.0811,
+          0.0907,
+          0.0994,
+          0.1074,
+          0.1147,
+          0.1211,
+          0.1268,
+          0.1318,
+          0.136,
+          0.1395,
+          0.1424,
+          0.1446,
+          0.1462
+        ],
+        "band_lo": [
+          -0.1316,
+          -0.1361,
+          -0.1603,
+          -0.1992,
+          -0.2391,
+          -0.2732,
+          -0.2963,
+          -0.3042,
+          -0.2933,
+          -0.258,
+          -0.1981,
+          -0.1303,
+          -0.0736,
+          -0.0459,
+          -0.0441,
+          -0.056,
+          -0.0702,
+          -0.0737,
+          -0.0627,
+          -0.0428,
+          -0.0202,
+          -0.002,
+          0.0067,
+          0.0122,
+          0.0173,
+          0.0224,
+          0.0273,
+          0.032,
+          0.0365,
+          0.0407,
+          0.0446,
+          0.048,
+          0.051,
+          0.0535,
+          0.0556,
+          0.0571,
+          0.0582,
+          0.0589,
+          0.0592,
+          0.0591
+        ],
+        "band_hi": [
+          -0.058,
+          -0.0832,
+          -0.0923,
+          -0.0863,
+          -0.0749,
+          -0.061,
+          -0.0456,
+          -0.0289,
+          -0.0108,
+          0.0044,
+          0.0049,
+          -0.0035,
+          -0.0129,
+          -0.0151,
+          -0.012,
+          -0.0062,
+          0.0009,
+          0.0061,
+          0.0084,
+          0.0097,
+          0.012,
+          0.0203,
+          0.0379,
+          0.0583,
+          0.0782,
+          0.0969,
+          0.1142,
+          0.1302,
+          0.1448,
+          0.1581,
+          0.1703,
+          0.1813,
+          0.1912,
+          0.2001,
+          0.2079,
+          0.2149,
+          0.2208,
+          0.2259,
+          0.2301,
+          0.2334
+        ],
+        "fold_sd_mean": 0.0302,
+        "range_log10": 0.3172,
+        "range_x": 2.08,
+        "stability": 10.49,
+        "monotone": false,
+        "n_sign_changes": 3
+      }
+    }
+  },
+  "best_candidate": "S1/count",
+  "exp1_best": "S1/count",
+  "exp4": "미실행 — 지시서 '조건부 실험'. Exp1 최고 후보 S1/count 가 baseline 을 유의하게 이기지 못했다",
+  "reproducibility": {
+    "S0/M73 baseline": true,
+    "S1/count": true,
+    "GAM G2": true
+  },
+  "leakage_audit": {
+    "spline 적합 입력": "outer train 의 결측 아닌 값만. y 를 보지 않는다",
+    "knot 위치": "outer train 분위수 (fold 마다 다시 계산)",
+    "degree/knots 선택": "데이터 보기 전 고정 (degree=3, n_knots=4). sweep 표는 진단용으로 격리",
+    "결측 처리": "spline 컬럼은 NaN 유지 — 대치 없음(대치하면 결측이 중앙값으로 위장한다)",
+    "선변환(log1p)": "단조변환, y 미사용",
+    "GAM smoothing alpha": "outer train 안 RidgeCV",
+    "G3 의 global 항": "train 쪽은 inner GroupKFold(3) OOF — in-sample 예측을 항으로 넣지 않는다",
+    "구간 경계": "fold train 의 y 만 (M73 과 동일)",
+    "test y 의 용도": "최종 metric · oracle 상한 · 구간별 집계뿐"
+  },
+  "leakage_checks": {
+    "spline 이 outer test 를 보지 않았다": true,
+    "baseline 이 M73 공표치(0.3563)를 재현": true,
+    "재현성 PASS": true
+  },
+  "leakage_verdict": "PASS",
+  "promotion_checks": {
+    "1. OOF MAE < 0.3563": true,
+    "1b. 같은 fold baseline 보다 낮다": true,
+    "2. strict split 에서도 개선": false,
+    "3. 5개 fold 중 4개 이상 개선": false,
+    "4. paired 95% CI 가 0 아래": false,
+    "5. 한 feature 에만 의존하지 않는다": true,
+    "6. leakage audit PASS": true,
+    "7. reproducibility PASS": true,
+    "8. 개선폭 > 0.003 (지시서 중단기준)": false,
+    "9. 1차 목표 MAE < 0.35": false
+  },
+  "verdict": "현행 유지 — M73 `soft/ordinal_xgb`",
+  "goals": {
+    "primary": "MAE < 0.35",
+    "final": "MAE < 0.30"
+  },
+  "published_m73": {
+    "MAE_log10": 0.3563,
+    "strict_MAE": 0.3756,
+    "within_2x": 0.564,
+    "within_3x": 0.742
+  },
+  "checkpoint": {
+    "signature": "2f2c3ee7f75e0ed4",
+    "dir": "data\\processed\\m77_ckpt",
+    "code_version": "m77-v1"
+  },
+  "run_timestamp": "2026-09-03T15:45:59.574007",
+  "seconds": 4387.1
+}

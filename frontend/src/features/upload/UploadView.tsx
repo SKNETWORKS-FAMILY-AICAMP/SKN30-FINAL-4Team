@@ -15,18 +15,18 @@ interface UploadViewProps {
 const UPLOAD_GUIDES = [
     {
         icon: 'description',
-        title: '지원 포맷 상세',
-        description: 'PDF, HWP, DOCX 파일을 지원하며, 표와 이미지가 포함된 문서도 분석 가능합니다.',
+        title: '지원 형식 안내',
+        description: 'HWP, HWPX 포맷의 문서를 업로드하여 정확하고 빠른 사전검토를 진행하실 수 있습니다',
     },
     {
         icon: 'security',
         title: '보안 정책 안내',
-        description: '업로드된 문서는 암호화되어 처리되며, 분석 완료 후 즉시 파기하거나 안전하게 보관됩니다.',
+        description: '업로드된 문서는 엄격하게 암호화되어 처리되며, 분석 완료 후 즉시 파기됩니다',
     },
     {
         icon: 'info',
         title: '분석 가이드',
-        description: '최대 50MB 용량까지 지원하며, 텍스트가 선명한 문서를 권장합니다.',
+        description: '사업 목적, 추진 일정, 예산 계획 등이 포함된 정식 본문 형태의 문서일수록 분석 정확도가 높아집니다',
     },
 ]
 

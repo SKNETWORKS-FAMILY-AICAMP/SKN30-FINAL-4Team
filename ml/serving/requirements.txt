@@ -1,0 +1,17 @@
+# ml/serving/ 추론에 필요한 최소 의존성. 개발 환경(Python 3.13.12)에서
+# 실제로 검증된 버전으로 고정한다 — model2_canonical.joblib 이 이 버전의
+# scikit-learn 객체(TfidfVectorizer·TruncatedSVD)를 피클로 담고 있으므로
+# 크게 다른 버전에서는 unpickle 이 깨질 수 있다.
+pandas==3.0.3
+numpy==2.4.4
+scikit-learn==1.8.0
+xgboost==3.4.1
+scipy==1.17.1
+joblib==1.5.3
+
+# ---- 모델 1 (KLUE-BERT) ----
+# CPU 추론으로 로컬 스모크 테스트 완료(torch 2.13.0+cpu). GPU 서버에 배포할
+# 때는 대상 플랫폼에 맞는 CUDA 빌드의 torch 를 대신 설치할 것 — 버전 자체는
+# 이 pin 을 벗어나도 무방하다(학습에는 안 쓰이고 추론에만 쓰인다).
+torch==2.13.0
+transformers==5.13.0

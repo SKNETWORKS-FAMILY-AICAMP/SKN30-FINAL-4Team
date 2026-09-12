@@ -20,12 +20,11 @@ export default function InputField({
     // 💡 아이콘과 인풋이 포함된 핵심 입력 박스는 하나로 공통화
     const inputWithIcon = (
         <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline" style={{ fontSize: '22px' }}>
                 {iconName}
             </span>
-            <input
-                id={id}
-                className="w-full pl-10 pr-4 h-[40px] bg-surface-container-low border border-outline-variant rounded-lg text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+            <input id={id}
+                className="w-full pl-10 pr-4 h-[40px] bg-surface border border-outline-variant rounded-lg text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                 {...props}
             />
         </div>
@@ -35,7 +34,7 @@ export default function InputField({
     if (layout === 'vertical') {
         return (
             <div className="flex flex-col gap-sm">
-                <label className="font-label font-semibold text-on-surface text-body-md text-[16px]" htmlFor={id}>
+                <label className="font-label-caps text-label-caps text-on-surface-variant mb-xs" htmlFor={id}>
                     {label}
                 </label>
                 {inputWithIcon}

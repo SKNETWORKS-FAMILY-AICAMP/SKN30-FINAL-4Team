@@ -1,0 +1,100 @@
+{
+  "문제": "M49 에서 기업당 지원액 축 귀속 56% (나머지 72~95%)",
+  "진단": "금액은 log 축이라 10배가 log10 1.0 밖에 안 움직이는데 비교군 안에서 원래 가장 넓게 퍼져 있다. 신호/잡음이 최악이라 56%는 고장이 아니라 '금액 10배는 비교군 기준으로 덜 이례적'이라는 사실의 반영이다",
+  "변경": "argmax 한 축 -> 기여도 D_j^2/sum(D^2), semantic axis 단위 합산",
+  "불변": {
+    "anomaly_score": true,
+    "pool_rank_spearman": 1.0
+  },
+  "semantic_axes": {
+    "기업당 지원액": {
+      "num": [
+        "log_per_recipient"
+      ],
+      "cat": [
+        "amount_type",
+        "support_unit"
+      ]
+    },
+    "지원 기업수": {
+      "num": [
+        "log_support_count"
+      ],
+      "cat": []
+    },
+    "사업기간": {
+      "num": [
+        "project_duration"
+      ],
+      "cat": []
+    },
+    "지원비율": {
+      "num": [
+        "support_ratio"
+      ],
+      "cat": []
+    },
+    "지원방식": {
+      "num": [],
+      "cat": [
+        "support_method"
+      ]
+    }
+  },
+  "step4_diagnosis": {
+    "log_per_recipient": {
+      "baseline_dev": 0.4175,
+      "shift_10x": 0.9791,
+      "snr": 2.345,
+      "m49_hit_rate": 0.56
+    },
+    "log_support_count": {
+      "baseline_dev": 0.4538,
+      "shift_10x": 1.3524,
+      "snr": 2.98,
+      "m49_hit_rate": 0.72
+    },
+    "project_duration": {
+      "baseline_dev": 0.1981,
+      "shift_10x": 4.1296,
+      "snr": 20.849,
+      "m49_hit_rate": 0.79
+    },
+    "support_ratio": {
+      "baseline_dev": 0.2745,
+      "shift_10x": 1.0005,
+      "snr": 3.645,
+      "m49_hit_rate": 0.95
+    }
+  },
+  "step6_attribution": {
+    "log_per_recipient": {
+      "argmax_old": 0.5593,
+      "top1_contrib": 0.5593,
+      "top1_semantic": 0.6525,
+      "mean_share_plain": 0.4645,
+      "mean_share_semantic": 0.6224
+    },
+    "log_support_count": {
+      "argmax_old": 0.7212,
+      "top1_contrib": 0.7212,
+      "top1_semantic": 0.6442,
+      "mean_share_plain": 0.5903,
+      "mean_share_semantic": 0.5903
+    },
+    "project_duration": {
+      "argmax_old": 0.7857,
+      "top1_contrib": 0.7857,
+      "top1_semantic": 0.7143,
+      "mean_share_plain": 0.6845,
+      "mean_share_semantic": 0.6845
+    },
+    "support_ratio": {
+      "argmax_old": 0.9483,
+      "top1_contrib": 0.9483,
+      "top1_semantic": 0.9483,
+      "mean_share_plain": 0.8173,
+      "mean_share_semantic": 0.8173
+    }
+  }
+}

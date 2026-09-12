@@ -1,0 +1,39 @@
+{
+  "labels": [
+    "normal",
+    "atypical_design",
+    "data_error",
+    "uncertain"
+  ],
+  "n": 50,
+  "label_dist": {
+    "normal": 25,
+    "uncertain": 10,
+    "atypical_design": 10,
+    "data_error": 5
+  },
+  "prev_vs_new": {
+    "경계": {
+      "atypical_design": 3,
+      "data_error": 3,
+      "normal": 9,
+      "uncertain": 3
+    },
+    "비전형": {
+      "atypical_design": 7,
+      "data_error": 2,
+      "normal": 1,
+      "uncertain": 5
+    },
+    "정상": {
+      "atypical_design": 0,
+      "data_error": 0,
+      "normal": 15,
+      "uncertain": 2
+    }
+  },
+  "main_eval_n": 35,
+  "main_eval_positive": 10,
+  "clean_holdout": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\labels\\m3_clean_holdout.csv",
+  "caveat": "라벨러(claude)가 M30 의 FN/FP 목록을 이미 읽은 상태다. 완전한 blind 가 아니라서 규칙을 시트 열기 전에 문자로 고정하고 행별 근거를 남겼다."
+}

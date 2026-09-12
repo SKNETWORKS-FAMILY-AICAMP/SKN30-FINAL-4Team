@@ -22,6 +22,7 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 
 from ..contracts.ml_result import INPUT_EVIDENCE_MISSING, MlModelId
 from ..ml_reference import (
+    MODEL_1_ALLOWED_STATUSES,
     MODEL_3_ALLOWED_AXES,
     MODEL_3_ALLOWED_LEVELS,
     MODEL_3_TYPICAL_LEVEL,
@@ -35,18 +36,23 @@ __all__ = [
     "SubprocessMlModel",
     "Model2SubprocessMlModel",
     "Model3SubprocessMlModel",
+    "Model1SubprocessMlModel",
+    "MODEL1_SERVING_DIR_ENV",
+    "model1_command",
     "model2_command",
     "model3_command",
+    "normalize_model1_output",
     "normalize_model2_output",
     "normalize_model3_output",
 ]
 
 
 _CHILD_ENTRYPOINT = Path(__file__).with_name("ml_child.py")
+MODEL1_SERVING_DIR_ENV = "PREREVIEW_MODEL1_SERVING_DIR"
 
 
 def _child_command(
-    model: Literal["model2", "model3"],
+    model: Literal["model1", "model2", "model3"],
     *,
     python_executable: str | os.PathLike[str] | None = None,
 ) -> tuple[str, ...]:
@@ -68,6 +74,14 @@ def model2_command(
     """Return the child argv for the team's ``predict_document`` entrypoint."""
 
     return _child_command("model2", python_executable=python_executable)
+
+
+def model1_command(
+    *, python_executable: str | os.PathLike[str] | None = None
+) -> tuple[str, ...]:
+    """Return the child argv for the external Model 1 serving entrypoint."""
+
+    return _child_command("model1", python_executable=python_executable)
 
 
 def model3_command(
@@ -232,6 +246,31 @@ def normalize_model2_output(raw: Any) -> dict[str, Any]:
     return _single_prediction(raw, model_name="model2")
 
 
+def normalize_model1_output(raw: Any) -> dict[str, Any]:
+    """Validate one external Model 1 serving row at the process boundary."""
+
+    if not isinstance(raw, dict):
+        raise SubprocessModelError("model1 raw result가 object가 아니다")
+    label = raw.get("support_type_pred")
+    if not isinstance(label, str) or not label.strip():
+        raise SubprocessModelError("model1 support_type_pred가 문자열이 아니다")
+    confidence = raw.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+        raise SubprocessModelError("model1 confidence가 숫자가 아니다")
+    confidence = float(confidence)
+    if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+        raise SubprocessModelError(
+            "model1 confidence가 0과 1 사이의 유한값이 아니다"
+        )
+    status = raw.get("status")
+    if not isinstance(status, str) or status not in MODEL_1_ALLOWED_STATUSES:
+        raise SubprocessModelError("model1 status가 허용 값 밖이다")
+    normalized = dict(raw)
+    normalized["support_type_pred"] = label.strip()
+    normalized["confidence"] = confidence
+    return normalized
+
+
 def _model3_record(raw: Any) -> dict[str, Any]:
     """Read one JSON representation of a pandas ``to_dict('records')`` result."""
 
@@ -340,6 +379,31 @@ class Model2SubprocessMlModel(SubprocessMlModel):
                 environment=environment,
             ),
             normalize_model2_output,
+            artifact_version=artifact_version,
+        )
+
+
+class Model1SubprocessMlModel(SubprocessMlModel):
+    """L1 model-1 port backed by the separately mounted serving wrapper."""
+
+    def __init__(
+        self,
+        command: Sequence[str | os.PathLike[str]],
+        *,
+        timeout_seconds: float = 180.0,
+        cwd: str | os.PathLike[str] | None = None,
+        environment: Mapping[str, str] | None = None,
+        artifact_version: str | None = None,
+    ) -> None:
+        super().__init__(
+            MlModelId.MODEL_1_SUPPORT_TYPE,
+            SubprocessJsonRunner(
+                command,
+                timeout_seconds=timeout_seconds,
+                cwd=cwd,
+                environment=environment,
+            ),
+            normalize_model1_output,
             artifact_version=artifact_version,
         )
 

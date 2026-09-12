@@ -1,4 +1,4 @@
-"""One-shot child entry point for the team's Model 2 and Model 3 serving code.
+"""One-shot child entry point for the team's Model 1, 2, and 3 serving code.
 
 The serving modules use bare imports and mutate ``sys.path``.  Keeping them in
 this process boundary lets the backend remain free of the model runtime while
@@ -14,13 +14,16 @@ import importlib.util
 import io
 import json
 import math
+import os
 from pathlib import Path
 import sys
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-ML_ROOT = REPO_ROOT / "ml"
+ML_ROOT_ENV = "PREREVIEW_ML_ROOT"
+MODEL1_SERVING_DIR_ENV = "PREREVIEW_MODEL1_SERVING_DIR"
+MODEL1_FIELDS = ("title", "purpose", "content", "target_text")
 
 # These are the categorical/text columns the serving adapter is allowed to
 # carry through from L1.  Numeric values parsed from the document are owned by
@@ -53,12 +56,26 @@ QUANTITY_CONTEXT = {
 }
 
 
-def _ensure_layout() -> None:
+def _resolve_ml_root() -> Path:
+    """Resolve the complete external ML source/artifact root for this child."""
+
+    raw_root = os.environ.get(ML_ROOT_ENV, "").strip()
+    return (Path(raw_root).expanduser() if raw_root else REPO_ROOT / "ml").resolve()
+
+
+def _ensure_layout(
+    ml_root: Path, *, require_data: bool, require_model1_helper: bool = False
+) -> None:
     # m2_features/m3_lab locate the project root by requiring ml/data to exist
     # before importing common.py.  The directory is tracked as an empty layout
     # marker; a child must never create or populate repository state while
     # serving a request.
-    if not ML_ROOT.is_dir() or not (ML_ROOT / "data").is_dir():
+    helper = ml_root / "pipelines" / "model1" / "dl07_m1_apply.py"
+    if (
+        not ml_root.is_dir()
+        or (require_data and not (ml_root / "data").is_dir())
+        or (require_model1_helper and not helper.is_file())
+    ):
         raise RuntimeError("team ML data layout is missing")
 
 
@@ -123,14 +140,14 @@ def _base(payload: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _adapt_for_model3(payload: Mapping[str, Any]) -> dict[str, Any]:
+def _adapt_for_model3(payload: Mapping[str, Any], ml_root: Path) -> dict[str, Any]:
     supplied = payload.get("meta")
     if supplied is not None:
         if not isinstance(supplied, Mapping):
             raise ValueError("meta must be an object")
         return dict(supplied)
 
-    adapter_path = ML_ROOT / "serving" / "shared" / "preconsultation_adapter.py"
+    adapter_path = ml_root / "serving" / "shared" / "preconsultation_adapter.py"
     adapter = _load_module("team_preconsultation_adapter", adapter_path)
     text = _text(payload)
     if not text:
@@ -140,16 +157,82 @@ def _adapt_for_model3(payload: Mapping[str, Any]) -> dict[str, Any]:
     return adapter.adapt(text, base=_base(payload))
 
 
-def _run_model2(payload: Mapping[str, Any]) -> Any:
-    entry = ML_ROOT / "serving" / "model2" / "predict.py"
+def _model1_entry() -> Path:
+    """Resolve the separately mounted Model 1 serving wrapper."""
+
+    raw_root = os.environ.get(MODEL1_SERVING_DIR_ENV, "").strip()
+    if not raw_root:
+        raise RuntimeError(f"{MODEL1_SERVING_DIR_ENV} is not set")
+    root = Path(raw_root).expanduser()
+    candidates = [root / "model1" / "inference.py"]
+    if root.name.lower() == "model1":
+        candidates.append(root / "inference.py")
+    for entry in candidates:
+        if entry.is_file():
+            return entry
+    raise FileNotFoundError(f"Model 1 inference.py was not found under {root}")
+
+
+def _prepare_model1_import_path(ml_root: Path) -> None:
+    """Expose the unchanged model-1 preprocessing helper to serving."""
+
+    pipeline_dir = ml_root / "pipelines" / "model1"
+    module_path = pipeline_dir / "dl07_m1_apply.py"
+    if not module_path.is_file():
+        raise FileNotFoundError(f"Model 1 preprocessing module was not found: {module_path}")
+    path = str(pipeline_dir)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    if "dl07_m1_apply" not in sys.modules:
+        _load_module("dl07_m1_apply", module_path)
+
+
+def _model1_text(payload: Mapping[str, Any]) -> str:
+    """Join model-1 training fields in their frozen order."""
+
+    parts: list[str] = []
+    for field in MODEL1_FIELDS:
+        value = payload.get(field, "")
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            raise ValueError(f"model1 {field} must be a string")
+        value = value.strip()
+        if value:
+            parts.append(value)
+    if not parts:
+        raise ValueError("model1 input fields are all empty")
+    return "\n".join(parts)
+
+
+def _run_model1(payload: Mapping[str, Any], ml_root: Path) -> dict[str, Any]:
+    entry = _model1_entry()
+    _prepare_model1_import_path(ml_root)
+    # This module name is intentionally isolated from the team's generic
+    # ``inference`` name and from model2/model3 imports in the parent process.
+    model = _load_module("prereview_external_model1_inference", entry)
+    # ``build_ml_inputs`` carries raw CPL text.  Keep the serving wrapper's
+    # frozen preprocessing (clean_text/tier) in the child instead of treating
+    # structured field concatenation as already-cleaned training input.
+    result = model.predict([_model1_text(payload)], already_cleaned=False)
+    if not isinstance(result, list) or len(result) != 1:
+        raise ValueError("model1 predict result must contain one row")
+    row = result[0]
+    if not isinstance(row, Mapping):
+        raise ValueError("model1 predict row must be an object")
+    return dict(row)
+
+
+def _run_model2(payload: Mapping[str, Any], ml_root: Path) -> Any:
+    entry = ml_root / "serving" / "model2" / "predict.py"
     model = _load_module("team_model2_predict", entry)
     return model.predict_document(_text(payload), base=_base(payload))
 
 
-def _run_model3(payload: Mapping[str, Any]) -> Any:
-    entry = ML_ROOT / "serving" / "model3" / "score.py"
+def _run_model3(payload: Mapping[str, Any], ml_root: Path) -> Any:
+    entry = ml_root / "serving" / "model3" / "score.py"
     model = _load_module("team_model3_score", entry)
-    scored = model.score_document(_adapt_for_model3(payload))
+    scored = model.score_document(_adapt_for_model3(payload, ml_root))
     if not isinstance(scored, Mapping) or not scored.get("scored"):
         raise ValueError("model3 input has fewer than the required valid axes")
     result = scored.get("result")
@@ -189,7 +272,9 @@ def _jsonable(value: Any) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="team ML one-shot child")
-    parser.add_argument("--model", choices=("model2", "model3"), required=True)
+    parser.add_argument(
+        "--model", choices=("model1", "model2", "model3"), required=True
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -202,9 +287,18 @@ def main(argv: list[str] | None = None) -> int:
         # the backend parent therefore remains unaware of both stdout and
         # ``sys.path`` changes made by the serving package.
         with contextlib.redirect_stdout(io.StringIO()):
-            _ensure_layout()
-            result = (_run_model2(request) if args.model == "model2"
-                      else _run_model3(request))
+            ml_root = _resolve_ml_root()
+            _ensure_layout(
+                ml_root,
+                require_data=args.model != "model1",
+                require_model1_helper=args.model == "model1",
+            )
+            if args.model == "model1":
+                result = _run_model1(request, ml_root)
+            elif args.model == "model2":
+                result = _run_model2(request, ml_root)
+            else:
+                result = _run_model3(request, ml_root)
         response = _jsonable(result)
         sys.stdout.write(json.dumps(
             response, ensure_ascii=False, allow_nan=False, separators=(",", ":")

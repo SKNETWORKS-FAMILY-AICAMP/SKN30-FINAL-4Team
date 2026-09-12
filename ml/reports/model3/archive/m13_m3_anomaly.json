@@ -1,0 +1,300 @@
+{
+  "n_total": 3905,
+  "n_train": 2339,
+  "min_axes": 2,
+  "contamination": 0.05,
+  "features": [
+    "log_per_recipient",
+    "log_per_recipient__missing",
+    "log_support_count",
+    "log_support_count__missing",
+    "support_ratio",
+    "support_ratio__missing",
+    "project_duration",
+    "project_duration__missing",
+    "support_type__freq",
+    "support_method__freq",
+    "support_unit__freq",
+    "amount_type__freq",
+    "category_large__freq"
+  ],
+  "synthetic_eval": {
+    "IsolationForest": {
+      "n_synthetic": 60,
+      "recall_at_k": 0.0833,
+      "recall_at_2k": 0.075,
+      "median_rank_pct": 20.57
+    },
+    "LocalOutlierFactor": {
+      "n_synthetic": 60,
+      "recall_at_k": 0.6333,
+      "recall_at_2k": 0.3917,
+      "median_rank_pct": 1.67
+    },
+    "OneClassSVM": {
+      "n_synthetic": 60,
+      "recall_at_k": 0.7833,
+      "recall_at_2k": 0.4583,
+      "median_rank_pct": 1.31
+    }
+  },
+  "best_model": "OneClassSVM",
+  "score_drivers": {
+    "IsolationForest": {
+      "log_per_recipient": -0.118,
+      "log_per_recipient__missing": 0.511,
+      "log_support_count": 0.106,
+      "log_support_count__missing": 0.259,
+      "support_ratio": 0.156,
+      "support_ratio__missing": 0.081,
+      "project_duration": 0.539,
+      "project_duration__missing": 0.534,
+      "support_type__freq": -0.097,
+      "support_method__freq": 0.503,
+      "support_unit__freq": 0.414,
+      "amount_type__freq": 0.503,
+      "category_large__freq": 0.118
+    },
+    "LocalOutlierFactor": {
+      "log_per_recipient": 0.069,
+      "log_per_recipient__missing": 0.052,
+      "log_support_count": 0.289,
+      "log_support_count__missing": -0.059,
+      "support_ratio": 0.127,
+      "support_ratio__missing": 0.033,
+      "project_duration": 0.048,
+      "project_duration__missing": 0.059,
+      "support_type__freq": 0.141,
+      "support_method__freq": 0.081,
+      "support_unit__freq": 0.042,
+      "amount_type__freq": 0.091,
+      "category_large__freq": 0.197
+    },
+    "OneClassSVM": {
+      "log_per_recipient": 0.064,
+      "log_per_recipient__missing": 0.261,
+      "log_support_count": 0.151,
+      "log_support_count__missing": 0.258,
+      "support_ratio": 0.174,
+      "support_ratio__missing": 0.107,
+      "project_duration": 0.319,
+      "project_duration__missing": 0.316,
+      "support_type__freq": 0.145,
+      "support_method__freq": 0.219,
+      "support_unit__freq": 0.154,
+      "amount_type__freq": 0.203,
+      "category_large__freq": 0.363
+    }
+  },
+  "contamination_stability": {
+    "contamination=0.01": {
+      "overlap_top30": 1.0
+    },
+    "contamination=0.03": {
+      "overlap_top30": 0.2667
+    },
+    "contamination=0.05": {
+      "overlap_top30": 0.3
+    },
+    "contamination=0.10": {
+      "overlap_top30": 0.3
+    }
+  },
+  "resample_stability": {
+    "n_iter": 10,
+    "frac": 0.8,
+    "top_n": 30,
+    "overlap_mean": 0.8267,
+    "overlap_min": 0.7333
+  },
+  "top_cases": [
+    {
+      "row_id": "PBLN_000000000106850",
+      "title": "[전남] 2025년 강소기업 육성사업 참여기업 모집 공고",
+      "anomaly_score": 1.0,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "n": 289
+      },
+      "n_axes_used": 3,
+      "notable_features": [
+        "기업(과제)당 지원한도가 비교군 대비 높음 (P100, 성격x방식x단위x출처 비교군 289건)",
+        "지원비율이 비교군 대비 낮음 (P0, 성격x방식x출처 비교군 51건)"
+      ],
+      "evidence": "[전남] 2025년 강소기업 육성사업 참여기업 모집 공고"
+    },
+    {
+      "row_id": "PBLN_000000000117985",
+      "title": "2026년 방송광고비 할인지원사업 모집 공고",
+      "anomaly_score": 0.9998,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "판로",
+        "support_method": "other",
+        "n": 75
+      },
+      "n_axes_used": 2,
+      "notable_features": [
+        "사업기간이 비교군 대비 높음 (P100, 성격 비교군 75건)"
+      ],
+      "evidence": "8,723억 \nKOBACO에서는 1998년부터 25년간 혁신형 중소기업 방송광고비 지원사업을 운영하여, 2024년까지 4,414개 중소기업에 8,723억 원을 지원하였습니다.\n\n☞ 벤처기업, 이노비즈, 메인비즈 등 중 하나 이상의 확인서를 보유한 기업 중 최근 6개월간 지상파 전국권 방"
+    },
+    {
+      "row_id": "PBLN_000000000122952",
+      "title": "2026년 영세 소상공인 중소금융권 금융비용 지원사업 재공고",
+      "anomaly_score": 0.7882,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "사업화",
+        "support_method": "loan",
+        "n": 377
+      },
+      "n_axes_used": 3,
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 성격 비교군 377건)"
+      ],
+      "evidence": "100만원 \n고금리로 어려움을 겪는 소상공인 금융부담 완화를 위해 ‘영세 소상공인 중소금융권 금융비용 지원사업’의 참여자를 다음과 같이 모집 공고합니다.\n\n☞ ’25. 1. 1. ~ 12. 31.까지, 제2금융권에서 신규(갱신 제외)로 사업자 대출(가계대출 제외)을 받은 광주소재 개인사"
+    },
+    {
+      "row_id": "PBLN_000000000081265",
+      "title": "2023년 중소기업 계약학과 국비지원 석사과정 모집 공고(경상국립대학교 기계시스템공학과)",
+      "anomaly_score": 0.689,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "교육훈련",
+        "support_method": "grant",
+        "n": 957
+      },
+      "n_axes_used": 2,
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 전체 비교군 957건)"
+      ],
+      "evidence": "2023년 중소기업 계약학과 국비지원 석사과정 모집 공고(경상국립대학교 기계시스템공학과)"
+    },
+    {
+      "row_id": "PBLN_000000000041364",
+      "title": "2019년 1차 창업기업지원서비스 바우처 창업기업 모집 공고",
+      "anomaly_score": 0.6588,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "사업화",
+        "support_method": "voucher",
+        "n": null
+      },
+      "n_axes_used": 2,
+      "notable_features": [],
+      "evidence": "2019년 1차 창업기업지원서비스 바우처 창업기업 모집 공고"
+    },
+    {
+      "row_id": "EXCEL2022_0197",
+      "title": "2022년 중소의료기기기업 시장진입 단계별 규제극복 지원",
+      "anomaly_score": 0.6453,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "성능인증",
+        "support_method": "grant",
+        "n": 957
+      },
+      "n_axes_used": 2,
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 전체 비교군 957건)"
+      ],
+      "evidence": "10백만원 이내, 자부담 100%"
+    },
+    {
+      "row_id": "PBLN_000000000046548",
+      "title": "2019년 3차 창업기업지원서비스 바우처 창업기업 모집 공고",
+      "anomaly_score": 0.6435,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "사업화",
+        "support_method": "voucher",
+        "n": null
+      },
+      "n_axes_used": 2,
+      "notable_features": [],
+      "evidence": "2019년 3차 창업기업지원서비스 바우처 창업기업 모집 공고"
+    },
+    {
+      "row_id": "PBLN_000000000123711",
+      "title": "[전남] 2026년 소상공인 육성자금 지원계획 변경 공고",
+      "anomaly_score": 0.6353,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "융자",
+        "support_method": "grant",
+        "n": 957
+      },
+      "n_axes_used": 4,
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 전체 비교군 957건)",
+        "사업기간이 비교군 대비 높음 (P90, 성격 비교군 236건)"
+      ],
+      "evidence": " \n「전라남도 중소기업 육성기금 조례」제12조의 규정에 따라 2026년도 전라남도 소상공인 육성자금 지원계획을 다음과 같이 공고합니다.\n\n☞ 전남 소재 소상공인\n※ 세부사업별 지원대상 공고문 참조\n\n☞ 소상공인 창업자금, 소상공인 경영안정자금 지원\n※ 자세한 지원내용 공고문 참조"
+    },
+    {
+      "row_id": "PBLN_000000000040984",
+      "title": "2019년 대ㆍ중소기업 혁신 파트너십 사업 공고",
+      "anomaly_score": 0.6056,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "n": 51
+      },
+      "n_axes_used": 3,
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 성격x방식x출처 비교군 51건)",
+        "지원 기업/과제 수가 비교군 대비 낮음 (P10, 성격x방식x단위x출처 비교군 243건)"
+      ],
+      "evidence": "2019년 대ㆍ중소기업 혁신 파트너십 사업 공고"
+    },
+    {
+      "row_id": "PBLN_000000000092420",
+      "title": "일자리창출 우수기업에 대한 세정지원 공고",
+      "anomaly_score": 0.5835,
+      "status": "rare_pattern",
+      "status_text": "과거 사업 패턴과 차이가 큼",
+      "reference_group": {
+        "support_type": "고용보조",
+        "support_method": "grant",
+        "n": null
+      },
+      "n_axes_used": 2,
+      "notable_features": [],
+      "evidence": "일자리창출 우수기업에 대한 세정지원 공고"
+    }
+  ],
+  "allowed_expressions": [
+    "과거 사업 패턴과 차이가 큼",
+    "희귀한 설계 조합",
+    "동일 유형 대비 비전형적",
+    "확인 필요"
+  ],
+  "forbidden_expressions": [
+    "잘못 설계됨",
+    "부적절함",
+    "정책적으로 문제 있음",
+    "지원규모 과다"
+  ],
+  "verdict": {
+    "verdict": "Conditional",
+    "reasons": [
+      "합성 이상치를 상위 k 안에 78% 회수",
+      "nu(contamination) 를 0.01~0.10 으로 바꿨을 때 상위 30건 유지율 최저 27% — OneClassSVM 은 nu 가 모델 자체를 바꾼다. 상위 N 건을 고정 목록으로 쓰지 말고 nu 를 명시해 함께 출력해야 한다",
+      "80% 재표집 재학습 시 상위 30건 유지율 평균 83% (최저 73%)",
+      "전체 3905건 중 2339건(60%)만 학습·적용 대상 — 나머지는 수치 축이 1개 이하라 '이례'를 말할 근거가 없다"
+    ]
+  }
+}

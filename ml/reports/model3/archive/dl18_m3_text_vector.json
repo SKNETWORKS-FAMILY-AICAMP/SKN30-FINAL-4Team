@@ -1,0 +1,180 @@
+{
+  "질문": "text 와 structured feature 를 함께 쓰면 의미가 증가하는가 (계획서 §12-7)",
+  "encoder": "jhgan/ko-sroberta-multitask",
+  "device": "cpu",
+  "n_train": 1948,
+  "embed_dim": 768,
+  "text_pca_dim": 24,
+  "w_struct": 0.6,
+  "weight_note": "텍스트 가중치는 데이터로 고르지 않았다. M37 합성은 정형 축만 흔들어서 텍스트 가중치를 고를 수 없고, hold-out 으로 고르면 hold-out 이 튜닝셋이 된다. 계획서 §7 의 예시 비율 0.6/0.4 를 썼다.",
+  "block_results": {
+    "structured only | distance only": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.904,
+      "pr_auc": 0.8135,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 8,
+        "TP": 7,
+        "FP": 1,
+        "FN": 3,
+        "recall": 0.7,
+        "precision": 0.875
+      }
+    },
+    "structured only | dist0.7+residual0.3": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.872,
+      "pr_auc": 0.7103,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      }
+    },
+    "text only | distance only": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.532,
+      "pr_auc": 0.5076,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 3,
+        "FP": 4,
+        "FN": 7,
+        "recall": 0.3,
+        "precision": 0.4286
+      }
+    },
+    "text only | dist0.7+residual0.3": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.464,
+      "pr_auc": 0.3158,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 2,
+        "FP": 5,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.2857
+      }
+    },
+    "structured+text (0.6/0.4) | distance only": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.88,
+      "pr_auc": 0.773,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      }
+    },
+    "structured+text (0.6/0.4) | dist0.7+residual0.3": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.812,
+      "pr_auc": 0.6407,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      }
+    }
+  },
+  "best_block": "structured only | distance only",
+  "text_mismatch_alone": {
+    "n": 35,
+    "n_positive": 10,
+    "roc_auc": 0.592,
+    "pr_auc": 0.4932,
+    "equal_budget": {
+      "top_n": 7,
+      "n_flagged": 7,
+      "TP": 2,
+      "FP": 5,
+      "FN": 8,
+      "recall": 0.2,
+      "precision": 0.2857
+    }
+  },
+  "text_mismatch_added": {
+    "distance 0.7 + text_mismatch 0.3": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.868,
+      "pr_auc": 0.7103,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      }
+    },
+    "distance 0.5 + text_mismatch 0.5": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.82,
+      "pr_auc": 0.6764,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      }
+    }
+  },
+  "n_text_cohorts": 12,
+  "by_cohort": {
+    "taxonomy": {
+      "n_positive": 8,
+      "n_normal": 16,
+      "roc_auc": {
+        "structured only": 0.875,
+        "text only": 0.5547,
+        "structured+text (0.6/0.4)": 0.875
+      }
+    },
+    "bizinfo": {
+      "n_positive": 2,
+      "n_normal": 9,
+      "roc_auc": {
+        "structured only": 1.0,
+        "text only": 0.6667,
+        "structured+text (0.6/0.4)": 0.8889
+      }
+    }
+  },
+  "cohort_asymmetry": "taxonomy 는 사업목적·지원대상·업종 원문이 있고 bizinfo 는 제목과 지원규모 문장뿐이다",
+  "verdict": {
+    "verdict": "텍스트를 붙여도 달라지지 않는다",
+    "reasons": [
+      "정형만 0.904 / 텍스트만 0.532 / 정형+텍스트 0.880",
+      "차이 -0.024 — 35건·양성 10건에서 이 정도는 부트스트랩 구간 안이다. 방향만 읽고 크기는 읽지 않는다.",
+      "A4 text-feature 불일치 단독 ROC-AUC 0.592. 이 신호의 값어치는 순위가 아니라 **경고 이유를 문장으로 말할 수 있다는 것**이다."
+    ]
+  }
+}

@@ -1,0 +1,213 @@
+{
+  "purpose": "M85 full sweep 전 사전 screening (fold 0~2, T0/T2/T3/T4/T5)",
+  "gate": {
+    "min_fold_wins": 2,
+    "n_folds": 3,
+    "max_mean_delta": -0.002
+  },
+  "baseline": "T0 = M82/P3",
+  "p3_baseline": {
+    "primary_MAE": 0.3518,
+    "strict_MAE": 0.3751
+  },
+  "exp0_audit": {
+    "modeling_rows": 1877,
+    "document_rows": 744,
+    "ext_mix": {
+      "hwp": 712,
+      "hwpx": 32
+    },
+    "table_parse_failure_rate": 0.0013,
+    "docs_with_tables": 728,
+    "table_detect_coverage_all_rows": 0.3879,
+    "table_detect_coverage_document_rows": 0.9785,
+    "avg_tables_per_doc": 22.78,
+    "avg_rows": 112.41,
+    "avg_cols": 9.17,
+    "cell_count": 394026,
+    "merged_cells": 44805,
+    "header_detect_rate": 0.9025,
+    "row_label_detect_rate": 0.4712,
+    "header_roles": {
+      "support_limit": 247,
+      "support_rate": 133,
+      "duration": 306,
+      "selected": 26,
+      "budget": 142,
+      "loan": 156,
+      "target": 363,
+      "category": 487
+    },
+    "row_roles": {
+      "per_company": 16,
+      "per_project": 5,
+      "per_team": 0,
+      "total": 126,
+      "loan": 125,
+      "grant": 162,
+      "gov": 16,
+      "self": 41
+    },
+    "values_in_tables": {
+      "amt": 2821,
+      "pct": 2734,
+      "cnt": 392,
+      "mon": 5278
+    },
+    "rows_with_amount_in_table": 402,
+    "key_terms_in_table_headers": {
+      "지원한도": 56,
+      "지원금액": 114,
+      "사업비": 174,
+      "총사업비": 32,
+      "지원비율": 22,
+      "지원기간": 55,
+      "선정규모": 1,
+      "기업당": 22,
+      "과제당": 7,
+      "융자한도": 12,
+      "자부담": 74,
+      "정부지원": 55
+    }
+  },
+  "leakage": {
+    "digit_residue_rows": 0,
+    "amount_regex_residue_rows": 0,
+    "target_exact_string_rows": 0
+  },
+  "screen_n": 1127,
+  "fold_records": [
+    {
+      "fold": 0,
+      "n_test": 376,
+      "dims": {
+        "T0": 211,
+        "T2": 232,
+        "T3": 217,
+        "T4": 223,
+        "T5": 256
+      },
+      "MAE": {
+        "T0": 0.368,
+        "T2": 0.3713,
+        "T3": 0.3698,
+        "T4": 0.3691,
+        "T5": 0.3672
+      },
+      "seconds": 281.8
+    },
+    {
+      "fold": 1,
+      "n_test": 376,
+      "dims": {
+        "T0": 211,
+        "T2": 232,
+        "T3": 217,
+        "T4": 223,
+        "T5": 256
+      },
+      "MAE": {
+        "T0": 0.3416,
+        "T2": 0.3465,
+        "T3": 0.3407,
+        "T4": 0.3396,
+        "T5": 0.3389
+      },
+      "seconds": 437.1
+    },
+    {
+      "fold": 2,
+      "n_test": 375,
+      "dims": {
+        "T0": 211,
+        "T2": 232,
+        "T3": 217,
+        "T4": 223,
+        "T5": 256
+      },
+      "MAE": {
+        "T0": 0.3685,
+        "T2": 0.3658,
+        "T3": 0.3654,
+        "T4": 0.3694,
+        "T5": 0.3659
+      },
+      "seconds": 276.9
+    }
+  ],
+  "results": {
+    "T2": {
+      "fold_MAE": [
+        0.3713,
+        0.3465,
+        0.3658
+      ],
+      "fold_delta": [
+        0.0033,
+        0.0049,
+        -0.0027
+      ],
+      "fold_wins": 1,
+      "mean_delta": 0.0018,
+      "pooled_MAE": 0.3612,
+      "pooled_delta": 0.0019,
+      "pass": false
+    },
+    "T3": {
+      "fold_MAE": [
+        0.3698,
+        0.3407,
+        0.3654
+      ],
+      "fold_delta": [
+        0.0018,
+        -0.0009,
+        -0.0031
+      ],
+      "fold_wins": 2,
+      "mean_delta": -0.0007,
+      "pooled_MAE": 0.3586,
+      "pooled_delta": -0.0008,
+      "pass": false
+    },
+    "T4": {
+      "fold_MAE": [
+        0.3691,
+        0.3396,
+        0.3694
+      ],
+      "fold_delta": [
+        0.0011,
+        -0.002,
+        0.0009
+      ],
+      "fold_wins": 1,
+      "mean_delta": 0.0,
+      "pooled_MAE": 0.3594,
+      "pooled_delta": 0.0,
+      "pass": false
+    },
+    "T5": {
+      "fold_MAE": [
+        0.3672,
+        0.3389,
+        0.3659
+      ],
+      "fold_delta": [
+        -0.0008,
+        -0.0027,
+        -0.0026
+      ],
+      "fold_wins": 3,
+      "mean_delta": -0.002,
+      "pooled_MAE": 0.3573,
+      "pooled_delta": -0.002,
+      "pass": true
+    }
+  },
+  "passed": [
+    "T5"
+  ],
+  "verdict": "full validation 진행 — 통과 후보: T5",
+  "seconds": 1025.8
+}

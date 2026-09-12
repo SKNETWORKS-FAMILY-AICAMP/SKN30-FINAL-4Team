@@ -1,0 +1,827 @@
+{
+  "purpose": "본문 텍스트 표현만 튜닝해 M69 의 0.3719 을 0.35 아래로 낮출 수 있는가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "model": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    },
+    "structured_layer": "M69 G 단계 전체",
+    "masking": "mask_amount_expressions -> 남은 모든 숫자를 '#' 로 치환, 앞 4000자"
+  },
+  "changed": "본문 텍스트를 어떤 행렬로 만드는가 (SVD 차원 · n-gram · word · encoder 분리 · 본문 선택)",
+  "baseline_reproduction": {
+    "MAE_log10": 0.3719,
+    "expected": {
+      "MAE_log10": 0.3719,
+      "within_2x": 0.53,
+      "within_3x": 0.723,
+      "strict_MAE": 0.3931
+    },
+    "row_level_match_with_m69_oof": true
+  },
+  "body_variants": {
+    "full": {
+      "median_len": 395,
+      "leakage": {
+        "unmasked_numeric_target_clue": "0 / 1877",
+        "raw_amount_leakage": "0 / 1877",
+        "pass": true
+      }
+    },
+    "head": {
+      "median_len": 395,
+      "leakage": {
+        "unmasked_numeric_target_clue": "0 / 1877",
+        "raw_amount_leakage": "0 / 1877",
+        "pass": true
+      }
+    },
+    "section": {
+      "median_len": 382,
+      "leakage": {
+        "unmasked_numeric_target_clue": "0 / 1877",
+        "raw_amount_leakage": "0 / 1877",
+        "pass": true
+      }
+    },
+    "dedup": {
+      "median_len": 394,
+      "leakage": {
+        "unmasked_numeric_target_clue": "0 / 1877",
+        "raw_amount_leakage": "0 / 1877",
+        "pass": true
+      }
+    }
+  },
+  "phases": [
+    {
+      "phase": "Phase 1 — SVD 차원",
+      "candidates": [
+        "A1 SVD128",
+        "A2 SVD256"
+      ],
+      "carried_in": "M69 baseline",
+      "winner": "A2 SVD256",
+      "MAE": {
+        "M69 baseline": 0.3719,
+        "A1 SVD128": 0.3739,
+        "A2 SVD256": 0.3718
+      },
+      "changed": true
+    },
+    {
+      "phase": "Phase 2 — char n-gram",
+      "candidates": [
+        "B1 char2~4",
+        "B2 char3~5"
+      ],
+      "carried_in": "A2 SVD256",
+      "winner": "A2 SVD256",
+      "MAE": {
+        "A2 SVD256": 0.3718,
+        "B1 char2~4": 0.3723,
+        "B2 char3~5": 0.3767
+      },
+      "changed": false
+    },
+    {
+      "phase": "Phase 3 — word TF-IDF",
+      "candidates": [
+        "C1 +word1",
+        "C2 +word1~2"
+      ],
+      "carried_in": "A2 SVD256",
+      "winner": "C2 +word1~2",
+      "MAE": {
+        "A2 SVD256": 0.3718,
+        "C1 +word1": 0.3726,
+        "C2 +word1~2": 0.3708
+      },
+      "changed": true
+    },
+    {
+      "phase": "Phase 4 — 제목/본문 encoder",
+      "candidates": [
+        "D1 제목결합(대조군)"
+      ],
+      "carried_in": "C2 +word1~2",
+      "winner": "D1 제목결합(대조군)",
+      "MAE": {
+        "C2 +word1~2": 0.3708,
+        "D1 제목결합(대조군)": 0.3701
+      },
+      "changed": true
+    },
+    {
+      "phase": "Phase 5 — 본문 선택",
+      "candidates": [
+        "E1 앞부분",
+        "E2 section 우선",
+        "E3 중복 제거"
+      ],
+      "carried_in": "D1 제목결합(대조군)",
+      "winner": "D1 제목결합(대조군)",
+      "MAE": {
+        "D1 제목결합(대조군)": 0.3701,
+        "E1 앞부분": 0.3763,
+        "E2 section 우선": 0.3776,
+        "E3 중복 제거": 0.3728
+      },
+      "changed": false
+    }
+  ],
+  "results": {
+    "M69 baseline": {
+      "MAE_log10": 0.3719,
+      "MedAE_log10": 0.2761,
+      "geo_mean_error_x": 2.355,
+      "within_2x": 0.5301,
+      "within_3x": 0.723,
+      "name": "M69 baseline",
+      "spec": "body=full · char2~3 · SVD64",
+      "per_fold_MAE": [
+        0.3947,
+        0.3499,
+        0.3814,
+        0.3819,
+        0.3517
+      ],
+      "fold_std": 0.0179,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4182
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3292
+        }
+      },
+      "seconds": 67.7,
+      "explained_variance": {
+        "body_char": 0.2492
+      },
+      "text_artifact_bytes": 16463672
+    },
+    "A1 SVD128": {
+      "MAE_log10": 0.3739,
+      "MedAE_log10": 0.2844,
+      "geo_mean_error_x": 2.365,
+      "within_2x": 0.5274,
+      "within_3x": 0.723,
+      "name": "A1 SVD128",
+      "spec": "body=full · char2~3 · SVD128",
+      "per_fold_MAE": [
+        0.3932,
+        0.3541,
+        0.3856,
+        0.3832,
+        0.3536
+      ],
+      "fold_std": 0.0167,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4183
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3329
+        }
+      },
+      "seconds": 98.7,
+      "explained_variance": {
+        "body_char": 0.3612
+      },
+      "text_artifact_bytes": 31825208,
+      "vs_baseline": {
+        "delta_MAE": 0.002,
+        "ci95": [
+          -0.0024,
+          0.0062
+        ],
+        "wilcoxon_p": 0.37,
+        "n_better": 909,
+        "n_worse": 968
+      },
+      "fold_wins": 1
+    },
+    "A2 SVD256": {
+      "MAE_log10": 0.3718,
+      "MedAE_log10": 0.2682,
+      "geo_mean_error_x": 2.354,
+      "within_2x": 0.5424,
+      "within_3x": 0.7144,
+      "name": "A2 SVD256",
+      "spec": "body=full · char2~3 · SVD256",
+      "per_fold_MAE": [
+        0.3902,
+        0.3476,
+        0.3846,
+        0.3821,
+        0.3546
+      ],
+      "fold_std": 0.0173,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4165
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3306
+        }
+      },
+      "seconds": 153.9,
+      "explained_variance": {
+        "body_char": 0.517
+      },
+      "text_artifact_bytes": 62548285,
+      "vs_baseline": {
+        "delta_MAE": -0.0001,
+        "ci95": [
+          -0.005,
+          0.0044
+        ],
+        "wilcoxon_p": 0.857,
+        "n_better": 943,
+        "n_worse": 934
+      },
+      "fold_wins": 2
+    },
+    "B1 char2~4": {
+      "MAE_log10": 0.3723,
+      "MedAE_log10": 0.2752,
+      "geo_mean_error_x": 2.357,
+      "within_2x": 0.5338,
+      "within_3x": 0.7128,
+      "name": "B1 char2~4",
+      "spec": "body=full · char2~4 · SVD256",
+      "per_fold_MAE": [
+        0.3838,
+        0.3494,
+        0.3902,
+        0.3854,
+        0.3527
+      ],
+      "fold_std": 0.0175,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4167
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3313
+        }
+      },
+      "seconds": 165.0,
+      "explained_variance": {
+        "body_char": 0.536
+      },
+      "text_artifact_bytes": 62576976,
+      "vs_baseline": {
+        "delta_MAE": 0.0004,
+        "ci95": [
+          -0.0049,
+          0.0053
+        ],
+        "wilcoxon_p": 0.91,
+        "n_better": 943,
+        "n_worse": 934
+      },
+      "fold_wins": 2
+    },
+    "B2 char3~5": {
+      "MAE_log10": 0.3767,
+      "MedAE_log10": 0.2806,
+      "geo_mean_error_x": 2.381,
+      "within_2x": 0.5253,
+      "within_3x": 0.7096,
+      "name": "B2 char3~5",
+      "spec": "body=full · char3~5 · SVD256",
+      "per_fold_MAE": [
+        0.395,
+        0.35,
+        0.3891,
+        0.3909,
+        0.3585
+      ],
+      "fold_std": 0.0186,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4239
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.333
+        }
+      },
+      "seconds": 157.0,
+      "explained_variance": {
+        "body_char": 0.5265
+      },
+      "text_artifact_bytes": 62626189,
+      "vs_baseline": {
+        "delta_MAE": 0.0047,
+        "ci95": [
+          -0.0014,
+          0.0105
+        ],
+        "wilcoxon_p": 0.244,
+        "n_better": 926,
+        "n_worse": 951
+      },
+      "fold_wins": 0
+    },
+    "C1 +word1": {
+      "MAE_log10": 0.3726,
+      "MedAE_log10": 0.277,
+      "geo_mean_error_x": 2.358,
+      "within_2x": 0.5349,
+      "within_3x": 0.7267,
+      "name": "C1 +word1",
+      "spec": "body=full · char2~3 · SVD256 · word1~1/SVD32",
+      "per_fold_MAE": [
+        0.3892,
+        0.347,
+        0.3886,
+        0.3871,
+        0.3509
+      ],
+      "fold_std": 0.0193,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4164
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3321
+        }
+      },
+      "seconds": 167.5,
+      "explained_variance": {
+        "body_char": 0.517,
+        "body_word": 0.1356
+      },
+      "text_artifact_bytes": 65872919,
+      "vs_baseline": {
+        "delta_MAE": 0.0006,
+        "ci95": [
+          -0.0044,
+          0.0055
+        ],
+        "wilcoxon_p": 0.928,
+        "n_better": 958,
+        "n_worse": 919
+      },
+      "fold_wins": 3
+    },
+    "C2 +word1~2": {
+      "MAE_log10": 0.3708,
+      "MedAE_log10": 0.2746,
+      "geo_mean_error_x": 2.349,
+      "within_2x": 0.536,
+      "within_3x": 0.7187,
+      "name": "C2 +word1~2",
+      "spec": "body=full · char2~3 · SVD256 · word1~2/SVD32",
+      "per_fold_MAE": [
+        0.3885,
+        0.345,
+        0.3817,
+        0.3877,
+        0.3513
+      ],
+      "fold_std": 0.0188,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4119
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.333
+        }
+      },
+      "seconds": 171.2,
+      "explained_variance": {
+        "body_char": 0.517,
+        "body_word": 0.1167
+      },
+      "text_artifact_bytes": 71138223,
+      "vs_baseline": {
+        "delta_MAE": -0.0011,
+        "ci95": [
+          -0.0064,
+          0.0038
+        ],
+        "wilcoxon_p": 0.723,
+        "n_better": 956,
+        "n_worse": 921
+      },
+      "fold_wins": 3
+    },
+    "D1 제목결합(대조군)": {
+      "MAE_log10": 0.3701,
+      "MedAE_log10": 0.259,
+      "geo_mean_error_x": 2.345,
+      "within_2x": 0.5466,
+      "within_3x": 0.724,
+      "name": "D1 제목결합(대조군)",
+      "spec": "body=full · char2~3 · SVD256 · word1~2/SVD32 · 제목결합",
+      "per_fold_MAE": [
+        0.3775,
+        0.3571,
+        0.3878,
+        0.3769,
+        0.351
+      ],
+      "fold_std": 0.0138,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4087
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3344
+        }
+      },
+      "seconds": 140.1,
+      "explained_variance": {
+        "joint_char": 0.5218
+      },
+      "text_artifact_bytes": 62548154,
+      "vs_baseline": {
+        "delta_MAE": -0.0019,
+        "ci95": [
+          -0.0086,
+          0.0046
+        ],
+        "wilcoxon_p": 0.344,
+        "n_better": 972,
+        "n_worse": 905
+      },
+      "fold_wins": 3
+    },
+    "E1 앞부분": {
+      "MAE_log10": 0.3763,
+      "MedAE_log10": 0.2776,
+      "geo_mean_error_x": 2.378,
+      "within_2x": 0.5376,
+      "within_3x": 0.7182,
+      "name": "E1 앞부분",
+      "spec": "body=head · char2~3 · SVD256 · word1~2/SVD32 · 제목결합",
+      "per_fold_MAE": [
+        0.385,
+        0.3619,
+        0.3945,
+        0.3887,
+        0.3513
+      ],
+      "fold_std": 0.0167,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4167
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.339
+        }
+      },
+      "seconds": 123.8,
+      "explained_variance": {
+        "joint_char": 0.5051
+      },
+      "text_artifact_bytes": 62056041,
+      "vs_baseline": {
+        "delta_MAE": 0.0044,
+        "ci95": [
+          -0.0034,
+          0.0112
+        ],
+        "wilcoxon_p": 0.268,
+        "n_better": 933,
+        "n_worse": 944
+      },
+      "fold_wins": 2
+    },
+    "E2 section 우선": {
+      "MAE_log10": 0.3776,
+      "MedAE_log10": 0.2766,
+      "geo_mean_error_x": 2.385,
+      "within_2x": 0.5253,
+      "within_3x": 0.7214,
+      "name": "E2 section 우선",
+      "spec": "body=section · char2~3 · SVD256 · word1~2/SVD32 · 제목결합",
+      "per_fold_MAE": [
+        0.3826,
+        0.3693,
+        0.3897,
+        0.3883,
+        0.3579
+      ],
+      "fold_std": 0.0122,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4216
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3369
+        }
+      },
+      "seconds": 130.5,
+      "explained_variance": {
+        "joint_char": 0.4996
+      },
+      "text_artifact_bytes": 62547479,
+      "vs_baseline": {
+        "delta_MAE": 0.0056,
+        "ci95": [
+          -0.0021,
+          0.0133
+        ],
+        "wilcoxon_p": 0.369,
+        "n_better": 928,
+        "n_worse": 949
+      },
+      "fold_wins": 1
+    },
+    "E3 중복 제거": {
+      "MAE_log10": 0.3728,
+      "MedAE_log10": 0.2698,
+      "geo_mean_error_x": 2.359,
+      "within_2x": 0.5408,
+      "within_3x": 0.7203,
+      "name": "E3 중복 제거",
+      "spec": "body=dedup · char2~3 · SVD256 · word1~2/SVD32 · 제목결합",
+      "per_fold_MAE": [
+        0.3818,
+        0.3593,
+        0.3905,
+        0.3807,
+        0.3517
+      ],
+      "fold_std": 0.0147,
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4098
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3386
+        }
+      },
+      "seconds": 135.3,
+      "explained_variance": {
+        "joint_char": 0.5215
+      },
+      "text_artifact_bytes": 62548156,
+      "vs_baseline": {
+        "delta_MAE": 0.0009,
+        "ci95": [
+          -0.006,
+          0.0075
+        ],
+        "wilcoxon_p": 0.787,
+        "n_better": 950,
+        "n_worse": 927
+      },
+      "fold_wins": 2
+    }
+  },
+  "strict_split": {
+    "M69 baseline": {
+      "MAE_log10": 0.3931,
+      "per_fold_MAE": [
+        0.3724,
+        0.394,
+        0.4114,
+        0.3853,
+        0.4026
+      ],
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4334
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3559
+        }
+      }
+    },
+    "A2 SVD256": {
+      "MAE_log10": 0.3971,
+      "per_fold_MAE": [
+        0.3808,
+        0.3978,
+        0.4125,
+        0.3944,
+        0.4001
+      ],
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4313
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3656
+        }
+      }
+    },
+    "C2 +word1~2": {
+      "MAE_log10": 0.3939,
+      "per_fold_MAE": [
+        0.3781,
+        0.3968,
+        0.4014,
+        0.3953,
+        0.3978
+      ],
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4266
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3637
+        }
+      }
+    },
+    "D1 제목결합(대조군)": {
+      "MAE_log10": 0.3952,
+      "per_fold_MAE": [
+        0.3892,
+        0.389,
+        0.4024,
+        0.3992,
+        0.396
+      ],
+      "cohort": {
+        "bizinfo": {
+          "n": 901,
+          "MAE_log10": 0.4314
+        },
+        "taxonomy": {
+          "n": 976,
+          "MAE_log10": 0.3617
+        }
+      }
+    }
+  },
+  "winner": "D1 제목결합(대조군)",
+  "winner_spec": {
+    "name": "D1 제목결합(대조군)",
+    "body": "full",
+    "char_ngram": [
+      2,
+      3
+    ],
+    "char_svd": 256,
+    "word_ngram": [
+      1,
+      2
+    ],
+    "word_svd": 32,
+    "join_title": true
+  },
+  "reproducibility": true,
+  "promotion_checks": {
+    "1. OOF MAE 가 0.3719 보다 감소": true,
+    "2. strict split 에서도 개선 유지": false,
+    "3. 5개 fold 중 4개 이상 개선": false,
+    "4. paired 95% CI 가 0 아래": false,
+    "5. leakage audit PASS": true,
+    "6. reproducibility PASS": true,
+    "7. taxonomy / bizinfo 한쪽에만 의존하지 않음": false,
+    "8. serving 비용 증가가 감당 가능 (텍스트 artifact <= 100 MB)": true
+  },
+  "verdict": "현행 유지 (M69)",
+  "artifact_budget": {
+    "cap_MB": 100.0,
+    "already_served_MB": {
+      "model1_klue_bert_MB": 423,
+      "model2_current_bundle_MB": 11
+    },
+    "winner_MB": 62.5,
+    "vs_baseline_x": 3.8,
+    "note": "배수로 걸면 SVD 차원 증가를 기계적으로 탈락시킨다 — 이미 서빙 중인 모델 1(423MB)·모델 2(11MB) 기준의 절대선으로 판정한다"
+  },
+  "goals": {
+    "first": 0.35,
+    "final": 0.3,
+    "first_met": false,
+    "final_met": false
+  },
+  "published_m69": {
+    "MAE_log10": 0.3719,
+    "within_2x": 0.53,
+    "within_3x": 0.723,
+    "strict_MAE": 0.3931
+  },
+  "run_timestamp": "2026-09-02T13:43:21.826453",
+  "seconds": 5036.0,
+  "variant_overlap": {
+    "scale_text": {
+      "n": 976,
+      "full": {
+        "median_len": 239,
+        "identical_to_full": 1.0
+      },
+      "head": {
+        "median_len": 239,
+        "identical_to_full": 1.0
+      },
+      "section": {
+        "median_len": 233,
+        "identical_to_full": 0.956
+      },
+      "dedup": {
+        "median_len": 239,
+        "identical_to_full": 0.999
+      }
+    },
+    "document": {
+      "n": 744,
+      "full": {
+        "median_len": 2594,
+        "identical_to_full": 1.0
+      },
+      "head": {
+        "median_len": 1000,
+        "identical_to_full": 0.043
+      },
+      "section": {
+        "median_len": 2412,
+        "identical_to_full": 0.028
+      },
+      "dedup": {
+        "median_len": 2340,
+        "identical_to_full": 0.0
+      }
+    },
+    "api_summary": {
+      "n": 157,
+      "full": {
+        "median_len": 295,
+        "identical_to_full": 1.0
+      },
+      "head": {
+        "median_len": 295,
+        "identical_to_full": 1.0
+      },
+      "section": {
+        "median_len": 250,
+        "identical_to_full": 0.675
+      },
+      "dedup": {
+        "median_len": 292,
+        "identical_to_full": 0.0
+      }
+    }
+  },
+  "noise_band": {
+    "baseline_MAE": 0.3719,
+    "delta_range": [
+      -0.0018,
+      0.0057
+    ],
+    "n_candidates": 10,
+    "n_with_ci_crossing_zero": 10,
+    "n_significant": 0,
+    "deltas": {
+      "A1 SVD128": 0.002,
+      "A2 SVD256": -0.0001,
+      "B1 char2~4": 0.0004,
+      "B2 char3~5": 0.0048,
+      "C1 +word1": 0.0007,
+      "C2 +word1~2": -0.0011,
+      "D1 제목결합(대조군)": -0.0018,
+      "E1 앞부분": 0.0044,
+      "E2 section 우선": 0.0057,
+      "E3 중복 제거": 0.0009
+    }
+  }
+}

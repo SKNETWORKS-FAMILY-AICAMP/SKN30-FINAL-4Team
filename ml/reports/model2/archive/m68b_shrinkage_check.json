@@ -1,0 +1,324 @@
+{
+  "purpose": "residual 보정을 λ 로 줄여 더하면 M65 를 이길 수 있는가",
+  "source_oof": {
+    "program_stem": "data\\processed\\m68_residual_oof.parquet",
+    "normalized_title": "data\\processed\\m68_residual_oof_strict.parquet"
+  },
+  "note": "모델을 새로 학습하지 않는다. M68 이 저장한 OOF 예측·보정량만 다시 잰다. oracle λ 는 평가 데이터에서 고른 값이라 낙관 상한이며 승격 근거가 아니다. honest λ 는 fold 밖에서 고른 값이라 실제로 쓸 수 있다.",
+  "lambda_grid": [
+    0.0,
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95,
+    1.0,
+    1.05,
+    1.1,
+    1.15,
+    1.2,
+    1.25,
+    1.3,
+    1.35,
+    1.4,
+    1.45,
+    1.5
+  ],
+  "results": {
+    "program_stem": {
+      "M65_base_MAE": 0.4117,
+      "methods": {
+        "E1 전역 residual": {
+          "corr_with_residual": 0.1008,
+          "abs_correction_mean": 0.1237,
+          "lambda1_MAE": 0.4148,
+          "oracle_lambda": 0.4,
+          "oracle_lambda_MAE": 0.4062,
+          "oracle_gain_vs_M65": 0.0055,
+          "honest_lambda_per_fold": [
+            0.45,
+            0.4,
+            0.4,
+            0.5,
+            0.35
+          ],
+          "honest_MAE": 0.4067,
+          "honest_gain_vs_M65": 0.005,
+          "honest_within_2x": 0.5083,
+          "honest_fold_win": 4,
+          "honest_paired": {
+            "delta_MAE": -0.005,
+            "ci95": [
+              -0.0079,
+              -0.0021
+            ],
+            "wilcoxon_p": 0.000289
+          }
+        },
+        "E2 예측구간 residual(33/67)": {
+          "corr_with_residual": 0.0581,
+          "abs_correction_mean": 0.1472,
+          "lambda1_MAE": 0.4249,
+          "oracle_lambda": 0.3,
+          "oracle_lambda_MAE": 0.4078,
+          "oracle_gain_vs_M65": 0.0039,
+          "honest_lambda_per_fold": [
+            0.35,
+            0.25,
+            0.3,
+            0.3,
+            0.3
+          ],
+          "honest_MAE": 0.4081,
+          "honest_gain_vs_M65": 0.0036,
+          "honest_within_2x": 0.5019,
+          "honest_fold_win": 5,
+          "honest_paired": {
+            "delta_MAE": -0.0036,
+            "ci95": [
+              -0.0062,
+              -0.0011
+            ],
+            "wilcoxon_p": 0.00085
+          }
+        },
+        "E2b 예측구간 residual(25/75)": {
+          "corr_with_residual": 0.0434,
+          "abs_correction_mean": 0.1429,
+          "lambda1_MAE": 0.4258,
+          "oracle_lambda": 0.3,
+          "oracle_lambda_MAE": 0.4085,
+          "oracle_gain_vs_M65": 0.0032,
+          "honest_lambda_per_fold": [
+            0.3,
+            0.25,
+            0.25,
+            0.35,
+            0.3
+          ],
+          "honest_MAE": 0.4089,
+          "honest_gain_vs_M65": 0.0028,
+          "honest_within_2x": 0.5045,
+          "honest_fold_win": 4,
+          "honest_paired": {
+            "delta_MAE": -0.0028,
+            "ci95": [
+              -0.0051,
+              -0.0006
+            ],
+            "wilcoxon_p": 0.0199
+          }
+        },
+        "E3 residual MoE": {
+          "corr_with_residual": 0.0741,
+          "abs_correction_mean": 0.1108,
+          "lambda1_MAE": 0.4192,
+          "oracle_lambda": 0.35,
+          "oracle_lambda_MAE": 0.4088,
+          "oracle_gain_vs_M65": 0.0029,
+          "honest_lambda_per_fold": [
+            0.35,
+            0.35,
+            0.3,
+            0.35,
+            0.35
+          ],
+          "honest_MAE": 0.4089,
+          "honest_gain_vs_M65": 0.0028,
+          "honest_within_2x": 0.4987,
+          "honest_fold_win": 5,
+          "honest_paired": {
+            "delta_MAE": -0.0028,
+            "ci95": [
+              -0.0048,
+              -0.0006
+            ],
+            "wilcoxon_p": 0.00517
+          }
+        },
+        "E4 극단구간만 보정(20/80)": {
+          "corr_with_residual": 0.0445,
+          "abs_correction_mean": 0.0604,
+          "lambda1_MAE": 0.4142,
+          "oracle_lambda": 0.4,
+          "oracle_lambda_MAE": 0.4084,
+          "oracle_gain_vs_M65": 0.0033,
+          "honest_lambda_per_fold": [
+            0.4,
+            0.45,
+            0.35,
+            0.45,
+            0.35
+          ],
+          "honest_MAE": 0.4086,
+          "honest_gain_vs_M65": 0.0031,
+          "honest_within_2x": 0.5003,
+          "honest_fold_win": 5,
+          "honest_paired": {
+            "delta_MAE": -0.0031,
+            "ci95": [
+              -0.005,
+              -0.0011
+            ],
+            "wilcoxon_p": 0.0014
+          }
+        }
+      }
+    },
+    "normalized_title": {
+      "M65_base_MAE": 0.4304,
+      "methods": {
+        "E1 전역 residual": {
+          "corr_with_residual": 0.1086,
+          "abs_correction_mean": 0.1237,
+          "lambda1_MAE": 0.4367,
+          "oracle_lambda": 0.4,
+          "oracle_lambda_MAE": 0.4268,
+          "oracle_gain_vs_M65": 0.0036,
+          "honest_lambda_per_fold": [
+            0.4,
+            0.35,
+            0.4,
+            0.4,
+            0.35
+          ],
+          "honest_MAE": 0.4269,
+          "honest_gain_vs_M65": 0.0035,
+          "honest_within_2x": 0.4646,
+          "honest_fold_win": 5,
+          "honest_paired": {
+            "delta_MAE": -0.0035,
+            "ci95": [
+              -0.0064,
+              -0.0007
+            ],
+            "wilcoxon_p": 0.0512
+          }
+        },
+        "E2 예측구간 residual(33/67)": {
+          "corr_with_residual": 0.0992,
+          "abs_correction_mean": 0.1473,
+          "lambda1_MAE": 0.438,
+          "oracle_lambda": 0.4,
+          "oracle_lambda_MAE": 0.4261,
+          "oracle_gain_vs_M65": 0.0043,
+          "honest_lambda_per_fold": [
+            0.4,
+            0.4,
+            0.4,
+            0.45,
+            0.4
+          ],
+          "honest_MAE": 0.4262,
+          "honest_gain_vs_M65": 0.0042,
+          "honest_within_2x": 0.4598,
+          "honest_fold_win": 5,
+          "honest_paired": {
+            "delta_MAE": -0.0042,
+            "ci95": [
+              -0.0077,
+              -0.0005
+            ],
+            "wilcoxon_p": 0.0522
+          }
+        },
+        "E2b 예측구간 residual(25/75)": {
+          "corr_with_residual": 0.0867,
+          "abs_correction_mean": 0.1482,
+          "lambda1_MAE": 0.4416,
+          "oracle_lambda": 0.3,
+          "oracle_lambda_MAE": 0.4276,
+          "oracle_gain_vs_M65": 0.0028,
+          "honest_lambda_per_fold": [
+            0.3,
+            0.25,
+            0.3,
+            0.35,
+            0.25
+          ],
+          "honest_MAE": 0.428,
+          "honest_gain_vs_M65": 0.0024,
+          "honest_within_2x": 0.4635,
+          "honest_fold_win": 5,
+          "honest_paired": {
+            "delta_MAE": -0.0024,
+            "ci95": [
+              -0.005,
+              0.0002
+            ],
+            "wilcoxon_p": 0.0405
+          }
+        },
+        "E3 residual MoE": {
+          "corr_with_residual": 0.0799,
+          "abs_correction_mean": 0.111,
+          "lambda1_MAE": 0.4396,
+          "oracle_lambda": 0.2,
+          "oracle_lambda_MAE": 0.4297,
+          "oracle_gain_vs_M65": 0.0007,
+          "honest_lambda_per_fold": [
+            0.25,
+            0.25,
+            0.1,
+            0.25,
+            0.15
+          ],
+          "honest_MAE": 0.4303,
+          "honest_gain_vs_M65": 0.0001,
+          "honest_within_2x": 0.463,
+          "honest_fold_win": 3,
+          "honest_paired": {
+            "delta_MAE": -0.0001,
+            "ci95": [
+              -0.0014,
+              0.0013
+            ],
+            "wilcoxon_p": 0.772
+          }
+        },
+        "E4 극단구간만 보정(20/80)": {
+          "corr_with_residual": 0.0807,
+          "abs_correction_mean": 0.0661,
+          "lambda1_MAE": 0.4334,
+          "oracle_lambda": 0.4,
+          "oracle_lambda_MAE": 0.428,
+          "oracle_gain_vs_M65": 0.0024,
+          "honest_lambda_per_fold": [
+            0.45,
+            0.35,
+            0.4,
+            0.5,
+            0.3
+          ],
+          "honest_MAE": 0.4286,
+          "honest_gain_vs_M65": 0.0018,
+          "honest_within_2x": 0.4651,
+          "honest_fold_win": 3,
+          "honest_paired": {
+            "delta_MAE": -0.0018,
+            "ci95": [
+              -0.004,
+              0.0006
+            ],
+            "wilcoxon_p": 0.0606
+          }
+        }
+      }
+    }
+  },
+  "run_timestamp": "2026-09-02T11:06:50.391679"
+}

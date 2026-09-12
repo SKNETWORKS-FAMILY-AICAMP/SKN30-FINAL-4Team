@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html class="light" lang="ko" style="">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Analysis Results Dashboard - SME Pre-review</title>
+  <!-- Material Symbols -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+    rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <!-- Tailwind Config from Brand Anchors -->
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-tertiary": "#ffffff",
+            "surface-variant": "#e3e2e6",
+            "primary-container": "#1a365d",
+            "on-primary-fixed": "#001b3c",
+            "on-primary-fixed-variant": "#2d476f",
+            "outline-variant": "#c4c6cf",
+            "on-surface-variant": "#43474e",
+            "background": "#faf9fd",
+            "on-primary-container": "#86a0cd",
+            "secondary": "#545f72",
+            "surface-container-highest": "#e3e2e6",
+            "on-secondary-fixed-variant": "#3c475a",
+            "surface-container-low": "#f4f3f7",
+            "on-background": "#1a1c1e",
+            "on-secondary": "#ffffff",
+            "on-surface": "#1a1c1e",
+            "on-tertiary-fixed-variant": "#633f0f",
+            "surface-tint": "#455f88",
+            "surface-container-lowest": "#ffffff",
+            "inverse-primary": "#adc7f7",
+            "error-container": "#ffdad6",
+            "inverse-surface": "#2f3033",
+            "on-secondary-fixed": "#111c2c",
+            "surface-bright": "#faf9fd",
+            "tertiary-container": "#4f2e00",
+            "surface-container-high": "#e9e7eb",
+            "surface": "#faf9fd",
+            "surface-container": "#efedf1",
+            "on-primary": "#ffffff",
+            "tertiary-fixed": "#ffddba",
+            "primary-fixed-dim": "#adc7f7",
+            "outline": "#74777f",
+            "surface-dim": "#dad9dd",
+            "on-secondary-container": "#586377",
+            "inverse-on-surface": "#f1f0f4",
+            "secondary-container": "#d5e0f7",
+            "tertiary-fixed-dim": "#f2bc82",
+            "primary-fixed": "#d6e3ff",
+            "on-tertiary-fixed": "#2b1700",
+            "secondary-fixed-dim": "#bcc7dd",
+            "on-error": "#ffffff",
+            "on-tertiary-container": "#c6955e",
+            "primary": "#002045",
+            "secondary-fixed": "#d8e3fa",
+            "error": "#ba1a1a",
+            "tertiary": "#321b00",
+            "on-error-container": "#93000a"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem"
+          },
+          "spacing": {
+            "md": "16px",
+            "xs": "4px",
+            "base": "4px",
+            "gutter": "20px",
+            "xl": "40px",
+            "lg": "24px",
+            "sm": "8px",
+            "container-max": "1440px"
+          },
+          "fontFamily": {
+            "body-md": [
+              "Nanum Gothic", "sans-serif"
+            ],
+            "display-lg": [
+              "Nanum Gothic", "sans-serif"
+            ],
+            "body-sm": [
+              "Nanum Gothic", "sans-serif"
+            ],
+            "title-sm": [
+              "Nanum Gothic", "sans-serif"
+            ],
+            "headline-md": [
+              "Nanum Gothic", "sans-serif"
+            ],
+            "label-caps": [
+              "Nanum Gothic", "sans-serif"
+            ],
+            "data-mono": [
+              "Nanum Gothic", "sans-serif"
+            ]
+          },
+          "fontSize": {
+            "body-md": [
+              "14px",
+              {
+                "lineHeight": "20px",
+                "fontWeight": "400"
+              }
+            ],
+            "display-lg": [
+              "30px",
+              {
+                "lineHeight": "38px",
+                "letterSpacing": "-0.02em",
+                "fontWeight": "700"
+              }
+            ],
+            "body-sm": [
+              "13px",
+              {
+                "lineHeight": "18px",
+                "fontWeight": "400"
+              }
+            ],
+            "title-sm": [
+              "18px",
+              {
+                "lineHeight": "24px",
+                "fontWeight": "600"
+              }
+            ],
+            "headline-md": [
+              "24px",
+              {
+                "lineHeight": "32px",
+                "letterSpacing": "-0.01em",
+                "fontWeight": "600"
+              }
+            ],
+            "label-caps": [
+              "12px",
+              {
+                "lineHeight": "16px",
+                "letterSpacing": "0.05em",
+                "fontWeight": "700"
+              }
+            ],
+            "data-mono": [
+              "13px",
+              {
+                "lineHeight": "18px",
+                "letterSpacing": "-0.01em",
+                "fontWeight": "500"
+              }
+            ]
+          }
+        }
+      }
+    }
+  </script>
+  <style type="text/css">
+    body {
+      font-family: 'Nanum Gothic', sans-serif;
+      background-color: #faf9fd;
+    }
+
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+
+    .icon-fill {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+
+    /* Zebra striping for tables per design system */
+    .zebra-table tbody tr:nth-child(even) {
+      background-color: #F7FAFC;
+    }
+
+    /* Custom scrollbar for a cleaner look */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+
+<body class="bg-background text-on-background flex min-h-screen overflow-x-hidden antialiased">
+  <!-- SideNavBar (320px width requested) -->
+  <nav
+    class="fixed left-0 top-0 h-full w-[320px] bg-surface border-r border-outline-variant flex flex-col py-xl px-lg gap-lg z-50">
+    <div class="mb-md">
+      <img alt="Pre-review Logo" class="w-full h-auto object-contain px-md"
+        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiTMDtET6_CEojpObU3inQSqe1XL-aroq8cJyKH4ZC_MTolfggj9WYjSSACu5UM51buaXXUrLuHgDt00f3MQT-53WT3nfhAEPLaOfqDwUzIGzu7tI8B5p4zmkpqTzscX6nMgEtcYnzijDDyov4yoGnnLLdl-jIO0SGYAXOADIzBfdCRQOrPXdgSgiMSSqbELcc-29Uajr7CHKXVqabydb2wZTDnoMKHQ42wsk_1Dby1_bHzb0GazhbEg">
+    </div>
+    <button
+      class="w-full bg-primary-container text-on-primary font-title-sm text-title-sm py-md rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity mb-md">
+      <span class="material-symbols-outlined">add</span>
+      새 분석
+    </button>
+    <div class="flex flex-col flex-1 overflow-hidden">
+      <div class="flex justify-between items-center mb-md px-xs">
+        <h3 class="font-title-sm text-title-sm text-on-surface">최근 분석 이력</h3>
+      </div>
+      <div class="flex-1 overflow-y-auto group/scroll flex flex-col"
+        style="scrollbar-width: thin;scrollbar-color: rgba(67, 71, 78, 0.3) transparent;">
+        <ul class="flex flex-col">
+          <li class="min-w-0 border-t border-b border-outline-variant/30"><button
+              class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left"
+              type="button">
+              <div
+                class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              </div>
+              <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">정부
+                지원사업 사전검토를 위한 기획안 및 기술 명세서 상세 분석 리포트_2023_최종</h4>
+              <div class="flex items-center gap-xs"><span class="material-symbols-outlined text-on-surface-variant/70"
+                  style="font-size: 14px;">schedule</span><span
+                  class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.24 14:30</span></div>
+            </button></li>
+          <li class="min-w-0 border-b border-outline-variant/30"><button
+              class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left"
+              type="button">
+              <div
+                class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              </div>
+              <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">AI
+                의료 진단 도구</h4>
+              <div class="flex items-center gap-xs"><span class="material-symbols-outlined text-on-surface-variant/70"
+                  style="font-size: 14px;">schedule</span><span
+                  class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.22 09:15</span></div>
+            </button></li>
+          <li class="min-w-0 border-b border-outline-variant/30"><button
+              class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left"
+              type="button">
+              <div
+                class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              </div>
+              <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">스마트
+                팜 IoT 확장</h4>
+              <div class="flex items-center gap-xs"><span class="material-symbols-outlined text-on-surface-variant/70"
+                  style="font-size: 14px;">schedule</span><span
+                  class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.20 16:45</span></div>
+            </button></li>
+          <li class="min-w-0 border-b border-outline-variant/30"><button
+              class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left"
+              type="button">
+              <div
+                class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              </div>
+              <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">차세대
+                배터리 제조</h4>
+              <div class="flex items-center gap-xs"><span class="material-symbols-outlined text-on-surface-variant/70"
+                  style="font-size: 14px;">schedule</span><span
+                  class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.18 11:20</span></div>
+            </button></li>
+          <li class="min-w-0 border-b border-outline-variant/30"><button
+              class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left"
+              type="button">
+              <div
+                class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity">
+              </div>
+              <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">탄소중립
+                기술 검토</h4>
+              <div class="flex items-center gap-xs"><span class="material-symbols-outlined text-on-surface-variant/70"
+                  style="font-size: 14px;">schedule</span><span
+                  class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.15 10:00</span></div>
+            </button></li>
+        </ul>
+        <div class="p-md"><button
+            class="w-full py-sm border border-outline-variant rounded-lg text-body-sm text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-all flex items-center justify-center gap-xs"
+            type="button">더보기 <span class="material-symbols-outlined"
+              style="font-size: 16px;">expand_more</span></button></div>
+      </div>
+    </div>
+    <div class="mt-auto border-t border-outline-variant pt-md">
+      <div class="flex items-center gap-md px-xs py-sm">
+        <div
+          class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant shrink-0">
+          <img alt="Analyst Profile" class="w-full h-full object-cover"
+            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfflctLCBH9MzYdw4r2HgL508lb_Ure-RRnv9cGBwj_IoY0dSpucbeU4tYUJtFKeT74XY2fLXgKFUSC7Tzfn_p4vlVFVcgVMuRnXQyevwqQtkH6JsjL-V-SaWoiuZ9mYA9R46CydKhycFC9V5b6x93foQWiH-jHXSUnSOz45SW6WzUjDhMkuH0_AQK398W0fo7Pi8ywe20TMj-EFkJZA5isv5IPv1xOBgTuGHa1QSEufOBIVOEv44e0A">
+        </div>
+        <div class="flex flex-col flex-1 min-w-0">
+          <span class="font-title-sm text-title-sm text-on-surface truncate">분석가</span>
+          <a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors flex items-center gap-xs"
+            href="#">
+            <span class="material-symbols-outlined text-sm">logout</span> 로그아웃
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+  <!-- Mobile Top Bar (Visible only on small screens) -->
+  <header
+    class="md:hidden fixed top-0 w-full h-16 bg-surface border-b border-outline-variant z-30 flex items-center justify-between px-md">
+    <div class="flex items-center gap-sm">
+      <button class="text-on-surface">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <span class="font-title-sm text-title-sm font-semibold text-on-surface">SME Pre-review</span>
+    </div>
+    <div
+      class="w-8 h-8 rounded-full bg-primary-container text-on-tertiary flex items-center justify-center font-title-sm">
+      김
+    </div>
+  </header>
+  <!-- Main Content Area -->
+  <main
+    class="flex-1 md:ml-[320px] pt-16 md:pt-0 pb-xl px-md md:px-lg xl:px-xl min-h-screen bg-background flex flex-col">
+    <div class="mb-lg flex flex-col sm:flex-row sm:items-end justify-between gap-md pt-lg">
+      <div>
+        <h2 class="font-headline-md text-headline-md text-on-surface">분석 결과</h2>
+        <p class="font-body-md text-body-md text-on-surface-variant mt-xs">문서 ID: PRG-2024-883A • 처리일시: 오늘, 오전 09:42</p>
+      </div>
+      <div class="flex gap-sm">
+        <button
+          class="px-md py-sm border border-outline-variant rounded bg-surface hover:bg-surface-container-low font-label-caps text-label-caps text-on-surface flex items-center gap-xs transition-colors">
+          <span class="material-symbols-outlined text-[16px]">download</span> 보고서 내보내기
+        </button>
+      </div>
+    </div>
+    <div class="flex flex-col gap-lg pb-xl">
+      <!-- Category 1: 요청자료 완전성·기초구조 점검 -->
+      <div class="bg-surface border border-outline-variant rounded p-lg flex flex-col">
+        <div class="flex justify-between items-start mb-md">
+          <div>
+            <h3 class="font-title-sm text-title-sm text-on-surface">1. 요청자료 완전성·기초구조 점검</h3>
+            <p class="font-body-sm text-body-sm text-on-surface-variant">13개 핵심 필드 확인 상태</p>
+          </div>
+          <span class="material-symbols-outlined text-primary-container p-sm bg-primary-fixed rounded">checklist</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">요청유형 체크값</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">사업 목적·목표</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">연차별·내역사업별 추진계획</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#FEF7E0] text-[#B06000]">미확인</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">사업기간</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">신설·변경 주요내용</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#F1F3F4] text-[#5F6368]">해당 없음</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">사업필요성 최소 논리구조</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">지원근거</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">연계정책</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">사업예산</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">지원대상·지원조건</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#FEF7E0] text-[#B06000]">미확인</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">지원내용·지원규모</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">수행기관·수행방식·수행체계</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#E6F4EA] text-[#137333]">확인됨</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded bg-surface-container-lowest hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">기대효과·성과 관련 정보</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#F1F3F4] text-[#5F6368]">N/A</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">find_in_page</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Category 2: 내부 정합성 점검 -->
+      <div class="bg-surface border border-outline-variant rounded p-lg flex flex-col">
+        <div class="flex justify-between items-start mb-md">
+          <div>
+            <h3 class="font-title-sm text-title-sm text-on-surface">2. 내부 정합성 점검</h3>
+            <p class="font-body-sm text-body-sm text-on-surface-variant">현재 요청서에서 확인되는 최소 연결성·범위 차이·명시적 충돌 등을 제시합니다.
+              (적합/부적합 판정 제외)</p>
+          </div><span class="material-symbols-outlined text-primary-container p-sm bg-primary-fixed rounded">rule</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-sm mb-md">
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">목적 ↔︎ 지원대상</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#F1F3F4] text-[#5F6368]">해당 없음</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">목적 ↔︎ 지원내용</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#FEF7E0] text-[#B06000]">비교정보 부족</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">목적 ↔︎ 기대효과·성과지표</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#F1F3F4] text-[#5F6368]">해당 없음</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">세부사업 ↔︎ 내역사업/내내역사업</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#F1F3F4] text-[#5F6368]">해당 없음</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">지원대상 ↔︎ 지원조건</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#FEF7E0] text-[#B06000]">비교정보 부족</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">수행기관 ↔︎ 역할·수행절차</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#F1F3F4] text-[#5F6368]">해당 없음</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+          <div
+            class="group border border-outline-variant p-md rounded-lg bg-surface hover:bg-surface-container-low cursor-pointer transition-all relative">
+            <span class="font-label-caps text-on-surface-variant block mb-xs">지원내용 ↔︎ 지원규모의 수치·조건</span>
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#FEF7E0] text-[#B06000]">비교정보 부족</span>
+              <span
+                class="material-symbols-outlined text-on-surface-variant/50 text-[18px] group-hover:text-primary transition-colors">link</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <!-- Persistent Chat Overlay Placeholder (Collapsible) -->
+  <div
+    class="fixed bottom-0 right-md lg:right-lg w-[320px] bg-surface rounded-t-xl shadow-[0_-4px_12px_rgba(0,0,0,0.05)] border border-[#E2E8F0] border-b-0 flex flex-col z-40 transform translate-y-[calc(100%-48px)] hover:translate-y-0 transition-transform duration-300 ease-in-out cursor-pointer group">
+    <div class="h-12 bg-primary-container text-on-tertiary rounded-t-xl px-md flex items-center justify-between">
+      <div class="flex items-center gap-sm"><span class="material-symbols-outlined text-[18px]">forum</span><span
+          class="font-title-sm text-[14px]">AI 질의응답</span></div><span
+        class="material-symbols-outlined text-[20px] group-hover:rotate-180 transition-transform">keyboard_arrow_up</span>
+    </div>
+    <div class="h-[400px] p-md bg-surface-bright flex flex-col cursor-default">
+      <div class="flex-1 overflow-y-auto flex flex-col gap-sm">
+        <!-- System Msg -->
+        <div
+          class="bg-secondary-container text-on-secondary-container p-sm rounded-lg rounded-tl-none self-start max-w-[80%] font-body-sm text-[13px]">
+          해당 분석 결과에 대해 궁금한 점이 있으신가요? '원가율 산정 방식' 또는 '유사 사례 기준' 등을 물어보세요.
+        </div>
+      </div>
+      <div class="mt-md relative">
+        <input
+          class="w-full h-10 border border-outline-variant rounded focus:border-primary-container focus:ring-2 focus:ring-inverse-primary/30 px-sm font-body-sm text-[13px]"
+          placeholder="질문을 입력하세요..." type="text">
+        <button class="absolute right-2 top-2 text-primary">
+          <span class="material-symbols-outlined text-[20px]">send</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+</body>
+
+</html>

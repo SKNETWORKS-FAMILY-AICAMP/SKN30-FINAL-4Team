@@ -1,0 +1,277 @@
+{
+  "질문": "거리보다 방향 차이가 사람 판단과 더 잘 맞는가 (계획서 §12-6)",
+  "n_train": 1948,
+  "n_dims": 20,
+  "n_numeric_dims": 4,
+  "cohort_rule": "지원성격x지원방식 -> 지원성격 -> 전체",
+  "min_cohort": 20,
+  "n_pc": 3,
+  "typed_directions": {
+    "A1 고액·소수기업형": "동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향",
+    "A2 고액·초단기형": "동일 비교군 대비 기업당 지원액은 크고 사업기간은 짧은 방향",
+    "A3 고지원율형": "동일 비교군 대비 지원비율이 높은 방향",
+    "A4 소액·다수기업형": "동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향"
+  },
+  "singles": {
+    "distance only": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.904,
+      "pr_auc": 0.8135,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 8,
+        "TP": 7,
+        "FP": 1,
+        "FN": 3,
+        "recall": 0.7,
+        "precision": 0.875
+      }
+    },
+    "direction only (residual)": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.368,
+      "pr_auc": 0.2486,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 1,
+        "FP": 6,
+        "FN": 9,
+        "recall": 0.1,
+        "precision": 0.1429
+      }
+    },
+    "direction only (typed cos)": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.588,
+      "pr_auc": 0.4216,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 2,
+        "FP": 5,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.2857
+      }
+    }
+  },
+  "weight_selection_on_synthetic": {
+    "dir_residual w_dist=0.7": 0.2222,
+    "dir_residual w_dist=0.5": 0.2137,
+    "dir_residual w_dist=0.3": 0.1795,
+    "dir_typed_cos w_dist=0.7": 0.0855,
+    "dir_typed_cos w_dist=0.5": 0.094,
+    "dir_typed_cos w_dist=0.3": 0.0769
+  },
+  "chosen": "dir_residual w_dist=0.7",
+  "chosen_holdout": {
+    "n": 35,
+    "n_positive": 10,
+    "roc_auc": 0.872,
+    "pr_auc": 0.7103,
+    "equal_budget": {
+      "top_n": 7,
+      "n_flagged": 7,
+      "TP": 5,
+      "FP": 2,
+      "FN": 5,
+      "recall": 0.5,
+      "precision": 0.7143
+    }
+  },
+  "chosen_roc_auc_ci95": [
+    0.736,
+    0.976
+  ],
+  "all_combos_holdout": {
+    "dir_residual w_dist=0.7": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.872,
+      "pr_auc": 0.7103,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 5,
+        "FP": 2,
+        "FN": 5,
+        "recall": 0.5,
+        "precision": 0.7143
+      }
+    },
+    "dir_residual w_dist=0.5": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.76,
+      "pr_auc": 0.5149,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 4,
+        "FP": 3,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.5714
+      }
+    },
+    "dir_residual w_dist=0.3": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.56,
+      "pr_auc": 0.3509,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 2,
+        "FP": 5,
+        "FN": 8,
+        "recall": 0.2,
+        "precision": 0.2857
+      }
+    },
+    "dir_typed_cos w_dist=0.7": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.972,
+      "pr_auc": 0.9525,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 7,
+        "FP": 0,
+        "FN": 3,
+        "recall": 0.7,
+        "precision": 1.0
+      }
+    },
+    "dir_typed_cos w_dist=0.5": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.936,
+      "pr_auc": 0.9185,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 7,
+        "FP": 0,
+        "FN": 3,
+        "recall": 0.7,
+        "precision": 1.0
+      }
+    },
+    "dir_typed_cos w_dist=0.3": {
+      "n": 35,
+      "n_positive": 10,
+      "roc_auc": 0.78,
+      "pr_auc": 0.6664,
+      "equal_budget": {
+        "top_n": 7,
+        "n_flagged": 7,
+        "TP": 4,
+        "FP": 3,
+        "FN": 6,
+        "recall": 0.4,
+        "precision": 0.5714
+      }
+    }
+  },
+  "top_cases": [
+    {
+      "row_id": "EXCEL2023_0360",
+      "title": "2022년 공공 혁신수요 기반 신기술 사업화 사업",
+      "score": 0.9944,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.10, 비교군 226건, 거리 P100)"
+    },
+    {
+      "row_id": "EXCEL2023_0768",
+      "title": "2023년 해외실증(PoC) 지원 프로그램",
+      "score": 0.9932,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.04, 비교군 675건, 거리 P100)"
+    },
+    {
+      "row_id": "PBLN_000000000124558",
+      "title": "제2회 제조AI 솔루션 공모전 공고",
+      "score": 0.9763,
+      "reason": "A3 고지원율형 — 동일 비교군 대비 지원비율이 높은 방향 (cosine 0.05, 비교군 763건, 거리 P97)"
+    },
+    {
+      "row_id": "PBLN_000000000125367",
+      "title": "민관협력 오픈이노베이션 지원 공공데이터 활용 지원 창업기업 제안 협업 과제 (Bottom-Up) 모집공고",
+      "score": 0.9725,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.24, 비교군 241건, 거리 P97)"
+    },
+    {
+      "row_id": "PBLN_000000000071303",
+      "title": "산학연 Collabo R&D(2022년 중소기업 기술개발 지원사업 통합 공고)",
+      "score": 0.9648,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.18, 비교군 241건, 거리 P97)"
+    },
+    {
+      "row_id": "PBLN_000000000071295",
+      "title": "기술자료 거래기록 등록시스템(증거지킴이)(2022년 중소기업 기술보호 지원사업 통합 공고)",
+      "score": 0.9648,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.18, 비교군 241건, 거리 P97)"
+    },
+    {
+      "row_id": "PBLN_000000000071280",
+      "title": "기술자료 임치제도(2022년 중소기업 기술보호 지원사업 통합 공고)",
+      "score": 0.9648,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.18, 비교군 241건, 거리 P97)"
+    },
+    {
+      "row_id": "PBLN_000000000125151",
+      "title": "2026년 딥테크 창업기업 기술지원사업 LAB TO CITY (L2C)ㆍ반도체 공고",
+      "score": 0.9494,
+      "reason": "A3 고지원율형 — 동일 비교군 대비 지원비율이 높은 방향 (cosine 0.06, 비교군 675건, 거리 P94)"
+    },
+    {
+      "row_id": "PBLN_000000000124734",
+      "title": "2026년 광주 기술창업 성장패키지 지원 참여기업 모집 공고(맞춤형 예비 창업가 발굴ㆍ육성사업)",
+      "score": 0.9464,
+      "reason": "A4 소액·다수기업형 — 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향 (cosine 0.14, 비교군 675건, 거리 P94)"
+    },
+    {
+      "row_id": "PBLN_000000000118445",
+      "title": "[경남] 2026년 창업기업 신규고용인력 보조금 지원계획 공고",
+      "score": 0.9317,
+      "reason": "A1 고액·소수기업형 — 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향 (cosine 0.46, 비교군 70건, 거리 P99)"
+    }
+  ],
+  "typed_distribution": {
+    "A4 소액·다수기업형": 688,
+    "A1 고액·소수기업형": 635,
+    "A2 고액·초단기형": 331,
+    "A3 고지원율형": 294
+  },
+  "stability": {
+    "chosen (dir_residual w_dist=0.7)": {
+      "n_iter": 10,
+      "frac": 0.8,
+      "top_n": 30,
+      "overlap_mean": 0.7133,
+      "overlap_min": 0.5667
+    },
+    "distance only": {
+      "n_iter": 10,
+      "frac": 0.8,
+      "top_n": 30,
+      "overlap_mean": 0.8033,
+      "overlap_min": 0.7333
+    }
+  },
+  "synthetic_recall_singles": {
+    "distance only": 0.1368,
+    "direction only (residual)": 0.1453,
+    "direction only (typed cos)": 0.0256
+  },
+  "ml_same_holdout": {
+    "OneClassSVM": 0.592,
+    "IsolationForest": 0.792,
+    "LocalOutlierFactor": 0.732
+  },
+  "note": "가중치는 M37 합성에서 골랐다. clean hold-out 은 확인에만 썼다 (계획서 §6)."
+}

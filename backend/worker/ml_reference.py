@@ -29,10 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Protocol, runtime_checkable
 
-from app.schemas.cpl import CplFieldCode
-
 from .analysis_inputs import facts_at
-from .contracts.cpl_result import CplResult
+from .contracts.cpl_result import CplFieldCode, CplResult
 from .contracts.ml_result import (
     INPUT_EVIDENCE_MISSING,
     MODEL_INVALID_RESPONSE,

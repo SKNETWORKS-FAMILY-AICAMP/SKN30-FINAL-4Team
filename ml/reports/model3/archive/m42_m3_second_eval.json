@@ -1,0 +1,402 @@
+{
+  "목적": "실행계획 §14 — 재튜닝 없이 2차 독립 라벨셋에서 재현성 검증",
+  "verdict": {
+    "verdict": "Conditional (유지)",
+    "checks": [
+      {
+        "기준": "독립셋 ROC-AUC 가 random 수준으로 붕괴",
+        "구분": "No-Go",
+        "값": "0.7399 (순열 p=0.0120)",
+        "해당": false
+      },
+      {
+        "기준": "대부분의 성능이 n_axes 한 축에서 발생",
+        "구분": "No-Go",
+        "값": "n_axes 단독 0.8005 vs 모델 0.7399 / 축 통제 후 0.6869",
+        "해당": false
+      },
+      {
+        "기준": "Top-k 안정성 붕괴",
+        "구분": "No-Go",
+        "값": "상위30 유지율 0.810 / hold-out 순위상관 0.980",
+        "해당": false
+      },
+      {
+        "기준": "라벨러 간 일치도가 지나치게 낮음",
+        "구분": "No-Go",
+        "값": "agreement 0.90 / kappa 0.7895 (M41 2인 20건)",
+        "해당": false
+      },
+      {
+        "기준": "부트스트랩 CI 가 여전히 너무 넓음",
+        "구분": "Conditional",
+        "값": "0.571 ~ 0.896 (폭 0.326)",
+        "해당": true
+      },
+      {
+        "기준": "양성 표본이 너무 적음",
+        "구분": "Conditional",
+        "값": "9건 / 53건 (17.0%)",
+        "해당": true
+      },
+      {
+        "기준": "특정 계층에서만 성능이 좋음",
+        "구분": "Conditional",
+        "값": "cohort 간 ROC-AUC 폭 0.303 (bizinfo 0.939, taxonomy 0.636)",
+        "해당": true
+      },
+      {
+        "기준": "성능이 유의미하게 유지 (Final 조건)",
+        "구분": "Final",
+        "값": "1차 0.9040 -> 2차 0.7399 (PR-AUC 0.8117 -> 0.3522, 기저율 0.170)",
+        "해당": false
+      }
+    ],
+    "hit_nogo": [],
+    "hit_conditional": [
+      "부트스트랩 CI 가 여전히 너무 넓음",
+      "양성 표본이 너무 적음",
+      "특정 계층에서만 성능이 좋음"
+    ]
+  },
+  "model": "정형 설계 feature 기반 비교군 유클리드 거리 (M38, distance only)",
+  "no_retuning": [
+    "비교군 기준",
+    "거리 종류",
+    "feature 가중치",
+    "threshold",
+    "feature 추가·삭제",
+    "알고리즘"
+  ],
+  "fit_protocol": "각 hold-out 행을 적합에서 제외. 두 세트를 한 스크립트에서 재계산",
+  "sets": {
+    "first": {
+      "name": "1차 hold-out (M33)",
+      "tag": "first",
+      "n_labeled": 50,
+      "n_clean": 35,
+      "n_positive": 10,
+      "positive_rate": 0.2857,
+      "excluded": {
+        "data_error": 5,
+        "uncertain": 10
+      },
+      "roc_auc": 0.904,
+      "roc_ci95": [
+        0.788,
+        0.984
+      ],
+      "pr_auc": 0.8117,
+      "pr_ci95": [
+        0.6257,
+        0.9714
+      ],
+      "permutation": {
+        "mean": 0.5011,
+        "p95": 0.686,
+        "p_value": 0.0
+      },
+      "budget": {
+        "top_k": 7,
+        "frac": 0.2,
+        "n_flagged": 7,
+        "TP": 6,
+        "FP": 1,
+        "FN": 4,
+        "recall": 0.6,
+        "precision": 0.8571,
+        "confusion_TN_FP_FN_TP": [
+          24,
+          1,
+          4,
+          6
+        ]
+      },
+      "score_dist": {
+        "positive_median": 0.8468,
+        "negative_median": 0.376,
+        "positive_min": 0.5408,
+        "negative_max": 0.9258
+      }
+    },
+    "second": {
+      "name": "2차 독립 hold-out (M41)",
+      "tag": "second",
+      "n_labeled": 70,
+      "n_clean": 53,
+      "n_positive": 9,
+      "positive_rate": 0.1698,
+      "excluded": {
+        "data_error": 14,
+        "uncertain": 3
+      },
+      "roc_auc": 0.7399,
+      "roc_ci95": [
+        0.5707,
+        0.8965
+      ],
+      "pr_auc": 0.3522,
+      "pr_ci95": [
+        0.2323,
+        0.6807
+      ],
+      "permutation": {
+        "mean": 0.4977,
+        "p95": 0.6768,
+        "p_value": 0.012
+      },
+      "budget": {
+        "top_k": 11,
+        "frac": 0.2,
+        "n_flagged": 11,
+        "TP": 5,
+        "FP": 6,
+        "FN": 4,
+        "recall": 0.5556,
+        "precision": 0.4545,
+        "confusion_TN_FP_FN_TP": [
+          38,
+          6,
+          4,
+          5
+        ]
+      },
+      "score_dist": {
+        "positive_median": 0.7695,
+        "negative_median": 0.3427,
+        "positive_min": 0.2446,
+        "negative_max": 0.9607
+      }
+    },
+    "combined": {
+      "name": "합산 (1차+2차)",
+      "tag": "combined",
+      "n_labeled": 120,
+      "n_clean": 88,
+      "n_positive": 19,
+      "positive_rate": 0.2159,
+      "excluded": {
+        "data_error": 19,
+        "uncertain": 13
+      },
+      "roc_auc": 0.8158,
+      "roc_ci95": [
+        0.7059,
+        0.9119
+      ],
+      "pr_auc": 0.5807,
+      "pr_ci95": [
+        0.4208,
+        0.7942
+      ],
+      "permutation": {
+        "mean": 0.5005,
+        "p95": 0.6255,
+        "p_value": 0.0
+      },
+      "budget": {
+        "top_k": 18,
+        "frac": 0.2,
+        "n_flagged": 18,
+        "TP": 11,
+        "FP": 7,
+        "FN": 8,
+        "recall": 0.5789,
+        "precision": 0.6111,
+        "confusion_TN_FP_FN_TP": [
+          62,
+          7,
+          8,
+          11
+        ]
+      },
+      "score_dist": {
+        "positive_median": 0.8232,
+        "negative_median": 0.364,
+        "positive_min": 0.2354,
+        "negative_max": 0.9612
+      }
+    }
+  },
+  "topk_recall": {
+    "first": {
+      "top3": 0.3,
+      "top5": 0.4,
+      "top7": 0.6,
+      "top10": 0.7,
+      "top15": 0.8
+    },
+    "second": {
+      "top3": 0.0,
+      "top5": 0.2222,
+      "top7": 0.3333,
+      "top10": 0.4444,
+      "top15": 0.5556
+    }
+  },
+  "stability_second": {
+    "n_iter": 10,
+    "top_k": 30,
+    "overlap_mean": 0.81,
+    "overlap_min": 0.6333,
+    "holdout_rank_corr_mean": 0.9796,
+    "roc_auc_mean": 0.7227,
+    "roc_auc_min": 0.6957,
+    "roc_auc_max": 0.7399
+  },
+  "by_stratum_second": {
+    "층_품질": {
+      "A_직접기재": {
+        "n": 49,
+        "n_positive": 9,
+        "roc_auc": 0.7556
+      },
+      "B_파생": {
+        "n": 4,
+        "n_positive": 0,
+        "roc_auc": null,
+        "note": "양성/음성 한쪽뿐이거나 n<5"
+      }
+    },
+    "층_축수": {
+      "축2": {
+        "n": 30,
+        "n_positive": 1,
+        "roc_auc": 0.8966
+      },
+      "축3": {
+        "n": 17,
+        "n_positive": 5,
+        "roc_auc": 0.7167
+      },
+      "축4": {
+        "n": 6,
+        "n_positive": 3,
+        "roc_auc": 0.5556
+      }
+    },
+    "방식": {
+      "grant": {
+        "n": 45,
+        "n_positive": 9,
+        "roc_auc": 0.7377
+      },
+      "비grant": {
+        "n": 8,
+        "n_positive": 0,
+        "roc_auc": null,
+        "note": "양성/음성 한쪽뿐이거나 n<5"
+      }
+    },
+    "cohort": {
+      "bizinfo": {
+        "n": 25,
+        "n_positive": 3,
+        "roc_auc": 0.9394
+      },
+      "taxonomy": {
+        "n": 28,
+        "n_positive": 6,
+        "roc_auc": 0.6364
+      }
+    }
+  },
+  "proxy_signals": {
+    "first": {
+      "n_axes 단독": 0.704,
+      "결측 지시자 합 단독": 0.296,
+      "추출신뢰도(낮을수록 이례) 단독": 0.44
+    },
+    "second": {
+      "n_axes 단독": 0.8005,
+      "결측 지시자 합 단독": 0.1995,
+      "추출신뢰도(낮을수록 이례) 단독": 0.375
+    }
+  },
+  "naxes_control": {
+    "first": {
+      "positive_rate_by_n_axes": {
+        "2": {
+          "n": 21,
+          "n_positive": 4,
+          "positive_rate": 0.1905
+        },
+        "3": {
+          "n": 10,
+          "n_positive": 2,
+          "positive_rate": 0.2
+        },
+        "4": {
+          "n": 4,
+          "n_positive": 4,
+          "positive_rate": 1.0
+        }
+      },
+      "within_stratum": {
+        "2": {
+          "n": 21,
+          "n_positive": 4,
+          "roc_auc": 0.8382,
+          "n_pairs": 68
+        },
+        "3": {
+          "n": 10,
+          "n_positive": 2,
+          "roc_auc": 0.875,
+          "n_pairs": 16
+        },
+        "4": {
+          "n": 4,
+          "n_positive": 4,
+          "roc_auc": null,
+          "n_pairs": 0
+        }
+      },
+      "pooled_within_roc_auc": 0.8452,
+      "within_stratum_pct_roc_auc": 0.774,
+      "note": "층 안 백분위로 다시 매긴 순위의 ROC-AUC. 0.5 에 가까우면 모델이 축 개수 밖에서는 라벨을 가리지 못한다는 뜻이다."
+    },
+    "second": {
+      "positive_rate_by_n_axes": {
+        "2": {
+          "n": 30,
+          "n_positive": 1,
+          "positive_rate": 0.0333
+        },
+        "3": {
+          "n": 17,
+          "n_positive": 5,
+          "positive_rate": 0.2941
+        },
+        "4": {
+          "n": 6,
+          "n_positive": 3,
+          "positive_rate": 0.5
+        }
+      },
+      "within_stratum": {
+        "2": {
+          "n": 30,
+          "n_positive": 1,
+          "roc_auc": 0.8966,
+          "n_pairs": 29
+        },
+        "3": {
+          "n": 17,
+          "n_positive": 5,
+          "roc_auc": 0.7167,
+          "n_pairs": 60
+        },
+        "4": {
+          "n": 6,
+          "n_positive": 3,
+          "roc_auc": 0.5556,
+          "n_pairs": 9
+        }
+      },
+      "pooled_within_roc_auc": 0.7551,
+      "within_stratum_pct_roc_auc": 0.6869,
+      "note": "층 안 백분위로 다시 매긴 순위의 ROC-AUC. 0.5 에 가까우면 모델이 축 개수 밖에서는 라벨을 가리지 못한다는 뜻이다."
+    }
+  }
+}

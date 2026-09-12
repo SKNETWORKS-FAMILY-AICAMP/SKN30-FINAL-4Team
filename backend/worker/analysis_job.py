@@ -20,10 +20,12 @@ from typing import Any, Protocol
 
 from .contracts.cpl_result import CplResult
 from .contracts.fit_result import FitResult
+from .contracts.ml_result import MlModelId
 from .contracts.profile_snapshot import CommonIrArtifact
 from .contracts.sim_result import SimComparisonResult, SimCommonProfile
 from .cpl import build_cpl_result
 from .fit import analyze_fit
+from .ml_reference import MlModel, run_ml_reference
 from .ports.embedding import EmbeddingClient
 from .ports.llm import LLMClient
 from .profiles import (
@@ -252,6 +254,56 @@ class VendoredRequestProfileProducer:
         )
 
 
+def _common_ir_artifact(common_ir: Mapping[str, Any]) -> CommonIrArtifact:
+    """Adapt the persisted Common IR mapping to the ML boundary contract."""
+
+    document = dict(common_ir)
+    identity = document.get("document")
+    identity = identity if isinstance(identity, Mapping) else {}
+    provenance = identity.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    blocks = document.get("blocks")
+    blocks = blocks if isinstance(blocks, list) else []
+    return CommonIrArtifact(
+        run_dir="",
+        notice_id="",
+        source_kind="",
+        source_path="",
+        source_sha256=str(provenance.get("source_sha256") or ""),
+        common_ir_path="",
+        common_ir_document_id=str(identity.get("document_id") or ""),
+        manifest={},
+        block_count=len(blocks),
+        document=document,
+    )
+
+
+def _profile_title(profile: Mapping[str, Any]) -> str | None:
+    identity = profile.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    for key in ("program_name", "title_raw"):
+        value = identity.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    hierarchy = profile.get("program_hierarchy")
+    hierarchy = hierarchy if isinstance(hierarchy, Mapping) else {}
+    nodes = hierarchy.get("nodes")
+    if isinstance(nodes, list):
+        ordered = [
+            *(
+                node
+                for node in nodes
+                if isinstance(node, Mapping) and node.get("level") == "detail_program"
+            ),
+            *(node for node in nodes if isinstance(node, Mapping)),
+        ]
+        for node in ordered:
+            value = node.get("name_raw")
+            if isinstance(value, str) and value.strip():
+                return value
+    return None
+
+
 class CoreAnalysisEngine:
     """Compose the current worker-owned CPL/FIT/SIM implementations."""
 
@@ -262,11 +314,13 @@ class CoreAnalysisEngine:
         fit_model_profile: str,
         sim_model_profile: str,
         max_repairs: int = 1,
+        ml_models: Mapping[MlModelId, MlModel | None] | None = None,
     ) -> None:
         self._llm = llm_client
         self._fit_model_profile = fit_model_profile
         self._sim_model_profile = sim_model_profile
         self._max_repairs = max_repairs
+        self._ml_models = dict(ml_models or {})
 
     def build_payload(
         self,
@@ -277,6 +331,13 @@ class CoreAnalysisEngine:
     ) -> Mapping[str, Any]:
         request = dict(profile)
         cpl: CplResult = build_cpl_result(request)
+        ml_result = run_ml_reference(
+            request,
+            self._ml_models,
+            cpl_result=cpl,
+            common_ir=_common_ir_artifact(common_ir),
+            title=_profile_title(request),
+        )
         fit: FitResult = analyze_fit(
             request,
             self._llm,
@@ -333,6 +394,7 @@ class CoreAnalysisEngine:
             sim_profiles=sim_profiles,
             retrieval_similarities=similarities,
             profile_version_ids=profile_version_ids,
+            ml_result=ml_result,
         )
 
 

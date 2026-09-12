@@ -1,0 +1,559 @@
+{
+  "n_rows": 1404,
+  "n_classes": 19,
+  "n_groups": 1203,
+  "folds": 5,
+  "seed": 42,
+  "cv": "StratifiedGroupKFold (program_stem)",
+  "calibration": "fold 내부에서 그룹 단위로 fit/calib 분리 후 FrozenEstimator 로 보정",
+  "calib_frac": 0.3,
+  "lr_operating_point": {
+    "coverage": 0.707,
+    "accuracy": 0.7931
+  },
+  "results": {
+    "LogisticRegression(현행)": {
+      "macro_f1": 0.7834,
+      "accuracy": 0.8283,
+      "ece": 0.3455,
+      "brier": 0.4,
+      "mean_confidence": 0.4828,
+      "calibration_fallback_folds": 0,
+      "sweep": [
+        {
+          "threshold": 0.3,
+          "coverage": 0.802,
+          "abstention_rate": 0.198,
+          "n_kept": 1126,
+          "accuracy": 0.9014,
+          "macro_f1": 0.8709
+        },
+        {
+          "threshold": 0.35,
+          "coverage": 0.6952,
+          "abstention_rate": 0.3048,
+          "n_kept": 976,
+          "accuracy": 0.9242,
+          "macro_f1": 0.8986
+        },
+        {
+          "threshold": 0.4,
+          "coverage": 0.604,
+          "abstention_rate": 0.396,
+          "n_kept": 848,
+          "accuracy": 0.9399,
+          "macro_f1": 0.9126
+        },
+        {
+          "threshold": 0.45,
+          "coverage": 0.5043,
+          "abstention_rate": 0.4957,
+          "n_kept": 708,
+          "accuracy": 0.9506,
+          "macro_f1": 0.9321
+        },
+        {
+          "threshold": 0.5,
+          "coverage": 0.4131,
+          "abstention_rate": 0.5869,
+          "n_kept": 580,
+          "accuracy": 0.9672,
+          "macro_f1": 0.9418
+        },
+        {
+          "threshold": 0.55,
+          "coverage": 0.3476,
+          "abstention_rate": 0.6524,
+          "n_kept": 488,
+          "accuracy": 0.9734,
+          "macro_f1": 0.9582
+        },
+        {
+          "threshold": 0.6,
+          "coverage": 0.2792,
+          "abstention_rate": 0.7208,
+          "n_kept": 392,
+          "accuracy": 0.977,
+          "macro_f1": 0.9547
+        },
+        {
+          "threshold": 0.65,
+          "coverage": 0.2208,
+          "abstention_rate": 0.7792,
+          "n_kept": 310,
+          "accuracy": 0.9806,
+          "macro_f1": 0.9675
+        },
+        {
+          "threshold": 0.7,
+          "coverage": 0.1781,
+          "abstention_rate": 0.8219,
+          "n_kept": 250,
+          "accuracy": 0.988,
+          "macro_f1": 0.9898
+        },
+        {
+          "threshold": 0.75,
+          "coverage": 0.1189,
+          "abstention_rate": 0.8811,
+          "n_kept": 167,
+          "accuracy": 0.994,
+          "macro_f1": 0.9894
+        },
+        {
+          "threshold": 0.8,
+          "coverage": 0.0783,
+          "abstention_rate": 0.9217,
+          "n_kept": 110,
+          "accuracy": 0.9909,
+          "macro_f1": 0.9377
+        }
+      ],
+      "at_lr_coverage": {
+        "target_coverage": 0.707,
+        "actual_coverage": 0.7073,
+        "threshold_used": 0.3469,
+        "accuracy": 0.9215,
+        "macro_f1": 0.898
+      }
+    },
+    "LinearSVM + sigmoid": {
+      "macro_f1": 0.7293,
+      "accuracy": 0.8191,
+      "ece": 0.1081,
+      "brier": 0.2894,
+      "mean_confidence": 0.7109,
+      "calibration_fallback_folds": 0,
+      "sweep": [
+        {
+          "threshold": 0.3,
+          "coverage": 0.9829,
+          "abstention_rate": 0.0171,
+          "n_kept": 1380,
+          "accuracy": 0.8283,
+          "macro_f1": 0.7428
+        },
+        {
+          "threshold": 0.35,
+          "coverage": 0.9679,
+          "abstention_rate": 0.0321,
+          "n_kept": 1359,
+          "accuracy": 0.8322,
+          "macro_f1": 0.7442
+        },
+        {
+          "threshold": 0.4,
+          "coverage": 0.9409,
+          "abstention_rate": 0.0591,
+          "n_kept": 1321,
+          "accuracy": 0.8441,
+          "macro_f1": 0.759
+        },
+        {
+          "threshold": 0.45,
+          "coverage": 0.9031,
+          "abstention_rate": 0.0969,
+          "n_kept": 1268,
+          "accuracy": 0.8612,
+          "macro_f1": 0.7725
+        },
+        {
+          "threshold": 0.5,
+          "coverage": 0.8561,
+          "abstention_rate": 0.1439,
+          "n_kept": 1202,
+          "accuracy": 0.8769,
+          "macro_f1": 0.7825
+        },
+        {
+          "threshold": 0.55,
+          "coverage": 0.8063,
+          "abstention_rate": 0.1937,
+          "n_kept": 1132,
+          "accuracy": 0.8931,
+          "macro_f1": 0.798
+        },
+        {
+          "threshold": 0.6,
+          "coverage": 0.7514,
+          "abstention_rate": 0.2486,
+          "n_kept": 1055,
+          "accuracy": 0.9033,
+          "macro_f1": 0.8065
+        },
+        {
+          "threshold": 0.65,
+          "coverage": 0.6866,
+          "abstention_rate": 0.3134,
+          "n_kept": 964,
+          "accuracy": 0.9222,
+          "macro_f1": 0.8279
+        },
+        {
+          "threshold": 0.7,
+          "coverage": 0.614,
+          "abstention_rate": 0.386,
+          "n_kept": 862,
+          "accuracy": 0.935,
+          "macro_f1": 0.8498
+        },
+        {
+          "threshold": 0.75,
+          "coverage": 0.5285,
+          "abstention_rate": 0.4715,
+          "n_kept": 742,
+          "accuracy": 0.9434,
+          "macro_f1": 0.8501
+        },
+        {
+          "threshold": 0.8,
+          "coverage": 0.411,
+          "abstention_rate": 0.589,
+          "n_kept": 577,
+          "accuracy": 0.9619,
+          "macro_f1": 0.8404
+        }
+      ],
+      "at_lr_coverage": {
+        "target_coverage": 0.707,
+        "actual_coverage": 0.7073,
+        "threshold_used": 0.6357,
+        "accuracy": 0.9164,
+        "macro_f1": 0.8213
+      }
+    },
+    "LinearSVM + isotonic": {
+      "macro_f1": 0.719,
+      "accuracy": 0.8077,
+      "ece": 0.0146,
+      "brier": 0.2992,
+      "mean_confidence": 0.8045,
+      "calibration_fallback_folds": 0,
+      "sweep": [
+        {
+          "threshold": 0.3,
+          "coverage": 1.0,
+          "abstention_rate": 0.0,
+          "n_kept": 1404,
+          "accuracy": 0.8077,
+          "macro_f1": 0.719
+        },
+        {
+          "threshold": 0.35,
+          "coverage": 0.9993,
+          "abstention_rate": 0.0007,
+          "n_kept": 1403,
+          "accuracy": 0.8083,
+          "macro_f1": 0.7198
+        },
+        {
+          "threshold": 0.4,
+          "coverage": 0.9929,
+          "abstention_rate": 0.0071,
+          "n_kept": 1394,
+          "accuracy": 0.8113,
+          "macro_f1": 0.7237
+        },
+        {
+          "threshold": 0.45,
+          "coverage": 0.9708,
+          "abstention_rate": 0.0292,
+          "n_kept": 1363,
+          "accuracy": 0.8188,
+          "macro_f1": 0.7304
+        },
+        {
+          "threshold": 0.5,
+          "coverage": 0.9323,
+          "abstention_rate": 0.0677,
+          "n_kept": 1309,
+          "accuracy": 0.8335,
+          "macro_f1": 0.7427
+        },
+        {
+          "threshold": 0.55,
+          "coverage": 0.8825,
+          "abstention_rate": 0.1175,
+          "n_kept": 1239,
+          "accuracy": 0.8515,
+          "macro_f1": 0.7552
+        },
+        {
+          "threshold": 0.6,
+          "coverage": 0.8348,
+          "abstention_rate": 0.1652,
+          "n_kept": 1172,
+          "accuracy": 0.8677,
+          "macro_f1": 0.7687
+        },
+        {
+          "threshold": 0.65,
+          "coverage": 0.7806,
+          "abstention_rate": 0.2194,
+          "n_kept": 1096,
+          "accuracy": 0.8741,
+          "macro_f1": 0.7539
+        },
+        {
+          "threshold": 0.7,
+          "coverage": 0.7251,
+          "abstention_rate": 0.2749,
+          "n_kept": 1018,
+          "accuracy": 0.89,
+          "macro_f1": 0.772
+        },
+        {
+          "threshold": 0.75,
+          "coverage": 0.6759,
+          "abstention_rate": 0.3241,
+          "n_kept": 949,
+          "accuracy": 0.902,
+          "macro_f1": 0.7897
+        },
+        {
+          "threshold": 0.8,
+          "coverage": 0.6047,
+          "abstention_rate": 0.3953,
+          "n_kept": 849,
+          "accuracy": 0.914,
+          "macro_f1": 0.7874
+        }
+      ],
+      "at_lr_coverage": {
+        "target_coverage": 0.707,
+        "actual_coverage": 0.7073,
+        "threshold_used": 0.7164,
+        "accuracy": 0.8912,
+        "macro_f1": 0.7771
+      }
+    },
+    "LogisticRegression + isotonic": {
+      "macro_f1": 0.732,
+      "accuracy": 0.8127,
+      "ece": 0.066,
+      "brier": 0.312,
+      "mean_confidence": 0.7681,
+      "calibration_fallback_folds": 0,
+      "sweep": [
+        {
+          "threshold": 0.3,
+          "coverage": 0.9979,
+          "abstention_rate": 0.0021,
+          "n_kept": 1401,
+          "accuracy": 0.8137,
+          "macro_f1": 0.7351
+        },
+        {
+          "threshold": 0.35,
+          "coverage": 0.9964,
+          "abstention_rate": 0.0036,
+          "n_kept": 1399,
+          "accuracy": 0.8142,
+          "macro_f1": 0.7358
+        },
+        {
+          "threshold": 0.4,
+          "coverage": 0.99,
+          "abstention_rate": 0.01,
+          "n_kept": 1390,
+          "accuracy": 0.8165,
+          "macro_f1": 0.7375
+        },
+        {
+          "threshold": 0.45,
+          "coverage": 0.9687,
+          "abstention_rate": 0.0313,
+          "n_kept": 1360,
+          "accuracy": 0.8221,
+          "macro_f1": 0.744
+        },
+        {
+          "threshold": 0.5,
+          "coverage": 0.9323,
+          "abstention_rate": 0.0677,
+          "n_kept": 1309,
+          "accuracy": 0.8388,
+          "macro_f1": 0.7658
+        },
+        {
+          "threshold": 0.55,
+          "coverage": 0.8597,
+          "abstention_rate": 0.1403,
+          "n_kept": 1207,
+          "accuracy": 0.8575,
+          "macro_f1": 0.7753
+        },
+        {
+          "threshold": 0.6,
+          "coverage": 0.7842,
+          "abstention_rate": 0.2158,
+          "n_kept": 1101,
+          "accuracy": 0.8756,
+          "macro_f1": 0.7801
+        },
+        {
+          "threshold": 0.65,
+          "coverage": 0.7151,
+          "abstention_rate": 0.2849,
+          "n_kept": 1004,
+          "accuracy": 0.8845,
+          "macro_f1": 0.7794
+        },
+        {
+          "threshold": 0.7,
+          "coverage": 0.6382,
+          "abstention_rate": 0.3618,
+          "n_kept": 896,
+          "accuracy": 0.8984,
+          "macro_f1": 0.8029
+        },
+        {
+          "threshold": 0.75,
+          "coverage": 0.5769,
+          "abstention_rate": 0.4231,
+          "n_kept": 810,
+          "accuracy": 0.9086,
+          "macro_f1": 0.8065
+        },
+        {
+          "threshold": 0.8,
+          "coverage": 0.4972,
+          "abstention_rate": 0.5028,
+          "n_kept": 698,
+          "accuracy": 0.9112,
+          "macro_f1": 0.8024
+        }
+      ],
+      "at_lr_coverage": {
+        "target_coverage": 0.707,
+        "actual_coverage": 0.7073,
+        "threshold_used": 0.6568,
+        "accuracy": 0.8862,
+        "macro_f1": 0.7829
+      }
+    }
+  },
+  "class_specific": {
+    "LogisticRegression(현행)": {
+      "weak_classes": {
+        "SW·솔루션": {
+          "precision": 0.5185,
+          "n_pred": 27
+        },
+        "성능인증": {
+          "precision": 0.5556,
+          "n_pred": 18
+        },
+        "창업보육": {
+          "precision": 0.68,
+          "n_pred": 25
+        }
+      },
+      "base_threshold": 0.5,
+      "high_threshold": 0.7,
+      "class_specific": {
+        "coverage": 0.4003,
+        "accuracy": 0.9769
+      },
+      "flat_threshold": {
+        "coverage": 0.4131,
+        "accuracy": 0.9672
+      }
+    },
+    "LinearSVM + sigmoid": {
+      "weak_classes": {
+        "창업보육": {
+          "precision": 0.7273,
+          "n_pred": 22
+        },
+        "SW·솔루션": {
+          "precision": 0.75,
+          "n_pred": 12
+        },
+        "컨설팅": {
+          "precision": 0.7711,
+          "n_pred": 166
+        }
+      },
+      "base_threshold": 0.5,
+      "high_threshold": 0.7,
+      "class_specific": {
+        "coverage": 0.8162,
+        "accuracy": 0.8848
+      },
+      "flat_threshold": {
+        "coverage": 0.8561,
+        "accuracy": 0.8769
+      }
+    },
+    "LinearSVM + isotonic": {
+      "weak_classes": {
+        "성능인증": {
+          "precision": 0.3846,
+          "n_pred": 13
+        },
+        "SW·솔루션": {
+          "precision": 0.5556,
+          "n_pred": 18
+        },
+        "창업보육": {
+          "precision": 0.6154,
+          "n_pred": 26
+        }
+      },
+      "base_threshold": 0.5,
+      "high_threshold": 0.7,
+      "class_specific": {
+        "coverage": 0.916,
+        "accuracy": 0.839
+      },
+      "flat_threshold": {
+        "coverage": 0.9323,
+        "accuracy": 0.8335
+      }
+    },
+    "LogisticRegression + isotonic": {
+      "weak_classes": {
+        "성능인증": {
+          "precision": 0.5,
+          "n_pred": 16
+        },
+        "보증": {
+          "precision": 0.5294,
+          "n_pred": 17
+        },
+        "SW·솔루션": {
+          "precision": 0.6111,
+          "n_pred": 18
+        }
+      },
+      "base_threshold": 0.5,
+      "high_threshold": 0.7,
+      "class_specific": {
+        "coverage": 0.9138,
+        "accuracy": 0.8418
+      },
+      "flat_threshold": {
+        "coverage": 0.9323,
+        "accuracy": 0.8388
+      }
+    }
+  },
+  "verdict": {
+    "verdict": "분류기는 현행 LR 유지 / 확신도 표기가 필요하면 LinearSVM + isotonic 로 보정",
+    "reasons": [
+      "[정확도] 커버리지 70.7% 고정 — LogisticRegression(현행) 0.9215 / LinearSVM + sigmoid 0.9164 / LinearSVM + isotonic 0.8912 / LogisticRegression + isotonic 0.8862",
+      "계획서 가설(보정한 LinearSVM 이 LR 을 넘는다)은 성립하지 않았다. 보정이 학습 데이터의 30% 를 보정용으로 떼어가는 비용 때문이다 — 무보정 LinearSVM 은 macroF1 0.7953(M05)인데 보정 후 0.7293 로 떨어졌다",
+      "[확신도] ECE — LogisticRegression(현행) 0.3455 / LinearSVM + sigmoid 0.1081 / LinearSVM + isotonic 0.0146 / LogisticRegression + isotonic 0.0660",
+      "현행 LR 은 ECE 0.3455 로 심하게 어긋나 있다 — 평균확신 0.4828 인데 실제 정확도는 0.8283 다(과소확신). 이 숫자를 사용자에게 '확신도 48%'로 보여줄 수 없다",
+      "같은 LR 을 isotonic 보정하면 ECE 0.3455 -> 0.0660, 같은 커버리지 정확도는 -0.0353 — 분류기를 바꾸지 않고 확신도만 고치는 선택지다"
+    ],
+    "best_accuracy": "LogisticRegression(현행)",
+    "best_calibration": "LinearSVM + isotonic",
+    "best": "LogisticRegression(현행)"
+  },
+  "uncalibrated_baseline_m05": {
+    "TFIDF+LinearSVM": 0.7953,
+    "TFIDF+LogisticRegression": 0.7834
+  }
+}

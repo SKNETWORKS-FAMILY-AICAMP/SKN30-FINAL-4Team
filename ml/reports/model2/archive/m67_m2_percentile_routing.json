@@ -1,0 +1,843 @@
+{
+  "purpose": "percentile 3구간 2-stage routing 이 M65 단일 XGB 를 이기는가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "target": "log10(per_recipient), basis=stated_cap",
+    "split": "GroupKFold(5), group=program_stem / normalized_title",
+    "features": "m2-feat-v2 (구조화 + 제목 SVD64, fold 내부 적합)",
+    "stage2_model": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    }
+  },
+  "changed": "예측 경로만 — 단일 회귀 -> Stage1 분류 후 구간 전용 회귀",
+  "stage1_model": {
+    "objective": "multi:softprob",
+    "num_class": 3,
+    "params": "XGB_POINT 와 동일(objective 제외)"
+  },
+  "bucket_definition": {
+    "cuts_percentile": [
+      33.333333333333336,
+      66.66666666666667
+    ],
+    "computed_on": "fold train y only"
+  },
+  "results": {
+    "program_stem": {
+      "baseline_MAE": 0.5223,
+      "methods": {
+        "M65 단일 XGB": {
+          "MAE_log10": 0.4117,
+          "MedAE_log10": 0.3089,
+          "geo_mean_error_x": 2.581,
+          "within_2x": 0.4917,
+          "within_3x": 0.6814,
+          "improvement": 0.2117,
+          "per_fold_MAE": [
+            0.4201,
+            0.3811,
+            0.4359,
+            0.4288,
+            0.3927
+          ],
+          "fold_std": 0.0212,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.5036,
+              "within_2x": 0.4108
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3187,
+              "within_2x": 0.5649
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4159,
+              "within_2x": 0.4968
+            }
+          }
+        },
+        "2-stage routed": {
+          "MAE_log10": 0.4368,
+          "MedAE_log10": 0.2898,
+          "geo_mean_error_x": 2.734,
+          "within_2x": 0.5131,
+          "within_3x": 0.6713,
+          "improvement": 0.1636,
+          "per_fold_MAE": [
+            0.4316,
+            0.4295,
+            0.4533,
+            0.4546,
+            0.4152
+          ],
+          "fold_std": 0.0151,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.45,
+              "within_2x": 0.4583
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.4458,
+              "within_2x": 0.5079
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4152,
+              "within_2x": 0.571
+            }
+          },
+          "vs_single": {
+            "delta_MAE": 0.0251,
+            "ci95": [
+              0.0115,
+              0.039
+            ],
+            "wilcoxon_p": 0.0112,
+            "n_better": 902,
+            "n_worse": 975
+          }
+        },
+        "2-stage oracle": {
+          "MAE_log10": 0.243,
+          "MedAE_log10": 0.1894,
+          "geo_mean_error_x": 1.75,
+          "within_2x": 0.7022,
+          "within_3x": 0.8839,
+          "improvement": 0.5347,
+          "per_fold_MAE": [
+            0.2401,
+            0.2429,
+            0.2338,
+            0.2504,
+            0.2479
+          ],
+          "fold_std": 0.0059,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.3183,
+              "within_2x": 0.563
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.183,
+              "within_2x": 0.8101
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.2304,
+              "within_2x": 0.7287
+            }
+          },
+          "vs_single": {
+            "delta_MAE": -0.1687,
+            "ci95": [
+              -0.1839,
+              -0.153
+            ],
+            "wilcoxon_p": 2.69e-80,
+            "n_better": 1241,
+            "n_worse": 636
+          }
+        },
+        "2-stage soft": {
+          "MAE_log10": 0.4015,
+          "MedAE_log10": 0.2766,
+          "geo_mean_error_x": 2.521,
+          "within_2x": 0.5301,
+          "within_3x": 0.6974,
+          "improvement": 0.2312,
+          "per_fold_MAE": [
+            0.4051,
+            0.3888,
+            0.4263,
+            0.4178,
+            0.3697
+          ],
+          "fold_std": 0.0203,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4489,
+              "within_2x": 0.4714
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3626,
+              "within_2x": 0.5459
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.3947,
+              "within_2x": 0.571
+            }
+          },
+          "vs_single": {
+            "delta_MAE": -0.0102,
+            "ci95": [
+              -0.0186,
+              -0.0015
+            ],
+            "wilcoxon_p": 0.01,
+            "n_better": 986,
+            "n_worse": 891
+          }
+        }
+      },
+      "stage1": {
+        "accuracy": 0.7315,
+        "per_fold": [
+          0.742,
+          0.7394,
+          0.7173,
+          0.704,
+          0.7547
+        ],
+        "confusion_true_x_pred": [
+          [
+            502,
+            89,
+            20
+          ],
+          [
+            151,
+            382,
+            99
+          ],
+          [
+            35,
+            110,
+            489
+          ]
+        ],
+        "adjacent_error": 449,
+        "far_error": 55
+      },
+      "routing_cost": {
+        "routing 성공": {
+          "n": 1373,
+          "share": 0.7315,
+          "single_MAE": 0.328,
+          "routed_MAE": 0.248,
+          "soft_MAE": 0.2712
+        },
+        "routing 실패": {
+          "n": 504,
+          "share": 0.2685,
+          "single_MAE": 0.6397,
+          "routed_MAE": 0.9512,
+          "soft_MAE": 0.7567
+        },
+        "반대 끝으로 오분류": {
+          "n": 55,
+          "share": 0.0293,
+          "single_MAE": 1.4267,
+          "routed_MAE": 1.98,
+          "soft_MAE": 1.6443
+        }
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_log10": [
+            7.301,
+            8.0792
+          ],
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "train_bucket_n": [
+            488,
+            498,
+            515
+          ],
+          "test_bucket_n": [
+            123,
+            124,
+            129
+          ],
+          "stage1_acc": 0.742,
+          "baseline_MAE": 0.5425,
+          "MAE": {
+            "M65 단일 XGB": 0.4201,
+            "2-stage routed": 0.4316,
+            "2-stage oracle": 0.2401,
+            "2-stage soft": 0.4051
+          },
+          "seconds": 25.4
+        },
+        {
+          "fold": 1,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_log10": [
+            7.301,
+            8.1461
+          ],
+          "edges_won": [
+            20000000,
+            140000000
+          ],
+          "train_bucket_n": [
+            494,
+            505,
+            502
+          ],
+          "test_bucket_n": [
+            117,
+            142,
+            117
+          ],
+          "stage1_acc": 0.7394,
+          "baseline_MAE": 0.4965,
+          "MAE": {
+            "M65 단일 XGB": 0.3811,
+            "2-stage routed": 0.4295,
+            "2-stage oracle": 0.2429,
+            "2-stage soft": 0.3888
+          },
+          "seconds": 30.6
+        },
+        {
+          "fold": 2,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_log10": [
+            7.301,
+            8.0792
+          ],
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "train_bucket_n": [
+            485,
+            512,
+            505
+          ],
+          "test_bucket_n": [
+            126,
+            110,
+            139
+          ],
+          "stage1_acc": 0.7173,
+          "baseline_MAE": 0.5262,
+          "MAE": {
+            "M65 단일 XGB": 0.4359,
+            "2-stage routed": 0.4533,
+            "2-stage oracle": 0.2338,
+            "2-stage soft": 0.4263
+          },
+          "seconds": 25.9
+        },
+        {
+          "fold": 3,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_log10": [
+            7.301,
+            8.0792
+          ],
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "train_bucket_n": [
+            491,
+            505,
+            506
+          ],
+          "test_bucket_n": [
+            120,
+            117,
+            138
+          ],
+          "stage1_acc": 0.704,
+          "baseline_MAE": 0.5243,
+          "MAE": {
+            "M65 단일 XGB": 0.4288,
+            "2-stage routed": 0.4546,
+            "2-stage oracle": 0.2504,
+            "2-stage soft": 0.4178
+          },
+          "seconds": 27.4
+        },
+        {
+          "fold": 4,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_log10": [
+            7.301,
+            8.1761
+          ],
+          "edges_won": [
+            20000000,
+            150000000
+          ],
+          "train_bucket_n": [
+            486,
+            513,
+            503
+          ],
+          "test_bucket_n": [
+            125,
+            139,
+            111
+          ],
+          "stage1_acc": 0.7547,
+          "baseline_MAE": 0.5218,
+          "MAE": {
+            "M65 단일 XGB": 0.3927,
+            "2-stage routed": 0.4152,
+            "2-stage oracle": 0.2479,
+            "2-stage soft": 0.3697
+          },
+          "seconds": 27.1
+        }
+      ],
+      "leakage": {
+        "경계 계산 입력": "fold train 의 y 만 (np.percentile(ytr, [33.3, 66.7]))",
+        "경계가 fold 마다 흔들린다(전체 사전계산 아님)": "True",
+        "fold별 경계(원)": "[['20,000,000', '120,000,000'], ['20,000,000', '140,000,000'], ['20,000,000', '120,000,000'], ['20,000,000', '120,000,000'], ['20,000,000', '150,000,000']]",
+        "전체데이터 경계(참고, 미사용)": "['20,000,000', '120,000,000']",
+        "전체 경계와 우연히 일치한 fold 수": "3/5 — 타깃이 호가 단위에 뭉쳐 있어서 생기는 일치이지 누수가 아니다",
+        "routing 입력": "predict_proba(Xte) 뿐 — yte 는 z_true(평가·oracle)에만 쓰인다",
+        "Stage1 이 실제와 다른 구간으로 보낸 행": "504"
+      }
+    },
+    "normalized_title": {
+      "baseline_MAE": 0.5458,
+      "methods": {
+        "M65 단일 XGB": {
+          "MAE_log10": 0.4304,
+          "MedAE_log10": 0.3406,
+          "geo_mean_error_x": 2.694,
+          "within_2x": 0.464,
+          "within_3x": 0.6537,
+          "improvement": 0.2114,
+          "per_fold_MAE": [
+            0.4098,
+            0.4261,
+            0.464,
+            0.4161,
+            0.436
+          ],
+          "fold_std": 0.019,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5106,
+              "within_2x": 0.4089
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3422,
+              "within_2x": 0.5142
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4412,
+              "within_2x": 0.467
+            }
+          }
+        },
+        "2-stage routed": {
+          "MAE_log10": 0.4718,
+          "MedAE_log10": 0.3441,
+          "geo_mean_error_x": 2.963,
+          "within_2x": 0.4539,
+          "within_3x": 0.6239,
+          "improvement": 0.1356,
+          "per_fold_MAE": [
+            0.4478,
+            0.4695,
+            0.514,
+            0.4712,
+            0.4566
+          ],
+          "fold_std": 0.0228,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4744,
+              "within_2x": 0.4319
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.4944,
+              "within_2x": 0.443
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4469,
+              "within_2x": 0.4858
+            }
+          },
+          "vs_single": {
+            "delta_MAE": 0.0414,
+            "ci95": [
+              0.027,
+              0.0562
+            ],
+            "wilcoxon_p": 1.03e-06,
+            "n_better": 865,
+            "n_worse": 1012
+          }
+        },
+        "2-stage oracle": {
+          "MAE_log10": 0.2572,
+          "MedAE_log10": 0.2078,
+          "geo_mean_error_x": 1.808,
+          "within_2x": 0.6665,
+          "within_3x": 0.8689,
+          "improvement": 0.5288,
+          "per_fold_MAE": [
+            0.2557,
+            0.2652,
+            0.2526,
+            0.2623,
+            0.2501
+          ],
+          "fold_std": 0.0057,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.3293,
+              "within_2x": 0.5567
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.1847,
+              "within_2x": 0.7959
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.2601,
+              "within_2x": 0.6431
+            }
+          },
+          "vs_single": {
+            "delta_MAE": -0.1732,
+            "ci95": [
+              -0.1892,
+              -0.1569
+            ],
+            "wilcoxon_p": 7.52e-76,
+            "n_better": 1235,
+            "n_worse": 642
+          }
+        },
+        "2-stage soft": {
+          "MAE_log10": 0.4327,
+          "MedAE_log10": 0.3265,
+          "geo_mean_error_x": 2.708,
+          "within_2x": 0.472,
+          "within_3x": 0.6532,
+          "improvement": 0.2072,
+          "per_fold_MAE": [
+            0.4121,
+            0.4313,
+            0.4653,
+            0.4213,
+            0.4336
+          ],
+          "fold_std": 0.018,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4648,
+              "within_2x": 0.4516
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.4036,
+              "within_2x": 0.4699
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4308,
+              "within_2x": 0.4937
+            }
+          },
+          "vs_single": {
+            "delta_MAE": 0.0023,
+            "ci95": [
+              -0.0068,
+              0.0115
+            ],
+            "wilcoxon_p": 0.564,
+            "n_better": 918,
+            "n_worse": 959
+          }
+        }
+      },
+      "stage1": {
+        "accuracy": 0.7032,
+        "per_fold": [
+          0.7154,
+          0.7234,
+          0.6773,
+          0.6987,
+          0.7013
+        ],
+        "confusion_true_x_pred": [
+          [
+            481,
+            112,
+            16
+          ],
+          [
+            158,
+            350,
+            124
+          ],
+          [
+            34,
+            113,
+            489
+          ]
+        ],
+        "adjacent_error": 507,
+        "far_error": 50
+      },
+      "routing_cost": {
+        "routing 성공": {
+          "n": 1320,
+          "share": 0.7032,
+          "single_MAE": 0.3496,
+          "routed_MAE": 0.2727,
+          "soft_MAE": 0.301
+        },
+        "routing 실패": {
+          "n": 557,
+          "share": 0.2968,
+          "single_MAE": 0.622,
+          "routed_MAE": 0.9436,
+          "soft_MAE": 0.7448
+        },
+        "반대 끝으로 오분류": {
+          "n": 50,
+          "share": 0.0266,
+          "single_MAE": 1.3406,
+          "routed_MAE": 1.9516,
+          "soft_MAE": 1.6003
+        }
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_log10": [
+            7.301,
+            8.0792
+          ],
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "train_bucket_n": [
+            493,
+            498,
+            510
+          ],
+          "test_bucket_n": [
+            118,
+            124,
+            134
+          ],
+          "stage1_acc": 0.7154,
+          "baseline_MAE": 0.5105,
+          "MAE": {
+            "M65 단일 XGB": 0.4098,
+            "2-stage routed": 0.4478,
+            "2-stage oracle": 0.2557,
+            "2-stage soft": 0.4121
+          },
+          "seconds": 26.9
+        },
+        {
+          "fold": 1,
+          "n_train": 1501,
+          "n_test": 376,
+          "edges_log10": [
+            7.2455,
+            8.0792
+          ],
+          "edges_won": [
+            17600000,
+            120000000
+          ],
+          "train_bucket_n": [
+            501,
+            489,
+            511
+          ],
+          "test_bucket_n": [
+            105,
+            138,
+            133
+          ],
+          "stage1_acc": 0.7234,
+          "baseline_MAE": 0.5577,
+          "MAE": {
+            "M65 단일 XGB": 0.4261,
+            "2-stage routed": 0.4695,
+            "2-stage oracle": 0.2652,
+            "2-stage soft": 0.4313
+          },
+          "seconds": 28.8
+        },
+        {
+          "fold": 2,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_log10": [
+            7.301,
+            8.1461
+          ],
+          "edges_won": [
+            20000000,
+            140000000
+          ],
+          "train_bucket_n": [
+            480,
+            519,
+            503
+          ],
+          "test_bucket_n": [
+            131,
+            128,
+            116
+          ],
+          "stage1_acc": 0.6773,
+          "baseline_MAE": 0.5663,
+          "MAE": {
+            "M65 단일 XGB": 0.464,
+            "2-stage routed": 0.514,
+            "2-stage oracle": 0.2526,
+            "2-stage soft": 0.4653
+          },
+          "seconds": 31.4
+        },
+        {
+          "fold": 3,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_log10": [
+            7.301,
+            8.0792
+          ],
+          "edges_won": [
+            20000000,
+            120000000
+          ],
+          "train_bucket_n": [
+            482,
+            514,
+            506
+          ],
+          "test_bucket_n": [
+            129,
+            108,
+            138
+          ],
+          "stage1_acc": 0.6987,
+          "baseline_MAE": 0.5706,
+          "MAE": {
+            "M65 단일 XGB": 0.4161,
+            "2-stage routed": 0.4712,
+            "2-stage oracle": 0.2623,
+            "2-stage soft": 0.4213
+          },
+          "seconds": 30.2
+        },
+        {
+          "fold": 4,
+          "n_train": 1502,
+          "n_test": 375,
+          "edges_log10": [
+            7.301,
+            8.1461
+          ],
+          "edges_won": [
+            20000000,
+            140000000
+          ],
+          "train_bucket_n": [
+            485,
+            513,
+            504
+          ],
+          "test_bucket_n": [
+            126,
+            134,
+            115
+          ],
+          "stage1_acc": 0.7013,
+          "baseline_MAE": 0.524,
+          "MAE": {
+            "M65 단일 XGB": 0.436,
+            "2-stage routed": 0.4566,
+            "2-stage oracle": 0.2501,
+            "2-stage soft": 0.4336
+          },
+          "seconds": 26.5
+        }
+      ],
+      "leakage": {
+        "경계 계산 입력": "fold train 의 y 만 (np.percentile(ytr, [33.3, 66.7]))",
+        "경계가 fold 마다 흔들린다(전체 사전계산 아님)": "True",
+        "fold별 경계(원)": "[['20,000,000', '120,000,000'], ['17,600,000', '120,000,000'], ['20,000,000', '140,000,000'], ['20,000,000', '120,000,000'], ['20,000,000', '140,000,000']]",
+        "전체데이터 경계(참고, 미사용)": "['20,000,000', '120,000,000']",
+        "전체 경계와 우연히 일치한 fold 수": "2/5 — 타깃이 호가 단위에 뭉쳐 있어서 생기는 일치이지 누수가 아니다",
+        "routing 입력": "predict_proba(Xte) 뿐 — yte 는 z_true(평가·oracle)에만 쓰인다",
+        "Stage1 이 실제와 다른 구간으로 보낸 행": "557"
+      }
+    }
+  },
+  "reproducibility": {
+    "M65 단일 XGB": true,
+    "2-stage routed": true,
+    "2-stage oracle": true,
+    "2-stage soft": true
+  },
+  "promotion_checks": {
+    "1. 전체 OOF MAE 가 단일모델보다 낮다": false,
+    "2. 개선이 특정 fold 하나에 의존하지 않는다 (5폴드 중 4 이상 우세)": false,
+    "3. Low/High 구간 MAE 가 함께 감소": true,
+    "4. paired 95% CI 가 0 을 넘지 않는다 (우연과 구별됨)": false,
+    "5. oracle 상한이 단일모델보다 낮다 (구간별 모델에 여지가 있다)": true,
+    "6. 재현성 통과": true
+  },
+  "verdict": "현행 유지 (M65)",
+  "published_m65": {
+    "MAE_log10": 0.4117,
+    "improvement": 0.212,
+    "within_2x": 0.492,
+    "within_3x": 0.681
+  },
+  "run_timestamp": "2026-09-02T09:38:18.376463",
+  "seconds": 420.7
+}

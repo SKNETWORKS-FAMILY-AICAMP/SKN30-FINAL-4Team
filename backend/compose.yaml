@@ -59,3 +59,26 @@ services:
       PREREVIEW_FREETYPE_LIB: "${PREREVIEW_FREETYPE_LIB:-/usr/lib/x86_64-linux-gnu/libfreetype.so.6}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # 분석 완료 건의 CPL/FIT/SIM/ML 결과만 근거로 답하는 비동기 Chat worker.
+  # 분석 worker와 queue/RPC가 분리되어 긴 문서 분석이 대화 응답을 막지 않는다.
+  chat-worker:
+    build:
+      context: .
+    command: ["python", "-m", "worker.chat_main"]
+    restart: unless-stopped
+    stop_grace_period: 3m
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_LLM_MODEL: "${OPENAI_LLM_MODEL:-}"
+      OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-60}"
+      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-1}"
+      PREREVIEW_CHAT_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_CHAT_WORKER_HEARTBEAT_SECONDS:-30}"
+      PREREVIEW_CHAT_WORKER_LEASE_SECONDS: "${PREREVIEW_CHAT_WORKER_LEASE_SECONDS:-120}"
+      PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS:-1}"
+      PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

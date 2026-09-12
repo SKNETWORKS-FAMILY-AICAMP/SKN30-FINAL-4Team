@@ -1,0 +1,147 @@
+{
+  "n_rows": 1404,
+  "n_classes": 19,
+  "n_groups": 1203,
+  "folds": 5,
+  "seed": 42,
+  "cv": "StratifiedGroupKFold (program_stem)",
+  "baseline_m05": 0.7834,
+  "base_config": {
+    "ngram": "(2, 4)",
+    "max_features": "60000",
+    "C": "5.0",
+    "vectorizer": "char"
+  },
+  "base_result": {
+    "macro_f1": 0.7834,
+    "accuracy": 0.8283,
+    "weighted_f1": 0.8272
+  },
+  "axes": {
+    "ngram": {
+      "(2, 4)": {
+        "macro_f1": 0.7834,
+        "accuracy": 0.8283,
+        "weighted_f1": 0.8272,
+        "note": "기준값"
+      },
+      "(2, 5)": {
+        "macro_f1": 0.7804,
+        "accuracy": 0.8262,
+        "weighted_f1": 0.8252
+      },
+      "(3, 5)": {
+        "macro_f1": 0.7668,
+        "accuracy": 0.8212,
+        "weighted_f1": 0.8195
+      },
+      "(2, 6)": {
+        "macro_f1": 0.7764,
+        "accuracy": 0.8234,
+        "weighted_f1": 0.8223
+      }
+    },
+    "max_features": {
+      "60000": {
+        "macro_f1": 0.7834,
+        "accuracy": 0.8283,
+        "weighted_f1": 0.8272,
+        "note": "기준값"
+      },
+      "100000": {
+        "macro_f1": 0.7834,
+        "accuracy": 0.8283,
+        "weighted_f1": 0.8272
+      },
+      "150000": {
+        "macro_f1": 0.7834,
+        "accuracy": 0.8283,
+        "weighted_f1": 0.8272
+      }
+    },
+    "C": {
+      "0.5": {
+        "macro_f1": 0.7065,
+        "accuracy": 0.7058,
+        "weighted_f1": 0.7052
+      },
+      "1.0": {
+        "macro_f1": 0.7522,
+        "accuracy": 0.7756,
+        "weighted_f1": 0.7768
+      },
+      "2.0": {
+        "macro_f1": 0.7724,
+        "accuracy": 0.8091,
+        "weighted_f1": 0.8099
+      },
+      "3.0": {
+        "macro_f1": 0.7807,
+        "accuracy": 0.8262,
+        "weighted_f1": 0.8262
+      },
+      "5.0": {
+        "macro_f1": 0.7834,
+        "accuracy": 0.8283,
+        "weighted_f1": 0.8272,
+        "note": "기준값"
+      }
+    },
+    "vectorizer": {
+      "char": {
+        "macro_f1": 0.7834,
+        "accuracy": 0.8283,
+        "weighted_f1": 0.8272,
+        "note": "기준값"
+      },
+      "word": {
+        "macro_f1": 0.7255,
+        "accuracy": 0.8063,
+        "weighted_f1": 0.801
+      },
+      "char+word": {
+        "macro_f1": 0.7735,
+        "accuracy": 0.8333,
+        "weighted_f1": 0.83
+      }
+    }
+  },
+  "fieldwise": {
+    "macro_f1": 0.7281,
+    "accuracy": 0.8191,
+    "weighted_f1": 0.8139
+  },
+  "best_config": {
+    "ngram": "(2, 4)",
+    "max_features": "60000",
+    "C": "5.0",
+    "vectorizer": "char"
+  },
+  "combined_result": {
+    "macro_f1": 0.7834,
+    "accuracy": 0.8283,
+    "weighted_f1": 0.8272
+  },
+  "ofat_combination_failed": false,
+  "final_config": {
+    "ngram": "(2, 4)",
+    "max_features": "60000",
+    "C": "5.0",
+    "vectorizer": "char"
+  },
+  "final_result": {
+    "macro_f1": 0.7834,
+    "accuracy": 0.8283,
+    "weighted_f1": 0.8272
+  },
+  "verdict": {
+    "verdict": "현행 유지",
+    "reasons": [
+      "기준 설정 재현 macroF1 0.7834 (M05 0.7834)",
+      "축별 최적 조합 0.7834",
+      "field-wise TF-IDF 0.7281 (기준 대비 -0.0553)",
+      "어느 축도 기준선을 의미 있게 넘지 못했다. 현행 TF-IDF 설정이 이미 이 데이터에 맞게 잡혀 있다는 뜻이다"
+    ]
+  },
+  "runtime_min": 4.29
+}

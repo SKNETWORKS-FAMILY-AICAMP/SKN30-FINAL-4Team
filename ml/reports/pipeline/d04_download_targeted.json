@@ -1,0 +1,13 @@
+{
+  "sample": 5,
+  "attempted": 5,
+  "ok": 5,
+  "no_doc": 0,
+  "fail": 0,
+  "success_rate": 1.0,
+  "elapsed_min": 0.1,
+  "delay_sec": 0.5,
+  "out_dir": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\raw\\attachments\\list",
+  "manifest": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\d03_manifest_list_sample_targeted.csv",
+  "sample_source": "../data/processed/list_sample_targeted.parquet"
+}

@@ -1,0 +1,236 @@
+{
+  "질문": "이 사업의 지원규모가 과거 유사사업 대비 어느 위치에 있는가",
+  "왜_다시_재는가": "DL14 판정은 M12 타깃(한도+평균 혼재) 위에서 나왔다. M45 가 stated_cap 만 남기고 출처를 필수 축으로 올린 뒤 ML 쪽 숫자가 크게 움직였으므로 DL 판정도 낡았다.",
+  "target": "log10(기업당 지원액) — M45 prepare(), stated_cap 만",
+  "target_cleaning": {
+    "전체": 3963,
+    "지원성격_결측_제외": 58,
+    "기업당지원액_결측_제외": 1694,
+    "파싱오류범위_제외": 84,
+    "총예산나눗셈(평균)_제외": 250,
+    "필수축_결측_제외": 0,
+    "최종": 1877
+  },
+  "n": 1877,
+  "n_groups": 1748,
+  "cv": "GroupKFold(5) by program_stem — 셔플 없는 결정적 분할을 네 모델이 공유",
+  "with_cohort_feature": true,
+  "cat_features": [
+    "support_type",
+    "support_method",
+    "support_unit",
+    "category_large",
+    "industry_grp",
+    "agency_grp",
+    "amount_type",
+    "cohort"
+  ],
+  "num_features": [
+    "support_count",
+    "support_ratio",
+    "project_duration",
+    "self_burden_ratio",
+    "year"
+  ],
+  "dropped_feature_note": "per_recipient_basis 는 정제 후 상수라 제외 (DL14 는 feature 로 갖고 있었다)",
+  "cohort_median_baseline": {
+    "MAE_log10": 0.5368,
+    "MedAE_log10": 0.426,
+    "geo_mean_error_x": 3.442,
+    "within_2x": 0.3463,
+    "within_3x": 0.5221,
+    "fold_std": 0.0143
+  },
+  "lightgbm_quantile50": {
+    "params": {
+      "objective": "quantile",
+      "alpha": 0.5,
+      "n_estimators": 400,
+      "learning_rate": 0.05,
+      "num_leaves": 15,
+      "min_child_samples": 10,
+      "random_state": 42,
+      "verbose": -1
+    },
+    "MAE_log10": 0.4645,
+    "MedAE_log10": 0.3566,
+    "geo_mean_error_x": 2.914,
+    "within_2x": 0.4331,
+    "within_3x": 0.6233,
+    "fold_mae": [
+      0.4641,
+      0.4699,
+      0.4554,
+      0.482,
+      0.4512
+    ],
+    "fold_std": 0.0109
+  },
+  "ft_transformer": {
+    "arch": "d_token 32 / blocks 3 / heads 4 / dropout 0.1 / L1 / epochs 200",
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE_log10": 0.499,
+        "MedAE_log10": 0.3676,
+        "geo_mean_error_x": 3.155,
+        "within_2x": 0.4257,
+        "within_3x": 0.6004,
+        "fold_mae": [
+          0.4833,
+          0.5045,
+          0.4985,
+          0.5021,
+          0.5067
+        ],
+        "fold_std": 0.0083
+      },
+      {
+        "seed": 7,
+        "MAE_log10": 0.5051,
+        "MedAE_log10": 0.3799,
+        "geo_mean_error_x": 3.2,
+        "within_2x": 0.4097,
+        "within_3x": 0.5882,
+        "fold_mae": [
+          0.5093,
+          0.4908,
+          0.5072,
+          0.4964,
+          0.5219
+        ],
+        "fold_std": 0.0108
+      },
+      {
+        "seed": 2024,
+        "MAE_log10": 0.503,
+        "MedAE_log10": 0.3754,
+        "geo_mean_error_x": 3.184,
+        "within_2x": 0.4166,
+        "within_3x": 0.593,
+        "fold_mae": [
+          0.4944,
+          0.4916,
+          0.5206,
+          0.5163,
+          0.4922
+        ],
+        "fold_std": 0.0127
+      }
+    ],
+    "summary": {
+      "MAE_log10_mean": 0.5024,
+      "MAE_log10_std": 0.0025,
+      "MAE_log10_best": 0.499,
+      "MedAE_log10_mean": 0.3743,
+      "geo_mean_error_x": 3.18,
+      "within_2x_mean": 0.4173,
+      "within_3x_mean": 0.5939,
+      "fold_std_mean": 0.0106
+    }
+  },
+  "quantile_mlp": {
+    "arch": "hidden 64 / layers 2 / dropout 0.1 / pinball(0.1/0.5/0.9) / epochs 300",
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "per_seed": [
+      {
+        "seed": 42,
+        "MAE_log10": 0.4913,
+        "MedAE_log10": 0.3662,
+        "geo_mean_error_x": 3.1,
+        "within_2x": 0.4251,
+        "within_3x": 0.6079,
+        "fold_mae": [
+          0.4815,
+          0.4806,
+          0.4915,
+          0.4979,
+          0.5051
+        ],
+        "fold_std": 0.0094,
+        "p10_p90_coverage": 0.585,
+        "median_width_x": 8.9
+      },
+      {
+        "seed": 7,
+        "MAE_log10": 0.4906,
+        "MedAE_log10": 0.3704,
+        "geo_mean_error_x": 3.094,
+        "within_2x": 0.4156,
+        "within_3x": 0.6042,
+        "fold_mae": [
+          0.4853,
+          0.4794,
+          0.4922,
+          0.4893,
+          0.5067
+        ],
+        "fold_std": 0.0092,
+        "p10_p90_coverage": 0.5919,
+        "median_width_x": 9.0
+      },
+      {
+        "seed": 2024,
+        "MAE_log10": 0.483,
+        "MedAE_log10": 0.3658,
+        "geo_mean_error_x": 3.041,
+        "within_2x": 0.4315,
+        "within_3x": 0.6105,
+        "fold_mae": [
+          0.4803,
+          0.4666,
+          0.4735,
+          0.4911,
+          0.5036
+        ],
+        "fold_std": 0.0131,
+        "p10_p90_coverage": 0.5988,
+        "median_width_x": 9.1
+      }
+    ],
+    "summary": {
+      "MAE_log10_mean": 0.4883,
+      "MAE_log10_std": 0.0038,
+      "MAE_log10_best": 0.483,
+      "MedAE_log10_mean": 0.3675,
+      "geo_mean_error_x": 3.078,
+      "within_2x_mean": 0.4241,
+      "within_3x_mean": 0.6075,
+      "fold_std_mean": 0.0106,
+      "p10_p90_coverage_mean": 0.5919,
+      "median_width_x_mean": 9.0
+    }
+  },
+  "significance_margin_fold_std": 0.0109,
+  "verdicts": [
+    {
+      "model": "FT-Transformer",
+      "MAE": 0.5024,
+      "diff_vs_lgbm": 0.0379,
+      "verdict": "미채택 — LGBM 보다 fold σ 이상 나쁘다"
+    },
+    {
+      "model": "Quantile MLP",
+      "MAE": 0.4883,
+      "diff_vs_lgbm": 0.0238,
+      "verdict": "미채택 — LGBM 보다 fold σ 이상 나쁘다"
+    }
+  ],
+  "final": "LGBM-quantile50 유지",
+  "dl14_previous": {
+    "n": 2205,
+    "lgbm": 0.5074,
+    "ft": 0.5468,
+    "cohort": 0.6791
+  },
+  "runtime_min": 3.6
+}

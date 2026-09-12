@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="ko">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>중소기업 지원사업 사전검토 시스템</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;500;700&amp;display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet" />
+        <script id="tailwind-config">
+            tailwind.config = {
+                darkMode: "class",
+                theme: {
+                    extend: {
+                        colors: {
+                            "on-tertiary-fixed": "#2b1700",
+                            "tertiary-fixed-dim": "#f2bc82",
+                            surface: "#faf9fd",
+                            "secondary-fixed": "#d8e3fa",
+                            "on-error-container": "#93000a",
+                            "tertiary-container": "#4f2e00",
+                            "surface-variant": "#e3e2e6",
+                            "surface-bright": "#faf9fd",
+                            "outline-variant": "#c4c6cf",
+                            "surface-container-low": "#f4f3f7",
+                            "on-tertiary-container": "#c6955e",
+                            "on-surface-variant": "#43474e",
+                            "on-primary": "#ffffff",
+                            "surface-tint": "#455f88",
+                            "on-primary-fixed-variant": "#2d476f",
+                            "surface-container-high": "#e9e7eb",
+                            "primary-fixed": "#d6e3ff",
+                            "on-background": "#1a1c1e",
+                            background: "#faf9fd",
+                            "tertiary-fixed": "#ffddba",
+                            "on-error": "#ffffff",
+                            tertiary: "#321b00",
+                            "surface-dim": "#dad9dd",
+                            error: "#ba1a1a",
+                            "error-container": "#ffdad6",
+                            "on-tertiary-fixed-variant": "#633f0f",
+                            "secondary-container": "#d5e0f7",
+                            "surface-container-highest": "#e3e2e6",
+                            "primary-container": "#1a365d",
+                            "secondary-fixed-dim": "#bcc7dd",
+                            "on-secondary-fixed": "#111c2c",
+                            outline: "#74777f",
+                            "on-primary-container": "#86a0cd",
+                            primary: "#002045",
+                            "on-secondary-container": "#586377",
+                            "inverse-surface": "#2f3033",
+                            "on-secondary-fixed-variant": "#3c475a",
+                            "inverse-primary": "#adc7f7",
+                            "surface-container-lowest": "#ffffff",
+                            "on-secondary": "#ffffff",
+                            "on-surface": "#1a1c1e",
+                            "on-primary-fixed": "#001b3c",
+                            secondary: "#545f72",
+                            "on-tertiary": "#ffffff",
+                            "inverse-on-surface": "#f1f0f4",
+                            "surface-container": "#efedf1",
+                            "primary-fixed-dim": "#adc7f7",
+                        },
+                        borderRadius: {
+                            DEFAULT: "0.125rem",
+                            lg: "0.25rem",
+                            xl: "0.5rem",
+                            full: "0.75rem",
+                        },
+                        spacing: {
+                            lg: "24px",
+                            sm: "8px",
+                            base: "4px",
+                            md: "16px",
+                            gutter: "20px",
+                            xl: "40px",
+                            "container-max": "1440px",
+                            xs: "4px",
+                        },
+                        fontFamily: {
+                            "label-caps": ["Nanum Gothic"],
+                            "headline-md": ["Nanum Gothic"],
+                            "display-lg": ["Nanum Gothic"],
+                            "data-mono": ["Nanum Gothic"],
+                            "title-sm": ["Nanum Gothic"],
+                            "body-md": ["Nanum Gothic"],
+                            "body-sm": ["Nanum Gothic"],
+                        },
+                        fontSize: {
+                            "label-caps": [
+                                "12px",
+                                {
+                                    lineHeight: "16px",
+                                    letterSpacing: "0.05em",
+                                    fontWeight: "700",
+                                },
+                            ],
+                            "headline-md": [
+                                "24px",
+                                {
+                                    lineHeight: "32px",
+                                    letterSpacing: "-0.01em",
+                                    fontWeight: "600",
+                                },
+                            ],
+                            "display-lg": [
+                                "30px",
+                                {
+                                    lineHeight: "38px",
+                                    letterSpacing: "-0.02em",
+                                    fontWeight: "700",
+                                },
+                            ],
+                            "data-mono": [
+                                "13px",
+                                {
+                                    lineHeight: "18px",
+                                    letterSpacing: "-0.01em",
+                                    fontWeight: "500",
+                                },
+                            ],
+                            "title-sm": [
+                                "18px",
+                                {
+                                    lineHeight: "24px",
+                                    fontWeight: "600",
+                                },
+                            ],
+                            "body-md": [
+                                "14px",
+                                {
+                                    lineHeight: "20px",
+                                    fontWeight: "400",
+                                },
+                            ],
+                            "body-sm": [
+                                "13px",
+                                {
+                                    lineHeight: "18px",
+                                    fontWeight: "400",
+                                },
+                            ],
+                        },
+                    },
+                },
+            };
+        </script>
+        <style>
+            body {
+                font-family: "Nanum Gothic", sans-serif;
+            }
+        </style>
+        <style>
+            .group\/scroll::-webkit-scrollbar {
+                width: 4px;
+            }
+            .group\/scroll::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .group\/scroll::-webkit-scrollbar-thumb {
+                background: transparent;
+                border-radius: 10px;
+                transition: background 0.2s;
+            }
+            .group\/scroll:hover::-webkit-scrollbar-thumb {
+                background: rgba(156, 163, 175, 0.5);
+            }
+        </style>
+        <style>
+            .group\/scroll::-webkit-scrollbar {
+                width: 6px;
+            }
+            .group\/scroll::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .group\/scroll::-webkit-scrollbar-thumb {
+                background-color: rgba(67, 71, 78, 0.3);
+                border-radius: 20px;
+                border: 2px solid transparent;
+                background-clip: content-box;
+            }
+            .group\/scroll::-webkit-scrollbar-button {
+                display: none;
+                height: 0;
+                width: 0;
+            }
+            /* Ensure overlay behavior */
+            .group\/scroll {
+                overflow-y: overlay !important;
+            }
+        </style>
+    </head>
+    <body class="bg-background text-on-background min-h-screen font-body-md flex">
+        <!-- SideNavBar -->
+        <nav class="fixed left-0 top-0 h-full w-[320px] border-r border-outline-variant flex flex-col py-xl px-lg gap-lg z-50 bg-surface">
+            <div class="mb-md px-md">
+                <a class="flex items-center gap-xs text-title-sm font-title-sm font-bold text-primary dark:text-primary-fixed select-none no-underline" href="/">
+                    <img
+                        alt="Pre-review Logo"
+                        class="h-[82px] w-auto object-contain"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4SrAZZJ-ahDGrDs0kzdU6hFvRoWSLM7mktc7rRHB2C-qjKTIvSlIFbXuk01hjqlzeIQtlLGjpf2ozbkanFr3sf2X3WOBZIaQaCE0UWEWlF2poYf2Tpfd_Mq2tSk-5vzzz6JQsy4g4y5ELmPGSB4h8x59fb_lNGQrVxXBksOsCSExlq8F26I2YpxOdcnYupLJO7xJChRStnzDIMSDFM0S5QhyCfq2EHryMuectd-S8qx2l-zTSTFMzeQ-UTT72vv-Otmo"
+                    />
+                </a>
+            </div>
+            <button class="w-full pr-2 bg-primary-container text-on-primary-container font-title-sm text-title-sm py-md rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity mb-md shadow-sm">
+                <span class="material-symbols-outlined">add</span>
+                새 분석
+            </button>
+            <div class="flex-1 overflow-hidden recent-history-container">
+                <div class="flex justify-between items-center mb-md px-xs">
+                    <h3 class="font-title-sm text-title-sm text-on-surface">최근 분석 이력</h3>
+                </div>
+                <div class="flex-1 overflow-y-auto group/scroll flex flex-col" style="scrollbar-width: thin; scrollbar-color: rgba(67, 71, 78, 0.3) transparent">
+                    <ul class="flex flex-col">
+                        <li class="min-w-0 border-t border-b border-outline-variant/30">
+                            <button class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left" type="button">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">정부 지원사업 사전검토를 위한 기획안 및 기술 명세서 상세 분석 리포트_2023_최종</h4>
+                                <div class="flex items-center gap-xs">
+                                    <span class="material-symbols-outlined text-on-surface-variant/70" style="font-size: 14px">schedule</span>
+                                    <span class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.24 14:30</span>
+                                </div>
+                            </button>
+                        </li>
+                        <li class="min-w-0 border-b border-outline-variant/30">
+                            <button class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left" type="button">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">AI 의료 진단 도구</h4>
+                                <div class="flex items-center gap-xs">
+                                    <span class="material-symbols-outlined text-on-surface-variant/70" style="font-size: 14px">schedule</span>
+                                    <span class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.22 09:15</span>
+                                </div>
+                            </button>
+                        </li>
+                        <li class="min-w-0 border-b border-outline-variant/30">
+                            <button class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left" type="button">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">스마트 팜 IoT 확장</h4>
+                                <div class="flex items-center gap-xs">
+                                    <span class="material-symbols-outlined text-on-surface-variant/70" style="font-size: 14px">schedule</span>
+                                    <span class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.20 16:45</span>
+                                </div>
+                            </button>
+                        </li>
+                        <li class="min-w-0 border-b border-outline-variant/30">
+                            <button class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left" type="button">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">차세대 배터리 제조</h4>
+                                <div class="flex items-center gap-xs">
+                                    <span class="material-symbols-outlined text-on-surface-variant/70" style="font-size: 14px">schedule</span>
+                                    <span class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.18 11:20</span>
+                                </div>
+                            </button>
+                        </li>
+                        <li class="min-w-0 border-b border-outline-variant/30">
+                            <button class="relative w-full flex flex-col min-w-0 gap-xs py-md px-md hover:bg-surface-container-low transition-all group text-left" type="button">
+                                <div class="absolute left-0 top-0 bottom-0 w-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <h4 class="font-semibold text-sm text-on-surface truncate group-hover:text-primary transition-colors">탄소중립 기술 검토</h4>
+                                <div class="flex items-center gap-xs">
+                                    <span class="material-symbols-outlined text-on-surface-variant/70" style="font-size: 14px">schedule</span>
+                                    <span class="font-data-mono text-[12px] text-on-surface-variant/70">2023.10.15 10:00</span>
+                                </div>
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="p-md">
+                        <button class="w-full py-sm border border-outline-variant rounded-lg text-body-sm text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-all flex items-center justify-center gap-xs" type="button">
+                            더보기
+                            <span class="material-symbols-outlined" style="font-size: 16px">expand_more</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-md px-xs py-sm mt-auto border-t border-outline-variant pt-md">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center">
+                    <span class="material-symbols-outlined text-on-surface-variant text-[32px]">badge</span>
+                </div>
+                <div class="">
+                    <a class="font-title-sm text-title-sm text-on-surface text-[15px] font-semibold block" href="/mypage">분석가</a>
+                    <button class="font-body-sm text-body-sm text-on-surface-variant hover:text-error transition-colors flex items-center gap-xs text-left cursor-pointer" type="button">
+                        <span class="material-symbols-outlined text-[14px]">logout</span>
+                        로그아웃
+                    </button>
+                </div>
+            </div>
+        </nav>
+        <!-- Main Content -->
+        <main class="ml-[320px] p-lg md:p-xl flex-1 flex flex-col items-center min-h-screen max-w-container-max mx-auto w-full">
+            <!-- Center Column: Input Area -->
+            <div class="w-full max-w-4xl flex flex-col gap-lg mt-md">
+                <div class="text-center mb-xl pt-lg">
+                    <h1 class="font-display-lg text-display-lg text-on-surface mb-sm">사전협의 요청서 업로드</h1>
+                    <p class="font-body-md text-body-md text-on-surface-variant">AI 사전검토를 위한 새 사업계획안을 제출하거나 최근 활동을 모니터링하세요.</p>
+                </div>
+                <!-- Upload Card -->
+                <div class="bg-surface-container-lowest rounded-2xl border border-outline-variant p-xl flex flex-col shadow-sm w-fit mx-auto">
+                    <!-- Drop Zone -->
+                    <div class="border-2 border-dashed border-outline-variant rounded-xl p-xl flex flex-col items-center justify-center text-center hover:bg-surface-container-low hover:border-primary transition-all cursor-pointer mb-xl h-80 shrink-0 bg-surface">
+                        <span class="material-symbols-outlined text-outline text-[48px] mb-md">cloud_upload</span>
+                        <p class="font-title-sm text-title-sm font-semibold text-on-surface mb-sm">문서를 여기에 드래그 앤 드롭하세요</p>
+                        <p class="font-body-md text-body-md text-on-surface-variant mb-md">지원 형식: HWP, HWPX</p>
+                        <button class="text-primary font-title-sm text-[15px] font-semibold hover:underline">또는 클릭하여 파일 찾아보기</button>
+                    </div>
+                    <!-- Text Area -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-md mb-xl">
+                        <div class="p-md bg-surface-container-low rounded-lg border border-outline-variant">
+                            <div class="flex items-center gap-sm mb-xs text-primary">
+                                <span class="material-symbols-outlined text-[20px]">description</span>
+                                <span class="font-bold text-body-md">지원 포맷 상세</span>
+                            </div>
+                            <p class="text-body-sm text-on-surface-variant">PDF, HWP, DOCX 파일을 지원하며, 표와 이미지가 포함된 문서도 분석 가능합니다.</p>
+                        </div>
+                        <div class="p-md bg-surface-container-low rounded-lg border border-outline-variant">
+                            <div class="flex items-center gap-sm mb-xs text-primary">
+                                <span class="material-symbols-outlined text-[20px]">security</span>
+                                <span class="font-bold text-body-md">보안 정책 안내</span>
+                            </div>
+                            <p class="text-body-sm text-on-surface-variant">업로드된 문서는 암호화되어 처리되며, 분석 완료 후 즉시 파기하거나 안전하게 보관됩니다.</p>
+                        </div>
+                        <div class="p-md bg-surface-container-low rounded-lg border border-outline-variant">
+                            <div class="flex items-center gap-sm mb-xs text-primary">
+                                <span class="material-symbols-outlined text-[20px]">info</span>
+                                <span class="font-bold text-body-md">분석 가이드</span>
+                            </div>
+                            <p class="text-body-sm text-on-surface-variant">최대 50MB 용량까지 지원하며, 텍스트가 선명한 문서를 권장합니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" id="confirm-modal">
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-[440px] p-6 relative flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-150">
+                <h3 class="font-bold text-lg text-slate-900 dark:text-white pt-md">분석을 중단하시겠습니까?</h3>
+                <p class="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
+                    현재 진행 중인 작업 내역이 저장되지 않을 수 있습니다.
+                    <br />
+                    계속 진행하시겠습니까?
+                </p>
+                <div class="grid grid-cols-2 gap-3 mt-6 w-full">
+                    <button
+                        class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-medium py-2.5 px-4 rounded-lg transition-colors text-center text-sm cursor-pointer"
+                        onclick="document.getElementById('confirm-modal').remove()"
+                        type="button"
+                    >
+                        취소
+                    </button>
+                    <button class="bg-[#1a365d] hover:bg-[#0f2442] text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-center text-sm shadow-sm cursor-pointer" type="button">확인</button>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

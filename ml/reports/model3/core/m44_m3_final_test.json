@@ -1,0 +1,425 @@
+{
+  "구조": "정형 설계 feature -> 비교군 대표벡터 C -> D = X - C; 거리=anomaly score, 방향=설명 전용(점수 미포함)",
+  "text_embedding": "최종 탐지에서 제외 (M40: text only 낮음, +structured 개선 없음, 거리 집중)",
+  "frozen": [
+    "모델",
+    "거리 metric",
+    "feature weight",
+    "cohort 기준",
+    "threshold"
+  ],
+  "primary": {
+    "name": "2차 독립셋 · 라벨 v2 (주)",
+    "n_clean": 53,
+    "n_positive": 5,
+    "positive_rate": 0.0943,
+    "excluded": {
+      "data_error": 14,
+      "uncertain": 3
+    },
+    "roc_auc": 0.7542,
+    "pr_auc": 0.2184,
+    "at_budget": {
+      "top_k": 11,
+      "frac": 0.2,
+      "TP": 3,
+      "FP": 8,
+      "FN": 2,
+      "TN": 40,
+      "n_flagged": 11,
+      "recall": 0.6,
+      "precision": 0.2727,
+      "f1": 0.375
+    },
+    "at_operating": {
+      "alert_rate": 0.02,
+      "pool_cut": 0.98,
+      "TP": 0,
+      "FP": 0,
+      "FN": 5,
+      "TN": 48,
+      "n_flagged": 0,
+      "recall": 0.0,
+      "precision": null,
+      "f1": 0.0
+    },
+    "ci95": {
+      "roc_auc": [
+        0.575,
+        0.9083
+      ],
+      "pr_auc": [
+        0.1445,
+        0.5193
+      ],
+      "recall": [
+        0.0,
+        1.0
+      ],
+      "precision": [
+        0.0,
+        0.4167
+      ],
+      "f1": [
+        0.0,
+        0.5882
+      ]
+    },
+    "topk_recall": {
+      "top3": 0.0,
+      "top5": 0.0,
+      "top7": 0.4,
+      "top10": 0.4,
+      "top15": 0.6
+    },
+    "baseline_n_axes": {
+      "roc_auc": 0.7,
+      "pr_auc": 0.1565,
+      "at_budget": {
+        "TP": 4,
+        "FP": 19,
+        "FN": 1,
+        "TN": 29,
+        "n_flagged": 23,
+        "recall": 0.8,
+        "precision": 0.1739,
+        "f1": 0.2857
+      },
+      "gap_bootstrap": {
+        "gap_mean": 0.0552,
+        "ci95": [
+          -0.2375,
+          0.3771
+        ],
+        "p_gap_gt_0": 0.6222
+      }
+    },
+    "stability": {
+      "n_iter": 10,
+      "pool_top_k": 30,
+      "holdout_top_k": 11,
+      "pool_top_overlap_mean": 0.81,
+      "pool_top_overlap_min": 0.6333,
+      "holdout_top_overlap_mean": 0.9182,
+      "holdout_top_overlap_min": 0.8182,
+      "rank_corr_mean": 0.9796,
+      "roc_auc_mean": 0.7544,
+      "roc_auc_min": 0.7375,
+      "roc_auc_max": 0.7792
+    }
+  },
+  "reference": {
+    "second_v1": {
+      "name": "2차 독립셋 · 라벨 v1 (참고)",
+      "n_clean": 53,
+      "n_positive": 9,
+      "positive_rate": 0.1698,
+      "excluded": {
+        "data_error": 14,
+        "uncertain": 3
+      },
+      "roc_auc": 0.7399,
+      "pr_auc": 0.3522,
+      "at_budget": {
+        "top_k": 11,
+        "frac": 0.2,
+        "TP": 5,
+        "FP": 6,
+        "FN": 4,
+        "TN": 38,
+        "n_flagged": 11,
+        "recall": 0.5556,
+        "precision": 0.4545,
+        "f1": 0.5
+      },
+      "at_operating": {
+        "alert_rate": 0.02,
+        "pool_cut": 0.98,
+        "TP": 0,
+        "FP": 0,
+        "FN": 9,
+        "TN": 44,
+        "n_flagged": 0,
+        "recall": 0.0,
+        "precision": null,
+        "f1": 0.0
+      },
+      "ci95": {
+        "roc_auc": [
+          0.5707,
+          0.8914
+        ],
+        "pr_auc": [
+          0.2327,
+          0.6773
+        ],
+        "recall": [
+          0.2222,
+          0.7778
+        ],
+        "precision": [
+          0.1818,
+          0.6364
+        ],
+        "f1": [
+          0.2,
+          0.7
+        ]
+      },
+      "topk_recall": {
+        "top3": 0.0,
+        "top5": 0.2222,
+        "top7": 0.3333,
+        "top10": 0.4444,
+        "top15": 0.5556
+      },
+      "baseline_n_axes": {
+        "roc_auc": 0.8005,
+        "pr_auc": 0.3788,
+        "at_budget": {
+          "TP": 8,
+          "FP": 15,
+          "FN": 1,
+          "TN": 29,
+          "n_flagged": 23,
+          "recall": 0.8889,
+          "precision": 0.3478,
+          "f1": 0.5
+        },
+        "gap_bootstrap": {
+          "gap_mean": -0.0615,
+          "ci95": [
+            -0.2854,
+            0.1894
+          ],
+          "p_gap_gt_0": 0.295
+        }
+      },
+      "stability": {
+        "n_iter": 10,
+        "pool_top_k": 30,
+        "holdout_top_k": 11,
+        "pool_top_overlap_mean": 0.81,
+        "pool_top_overlap_min": 0.6333,
+        "holdout_top_overlap_mean": 0.9182,
+        "holdout_top_overlap_min": 0.8182,
+        "rank_corr_mean": 0.9796,
+        "roc_auc_mean": 0.7227,
+        "roc_auc_min": 0.6957,
+        "roc_auc_max": 0.7399
+      }
+    },
+    "first": {
+      "name": "1차 hold-out (참고)",
+      "n_clean": 35,
+      "n_positive": 10,
+      "positive_rate": 0.2857,
+      "excluded": {
+        "data_error": 5,
+        "uncertain": 10
+      },
+      "roc_auc": 0.904,
+      "pr_auc": 0.8117,
+      "at_budget": {
+        "top_k": 7,
+        "frac": 0.2,
+        "TP": 6,
+        "FP": 1,
+        "FN": 4,
+        "TN": 24,
+        "n_flagged": 7,
+        "recall": 0.6,
+        "precision": 0.8571,
+        "f1": 0.7059
+      },
+      "at_operating": {
+        "alert_rate": 0.02,
+        "pool_cut": 0.98,
+        "TP": 0,
+        "FP": 0,
+        "FN": 10,
+        "TN": 25,
+        "n_flagged": 0,
+        "recall": 0.0,
+        "precision": null,
+        "f1": 0.0
+      },
+      "ci95": {
+        "roc_auc": [
+          0.788,
+          0.988
+        ],
+        "pr_auc": [
+          0.6263,
+          0.9715
+        ],
+        "recall": [
+          0.4,
+          0.8
+        ],
+        "precision": [
+          0.4545,
+          1.0
+        ],
+        "f1": [
+          0.4444,
+          0.8889
+        ]
+      },
+      "topk_recall": {
+        "top3": 0.3,
+        "top5": 0.4,
+        "top7": 0.6,
+        "top10": 0.7,
+        "top15": 0.8
+      },
+      "baseline_n_axes": {
+        "roc_auc": 0.704,
+        "pr_auc": 0.6,
+        "at_budget": {
+          "TP": 6,
+          "FP": 8,
+          "FN": 4,
+          "TN": 17,
+          "n_flagged": 14,
+          "recall": 0.6,
+          "precision": 0.4286,
+          "f1": 0.5
+        },
+        "gap_bootstrap": {
+          "gap_mean": 0.2018,
+          "ci95": [
+            0.01,
+            0.406
+          ],
+          "p_gap_gt_0": 0.9798
+        }
+      },
+      "stability": {
+        "n_iter": 10,
+        "pool_top_k": 30,
+        "holdout_top_k": 7,
+        "pool_top_overlap_mean": 0.7933,
+        "pool_top_overlap_min": 0.7333,
+        "holdout_top_overlap_mean": 0.9571,
+        "holdout_top_overlap_min": 0.8571,
+        "rank_corr_mean": 0.9346,
+        "roc_auc_mean": 0.885,
+        "roc_auc_min": 0.876,
+        "roc_auc_max": 0.896
+      }
+    }
+  },
+  "direction_examples": [
+    {
+      "row_id": "PBLN_000000000118209",
+      "title": "2026년 중소기업 연구인력지원사업 공고",
+      "label": "normal",
+      "dist_pct": 96.9,
+      "direction": "A4 소액·다수기업형",
+      "cosine": 0.64,
+      "cohort_n": 65,
+      "sentence": "동일 비교군 대표설계에서 거리 P97. 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향으로 벗어남 (cosine 0.64)"
+    },
+    {
+      "row_id": "EXCEL2023_0881",
+      "title": "2023년 친환경설비투자 융자사업",
+      "label": "normal",
+      "dist_pct": 92.8,
+      "direction": "A1 고액·소수기업형",
+      "cosine": 0.05,
+      "cohort_n": 153,
+      "sentence": "동일 비교군 대표설계에서 거리 P93. 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향으로 벗어남 (cosine 0.05)"
+    },
+    {
+      "row_id": "EXCEL2022_0417",
+      "title": "2022년 해운·물류기업 해외진출 타당성조사 지원",
+      "label": "normal",
+      "dist_pct": 92.0,
+      "direction": "A4 소액·다수기업형",
+      "cosine": 0.39,
+      "cohort_n": 25,
+      "sentence": "동일 비교군 대표설계에서 거리 P92. 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향으로 벗어남 (cosine 0.39)"
+    },
+    {
+      "row_id": "EXCEL2023_0125",
+      "title": "2023년 연구산업육성사업(프로토파이핑 전문기업 육성)",
+      "label": "normal",
+      "dist_pct": 89.0,
+      "direction": "A1 고액·소수기업형",
+      "cosine": 0.62,
+      "cohort_n": 656,
+      "sentence": "동일 비교군 대표설계에서 거리 P89. 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향으로 벗어남 (cosine 0.62)"
+    },
+    {
+      "row_id": "EXCEL2023_0485",
+      "title": "2023년 국가별 맞춤형 수출지원사업(로봇)",
+      "label": "normal",
+      "dist_pct": 88.0,
+      "direction": "A1 고액·소수기업형",
+      "cosine": 0.2,
+      "cohort_n": 25,
+      "sentence": "동일 비교군 대표설계에서 거리 P88. 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향으로 벗어남 (cosine 0.20)"
+    },
+    {
+      "row_id": "PBLN_000000000106847",
+      "title": "[전남] 2025년 2차 해양수산 창업투자지원센터 수혜기업 모집 공고",
+      "label": "atypical_design",
+      "dist_pct": 86.6,
+      "direction": "A3 고지원율형",
+      "cosine": 0.43,
+      "cohort_n": 656,
+      "sentence": "동일 비교군 대표설계에서 거리 P87. 동일 비교군 대비 지원비율이 높은 방향으로 벗어남 (cosine 0.43)"
+    },
+    {
+      "row_id": "EXCEL2023_0873",
+      "title": "2023년 중소환경기업 사업화 지원",
+      "label": "atypical_design",
+      "dist_pct": 84.8,
+      "direction": "A4 소액·다수기업형",
+      "cosine": 0.31,
+      "cohort_n": 656,
+      "sentence": "동일 비교군 대표설계에서 거리 P85. 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향으로 벗어남 (cosine 0.31)"
+    },
+    {
+      "row_id": "PBLN_000000000084073",
+      "title": "국내 K-뷰티 체험 홍보관 상설운영(2023년 FTA 지원사업 통합공고)",
+      "label": "normal",
+      "dist_pct": 82.5,
+      "direction": "A1 고액·소수기업형",
+      "cosine": 0.41,
+      "cohort_n": 1878,
+      "sentence": "동일 비교군 대표설계에서 거리 P83. 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향으로 벗어남 (cosine 0.41)"
+    },
+    {
+      "row_id": "PBLN_000000000101762",
+      "title": "[충북] 2024년 4차 ICT 융합 과제기획 지원 모집 공고(ICT 벤처ㆍ중소기업 기술개발 ",
+      "label": "normal",
+      "dist_pct": 81.9,
+      "direction": "A1 고액·소수기업형",
+      "cosine": 0.16,
+      "cohort_n": 656,
+      "sentence": "동일 비교군 대표설계에서 거리 P82. 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향으로 벗어남 (cosine 0.16)"
+    },
+    {
+      "row_id": "EXCEL2023_0599",
+      "title": "2023년 소공인 판로개척지원",
+      "label": "normal",
+      "dist_pct": 81.7,
+      "direction": "A4 소액·다수기업형",
+      "cosine": 0.37,
+      "cohort_n": 164,
+      "sentence": "동일 비교군 대표설계에서 거리 P82. 동일 비교군 대비 기업당 지원액은 작고 지원 기업 수는 많은 방향으로 벗어남 (cosine 0.37)"
+    },
+    {
+      "row_id": "PBLN_000000000048393",
+      "title": "산업혁신인재성장지원(R&D)(2020년 산업기술혁신사업 통합 시행계획 공고)",
+      "label": "atypical_design",
+      "dist_pct": 80.1,
+      "direction": "A1 고액·소수기업형",
+      "cosine": 0.74,
+      "cohort_n": 216,
+      "sentence": "동일 비교군 대표설계에서 거리 P80. 동일 비교군 대비 기업당 지원액은 크고 지원 기업 수는 적은 방향으로 벗어남 (cosine 0.74)"
+    }
+  ]
+}

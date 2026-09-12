@@ -9,10 +9,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from enum import Enum
+import math
 from typing import Any
 
 from .contracts.cpl_result import CplEvidence, CplResult, cpl_axis_code
 from .contracts.fit_result import FitResult, fit_axis_code
+from .contracts.ml_result import MlModelId, MlModelResult, MlReferenceResult
 from .contracts.sim_result import (
     SimAxis,
     SimAxisResult,
@@ -64,6 +66,75 @@ _SIM_AXIS_NAME = {
     SimAxis.CONTENT: "support",
     SimAxis.DELIVERY: "delivery",
 }
+
+_ML_MESSAGES = {
+    "MODEL_ARTIFACT_MISSING": "모델 가중치를 사용할 수 없습니다.",
+    "ML_RUNTIME_MISSING": "모델 실행 환경을 사용할 수 없습니다.",
+    "INPUT_EVIDENCE_MISSING": "모델 실행에 필요한 원문 근거가 부족합니다.",
+    "MODEL_EXECUTION_FAILED": "모델 실행 중 오류가 발생했습니다.",
+    "MODEL_INVALID_RESPONSE": "모델 응답을 결과 형식으로 변환하지 못했습니다.",
+    "PREDICTION_WITHHELD": "모델이 예측을 보류했습니다.",
+}
+
+
+def _ml_message(result: MlModelResult) -> str | None:
+    if result.reference_text:
+        return result.reference_text
+    if result.reason_code:
+        return _ML_MESSAGES.get(result.reason_code, "모델 결과를 제공할 수 없습니다.")
+    return None
+
+
+def _ml_common(result: MlModelResult) -> dict[str, Any]:
+    return {
+        "status": result.status,
+        "message": _ml_message(result),
+        "reason_code": result.reason_code,
+    }
+
+
+def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
+    """Expose only the fixed ML surface; internal scores never cross this edge."""
+
+    results = {result.model_id: result for result in ml_result.results}
+    model_1 = results[MlModelId.MODEL_1_SUPPORT_TYPE]
+    model_2 = results[MlModelId.MODEL_2_AMOUNT]
+    model_3 = results[MlModelId.MODEL_3_ANOMALY]
+
+    support_type = model_1.internal.get("support_type_pred")
+    if model_1.status == "OK" and isinstance(support_type, str):
+        support_type = support_type.strip() or None
+    else:
+        support_type = None
+
+    predicted_amount_won: int | None = None
+    if model_2.status == "OK":
+        value = model_2.internal.get("pred_won")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = float(value)
+            if math.isfinite(value) and value > 0:
+                predicted_amount_won = int(round(value))
+
+    anomaly_level = model_3.internal.get("level")
+    if model_3.status != "OK" or not isinstance(anomaly_level, str):
+        anomaly_level = None
+    cause_axes = model_3.internal.get("cause_axes")
+    if model_3.status != "OK" or not isinstance(cause_axes, list):
+        cause_axes = []
+    cause_axes = [axis for axis in cause_axes if isinstance(axis, str)]
+
+    return {
+        "model_1": {**_ml_common(model_1), "support_type": support_type},
+        "model_2": {
+            **_ml_common(model_2),
+            "predicted_amount_won": predicted_amount_won,
+        },
+        "model_3": {
+            **_ml_common(model_3),
+            "anomaly_level": anomaly_level,
+            "cause_axes": cause_axes,
+        },
+    }
 
 
 def _evidence(
@@ -131,6 +202,7 @@ def build_result_payload(
     sim_profiles: Mapping[str, SimCommonProfile],
     retrieval_similarities: Mapping[str, float],
     profile_version_ids: Mapping[str, str],
+    ml_result: MlReferenceResult | None = None,
 ) -> dict[str, Any]:
     """Return JSON-native input accepted by the fenced result function."""
 
@@ -253,9 +325,12 @@ def build_result_payload(
     identity = profile.get("identity")
     identity = identity if isinstance(identity, Mapping) else {}
     program_name = identity.get("program_name") or identity.get("title_raw")
-    return {
+    payload = {
         "program_name": program_name if isinstance(program_name, str) else None,
         "axes": axes,
         "candidates": candidates,
         "evidences": evidences,
     }
+    if ml_result is not None:
+        payload["ml"] = _public_ml_payload(ml_result)
+    return payload

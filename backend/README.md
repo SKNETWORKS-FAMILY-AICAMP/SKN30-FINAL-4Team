@@ -8,10 +8,8 @@ Frontend (HttpOnly Cookie)
   → FastAPI /api/v1
       ├─ Supabase Auth
       ├─ Postgres / pgvector / private Storage
-      └─ workspace.analysis_run (queued)
-                                      ↓
-                         same-server polling worker
-                         claim → parse → OpenAI → persist result
+      ├─ workspace.analysis_run (queued) → analysis worker → CPL/FIT/SIM/ML
+      └─ conversation message (generating) → chat worker → grounded answer
 ```
 
 - Redis/RQ, 브라우저의 Supabase 직접 호출, 현재 런타임의 Edge Function dispatch/callback은 사용하지 않는다.
@@ -28,8 +26,12 @@ Frontend (HttpOnly Cookie)
 - `GET /api/v1/sim-candidates/{sim_candidate_id}`
 - `GET /api/v1/analysis-sessions/active`
 - `GET /api/v1/analysis-history`
+- `POST /api/v1/analysis-cases/{analysis_case_id}/messages`
+- `GET /api/v1/analysis-cases/{analysis_case_id}/messages`
+- `POST /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry`
 
-메시지·PDF 생성 API는 데이터 모델은 있으나 아직 이 공개 경계에 구현하지 않았다.
+PDF 생성 API는 데이터 모델은 있으나 아직 이 공개 경계에 구현하지 않았다. 메시지
+POST/retry는 `202 Accepted`이며 별도 `chat-worker`가 저장된 분석 결과만 근거로 답한다.
 
 ## 로컬 실행
 
@@ -59,8 +61,9 @@ origin 추가 옵션을 포함한 상세 절차는 아래 운영 가이드를 �
 Docker Compose용이다. 호스트 Python으로 직접 실행할 때 필요한 `127.0.0.1` 주소 설정은
 운영 가이드의 별도 절차를 따른다.
 
-API와 same-server worker를 Docker Compose로 함께 기동할 때는 worker가 기본 service로
-포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만 호스트 포트로 publish하지 않는다.
+API와 same-server worker를 Docker Compose로 함께 기동할 때는 분석 `worker`와
+`chat-worker`가 기본 service로 포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만
+호스트 포트로 publish하지 않는다.
 
 ```bash
 cd backend
@@ -73,7 +76,7 @@ docker compose ps
 [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)에 정리되어 있다.
 
 `api`만 떠 있고 worker가 없으면 요청은 `queued`에 머문다. 배포 확인 시 `/health/ready`
-만 보지 말고 `docker compose ps worker`와 최근 `ops.processing_run`도 함께 확인한다.
+만 보지 말고 `docker compose ps worker chat-worker`와 최근 `ops.processing_run`도 함께 확인한다.
 
 `/health/live`는 프로세스 생존만, `/health/ready`는 online 의존성 설정 여부를
 나타낸다.

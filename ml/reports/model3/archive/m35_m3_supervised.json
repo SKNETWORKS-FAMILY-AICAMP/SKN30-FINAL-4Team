@@ -1,0 +1,75 @@
+{
+  "질문": "사람이 정의한 atypical_design 과 현재 feature 사이에 학습 가능한 signal 이 있는가",
+  "n": 35,
+  "n_positive": 10,
+  "n_features": 12,
+  "feature_names": [
+    "log_per_recipient",
+    "log_per_recipient__missing",
+    "log_support_count",
+    "log_support_count__missing",
+    "project_duration",
+    "project_duration__missing",
+    "support_ratio",
+    "support_ratio__missing",
+    "support_method__freq",
+    "amount_type__freq",
+    "support_type__freq",
+    "support_unit__freq"
+  ],
+  "eval": "LeaveOneOut CV out-of-fold ROC-AUC + 라벨 순열검정 100회",
+  "results": {
+    "LogisticRegression": {
+      "loo_auc": 0.848,
+      "null_mean": 0.4742,
+      "null_p95": 0.6922,
+      "perm_p": 0.0,
+      "n_perm": 100
+    },
+    "LinearSVM": {
+      "loo_auc": 0.876,
+      "null_mean": 0.3347,
+      "null_p95": 0.7092,
+      "perm_p": 0.01,
+      "n_perm": 100
+    },
+    "RandomForest": {
+      "loo_auc": 0.768,
+      "null_mean": 0.4482,
+      "null_p95": 0.66,
+      "perm_p": 0.0,
+      "n_perm": 100
+    },
+    "MLP(16)": {
+      "loo_auc": 0.836,
+      "null_mean": 0.4725,
+      "null_p95": 0.6802,
+      "perm_p": 0.0,
+      "n_perm": 100
+    },
+    "LightGBM": {
+      "loo_auc": 0.784,
+      "null_mean": 0.4462,
+      "null_p95": 0.6402,
+      "perm_p": 0.0,
+      "n_perm": 100
+    }
+  },
+  "best": "LinearSVM",
+  "unsupervised_same_set": {
+    "model": "distance only",
+    "roc_auc": 0.904,
+    "roc_auc_ci95": null,
+    "n_candidates": 8,
+    "note": "같은 35건에서 잰 비지도 후보 8개 중 최고"
+  },
+  "verdict": {
+    "verdict": "signal 있음 · 문제정의 유지",
+    "reasons": [
+      "지도학습 0.876, 비지도 최고 0.904(distance only) — 지도학습이 앞서지 않는다. 이상탐지라는 문제정의를 바꿀 근거가 없다.",
+      "라벨을 섞으면 AUC 가 0.335 로 떨어진다(순열 p=0.010). 평가 절차에 누수는 없다 — 계획서 §9.4 Random Label Test 통과.",
+      "양성 10건짜리 표본이다. 모델 간 AUC 차이는 읽지 않는다 — 읽을 수 있는 것은 '섞은 라벨과 구분되는가' 하나뿐이다."
+    ]
+  },
+  "not_used_for": "모델 선택. 35건짜리 진단이지 학습셋이 아니다"
+}

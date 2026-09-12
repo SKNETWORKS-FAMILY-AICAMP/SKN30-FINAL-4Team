@@ -1,0 +1,223 @@
+{
+  "n_rows": 2205,
+  "n_features": 70,
+  "cv": "GroupKFold(5) by program_stem",
+  "quantiles": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "base_config": {
+    "hidden": 64,
+    "layers": 2,
+    "dropout": 0.1,
+    "lr": 0.001,
+    "epochs": 300,
+    "batch": 128
+  },
+  "base_result": {
+    "MAE_log10": 0.562,
+    "RMSE_log10": 0.8045,
+    "geo_mean_error_x": 3.648,
+    "within_2x": 0.3615,
+    "within_3x": 0.546,
+    "p10_p90_coverage": 0.7601
+  },
+  "ablation": {
+    "hidden": {
+      "32": {
+        "MAE_log10": 0.5811,
+        "RMSE_log10": 0.812,
+        "geo_mean_error_x": 3.812,
+        "within_2x": 0.3438,
+        "within_3x": 0.5152,
+        "p10_p90_coverage": 0.8109
+      },
+      "64": {
+        "MAE_log10": 0.562,
+        "RMSE_log10": 0.8045,
+        "geo_mean_error_x": 3.648,
+        "within_2x": 0.3615,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7601,
+        "note": "기준 설정"
+      },
+      "128": {
+        "MAE_log10": 0.5718,
+        "RMSE_log10": 0.854,
+        "geo_mean_error_x": 3.731,
+        "within_2x": 0.3683,
+        "within_3x": 0.5478,
+        "p10_p90_coverage": 0.7093
+      },
+      "256": {
+        "MAE_log10": 0.5821,
+        "RMSE_log10": 0.8888,
+        "geo_mean_error_x": 3.821,
+        "within_2x": 0.3696,
+        "within_3x": 0.5474,
+        "p10_p90_coverage": 0.6971
+      }
+    },
+    "layers": {
+      "1": {
+        "MAE_log10": 0.5633,
+        "RMSE_log10": 0.8064,
+        "geo_mean_error_x": 3.658,
+        "within_2x": 0.385,
+        "within_3x": 0.5515,
+        "p10_p90_coverage": 0.7669
+      },
+      "2": {
+        "MAE_log10": 0.562,
+        "RMSE_log10": 0.8045,
+        "geo_mean_error_x": 3.648,
+        "within_2x": 0.3615,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7601,
+        "note": "기준 설정"
+      },
+      "3": {
+        "MAE_log10": 0.5717,
+        "RMSE_log10": 0.8069,
+        "geo_mean_error_x": 3.73,
+        "within_2x": 0.3615,
+        "within_3x": 0.5351,
+        "p10_p90_coverage": 0.7714
+      }
+    },
+    "dropout": {
+      "0.0": {
+        "MAE_log10": 0.5959,
+        "RMSE_log10": 0.9165,
+        "geo_mean_error_x": 3.943,
+        "within_2x": 0.3868,
+        "within_3x": 0.5392,
+        "p10_p90_coverage": 0.5342
+      },
+      "0.1": {
+        "MAE_log10": 0.562,
+        "RMSE_log10": 0.8045,
+        "geo_mean_error_x": 3.648,
+        "within_2x": 0.3615,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7601,
+        "note": "기준 설정"
+      },
+      "0.3": {
+        "MAE_log10": 0.5622,
+        "RMSE_log10": 0.7749,
+        "geo_mean_error_x": 3.649,
+        "within_2x": 0.3483,
+        "within_3x": 0.5329,
+        "p10_p90_coverage": 0.859
+      }
+    },
+    "lr": {
+      "0.0003": {
+        "MAE_log10": 0.5564,
+        "RMSE_log10": 0.7886,
+        "geo_mean_error_x": 3.601,
+        "within_2x": 0.3669,
+        "within_3x": 0.5528,
+        "p10_p90_coverage": 0.8227
+      },
+      "0.001": {
+        "MAE_log10": 0.562,
+        "RMSE_log10": 0.8045,
+        "geo_mean_error_x": 3.648,
+        "within_2x": 0.3615,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7601,
+        "note": "기준 설정"
+      },
+      "0.003": {
+        "MAE_log10": 0.5703,
+        "RMSE_log10": 0.8185,
+        "geo_mean_error_x": 3.718,
+        "within_2x": 0.3728,
+        "within_3x": 0.5451,
+        "p10_p90_coverage": 0.7302
+      }
+    },
+    "epochs": {
+      "100": {
+        "MAE_log10": 0.5646,
+        "RMSE_log10": 0.8029,
+        "geo_mean_error_x": 3.669,
+        "within_2x": 0.3642,
+        "within_3x": 0.5478,
+        "p10_p90_coverage": 0.8336
+      },
+      "300": {
+        "MAE_log10": 0.562,
+        "RMSE_log10": 0.8045,
+        "geo_mean_error_x": 3.648,
+        "within_2x": 0.3615,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7601,
+        "note": "기준 설정"
+      },
+      "600": {
+        "MAE_log10": 0.5634,
+        "RMSE_log10": 0.8212,
+        "geo_mean_error_x": 3.659,
+        "within_2x": 0.3737,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7238
+      }
+    },
+    "batch": {
+      "32": {
+        "MAE_log10": 0.5614,
+        "RMSE_log10": 0.7932,
+        "geo_mean_error_x": 3.643,
+        "within_2x": 0.3705,
+        "within_3x": 0.5474,
+        "p10_p90_coverage": 0.7229
+      },
+      "128": {
+        "MAE_log10": 0.562,
+        "RMSE_log10": 0.8045,
+        "geo_mean_error_x": 3.648,
+        "within_2x": 0.3615,
+        "within_3x": 0.546,
+        "p10_p90_coverage": 0.7601,
+        "note": "기준 설정"
+      },
+      "0": {
+        "MAE_log10": 0.5703,
+        "RMSE_log10": 0.8358,
+        "geo_mean_error_x": 3.718,
+        "within_2x": 0.3601,
+        "within_3x": 0.5456,
+        "p10_p90_coverage": 0.8658
+      }
+    }
+  },
+  "tuned_config": {
+    "hidden": 64,
+    "layers": 2,
+    "dropout": 0.1,
+    "lr": 0.0003,
+    "epochs": 300,
+    "batch": 32
+  },
+  "tuned_result": {
+    "MAE_log10": 0.55,
+    "RMSE_log10": 0.777,
+    "geo_mean_error_x": 3.549,
+    "within_2x": 0.376,
+    "within_3x": 0.5542,
+    "p10_p90_coverage": 0.7905
+  },
+  "ml_reference": {
+    "cohort_median": 0.679,
+    "lgbm_quantile50": 0.516
+  },
+  "improvement_vs_cohort_median": 0.19,
+  "improvement_vs_ml_best": -0.0659,
+  "min_required": 0.1,
+  "verdict": "미채택 — ML(LGBM-quantile)을 넘지 못함",
+  "runtime_min": 26.1
+}

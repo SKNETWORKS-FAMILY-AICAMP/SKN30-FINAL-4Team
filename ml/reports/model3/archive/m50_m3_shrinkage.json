@@ -1,0 +1,98 @@
+{
+  "질문": "얇은 비교군(n<=30)의 대표벡터를 상위 비교군 쪽으로 끌어당기면 안정성이 개선되는가 (계획서 STEP 3·§6)",
+  "방법": "C_shrunk = w*C_자기 + (1-w)*C_상위, w = n/(n+k)",
+  "판정문턱": {
+    "spearman_min": 0.969,
+    "top30_min": 0.789,
+    "출처": "M48 이 잰 80% 재표집 변동폭",
+    "원칙": "얇은 비교군이 개선되고 전체 구조가 유지될 때만 채택"
+  },
+  "n_pool": 1948,
+  "n_cohorts": 25,
+  "thin_cohorts": [
+    {
+      "cohort": "1|SW·솔루션",
+      "n": 20
+    },
+    {
+      "cohort": "1|성능인증",
+      "n": 22
+    },
+    {
+      "cohort": "2|사업화|loan",
+      "n": 25
+    },
+    {
+      "cohort": "2|사업화|other",
+      "n": 23
+    },
+    {
+      "cohort": "2|사업화|voucher",
+      "n": 29
+    },
+    {
+      "cohort": "2|성능인증|grant",
+      "n": 20
+    },
+    {
+      "cohort": "2|수출통관|grant",
+      "n": 20
+    },
+    {
+      "cohort": "2|해외수주·실증|grant",
+      "n": 27
+    },
+    {
+      "cohort": "2|해외인증|grant",
+      "n": 29
+    }
+  ],
+  "baseline": {
+    "thin_volatility": 14.2368,
+    "all_volatility": 3.4213,
+    "centroid_variance_thin": 0.259494
+  },
+  "shrinkage": {
+    "k=5": {
+      "spearman": 0.9983,
+      "top30_overlap": 0.9333,
+      "thin_volatility": 14.3554,
+      "all_volatility": 3.419,
+      "centroid_variance_thin": 0.196961,
+      "w_at_n20": 0.8,
+      "w_at_n675": 0.993,
+      "verdict": "얇은비교군 개선 없음"
+    },
+    "k=10": {
+      "spearman": 0.9965,
+      "top30_overlap": 0.9333,
+      "thin_volatility": 14.5727,
+      "all_volatility": 3.4307,
+      "centroid_variance_thin": 0.166182,
+      "w_at_n20": 0.667,
+      "w_at_n675": 0.985,
+      "verdict": "얇은비교군 개선 없음"
+    },
+    "k=20": {
+      "spearman": 0.994,
+      "top30_overlap": 0.9333,
+      "thin_volatility": 14.941,
+      "all_volatility": 3.4847,
+      "centroid_variance_thin": 0.141,
+      "w_at_n20": 0.5,
+      "w_at_n675": 0.971,
+      "verdict": "얇은비교군 개선 없음"
+    },
+    "k=40": {
+      "spearman": 0.9905,
+      "top30_overlap": 0.9333,
+      "thin_volatility": 15.3192,
+      "all_volatility": 3.5758,
+      "centroid_variance_thin": 0.131828,
+      "w_at_n20": 0.333,
+      "w_at_n675": 0.944,
+      "verdict": "얇은비교군 개선 없음"
+    }
+  },
+  "adopted": null
+}
