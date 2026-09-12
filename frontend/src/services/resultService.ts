@@ -1,39 +1,20 @@
-import { supabase } from './supabase'
+import { api } from './apiClient'
+import { getFriendlyErrorMessage } from './errorHandler'
 
 export const resultService = {
-    // RESULT-01 · 분석 결과 전체 조회 (RPC)
     getAnalysisResult: async (caseId: string) => {
-        const { data, error } = await supabase
-            .schema('api')
-            .rpc('rpc_get_analysis_result', { p_analysis_case_id: caseId })
-        if (error) throw error
-        return data
+        try {
+            return await api.get(`/analysis-cases/${caseId}`)
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '분석 결과를 조회하는 중 오류가 발생했습니다'))
+        }
     },
 
-    // RESULT-02 · 유사 공고 상세 팝업 조회 (RPC)
     getSimCandidateDetail: async (simCandidateId: string) => {
-        const { data, error } = await supabase
-            .schema('api')
-            .rpc('rpc_get_sim_candidate_detail', { p_sim_candidate_id: simCandidateId })
-        if (error) throw error
-        return data
-    },
-
-    // SES-02 · 분석 활동 시간 30분 갱신 (touch)
-    touchSession: async (caseId: string) => {
-        const { data, error } = await supabase
-            .schema('api')
-            .rpc('rpc_touch_active_analysis_session', { p_analysis_case_id: caseId })
-        if (error) throw error
-        return data
-    },
-
-    // SES-02 · 새 분석 전 기존 세션 종료 (close)
-    closeSession: async (caseId: string) => {
-        const { data, error } = await supabase
-            .schema('api')
-            .rpc('rpc_close_active_analysis_session', { p_analysis_case_id: caseId })
-        if (error) throw error
-        return data
+        try {
+            return await api.get(`/sim-candidates/${simCandidateId}`)
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '유사 공고 상세 정보를 조회하는 중 오류가 발생했습니다'))
+        }
     },
 }

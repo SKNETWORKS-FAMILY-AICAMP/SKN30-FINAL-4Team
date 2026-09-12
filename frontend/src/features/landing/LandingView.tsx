@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { HIGHLIGHTS_DATA, WORKFLOW_DATA, CAPABILITIES_DATA } from './landingData'
+import { HIGHLIGHTS_DATA, WORKFLOW_DATA, CAPABILITIES_DATA } from '../../utils/landingData'
 
 export default function LandingView() {
     return (
@@ -13,7 +13,7 @@ export default function LandingView() {
             >
                 <div className="relative max-w-5xl mx-auto text-center flex flex-col items-center">
                     <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-xs md:text-sm font-semibold text-blue-200 mb-6 shadow-inner">
-                        <span className="material-symbols-outlined text-base text-blue-300">verified_user</span>
+                        <span className="material-symbols-outlined text-blue-300" style={{ fontSize: '16px' }}>verified_user</span>
                         <span>중소기업 지원사업 사전협의 지원 시스템 | Pre-review</span>
                     </div>
                     <h1 className="text-3xl md:text-[42px] leading-tight md:leading-[1.3] font-extrabold tracking-tight text-white mb-6">

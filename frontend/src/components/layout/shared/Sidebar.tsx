@@ -20,8 +20,8 @@ export default function Sidebar({
     onImminent
 }: SidebarProps) {
     return (
-        <nav className="fixed left-0 top-0 h-full w-[320px] bg-surface border-r border-outline-variant flex flex-col py-xl px-lg gap-lg z-50">
-            <div className="mb-md">
+        <nav className="flex flex-col gap-lg fixed left-0 top-0 h-full w-[320px] py-xl px-lg bg-surface border-r border-outline-variant z-50">
+            <div className="mb-md text-center">
                 <Logo size='lg' />
             </div>
 

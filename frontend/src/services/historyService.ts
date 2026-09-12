@@ -1,19 +1,14 @@
-import { supabase } from './supabase'
+import { api } from './apiClient'
+import { getFriendlyErrorMessage } from './errorHandler'
 
 export const historyService = {
-    // HISTORY-01 · 목록 조회 (View + Pagination)
-    listHistory: async (page: number = 0, limit: number = 5) => {
-        const from = page * limit
-        const to = from + limit - 1
-
-        const { data, error, count } = await supabase
-            .schema('api')
-            .from('v_my_analysis_history')
-            .select('*', { count: 'exact' })
-            .order('completed_at', { ascending: false })
-            .range(from, to)
-
-        if (error) throw error
-        return { data: data || [], count: count || 0 }
+    listHistory: async () => {
+        try {
+            const data = await api.get('/analysis-history')
+            const list = Array.isArray(data) ? data : (data?.data || [])
+            return { data: list, count: list.length }
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '분석 이력 목록을 조회하는 중 오류가 발생했습니다'))
+        }
     },
 }
