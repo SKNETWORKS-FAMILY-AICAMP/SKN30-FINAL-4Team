@@ -1,10 +1,10 @@
--- Correct deployments where migration 26 from the initial rollout promoted
+-- Correct deployments where migration 28 from the initial rollout promoted
 -- v2 before its Existing Profile embeddings were backfilled.
 --
 -- If v2 is already active and has a complete current-profile × four-scope
 -- set, retain it.  Otherwise, restore v1 as the only active configuration.
 -- In particular, this repair must never promote an inactive v2 from a row
--- count: migration 28 deliberately demotes v2 after any retrieval-input
+-- count: migration 30 deliberately demotes v2 after any retrieval-input
 -- mutation while retaining its old rows, and only the byte/hash-verified
 -- Python backfill command may promote it again.
 
@@ -19,7 +19,7 @@ DECLARE
     v2_is_active BOOLEAN;
     v_any_active BOOLEAN;
 BEGIN
-    -- Must match the importer and migration 28.  This correction can be
+    -- Must match the importer and migration 30.  This correction can be
     -- applied to a live DB, so its current-set snapshot must not race an
     -- Existing KB current-version transition.
     PERFORM pg_advisory_xact_lock(
@@ -93,7 +93,7 @@ BEGIN
        ) THEN
         -- Clear v2 before restoring v1 to satisfy the unique active-config
         -- index.  Do not touch a complete-but-inactive v2: it may have been
-        -- invalidated by migration 28 and needs full hash revalidation.
+        -- invalidated by migration 30 and needs full hash revalidation.
         UPDATE retrieval.embedding_configuration
            SET is_active = FALSE
          WHERE embedding_config_pk = v2_pk

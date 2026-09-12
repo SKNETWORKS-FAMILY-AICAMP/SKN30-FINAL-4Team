@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 26: asynchronous result-grounded conversation queue
+-- Migration 27: asynchronous result-grounded conversation queue
 --
 -- HTTP only creates the two conversation rows and this private dispatch row.
 -- A trusted chat worker claims the row, calls the LLM, then completes/fails it

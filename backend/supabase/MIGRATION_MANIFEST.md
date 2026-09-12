@@ -9,12 +9,12 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 
 ## 현재 수량
 
-- 순차 migration: 28개 (`01`~`28`)
-- SQL 물리 행 수: 5,447 (`wc -l`, 주석/빈 줄 포함)
-- 애플리케이션 table: 60개
+- 순차 migration: 31개 (`01`~`31`)
+- SQL 물리 행 수: 6,773 (`wc -l`, 주석/빈 줄 포함)
+- 애플리케이션 table: 63개
 - data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
 - contract schema: 1개 (`api`, table 없이 View/RPC)
-- `CREATE [UNIQUE] INDEX` 정의: 73개
+- `CREATE [UNIQUE] INDEX` 정의: 78개
 
 `auth`, `storage`, role(`anon`, `authenticated`, `service_role`)은 공식 Supabase stack이 먼저
 제공해야 한다. migration 19 전에 pgvector가 포함된 호환 PostgreSQL image가 실행 중이어야
@@ -49,11 +49,14 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | 23 | `23_result_read_retention_and_candidate_evidence.sql` | 449 | 0 | 0 | live-retention reads, exact candidate version/evidence |
 | 24 | `24_retire_legacy_worker_completion.sql` | 10 | 0 | 0 | 결과 없는 성공 전이를 허용한 과거 완료 함수 제거 |
 | 25 | `25_queued_source_invariant.sql` | 669 | 0 | 1 | queued source artifact·dispatch·lease·processing fence 무결성 강제 |
-| 26 | `26_component_name_embedding_assembly.sql` | 40 | 0 | 0 | support component name 포함 v2 임베딩 조립 구성 staged 생성 |
-| 27 | `27_repair_component_embedding_activation.sql` | 117 | 0 | 0 | 빈 active v2 보정; inactive v2/active future config 보존 |
-| 28 | `28_serialise_existing_kb_embedding_activation.sql` | 304 | 0 | 0 | four-table writer lock·최초 설치/trigger drift one-time revalidation, current/입력 child 변경 시 v1 demote |
+| 26 | `26_ml_result_contract.sql` | 167 | 0 | 0 | fenced result ingest에 Model 1/2/3 public reference를 원자 저장; ledgerless replay-safe wrapper |
+| 27 | `27_chat_worker_queue.sql` | 809 | 1 | 2 | result-grounded asynchronous conversation queue/lease/fence |
+| 28 | `28_component_name_embedding_assembly.sql` | 40 | 0 | 0 | support component name 포함 v2 임베딩 조립 구성 staged 생성 |
+| 29 | `29_repair_component_embedding_activation.sql` | 117 | 0 | 0 | 빈 active v2 보정; inactive v2/active future config 보존 |
+| 30 | `30_serialise_existing_kb_embedding_activation.sql` | 304 | 0 | 0 | four-table writer lock·최초 설치/trigger drift one-time revalidation, current/입력 child 변경 시 v1 demote |
+| 31 | `31_existing_profile_model1_classification.sql` | 350 | 2 | 3 | versioned Existing Model 1 분류, complete-current-corpus activation gate, withheld-label service projection |
 
-합계는 60 table, 73 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
+합계는 63 table, 78 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
 스키마 정확성을 대신하는 검증이 아니다.
 
 ## Schema와 활성 계약
@@ -63,9 +66,9 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | `app` | 1 | 사용자 profile. RLS own-row read |
 | `ops` | 3 | worker attempt/model/cleanup 감사 구조. browser 미노출 |
 | `kb` | 22 | versioned Existing KB. 영속 |
-| `workspace` | 24 | request 분석과 private queue state |
+| `workspace` | 25 | request 분석과 private analysis/chat queue state |
 | `result` | 8 | 분석 결과/session/conversation/report 구조 |
-| `retrieval` | 2 | Existing embedding만 영속; request vector는 worker 메모리에서 폐기 |
+| `retrieval` | 4 | Existing embedding과 versioned Model 1 분류만 영속; request vector는 worker 메모리에서 폐기 |
 | `api` | 0 | FastAPI가 transaction-local user claim으로 호출하는 read View/RPC |
 
 활성 분석 lifecycle은 다음과 같다.
@@ -132,7 +135,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-이 script에는 migration ledger가 없으며 매번 `01`~`28`을 모두 실행한다. 각 파일은 독립
+이 script에는 migration ledger가 없으며 매번 `01`~`31`을 모두 실행한다. 각 파일은 독립
 transaction이라 중간 실패 전 파일은 이미 commit된다. reset/delete는 하지 않지만 모든
 부분 적용·재실행 상태가 안전하다고 보장하지도 않는다. 실패 시 무작정 재실행하지 말고
 적용된 객체와 오류 migration을 확인한 뒤 backup restore 또는 검증된 repair 절차를 따른다.
@@ -159,7 +162,7 @@ SUPABASE_DIR=/path/to/supabase-compose \
   ./supabase/run_worker_queue_validation.sh
 ```
 
-배포 gate에는 별도로 migration 01~28 fresh apply, 실제 private Storage put/get/delete,
+배포 gate에는 별도로 migration 01~31 fresh apply, 실제 private Storage put/get/delete,
 FastAPI Cookie auth/upload/poll/result, HWP/HWPX parser와 OpenAI를 포함한 worker E2E가 필요하다.
 
 ## 관련 문서

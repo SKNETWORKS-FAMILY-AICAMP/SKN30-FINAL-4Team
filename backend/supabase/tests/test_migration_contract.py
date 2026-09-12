@@ -57,9 +57,12 @@ class MigrationContractTest:
         "23_result_read_retention_and_candidate_evidence.sql",
         "24_retire_legacy_worker_completion.sql",
         "25_queued_source_invariant.sql",
-        "26_component_name_embedding_assembly.sql",
-        "27_repair_component_embedding_activation.sql",
-        "28_serialise_existing_kb_embedding_activation.sql",
+        "26_ml_result_contract.sql",
+        "27_chat_worker_queue.sql",
+        "28_component_name_embedding_assembly.sql",
+        "29_repair_component_embedding_activation.sql",
+        "30_serialise_existing_kb_embedding_activation.sql",
+        "31_existing_profile_model1_classification.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -76,6 +79,8 @@ class MigrationContractTest:
         # retrieval schema (persistent Existing Profile embeddings only)
         "retrieval.embedding_configuration",
         "retrieval.existing_profile_embedding",
+        "retrieval.classification_configuration",
+        "retrieval.existing_profile_classification",
 
         # kb schema (existing knowledge base)
         "kb.notice",
@@ -153,6 +158,8 @@ class MigrationContractTest:
         "result.analysis_case.user_id -> auth.users.id",
         "result.sim_candidate.analysis_case_pk -> result.analysis_case.analysis_case_pk",
         "result.sim_candidate.existing_profile_version_pk -> kb.profile_version.profile_version_pk",
+        "retrieval.existing_profile_classification.profile_version_pk -> kb.profile_version.profile_version_pk",
+        "retrieval.existing_profile_classification.classification_config_pk -> retrieval.classification_configuration.classification_config_pk",
     }
 
     def test_all_migrations_present(self):
@@ -330,14 +337,14 @@ class MigrationContractTest:
             self.MIGRATIONS_DIR / "20_embedding_input_policy_and_axis_match.sql"
         ).read_text()
         component_policy = (
-            self.MIGRATIONS_DIR / "26_component_name_embedding_assembly.sql"
+            self.MIGRATIONS_DIR / "28_component_name_embedding_assembly.sql"
         ).read_text()
         activation_repair = (
-            self.MIGRATIONS_DIR / "27_repair_component_embedding_activation.sql"
+            self.MIGRATIONS_DIR / "29_repair_component_embedding_activation.sql"
         ).read_text()
         activation_serialisation = (
             self.MIGRATIONS_DIR
-            / "28_serialise_existing_kb_embedding_activation.sql"
+            / "30_serialise_existing_kb_embedding_activation.sql"
         ).read_text()
 
         assert "max_input_tokens" in policy
@@ -385,24 +392,24 @@ class MigrationContractTest:
         assert "NEW.structured_artifact_pk" in activation_serialisation
         assert "TG_OP = 'DELETE'" in activation_serialisation
         assert "AFTER INSERT OR UPDATE OR DELETE" in activation_serialisation
-        # Migration 28 is reapplied by the local bootstrap script.  It takes
+        # Migration 30 is reapplied by the local bootstrap script.  It takes
         # a one-time revalidation gate before replacing triggers, so a
         # healthy reapply preserves a complete active v2 corpus while a
         # first install or trigger/function drift safely restores v1.
-        assert "CREATE TEMP TABLE migration_28_activation_gate" in activation_serialisation
+        assert "CREATE TEMP TABLE migration_30_activation_gate" in activation_serialisation
         assert "requires_one_time_revalidation" in activation_serialisation
-        assert "pre-review-migration-28-embedding-activation-v1" in activation_serialisation
+        assert "pre-review-migration-30-embedding-activation-v1" in activation_serialisation
         assert "trigger_row.tgtype = 29" in activation_serialisation
         assert "tgenabled = 'O'" in activation_serialisation
         assert "current_profile_count" not in activation_serialisation
         assert "v2_complete_count" not in activation_serialisation
         assert activation_serialisation.index("LOCK TABLE kb.source_version") < (
             activation_serialisation.index(
-                "CREATE TEMP TABLE migration_28_activation_gate"
+                "CREATE TEMP TABLE migration_30_activation_gate"
             )
         )
         assert activation_serialisation.index(
-            "CREATE TEMP TABLE migration_28_activation_gate"
+            "CREATE TEMP TABLE migration_30_activation_gate"
         ) < activation_serialisation.index(
             "DROP TRIGGER IF EXISTS trg_kb_source_version_embedding_activation"
         )
@@ -415,6 +422,38 @@ class MigrationContractTest:
         )[1]
         assert "AND EXISTS" in install_tail
         assert "COUNT(" not in install_tail
+
+    def test_ml_result_migration_is_replay_safe(self):
+        """Migration 26 wraps migration 23 once and can be reapplied."""
+        ml_result = (self.MIGRATIONS_DIR / "26_ml_result_contract.sql").read_text()
+
+        assert "ADD COLUMN IF NOT EXISTS ml_result" in ml_result
+        assert "persist_analysis_result_core_without_ml" in ml_result
+        assert "rpc_get_analysis_result_without_ml" in ml_result
+        assert "to_regprocedure('workspace.persist_analysis_result_core(uuid,uuid,jsonb)')" in ml_result
+        assert "CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core" in ml_result
+        assert "CREATE OR REPLACE FUNCTION api.rpc_get_analysis_result" in ml_result
+
+    def test_existing_model1_classification_contract(self):
+        """Existing Model 1 enrichment remains versioned and service-only."""
+        classification = (
+            self.MIGRATIONS_DIR / "31_existing_profile_model1_classification.sql"
+        ).read_text()
+
+        assert "CREATE TABLE IF NOT EXISTS retrieval.classification_configuration" in classification
+        assert "CREATE TABLE IF NOT EXISTS retrieval.existing_profile_classification" in classification
+        assert "PRIMARY KEY (profile_version_pk, classification_config_pk)" in classification
+        assert "REFERENCES kb.profile_version(profile_version_pk) ON DELETE CASCADE" in classification
+        assert "REFERENCES ops.processing_run(processing_run_pk) ON DELETE SET NULL" in classification
+        assert "execution_status IN ('OK', 'UNAVAILABLE', 'FAILED')" in classification
+        assert "prediction_status IN ('판단보류', '참고용', '신뢰')" in classification
+        assert "uq_retrieval_one_active_classification_configuration" in classification
+        assert "CLASSIFICATION_CONFIGURATION_INCOMPLETE" in classification
+        assert "execution_status = 'OK'" in classification
+        assert "PREDICTION_WITHHELD" in classification
+        assert "ALTER TABLE retrieval.classification_configuration ENABLE ROW LEVEL SECURITY" in classification
+        assert "ALTER TABLE retrieval.existing_profile_classification ENABLE ROW LEVEL SECURITY" in classification
+        assert "TO service_role" in classification
 
     def test_analysis_worker_queue_contract(self):
         """The durable worker queue must be PostgreSQL-only and fenced."""

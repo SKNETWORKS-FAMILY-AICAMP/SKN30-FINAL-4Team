@@ -1,4 +1,4 @@
--- Migration 25: atomic ML reference persistence and public result projection.
+-- Migration 26: atomic ML reference persistence and public result projection.
 --
 -- ML is reference information, not a CPL/FIT/SIM judgement.  Keep the
 -- migration-23 fenced writer/read logic intact behind private renamed
@@ -7,7 +7,7 @@
 BEGIN;
 
 ALTER TABLE result.analysis_case
-    ADD COLUMN ml_result JSONB NOT NULL DEFAULT '{
+    ADD COLUMN IF NOT EXISTS ml_result JSONB NOT NULL DEFAULT '{
       "model_1":{"status":"UNAVAILABLE","support_type":null,"message":"ML 모델이 실행되지 않았습니다.","reason_code":"ML_RUNTIME_MISSING"},
       "model_2":{"status":"UNAVAILABLE","predicted_amount_won":null,"message":"ML 모델이 실행되지 않았습니다.","reason_code":"ML_RUNTIME_MISSING"},
       "model_3":{"status":"UNAVAILABLE","anomaly_level":null,"cause_axes":[],"message":"ML 모델이 실행되지 않았습니다.","reason_code":"ML_RUNTIME_MISSING"}
@@ -16,13 +16,26 @@ ALTER TABLE result.analysis_case
 COMMENT ON COLUMN result.analysis_case.ml_result IS
     'Public Model 1/2/3 reference result. Scores, confidence, percentiles, and raw model responses are not stored here.';
 
-ALTER FUNCTION workspace.persist_analysis_result_core(UUID, UUID, JSONB)
-    RENAME TO persist_analysis_result_core_without_ml;
+-- apply_migrations.sh has no ledger and replays this file.  Rename the
+-- migration-23 implementation exactly once; later applications must retain
+-- this wrapper and its private delegate unchanged.
+DO $$
+BEGIN
+    IF to_regprocedure('workspace.persist_analysis_result_core(uuid,uuid,jsonb)')
+           IS NOT NULL
+       AND to_regprocedure(
+           'workspace.persist_analysis_result_core_without_ml(uuid,uuid,jsonb)'
+       ) IS NULL THEN
+        ALTER FUNCTION workspace.persist_analysis_result_core(UUID, UUID, JSONB)
+            RENAME TO persist_analysis_result_core_without_ml;
+    END IF;
+END;
+$$;
 
 REVOKE ALL ON FUNCTION workspace.persist_analysis_result_core_without_ml(UUID, UUID, JSONB)
 FROM PUBLIC, anon, authenticated, service_role;
 
-CREATE FUNCTION workspace.persist_analysis_result_core(
+CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core(
     p_analysis_run_pk UUID,
     p_processing_run_pk UUID,
     p_result JSONB
@@ -107,13 +120,21 @@ FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION workspace.persist_analysis_result_core(UUID, UUID, JSONB)
 TO service_role;
 
-ALTER FUNCTION api.rpc_get_analysis_result(UUID)
-    RENAME TO rpc_get_analysis_result_without_ml;
+DO $$
+BEGIN
+    IF to_regprocedure('api.rpc_get_analysis_result(uuid)') IS NOT NULL
+       AND to_regprocedure('api.rpc_get_analysis_result_without_ml(uuid)')
+           IS NULL THEN
+        ALTER FUNCTION api.rpc_get_analysis_result(UUID)
+            RENAME TO rpc_get_analysis_result_without_ml;
+    END IF;
+END;
+$$;
 
 REVOKE ALL ON FUNCTION api.rpc_get_analysis_result_without_ml(UUID)
 FROM PUBLIC, anon, authenticated;
 
-CREATE FUNCTION api.rpc_get_analysis_result(p_analysis_case_id UUID)
+CREATE OR REPLACE FUNCTION api.rpc_get_analysis_result(p_analysis_case_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
 STABLE

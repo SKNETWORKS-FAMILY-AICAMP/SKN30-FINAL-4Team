@@ -6,8 +6,8 @@
 
 BEGIN;
 
--- migration 27 and 28 are separate files.  An older/direct writer might
--- commit a current-version change after 27 but before these triggers exist.
+-- migration 29 and 30 are separate files.  An older/direct writer might
+-- commit a current-version change after 29 but before these triggers exist.
 -- Take the write-conflicting lock first: it waits for such a writer, blocks
 -- new ones through this transaction, and gives trigger installation a stable
 -- current set.
@@ -21,18 +21,18 @@ LOCK TABLE kb.source_version, kb.profile_version,
 -- Capture whether this is the first installation of the complete trigger
 -- fence (or whether an earlier installation has drifted) *before* replacing
 -- the function/triggers below.  apply_migrations.sh deliberately reapplies
--- every migration, so an already healthy migration 28 must not repeatedly
+-- every migration, so an already healthy migration 30 must not repeatedly
 -- take a fully verified v2 corpus offline.
 --
 -- A SQL row-count check cannot prove that a pre-trigger writer did not alter
 -- current Fact/component content.  A first installation or trigger drift
 -- therefore requires one conservative v2 demotion; the byte/hash-verified
 -- embed script is the only path that may promote v2 again.
-CREATE TEMP TABLE migration_28_activation_gate (
+CREATE TEMP TABLE migration_30_activation_gate (
     requires_one_time_revalidation BOOLEAN NOT NULL
 ) ON COMMIT DROP;
 
-INSERT INTO pg_temp.migration_28_activation_gate (
+INSERT INTO pg_temp.migration_30_activation_gate (
     requires_one_time_revalidation
 )
 SELECT
@@ -44,7 +44,7 @@ SELECT
             'pg_proc'
         ),
         ''
-    ) <> 'pre-review-migration-28-embedding-activation-v1'
+    ) <> 'pre-review-migration-30-embedding-activation-v1'
     OR EXISTS (
         SELECT 1
           FROM (
@@ -214,7 +214,7 @@ END
 $$;
 
 COMMENT ON FUNCTION kb.serialise_current_version_embedding_activation()
-    IS 'pre-review-migration-28-embedding-activation-v1';
+    IS 'pre-review-migration-30-embedding-activation-v1';
 
 REVOKE ALL ON FUNCTION kb.serialise_current_version_embedding_activation() FROM PUBLIC;
 
@@ -254,7 +254,7 @@ DECLARE
 BEGIN
     SELECT requires_one_time_revalidation
       INTO v_requires_one_time_revalidation
-      FROM pg_temp.migration_28_activation_gate;
+      FROM pg_temp.migration_30_activation_gate;
 
     SELECT embedding_config_pk
       INTO v1_pk
