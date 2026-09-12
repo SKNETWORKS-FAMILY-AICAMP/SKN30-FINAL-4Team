@@ -181,3 +181,127 @@ def test_a_span_candidate_version_change_does_not_hold_the_derivation() -> None:
     pack, reason = _resumed_candidate_pack(profile, common_ir)
 
     assert pack is not None and reason is None
+
+
+# --- 신규·재개가 같은 FIT-7 판정을 낸다 -------------------------------------
+# 실제 사례는 좌변(support_content)이 비어 있어 정량 비교 경로를 타지 않는다.
+# 그것만 비교하면 새 경로가 한 번도 실행되지 않은 채 통과한다. 좌우에 서로 다른
+# 좌표의 비교 가능한 금액을 두고 확인한다.
+
+_LEFT_LINE = "○ (지원내용) 기업당 지원한도 5,000만원"
+
+
+def _two_block_ir(right_line: str) -> dict[str, Any]:
+    document = _ir()
+    block = document["blocks"][0]
+
+    def made(index: int, text: str) -> dict[str, Any]:
+        return {
+            **block,
+            "block_id": f"hwpx:b{index}",
+            "reading_order": index,
+            "text": text,
+            "section_path": f"section[0]/para[{index}]",
+            "text_occurrence_ids": [f"occ:p{index}"],
+            "occurrences": [{
+                "occurrence_id": f"occ:p{index}",
+                "text": text,
+                "role": None,
+                "provenance": dict(_PROVENANCE),
+            }],
+        }
+
+    document["blocks"] = [made(1, _LEFT_LINE), made(2, right_line)]
+    return document
+
+
+def _sided_profile(document: dict[str, Any], left: str, right: str) -> dict[str, Any]:
+    pack = build_pack(document)
+
+    def fact(fact_id: str, value: str, text: str, occurrence: str) -> dict[str, Any]:
+        block = _block_of(pack, text)
+        start = block.text.index(value)
+        return {
+            "fact_id": fact_id, "value_raw": value, "status": "identified",
+            "value_source": {
+                "source_block_id": block.block_id,
+                "start_char": start,
+                "end_char": start + len(value),
+            },
+            "evidence": [{
+                "source_block_id": block.block_id,
+                "common_ir_document_id": document["document"]["document_id"],
+                "common_ir_block_id": block.block_id,
+                "common_ir_occurrence_ids": [occurrence],
+            }],
+        }
+
+    lines = [row["text"] for row in document["blocks"]]
+    return {
+        "comparison_profile": {
+            "support_content": [fact("f_left", left, lines[0], "occ:p1")],
+            "support_scale": [fact("f_right", right, lines[1], "occ:p2")],
+        },
+        "field_states": [
+            {"field_name": "support_content", "status": "identified"},
+            {"field_name": "support_scale", "status": "identified"},
+        ],
+        "processing_metadata": {"candidate_pack": {
+            "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+            "candidate_pack_generator_version": "1",
+        }},
+    }
+
+
+class _Dead:
+    async def generate_structured(self, **_: Any) -> Any:
+        raise RuntimeError("이 테스트는 LLM 을 타지 않는다")
+
+
+def _fit7(profile: dict[str, Any], document: dict[str, Any], pack: Any, reason: str | None):
+    from worker.fit import analyze_fit
+
+    cpl = _with_quantities(build_cpl_result(profile), pack, reason)
+    fit = analyze_fit(cpl, _Dead(), model_profile="default")
+    row = next(r for r in fit.relations if r.relation_id.value == "FIT-7")
+    return row.status.value, row.reason_code, [d.reason_code for d in row.diagnostics]
+
+
+def _both_paths(profile: dict[str, Any], document: dict[str, Any]):
+    fresh = _fit7(profile, document, build_pack(document), None)
+    pack, reason = _resumed_candidate_pack(profile, document)
+    resumed = _fit7(profile, document, pack, reason)
+    return fresh, resumed
+
+
+def test_matching_amounts_give_the_same_fit_on_both_paths() -> None:
+    document = _two_block_ir("- 기업당 지원한도: 5,000만원")
+    profile = _sided_profile(document, "5,000만원", "5,000만원")
+
+    fresh, resumed = _both_paths(profile, document)
+
+    assert fresh == ("FIT", None, [])
+    assert resumed == fresh
+
+
+def test_differing_amounts_give_the_same_mismatch_on_both_paths() -> None:
+    document = _two_block_ir("- 기업당 지원한도: 7,000만원")
+    profile = _sided_profile(document, "5,000만원", "7,000만원")
+
+    fresh, resumed = _both_paths(profile, document)
+
+    assert fresh[0] == "NEEDS_REVIEW" and fresh[1] == "NUMERIC_MISMATCH"
+    assert resumed == fresh
+
+
+def test_a_held_derivation_changes_the_verdict_and_says_why() -> None:
+    document = _two_block_ir("- 기업당 지원한도: 5,000만원")
+    profile = _sided_profile(document, "5,000만원", "5,000만원")
+    profile["processing_metadata"].pop("candidate_pack")
+
+    fresh, resumed = _both_paths(profile, document)
+
+    # 팩을 못 쓰면 정량 근거 자체가 없어 비교가 성립하지 않는다. 조용히 FIT 이
+    # 되지 않는 것이 요점이다.
+    assert fresh == ("FIT", None, [])
+    assert resumed[0] == "INSUFFICIENT"
