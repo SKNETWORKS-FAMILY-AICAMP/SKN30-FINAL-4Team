@@ -9,7 +9,7 @@ E2E test and in the trusted worker process.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
@@ -311,6 +311,11 @@ def _profile_title(profile: Mapping[str, Any]) -> str | None:
     return None
 
 
+# CPL 이 만든 진단을 밖으로 흘려보내는 자리. 공개 응답에는 싣지 않는다 —
+# 프론트 계약을 늘리지 않으면서 로컬 기록기가 받아 적을 수 있게만 한다.
+DiagnosticsSink = Callable[[str, Sequence[Any]], None]
+
+
 class CoreAnalysisEngine:
     """Compose the current worker-owned CPL/FIT/SIM implementations."""
 
@@ -323,6 +328,7 @@ class CoreAnalysisEngine:
         sim_model_profile: str,
         max_repairs: int = 1,
         ml_models: Mapping[MlModelId, MlModel | None] | None = None,
+        diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
         self._llm = llm_client
         # CPL 의 의미 축 분류가 쓸 단계 프로필 이름이다. 지금 배포는 네 이름을
@@ -333,6 +339,10 @@ class CoreAnalysisEngine:
         self._sim_model_profile = sim_model_profile
         self._max_repairs = max_repairs
         self._ml_models = dict(ml_models or {})
+        self._diagnostics_sink = diagnostics_sink
+
+    def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
+        self._diagnostics_sink = sink
 
     def build_payload(
         self,
@@ -352,6 +362,10 @@ class CoreAnalysisEngine:
             candidate_pack=candidate_pack,
             quantity_hold_reason=quantity_hold_reason,
         )
+        if self._diagnostics_sink is not None and cpl.diagnostics:
+            # 재검 탈락 사유처럼 결과 payload 에 실리지 않는 기록이다. 어디에
+            # 적을지는 받는 쪽이 정한다.
+            self._diagnostics_sink("cpl", list(cpl.diagnostics))
         ml_result = run_ml_reference(
             request,
             self._ml_models,

@@ -177,8 +177,15 @@ def _write_trace(
     common_ir: object,
     structured_profile: object,
     result: dict[str, object],
+    cpl_diagnostics: object = None,
 ) -> None:
-    """Write the actual E2E stage outputs without rerunning any stage."""
+    """Write the actual E2E stage outputs without rerunning any stage.
+
+    cpl_diagnostics is the CPL stage's own diagnostic list. It never reaches
+    the public result payload — recheck drop reasons and held quantity contexts
+    would otherwise leave no trace at all — so the recorder keeps it beside the
+    stages it already writes. Nothing is recomputed to produce it.
+    """
 
     if trace_dir.exists():
         raise E2EFailure("--trace-dir must not already exist")
@@ -192,6 +199,7 @@ def _write_trace(
         ("05_sim.json", result.get("sim")),
         ("06_ml.json", result.get("ml")),
         ("07_result.json", result),
+        ("cpl_diagnostics.json", cpl_diagnostics if cpl_diagnostics is not None else []),
     )
     for name, payload in stages:
         (trace_dir / name).write_text(
@@ -256,6 +264,23 @@ async def _run(
             raise E2EFailure("FastAPI upload response contract is invalid")
 
         composition = build_worker()
+        # CPL 진단은 결과 payload 에 실리지 않는다. 실행 중에 받아 두지 않으면
+        # 재검 탈락 사유가 어디에도 남지 않는다. 분석을 다시 돌리지 않는다.
+        collected: list[dict[str, object]] = []
+        engine = getattr(composition.handler, "_engine", None)
+        if engine is not None and hasattr(engine, "set_diagnostics_sink"):
+            engine.set_diagnostics_sink(
+                lambda stage, rows: collected.extend(
+                    {
+                        "stage": row.stage,
+                        "unit": row.unit,
+                        "reason_code": row.reason_code,
+                        "message": row.message,
+                        "attempt": row.attempt,
+                    }
+                    for row in rows
+                )
+            )
         runtime = WorkerRuntime(
             composition.repository,
             composition.handler,
@@ -305,6 +330,7 @@ async def _run(
                     cached.structured_profile
                 ),
                 result=body,
+                cpl_diagnostics={"analysis_run_id": run_id, "diagnostics": collected},
             )
         outcome: dict[str, object] = {
             "status": "ok",

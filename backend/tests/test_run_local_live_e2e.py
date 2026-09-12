@@ -36,6 +36,9 @@ def test_trace_writes_actual_stage_layout(tmp_path: Path) -> None:
         "05_sim.json",
         "06_ml.json",
         "07_result.json",
+
+        # CPL 진단은 결과 payload 에 실리지 않는다. 기록기가 따로 적는다.
+        "cpl_diagnostics.json",
     ]
     assert json.loads((trace_dir / "02_structured_profile.json").read_text("utf-8"))[
         "profile_id"
