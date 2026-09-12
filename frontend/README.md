@@ -1,4 +1,4 @@
-# 🏛️ Pre-review
+# <img src="./public/images/pre-review.png" alt="Pre-review Logo" width="200" />
 
 ## 🚀시작하기
 
@@ -10,7 +10,7 @@
 
 ### 2. 패키지 설치
 
-frontend 디렉토리(`frontend/`)에서 아래 명령어를 실행하여 의존성을 설치합니다.
+frontend 디렉토리(`/frontend`)에서 아래 명령어를 실행하여 의존성을 설치합니다.
 
 ```bash
 npm install
@@ -32,7 +32,7 @@ npm run dev
 npm run build
 ```
 
-## 📦 기술 스택
+## 🛠️ 기술 스택
 
 ![React](https://shields.io/badge/react%2019.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![React Router](https://shields.io/badge/react%20router%207.18-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white)
@@ -52,10 +52,17 @@ frontend/
 │   │   ├── common/        # 재사용 공통 컴포넌트
 │   │   └── layout/        # 레이아웃 관련 컴포넌트
 │   │       └── shared/    # 공유 레이아웃 서브 컴포넌트
-│   ├── features/          # 기능별 모듈 (랜딩, 인증, 분석 등)
+│   ├── features/          # 기능별 모듈
+│   │   ├── auth/          # 인증 관련
+│   │   ├── history/       # 히스토리 관련
+│   │   ├── landing/       # 랜딩 페이지 관련
+│   │   ├── my/            # 마이페이지 관련
+│   │   ├── result/        # 결과 및 AI 챗봇 관련
+│   │   └── upload/        # 업로드 및 분석 대기 관련
 │   ├── pages/             # 페이지 단위 컴포넌트
 │   ├── routes/            # 라우팅 설정
 │   ├── services/          # API 통신 및 비즈니스 로직
+│   ├── utils/             # 유틸리티 함수
 │   ├── index.css          # 글로벌 스타일 및 테마 정의
 │   └── main.tsx           # 애플리케이션 진입점
 ├── eslint.config.js       # ESLint 설정
