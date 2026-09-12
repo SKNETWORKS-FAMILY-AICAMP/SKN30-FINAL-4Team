@@ -210,7 +210,7 @@ def test_local_installer_is_pinned_and_prepare_only() -> None:
 
     assert 'PINNED_SUPABASE_REF="self-hosted/v0.8.0"' in source
     assert (
-        'PINNED_SUPABASE_COMMIT="e1af732589cd468edb49500ebc04e4367d4c56ad"'
+        'PINNED_SUPABASE_COMMIT="241bb11c0627f2981746d37033f57dbfa81d29b0"'
         in source
     )
     assert 'OFFICIAL_REPOSITORY_URL="https://github.com/supabase/supabase.git"' in source
@@ -230,6 +230,134 @@ def test_local_installer_is_pinned_and_prepare_only() -> None:
     assert 'mv -T -- "$STAGING_DIR/bundle" "$TARGET_DIR"' in source
     for forbidden in ("docker compose up", "docker compose down", "reset.sh", "down -v"):
         assert forbidden not in source
+
+
+def test_auth_bootstrap_pin_matches_installer_peeled_commit() -> None:
+    """The installer marker and its consumer must agree on the peeled commit."""
+    installer = INSTALL.read_text(encoding="utf-8")
+    bootstrap = (
+        SUPABASE_ROOT.parent / "scripts" / "bootstrap_local_auth_user.py"
+    ).read_text(encoding="utf-8")
+
+    installer_ref = 'PINNED_SUPABASE_REF="self-hosted/v0.8.0"'
+    installer_commit = (
+        'PINNED_SUPABASE_COMMIT="241bb11c0627f2981746d37033f57dbfa81d29b0"'
+    )
+    bootstrap_ref = 'PINNED_SUPABASE_REF = "self-hosted/v0.8.0"'
+    bootstrap_commit = (
+        'PINNED_SUPABASE_COMMIT = "241bb11c0627f2981746d37033f57dbfa81d29b0"'
+    )
+
+    assert installer_ref in installer
+    assert installer_commit in installer
+    assert bootstrap_ref in bootstrap
+    assert bootstrap_commit in bootstrap
+
+
+def test_local_installer_creates_parent_portably_and_keeps_posix_mode_strict() -> None:
+    """Fresh Git Bash NTFS/noacl installs must not fail before cloning."""
+    source = INSTALL.read_text(encoding="utf-8")
+
+    assert 'mkdir -p -- "$TARGET_PARENT"' in source
+    assert 'MINGW*|MSYS*|CYGWIN*' in source
+    assert "WARNING: mode 0750 cannot be enforced" in source
+    assert 'secure $TARGET_PARENT with Windows ACLs' in source
+    assert 'chmod 0750 -- "$TARGET_PARENT"' in source
+    assert 'rmdir -- "$TARGET_PARENT"' in source
+    assert "ERROR: failed to enforce mode 0750 on target parent" in source
+
+
+def test_local_installer_git_bash_parent_creation_warns_before_fake_clone(
+    tmp_path: Path,
+) -> None:
+    """Exercise the noacl branch without invoking Docker or a real git clone."""
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+
+    def fake_command(name: str, body: str) -> None:
+        command = fake_bin / name
+        command.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+        command.chmod(0o755)
+
+    fake_command("docker", 'test "$1" = compose && test "$2" = version')
+    fake_command("uname", 'printf "%s\\n" "MINGW64_NT-10.0"')
+    # The Windows branch must not invoke chmod; make doing so fail loudly.
+    fake_command("chmod", 'echo "unexpected chmod" >&2; exit 99')
+    # Stop exactly at clone; no network access is possible in this test.
+    fake_command("git", 'echo "fake clone blocked" >&2; exit 78')
+
+    target = tmp_path / "first-parent" / "supabase-dev"
+    result = subprocess.run(
+        ["bash", str(INSTALL), "--target", str(target)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"},
+    )
+
+    assert result.returncode == 1
+    assert target.parent.is_dir()
+    assert "WARNING: mode 0750 cannot be enforced" in result.stderr
+    assert "unexpected chmod" not in result.stderr
+    assert "failed to fetch the pinned official Supabase repository" in result.stderr
+
+
+def test_local_installer_removes_new_parent_when_posix_chmod_fails(
+    tmp_path: Path,
+) -> None:
+    """A failed first chmod cannot leave a retry path that skips enforcement."""
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+
+    def fake_command(name: str, body: str) -> None:
+        command = fake_bin / name
+        command.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+        command.chmod(0o755)
+
+    fake_command("docker", 'test "$1" = compose && test "$2" = version')
+    fake_command("uname", 'printf "%s\\n" "Linux"')
+    fake_command("chmod", 'echo "chmod blocked" >&2; exit 73')
+
+    target = tmp_path / "first-parent" / "supabase-dev"
+    env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+
+    first = subprocess.run(
+        ["bash", str(INSTALL), "--target", str(target)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert first.returncode == 1
+    assert "failed to enforce mode 0750" in first.stderr
+    assert not target.parent.exists()
+
+    # The same failure must be reached again: no surviving parent can make a
+    # retry take the pre-existing-directory branch and bypass chmod.
+    retry = subprocess.run(
+        ["bash", str(INSTALL), "--target", str(target)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert retry.returncode == 1
+    assert "chmod blocked" in retry.stderr
+    assert not target.parent.exists()
+
+
+def test_documented_dev_auth_copy_uses_portable_no_clobber() -> None:
+    """cp -n is supported by GNU and Git Bash; --update=none is not."""
+    documented_files = (
+        SUPABASE_ROOT / "README.md",
+        SUPABASE_ROOT / "dev-auth.env.example",
+        SUPABASE_ROOT.parent / "fastapi" / "docs" / "FASTAPI_WORKER_RUNBOOK.md",
+    )
+
+    for documented in documented_files:
+        content = documented.read_text(encoding="utf-8")
+        assert "cp -n backend/supabase/dev-auth.env.example" in content
+        assert "cp --update=none" not in content
 
 
 def test_local_installer_help_does_not_touch_external_state() -> None:

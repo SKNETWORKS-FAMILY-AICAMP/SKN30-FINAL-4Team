@@ -29,7 +29,7 @@ DEFAULT_SUPABASE_DIR = REPOSITORY_ROOT / ".runtime" / "supabase-dev"
 DEFAULT_CREDENTIALS = REPOSITORY_ROOT / ".runtime" / "pre-review-dev-auth.env"
 INSTALLER_MARKER = ".pre-review-supabase-version"
 PINNED_SUPABASE_REF = "self-hosted/v0.8.0"
-PINNED_SUPABASE_COMMIT = "e1af732589cd468edb49500ebc04e4367d4c56ad"
+PINNED_SUPABASE_COMMIT = "241bb11c0627f2981746d37033f57dbfa81d29b0"
 DEVELOPMENT_ENVIRONMENT = "development"
 ENABLE_VALUE = "true"
 

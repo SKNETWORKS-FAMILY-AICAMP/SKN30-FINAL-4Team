@@ -92,7 +92,32 @@ docker compose version >/dev/null 2>&1 || {
 
 TARGET_PARENT="$(dirname "$TARGET_DIR")"
 if [[ ! -d "$TARGET_PARENT" ]]; then
-  install -d -m 0750 "$TARGET_PARENT"
+  # GNU install -d -m fails on Git Bash when an NTFS mount uses noacl.  Make
+  # the parent first, then enforce the POSIX mode only on filesystems that
+  # support it.  Windows users must instead secure this directory with their
+  # Windows ACL because no Unix mode is available to enforce.
+  mkdir -p -- "$TARGET_PARENT" || {
+    echo "ERROR: failed to create target parent: $TARGET_PARENT" >&2
+    exit 1
+  }
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      echo "WARNING: mode 0750 cannot be enforced on this Git Bash/Windows filesystem; secure $TARGET_PARENT with Windows ACLs." >&2
+      ;;
+    *)
+      chmod 0750 -- "$TARGET_PARENT" || {
+        # mkdir above created this exact, still-empty parent.  rmdir never
+        # removes children; restoring that state ensures a retry cannot skip
+        # POSIX mode enforcement merely because the failed first attempt left
+        # a directory behind.
+        rmdir -- "$TARGET_PARENT" || {
+          echo "WARNING: failed to remove target parent after mode enforcement failure: $TARGET_PARENT" >&2
+        }
+        echo "ERROR: failed to enforce mode 0750 on target parent: $TARGET_PARENT" >&2
+        exit 1
+      }
+      ;;
+  esac
 fi
 
 STAGING_DIR="$(mktemp -d "$TARGET_PARENT/.supabase-install.XXXXXX")"
