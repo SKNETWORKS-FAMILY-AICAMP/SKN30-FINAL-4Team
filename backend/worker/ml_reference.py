@@ -548,9 +548,23 @@ MODEL_3_ALLOWED_LEVELS: tuple[str, ...] = (
 # m13_m3_anomaly.status_of() 가 ALLOWED 밖에서 반환하는 정상 상태. 정상 사례를
 # 이례 문구인 ``확인 필요``로 올려 말하지 않기 위해 별도 상태로 둔다.
 MODEL_3_TYPICAL_LEVEL = "비교군 범위 내"
-MODEL_3_DISPLAY_LEVELS: frozenset[str] = frozenset(
-    (*MODEL_3_ALLOWED_LEVELS, MODEL_3_TYPICAL_LEVEL)
-)
+
+# 표시 어휘를 사용자 문장으로 옮기는 표. 모델이 주는 것은 점수뿐이고 위 어휘는
+# L2 어댑터가 팀의 고정 백분위 구간에서 고른 값이라, 사용자에게 보이는 말은
+# 어차피 전부 서버가 쓴다. "비교군"·"이례성"·"축" 같은 내부 용어를 그대로
+# 내보내는 대신 여기서 한 번에 평문으로 바꾼다.
+#
+# **키 집합이 곧 표시 가능한 level 이다.** 어휘가 늘어났는데 문장을 안 쓰면
+# 그 level 은 표시되지 않고 해당 모델이 실패한다 — 뜻 모를 어휘가 화면으로
+# 새는 쪽보다 낫다.
+MODEL_3_LEVEL_SENTENCES: dict[str, str] = {
+    "과거 사업 패턴과 차이가 큼": "이 사업의 설계는 과거 비슷한 사업들과 차이가 큰 편입니다.",
+    "희귀한 설계 조합": "이 사업의 설계 조합은 과거 비슷한 사업들에서 드물게 나타납니다.",
+    "동일 유형 대비 비전형적": "같은 유형의 과거 사업들과 견주면 흔하지 않은 설계입니다.",
+    "확인 필요": "과거 비슷한 사업들과 다소 차이가 있어 한 번 확인해 볼 만합니다.",
+    MODEL_3_TYPICAL_LEVEL: "이 사업의 설계는 과거 비슷한 사업들의 통상 범위 안에 있습니다.",
+}
+MODEL_3_DISPLAY_LEVELS: frozenset[str] = frozenset(MODEL_3_LEVEL_SENTENCES)
 
 # 화면에서 감추는 것은 확률·점수·백분위지 숫자 전체가 아니다.
 # 초안 30 행: "ML 은 지원유형·예측 금액·이례성 설명을 제공하고 확률·점수는
@@ -575,31 +589,52 @@ _WITHHELD_KEYS = frozenset(
 )
 MODEL_1_ALLOWED_STATUSES: frozenset[str] = frozenset({"신뢰", "참고용", WITHHELD_STATUS})
 
-def _amount_phrase(pred_won: Any) -> str | None:
-    """원 단위 예측 금액을 문구로 만든다.
+def _finite_won(value: Any) -> int | None:
+    """금액값 하나를 원 단위 양의 정수로 읽는다. 읽을 수 없으면 ``None``."""
+
+    # bool 은 int 의 하위형이라 True 가 1 원이 된다. 먼저 막는다.
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except Exception:  # noqa: BLE001 - malformed model values stay model-local
+        return None
+    # NaN·무한대는 int() 에서 OverflowError/ValueError 로 터진다. 값으로 거른다.
+    if not math.isfinite(number) or number <= 0:
+        return None
+    return int(round(number)) or None
+
+
+def _amount_phrase(value: Any) -> str | None:
+    """금액 하나를 문구로 만든다.
 
     초안 30·289 행이 표시하라고 한 값이라 숫자가 그대로 나간다. 확률·백분위와
     달리 이건 감추는 대상이 아니다.
     """
 
-    # bool 은 int 의 하위형이라 True 가 1 원이 된다. 먼저 막는다.
-    if isinstance(pred_won, bool):
-        return None
-    try:
-        value = float(pred_won)
-    except Exception:  # noqa: BLE001 - malformed model values stay model-local
-        return None
-    # NaN·무한대는 int() 에서 OverflowError/ValueError 로 터진다. 값으로 거른다.
-    if not math.isfinite(value) or value <= 0:
-        return None
-    won = int(round(value))
-    if won <= 0:
+    won = _finite_won(value)
+    if won is None:
         return None
     if won >= 100_000_000 and won % 100_000_000 == 0:
         return f"{won // 100_000_000}억원"
     if won >= 10_000 and won % 10_000 == 0:
         return f"{won // 10_000:,}만원"
     return f"{won:,}원"
+
+
+def _estimate_phrase(pred_won: Any) -> str | None:
+    """예측 금액 문구. **유효숫자 두 자리로 줄인다.**
+
+    ``8,520,390원`` 처럼 원 단위까지 적으면 추정치가 확정 금액으로 읽힌다.
+    자릿수를 줄이는 것은 값을 감추는 것이 아니라 정밀도를 실제만큼만 말하는
+    것이다 — 원래 값은 ``predicted_amount_won`` 으로 그대로 나간다.
+    """
+
+    won = _finite_won(pred_won)
+    if won is None:
+        return None
+    unit = 10 ** max(len(str(won)) - 2, 0)
+    return _amount_phrase(round(won / unit) * unit)
 
 
 class MlOutputInvalid(RuntimeError):
@@ -631,15 +666,27 @@ def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
         # 팀원 predictor 가 반환하는 정확한 값만 받는다.
         if not isinstance(status, str) or status not in MODEL_1_ALLOWED_STATUSES:
             raise MlOutputInvalid(f"모델 1 status 가 허용 값 밖이다: {status!r}")
-        return f"유사 사업의 지원유형 참고 분류는 '{label.strip()}' 계열이다."
+        return (
+            f"과거 비슷한 사업들과 견주면 이 사업은 '{label.strip()}' 성격에 가깝습니다."
+        )
 
     if model_id is MlModelId.MODEL_2_AMOUNT:
-        phrase = _amount_phrase(output.get("pred_won"))
+        phrase = _estimate_phrase(output.get("pred_won"))
         if phrase is None:
             raise MlOutputInvalid(
                 f"예측 금액이 유한 양수가 아니다: {output.get('pred_won')!r}"
             )
-        return f"비교군 기준 참고 예측 지원액은 {phrase} 수준이다."
+        # 예측값만 있으면 "그래서 우리 안이 높다는 건가 낮다는 건가"에 답하지
+        # 못한다. 문서에 적힌 기업(과제)당 지원액은 팀 어댑터가 원문에서 뽑은
+        # 값이고 모델 2 의 예측 대상과 같은 축이라, 둘을 같은 문장에 놓는다.
+        # 없으면 없는 채로 둔다 — 비교 대상을 만들어내지 않는다.
+        stated = _amount_phrase(output.get("stated_per_recipient_won"))
+        if stated is not None:
+            return (
+                f"사전협의안에 적힌 기업당 지원액은 {stated}입니다. "
+                f"조건이 비슷한 과거 사업들은 기업당 약 {phrase} 수준이었습니다."
+            )
+        return f"조건이 비슷한 과거 사업들의 기업당 지원액은 약 {phrase} 수준이었습니다."
 
     level = output.get("level")
     if not isinstance(level, str) or level.strip() not in MODEL_3_DISPLAY_LEVELS:
@@ -660,11 +707,12 @@ def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
     unknown = [a for a in axes if a not in MODEL_3_ALLOWED_AXES]
     if unknown:
         raise MlOutputInvalid(f"허용 축 밖이다: {unknown}")
-    if level.strip() == MODEL_3_TYPICAL_LEVEL:
-        return "비교군 범위 내 설계 특징이다."
-    if axes:
-        return f"비교군 대비 {level.strip()} — 관련 축: {', '.join(axes)}."
-    return f"비교군 대비 {level.strip()}."
+    sentence = MODEL_3_LEVEL_SENTENCES[level.strip()]
+    # 통상 범위 안이라는 말 뒤에 "가장 크게 차이 나는 항목" 을 붙이면 정상
+    # 사례를 이례 사례처럼 읽게 만든다. 축은 벗어난 경우에만 말한다.
+    if level.strip() == MODEL_3_TYPICAL_LEVEL or not axes:
+        return sentence
+    return f"{sentence} 가장 크게 차이 나는 항목은 {', '.join(axes)}입니다."
 
 
 

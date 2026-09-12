@@ -180,7 +180,7 @@ def test_empty_profile_is_deterministically_gated_through_cpl_fit_and_sim() -> N
     assert cpl.items[0].representative_status == "no_content"
     assert all(item.representative_status == "needs_confirmation" for item in cpl.items[1:])
 
-    fit = analyze_fit(request, no_llm, model_profile="default")
+    fit = analyze_fit(cpl, no_llm, model_profile="default")
     assert len(fit.relations) == 7
     assert all(relation.status is FitStatus.INSUFFICIENT for relation in fit.relations)
 

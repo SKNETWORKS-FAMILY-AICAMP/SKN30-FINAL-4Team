@@ -1,0 +1,140 @@
+{
+  "document": "samples/hwpx/mockup_09_현행설계_CPL_FIT_SIM_전항목_친환경차전환.hwpx",
+  "authored": "2026-09-13",
+  "status": "DRAFT_EXPECTATION_NOT_YET_GOLDEN",
+  "purpose": "Request Profile v0.1.2와 현재 CPL·FIT·SIM 소비 계약에 맞춘 정상 완성 양식. 실제 모델 출력을 복사한 정답이 아니라 사람이 먼저 고정한 설계 기대값이다.",
+  "request_type": {
+    "selected_code": "sub_program_new",
+    "label": "내역사업 신설"
+  },
+  "expected_request_profile": {
+    "comparison_fields": [
+      "purpose_goal",
+      "applicant_eligibility",
+      "support_target",
+      "eligibility_conditions",
+      "beneficiary",
+      "exclusions",
+      "participation_requirements",
+      "program_period",
+      "support_period",
+      "support_activities",
+      "support_methods",
+      "support_items",
+      "support_content",
+      "support_scale",
+      "total_budget",
+      "cost_sharing",
+      "delivery_relations",
+      "delivery_methods"
+    ],
+    "request_context_fields": [
+      "implementation_plan",
+      "business_need",
+      "legal_basis",
+      "linked_policy",
+      "expected_effect",
+      "performance_indicator"
+    ],
+    "structural_fields": [
+      "program_hierarchy.nodes",
+      "support_components"
+    ],
+    "required_design_distinctions": [
+      "program_period와 support_period를 별도 원문으로 둔다",
+      "support_target·applicant_eligibility·beneficiary·eligibility_conditions·participation_requirements·exclusions를 별도 라벨 구역으로 둔다",
+      "support_activities·support_methods·support_items·support_content·support_scale·cost_sharing을 별도 라벨 구역으로 둔다",
+      "delivery_relations는 동일 문단에서 기관과 역할·행위를 연결하고 delivery_methods는 별도 원문으로 둔다",
+      "지원규모 숫자는 사업예산과 구분한다"
+    ]
+  },
+  "cpl_expected": {
+    "status_by_field": {
+      "REQUEST_TYPE": "confirmed",
+      "PURPOSE_GOAL": "confirmed",
+      "IMPLEMENTATION_PLAN": "confirmed",
+      "BUSINESS_PERIOD": "confirmed",
+      "NEW_OR_CHANGED_CONTENT": "confirmed",
+      "BUSINESS_NEED": "confirmed",
+      "LEGAL_BASIS": "confirmed",
+      "LINKED_POLICY": "confirmed",
+      "BUDGET": "confirmed",
+      "TARGET_AND_CONDITIONS": "confirmed",
+      "SUPPORT_CONTENT_AND_SCALE": "confirmed",
+      "DELIVERY_SYSTEM": "confirmed",
+      "EXPECTED_EFFECTS_AND_PERFORMANCE": "confirmed"
+    },
+    "purpose_axes": [
+      "PURPOSE_TARGET_CONDITION",
+      "PURPOSE_PROBLEM_DOMAIN",
+      "PURPOSE_SPECIFIC_OBJECTIVE",
+      "PURPOSE_DIRECTION"
+    ],
+    "note": "현재 공개 CPL 계약에는 확인율 필드가 없으므로 13/13 상태만 기대값으로 둔다."
+  },
+  "fit_expected": {
+    "FIT-1": {
+      "status": "FIT",
+      "reason": "목적의 광주 자동차부품 중소기업과 지원대상이 일치한다."
+    },
+    "FIT-2": {
+      "status": "FIT",
+      "reason": "친환경차 부품 양산전환·공급망 진입 목적과 전환설계·시제품·시험인증·공급망 실증 지원이 직접 연결된다."
+    },
+    "FIT-3": {
+      "status": "FIT",
+      "reason": "목적, 파급효과, 양산전환 성공기업·공급망 등록·매출 증가 지표의 방향이 연결된다."
+    },
+    "FIT-4": {
+      "status": "FIT",
+      "reason": "명시된 세부사업→내역사업 관계에서 친환경차 부품 양산전환·사업화가 미래자동차산업 전환 방향을 구체화하며 명백한 범위 확대나 무관성이 없다."
+    },
+    "FIT-5": {
+      "status": "FIT",
+      "reason": "지원대상과 신청자격·지원조건·참여요건·제외조건이 같은 대상 집합을 구체화한다."
+    },
+    "FIT-6": {
+      "status": "FIT",
+      "reason": "각 기관의 역할과 행위를 같은 문단에서 연결하고 별도 수행방식·절차를 기재했다."
+    },
+    "FIT-7": {
+      "status": "FIT",
+      "reason": "지원내용과 지원규모에 각각 기재한 지원기업 수 120개사와 기업당 최대 4,000만원이 대응한다.",
+      "acceptance_note": "실행 결과가 SINGLE_SIDED_NO_CONFLICT이면 문서 기대값을 낮추지 말고 support_content/support_scale 선택·수량 귀속 계약을 먼저 점검한다."
+    }
+  },
+  "sim_request_profile_expected": {
+    "purpose": {
+      "problem_domain": ["내연기관 부품 의존", "친환경차 부품 양산전환"],
+      "direction": ["의존을 낮추고", "성과를 높인다"],
+      "specific_objective": ["친환경차 부품 양산전환 역량", "국내외 공급망 진입 성과"]
+    },
+    "target": {
+      "required_keys": [
+        "target_group",
+        "company_type",
+        "industry",
+        "region",
+        "business_age",
+        "revenue",
+        "headcount",
+        "certification_or_status",
+        "other_condition",
+        "exclusion"
+      ]
+    },
+    "content": {
+      "required_keys": ["activity", "instrument", "item"]
+    },
+    "delivery": {
+      "required_keys": ["organization", "method", "procedure", "step_role"]
+    },
+    "note": "SIM 최종 상태는 비교할 기존 공고 후보에 따라 달라지므로 이 파일에서 임의 고정하지 않는다. 요청서 쪽 네 축 입력의 평가 가능성만 고정한다."
+  },
+  "arithmetic": {
+    "support": "연 40개사 × 3년 = 120개사; 120개사 × 기업당 4,000만원 = 4,800백만원",
+    "budget": "총사업비 5,400백만원 = 기업지원금 4,800백만원 + 운영·평가비 600백만원",
+    "cost_sharing": "지원 80% + 기업 현금부담 20% = 100%"
+  },
+  "promotion_rule": "실제 HWPX→Common IR→Request Profile→CPL→FIT 실행 후 사람이 exact span과 Evidence를 검수하기 전에는 samples/golden으로 승격하지 않는다."
+}

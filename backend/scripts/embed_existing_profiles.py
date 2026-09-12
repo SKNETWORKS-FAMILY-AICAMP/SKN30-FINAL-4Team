@@ -23,6 +23,7 @@ import sys
 from typing import Any, Iterable, Sequence
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = BACKEND_ROOT.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -64,7 +65,11 @@ def _load_dotenv() -> None:
         from dotenv import load_dotenv
     except ImportError:
         return
-    load_dotenv(BACKEND_ROOT / ".env", override=False)
+    backend_env = BACKEND_ROOT / ".env"
+    load_dotenv(
+        backend_env if backend_env.is_file() else REPOSITORY_ROOT / ".env",
+        override=False,
+    )
 
 
 def _discover_profiles(root: Path) -> list[Path]:

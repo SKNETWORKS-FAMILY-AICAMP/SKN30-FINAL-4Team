@@ -55,8 +55,9 @@ worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table
 - `backend/supabase/functions/`의 Edge Function dispatch/callback 및 signed URL 흐름
 - migration 18의 `api.ingest_comparison_result_core`: fencing이 없어 service-role 실행이
   회수되었으며 새 worker에서 사용 금지
-- `worker/jobs.py`, `worker/queue.py`, `worker/dispatcher.py`, `worker/persistence.py`의
-  옛 `sims.*` queue/result SQL
+- 퇴역한 `worker/jobs.py`·`worker/queue.py`·`worker/dispatcher.py`·`worker/persistence.py`
+  경로는 제거됐다. 현재 운영 진입점은 `worker.main`·`worker.chat_main`이고 큐·저장은
+  `workspace.*` fenced RPC 계약을 쓴다. 옛 `sims.*` SQL은 git 이력에만 남는다
 - mount하지 않은 `app/api/v1/routes.py`의 in-memory `/requests`·`/cases` 예전 계약
 
 ## 남은 운영·기능 작업

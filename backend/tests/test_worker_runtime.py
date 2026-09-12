@@ -27,6 +27,9 @@ class FakeRepository:
     fail_result: bool = True
     calls: list[tuple[str, Mapping[str, object]]] = field(default_factory=list)
     heartbeat_seen: threading.Event = field(default_factory=threading.Event)
+    # 앞에서부터 이 횟수만큼의 heartbeat 호출이 터진다 (일시적 DB 장애 재현).
+    heartbeat_errors: int = 0
+    heartbeat_ok_seen: threading.Event = field(default_factory=threading.Event)
 
     def claim(self, *, worker_id: str, lease_seconds: int) -> ClaimedJob | None:
         self.calls.append(
@@ -37,6 +40,10 @@ class FakeRepository:
     def heartbeat(self, **values: object) -> bool:
         self.calls.append(("heartbeat", values))
         self.heartbeat_seen.set()
+        if self.heartbeat_errors > 0:
+            self.heartbeat_errors -= 1
+            raise RuntimeError("transient database blip")
+        self.heartbeat_ok_seen.set()
         return self.heartbeat_result
 
     def complete(self, **values: object) -> bool:
@@ -248,3 +255,53 @@ def test_invalid_runtime_configuration_is_rejected(
     arguments: dict[str, object] = {"worker_id": "worker-a", **values}
     with pytest.raises(ValueError, match=message):
         WorkerRuntime(FakeRepository(), ReturnHandler(None), **arguments)  # type: ignore[arg-type]
+
+
+def test_transient_heartbeat_failure_does_not_discard_a_finished_analysis() -> None:
+    """리스가 아직 살아 있으면 하트비트 한 번 실패로 결과를 버리지 않는다.
+
+    DB 가 잠깐 흔들렸다는 이유로 끝난 분석을 통째로 폐기하면, 사용자는 3분을
+    기다린 뒤 아무 결과도 못 받는다. 리스가 진짜 위태로울 때만 실패다.
+    """
+
+    repository = FakeRepository(jobs=[_job()], heartbeat_errors=1)
+
+    class WaitForRecoveryHandler:
+        def handle(self, _job: ClaimedJob) -> str:
+            assert repository.heartbeat_ok_seen.wait(timeout=5)
+            return "result-that-must-survive"
+
+    runtime = WorkerRuntime(
+        repository,
+        WaitForRecoveryHandler(),
+        worker_id="worker-a",
+        heartbeat_seconds=0.01,
+        lease_seconds=1,
+    )
+
+    assert runtime.run_once() is RunOutcome.COMPLETED
+    assert "complete" in [name for name, _values in repository.calls]
+    assert "fail" not in [name for name, _values in repository.calls]
+
+
+def test_heartbeat_still_fails_the_run_once_the_lease_is_at_risk() -> None:
+    """재시도 예산을 넘기면 그대로 실패한다. 무한 재시도는 리스를 넘긴다."""
+
+    # 비트 간격 0.9s, 리스 1s → 예산 0.1s. 첫 실패가 이미 예산을 넘는다.
+    repository = FakeRepository(jobs=[_job()], heartbeat_errors=1000)
+
+    class WaitForHeartbeatHandler:
+        def handle(self, _job: ClaimedJob) -> str:
+            assert repository.heartbeat_seen.wait(timeout=5)
+            return "result"
+
+    runtime = WorkerRuntime(
+        repository,
+        WaitForHeartbeatHandler(),
+        worker_id="worker-a",
+        heartbeat_seconds=0.9,
+        lease_seconds=1,
+    )
+
+    assert runtime.run_once() is RunOutcome.FAILED
+    assert "fail" in [name for name, _values in repository.calls]

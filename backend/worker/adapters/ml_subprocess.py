@@ -241,9 +241,23 @@ def _single_prediction(raw: Any, *, model_name: str) -> dict[str, Any]:
 
 
 def normalize_model2_output(raw: Any) -> dict[str, Any]:
-    """Unwrap team Model 2 ``predictions[0]`` for the L1 contract."""
+    """Unwrap team Model 2 ``predictions[0]`` for the L1 contract.
 
-    return _single_prediction(raw, model_name="model2")
+    The amount written in the request document lives in the envelope's
+    ``adapter`` block, not in the prediction row, because the team adapter
+    parses it out of the text before masking it away from the features.  It is
+    the same axis the model predicts (기업/과제당 지원액), so carrying it
+    through lets L1 state the comparison instead of the prediction alone.  A
+    document that never states one stays absent — nothing is substituted.
+    """
+
+    row = _single_prediction(raw, model_name="model2")
+    adapter = raw.get("adapter")
+    amounts = adapter.get("amounts") if isinstance(adapter, dict) else None
+    stated = amounts.get("per_recipient") if isinstance(amounts, dict) else None
+    if isinstance(stated, (int, float)) and not isinstance(stated, bool):
+        row["stated_per_recipient_won"] = stated
+    return row
 
 
 def normalize_model1_output(raw: Any) -> dict[str, Any]:

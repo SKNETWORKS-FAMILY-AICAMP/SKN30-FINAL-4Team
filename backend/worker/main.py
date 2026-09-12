@@ -36,6 +36,7 @@ from worker.analysis_job import (
     VendoredRequestProfileProducer,
 )
 from worker.config import MissingConfigError, OpenAIConfig
+from worker.cpl_prompt import check_prompts_ready
 from worker.postgres_analysis_store import PostgresAnalysisStore
 from worker.postgres_repository import PostgresJobRepository
 from worker.runtime import (
@@ -352,9 +353,14 @@ def build_worker() -> WorkerComposition:
 
     settings = WorkerSettings.from_env()
     openai = OpenAIConfig.from_env()
+    # 설정이 잘못됐으면 작업을 받기 전에 멈춘다. 문서마다 축을 조용히 비우는
+    # 것보다 기동에 실패하는 편이 낫다.
+    check_prompts_ready()
     llm = OpenAILLMClient(
         api_key=openai.api_key,
-        model_profiles=openai.llm_model_profiles("request_profile", "fit", "sim"),
+        model_profiles=openai.llm_model_profiles(
+            "request_profile", "cpl", "fit", "sim"
+        ),
         timeout_seconds=openai.timeout_seconds,
     )
     embedding = OpenAIEmbeddingClient(
@@ -382,6 +388,7 @@ def build_worker() -> WorkerComposition:
         embedding_client=embedding,
         analysis_engine=CoreAnalysisEngine(
             llm,
+            cpl_model_profile="cpl",
             fit_model_profile="fit",
             sim_model_profile="sim",
             max_repairs=openai.max_repairs,

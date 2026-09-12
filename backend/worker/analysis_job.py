@@ -9,7 +9,8 @@ E2E test and in the trusted worker process.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
@@ -23,7 +24,7 @@ from .contracts.fit_result import FitResult
 from .contracts.ml_result import MlModelId
 from .contracts.profile_snapshot import CommonIrArtifact
 from .contracts.sim_result import SimComparisonResult, SimCommonProfile
-from .cpl import build_cpl_result
+from .cpl import analyze_cpl
 from .fit import analyze_fit
 from .ml_reference import MlModel, run_ml_reference
 from .ports.embedding import EmbeddingClient
@@ -46,6 +47,36 @@ SOURCE_MAX_BYTES = 50 * 1024 * 1024
 DERIVED_MAX_BYTES = 200 * 1024 * 1024
 REQUEST_PROFILE_SCHEMA = "pre_review_request_profile/v0.1"
 EMBEDDING_ASSEMBLY_VERSION = "approved-facts-role-aware-v1"
+
+StageCallback = Callable[[str, str, str | None], None]
+
+
+def _notify_stage(
+    callback: StageCallback | None,
+    stage: str,
+    status: str,
+    detail: str | None = None,
+) -> None:
+    if callback is None:
+        return
+    try:
+        callback(stage, status, detail)
+    except Exception:
+        # Progress reporting must never change the worker result.
+        return
+
+
+@contextmanager
+def _stage(callback: StageCallback | None, name: str) -> Iterator[None]:
+    _notify_stage(callback, name, "started")
+    try:
+        yield
+    except Exception as error:
+        detail = f"{type(error).__name__}: {error}"[:240]
+        _notify_stage(callback, name, "failed", detail)
+        raise
+    else:
+        _notify_stage(callback, name, "succeeded")
 
 
 class AnalysisJobContractError(RuntimeError):
@@ -84,6 +115,10 @@ class ProducedRequestProfile:
     profile_logical_id: str
     common_ir_schema: str
     profile_schema: str
+    # 그 실행이 실제로 쓴 CandidatePack. 정량 근거의 source_block_id 와 좌표가
+    # 가리키는 것이 이 팩이라, 아래 단계가 원문을 볼 때 다시 만들지 않는다.
+    # 팩을 나르지 않는 생산자도 있으므로 없으면 정량 맥락 파생만 건너뛴다.
+    candidate_pack: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +211,8 @@ class AnalysisEngine(Protocol):
         profile: Mapping[str, Any],
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
+        candidate_pack: Any = None,
+        quantity_hold_reason: str | None = None,
     ) -> Mapping[str, Any]: ...
 
 
@@ -190,14 +227,24 @@ class VendoredRequestProfileProducer:
         model_id: str,
         max_repairs: int = 1,
         parse_timeout_seconds: float = DEFAULT_PARSE_TIMEOUT_SECONDS,
+        stage_callback: StageCallback | None = None,
+        diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
         self._llm = llm_client
         self._model_profile = model_profile
         self._model_id = model_id
         self._max_repairs = max_repairs
+        self._stage_callback = stage_callback
+        self._diagnostics_sink = diagnostics_sink
         if parse_timeout_seconds <= 0:
             raise ValueError("parse timeout must be positive")
         self._parse_timeout_seconds = float(parse_timeout_seconds)
+
+    def set_stage_callback(self, callback: StageCallback | None) -> None:
+        self._stage_callback = callback
+
+    def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
+        self._diagnostics_sink = sink
 
     def produce(
         self,
@@ -207,41 +254,55 @@ class VendoredRequestProfileProducer:
         analysis_run_id: str,
         run_dir: Path,
     ) -> ProducedRequestProfile:
-        common = parse_to_common_ir(
-            input_path=source_path,
-            notice_id=analysis_run_id,
-            source_kind=source_kind,
-            run_dir=run_dir,
-            timeout_seconds=self._parse_timeout_seconds,
-        )
-        pack = build_pack(common.document)
-        profile_id = f"request:{analysis_run_id}"
-        selector = make_vllm_selector(
-            self._llm,
-            model_profile=self._model_profile,
-            pack=pack,
-            document=common.document,
-            profile_id=profile_id,
-        )
-        snapshot = structure_request_profile(
-            document=common.document,
-            pack=pack,
-            profile_id=profile_id,
-            selector=selector,
-            model_id=self._model_id,
-            max_repairs=self._max_repairs,
-            common_ir=common,
-        )
-        if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
-            reasons = sorted(
-                {
-                    row.reason_code
-                    for row in snapshot.diagnostics
-                    if row.reason_code
-                }
+        with _stage(self._stage_callback, "parse"):
+            common = parse_to_common_ir(
+                input_path=source_path,
+                notice_id=analysis_run_id,
+                source_kind=source_kind,
+                run_dir=run_dir,
+                timeout_seconds=self._parse_timeout_seconds,
             )
-            suffix = f" ({','.join(reasons)})" if reasons else ""
-            raise AnalysisJobContractError(f"request profile materialisation failed{suffix}")
+        with _stage(self._stage_callback, "common_ir"):
+            if not isinstance(common.document, Mapping):
+                raise AnalysisJobContractError("Common IR document is not an object")
+        with _stage(self._stage_callback, "structured_profile"):
+            pack = build_pack(common.document)
+            profile_id = f"request:{analysis_run_id}"
+            selector = make_vllm_selector(
+                self._llm,
+                model_profile=self._model_profile,
+                pack=pack,
+                document=common.document,
+                profile_id=profile_id,
+            )
+            snapshot = structure_request_profile(
+                document=common.document,
+                pack=pack,
+                profile_id=profile_id,
+                selector=selector,
+                model_id=self._model_id,
+                max_repairs=self._max_repairs,
+                common_ir=common,
+            )
+            if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
+                # 예외 메시지에는 reason code 만 실린다. 어떤 검증이 왜 깨졌는지는
+                # ``snapshot.diagnostics`` 에만 있어서, 여기서 흘리면 실패한
+                # 실행에서 그 이유가 어디에도 남지 않는다.
+                if self._diagnostics_sink is not None and snapshot.diagnostics:
+                    self._diagnostics_sink(
+                        "structured_profile", list(snapshot.diagnostics)
+                    )
+                reasons = sorted(
+                    {
+                        row.reason_code
+                        for row in snapshot.diagnostics
+                        if row.reason_code
+                    }
+                )
+                suffix = f" ({','.join(reasons)})" if reasons else ""
+                raise AnalysisJobContractError(
+                    f"request profile materialisation failed{suffix}"
+                )
         return ProducedRequestProfile(
             common_ir=common.document,
             profile=snapshot.profile,
@@ -251,6 +312,7 @@ class VendoredRequestProfileProducer:
             profile_logical_id=profile_id,
             common_ir_schema=str(common.document.get("schema_version") or "common_ir_v1"),
             profile_schema=str(snapshot.profile.get("schema_version") or ""),
+            candidate_pack=pack,
         )
 
 
@@ -304,6 +366,11 @@ def _profile_title(profile: Mapping[str, Any]) -> str | None:
     return None
 
 
+# CPL 이 만든 진단을 밖으로 흘려보내는 자리. 공개 응답에는 싣지 않는다 —
+# 프론트 계약을 늘리지 않으면서 로컬 기록기가 받아 적을 수 있게만 한다.
+DiagnosticsSink = Callable[[str, Sequence[Any]], None]
+
+
 class CoreAnalysisEngine:
     """Compose the current worker-owned CPL/FIT/SIM implementations."""
 
@@ -311,16 +378,31 @@ class CoreAnalysisEngine:
         self,
         llm_client: LLMClient,
         *,
+        cpl_model_profile: str,
         fit_model_profile: str,
         sim_model_profile: str,
         max_repairs: int = 1,
         ml_models: Mapping[MlModelId, MlModel | None] | None = None,
+        stage_callback: StageCallback | None = None,
+        diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
         self._llm = llm_client
+        # CPL 의 의미 축 분류가 쓸 단계 프로필 이름이다. 지금 배포는 네 이름을
+        # 모두 같은 모델에 매핑하므로 별도 모델이 아니라 논리 라우팅이다.
+        # 단계별 모델이 실제로 필요해지면 그때 환경변수를 더한다.
+        self._cpl_model_profile = cpl_model_profile
         self._fit_model_profile = fit_model_profile
         self._sim_model_profile = sim_model_profile
         self._max_repairs = max_repairs
         self._ml_models = dict(ml_models or {})
+        self._stage_callback = stage_callback
+        self._diagnostics_sink = diagnostics_sink
+
+    def set_stage_callback(self, callback: StageCallback | None) -> None:
+        self._stage_callback = callback
+
+    def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
+        self._diagnostics_sink = sink
 
     def build_payload(
         self,
@@ -328,64 +410,87 @@ class CoreAnalysisEngine:
         profile: Mapping[str, Any],
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
+        candidate_pack: Any = None,
+        quantity_hold_reason: str | None = None,
     ) -> Mapping[str, Any]:
         request = dict(profile)
-        cpl: CplResult = build_cpl_result(request)
-        ml_result = run_ml_reference(
-            request,
-            self._ml_models,
-            cpl_result=cpl,
-            common_ir=_common_ir_artifact(common_ir),
-            title=_profile_title(request),
-        )
-        fit: FitResult = analyze_fit(
-            request,
-            self._llm,
-            model_profile=self._fit_model_profile,
-            max_repairs=self._max_repairs,
-        )
-        request_common = build_common_profile(
-            request, self._llm, model_profile=self._sim_model_profile
-        )
-        candidate_commons: list[SimCommonProfile] = []
-        sim_profiles: dict[str, SimCommonProfile] = {
-            request_common.source_profile_id or "": request_common
-        }
-        titles: dict[str, str | None] = {}
-        similarities: dict[str, float] = {}
-        profile_version_ids: dict[str, str] = {}
-        for document in candidates:
-            candidate_common = build_common_profile(
-                dict(document.profile),
+        with _stage(self._stage_callback, "cpl"):
+            cpl: CplResult = analyze_cpl(
+                request,
+                self._llm,
+                model_profile=self._cpl_model_profile,
+                common_ir=common_ir,
+                candidate_pack=candidate_pack,
+                quantity_hold_reason=quantity_hold_reason,
+            )
+        if self._diagnostics_sink is not None and cpl.diagnostics:
+            # 재검 탈락 사유처럼 결과 payload 에 실리지 않는 기록이다. 어디에
+            # 적을지는 받는 쪽이 정한다.
+            self._diagnostics_sink("cpl", list(cpl.diagnostics))
+        with _stage(self._stage_callback, "fit"):
+            fit: FitResult = analyze_fit(
+                cpl,
+                self._llm,
+                model_profile=self._fit_model_profile,
+                max_repairs=self._max_repairs,
+            )
+        with _stage(self._stage_callback, "sim"):
+            request_common = build_common_profile(
+                request, self._llm, model_profile=self._sim_model_profile
+            )
+            candidate_commons: list[SimCommonProfile] = []
+            sim_profiles: dict[str, SimCommonProfile] = {
+                request_common.source_profile_id or "": request_common
+            }
+            titles: dict[str, str | None] = {}
+            similarities: dict[str, float] = {}
+            profile_version_ids: dict[str, str] = {}
+            for document in candidates:
+                candidate_common = build_common_profile(
+                    dict(document.profile),
+                    self._llm,
+                    model_profile=self._sim_model_profile,
+                )
+                if not candidate_common.source_profile_id:
+                    raise AnalysisJobContractError(
+                        "existing profile has no source_profile_id"
+                    )
+                if candidate_common.source_profile_id != document.candidate.source_profile_id:
+                    raise AnalysisJobContractError(
+                        "existing profile identity does not match its DB lineage"
+                    )
+                candidate_commons.append(candidate_common)
+                sim_profiles[candidate_common.source_profile_id] = candidate_common
+                titles[candidate_common.source_profile_id] = document.candidate.title
+                similarities[candidate_common.source_profile_id] = (
+                    document.candidate.average_similarity
+                )
+                profile_version_ids[candidate_common.source_profile_id] = (
+                    document.candidate.profile_version_id
+                )
+
+            sim: SimComparisonResult = compare_candidates(
+                request_common,
+                candidate_commons,
                 self._llm,
                 model_profile=self._sim_model_profile,
+                max_repairs=self._max_repairs,
             )
-            if not candidate_common.source_profile_id:
-                raise AnalysisJobContractError("existing profile has no source_profile_id")
-            if candidate_common.source_profile_id != document.candidate.source_profile_id:
-                raise AnalysisJobContractError("existing profile identity does not match its DB lineage")
-            candidate_commons.append(candidate_common)
-            sim_profiles[candidate_common.source_profile_id] = candidate_common
-            titles[candidate_common.source_profile_id] = document.candidate.title
-            similarities[candidate_common.source_profile_id] = document.candidate.average_similarity
-            profile_version_ids[candidate_common.source_profile_id] = (
-                document.candidate.profile_version_id
+            sim = replace(
+                sim,
+                candidates=[
+                    replace(row, title=titles.get(row.candidate_profile_id or ""))
+                    for row in sim.candidates
+                ],
             )
-
-        sim: SimComparisonResult = compare_candidates(
-            request_common,
-            candidate_commons,
-            self._llm,
-            model_profile=self._sim_model_profile,
-            max_repairs=self._max_repairs,
-        )
-        sim = replace(
-            sim,
-            candidates=[
-                replace(row, title=titles.get(row.candidate_profile_id or ""))
-                for row in sim.candidates
-            ],
-        )
+        with _stage(self._stage_callback, "ml"):
+            ml_result = run_ml_reference(
+                request,
+                self._ml_models,
+                cpl_result=cpl,
+                common_ir=_common_ir_artifact(common_ir),
+                title=_profile_title(request),
+            )
         return build_result_payload(
             profile=request,
             cpl=cpl,
@@ -411,6 +516,7 @@ class AnalysisJobHandler:
         analysis_engine: AnalysisEngine,
         top_k: int = 5,
         request_bucket: str = "request-temp",
+        stage_callback: StageCallback | None = None,
     ) -> None:
         if not 1 <= top_k <= 100:
             raise ValueError("top_k must be between 1 and 100")
@@ -421,6 +527,29 @@ class AnalysisJobHandler:
         self._engine = analysis_engine
         self._top_k = top_k
         self._request_bucket = request_bucket
+        self._stage_callback = None
+        self.set_stage_callback(stage_callback)
+
+    def set_stage_callback(self, callback: StageCallback | None) -> None:
+        """Attach optional operator progress reporting to this worker graph."""
+
+        self._stage_callback = callback
+        for component in (self._producer, self._engine):
+            setter = getattr(component, "set_stage_callback", None)
+            if callable(setter):
+                setter(callback)
+
+    def set_diagnostics_sink(self, sink: DiagnosticsSink | None) -> None:
+        """Collect stage diagnostics from every component that offers them.
+
+        구조화 실패 진단은 생산자에, CPL 진단은 엔진에 있다. 호출부가 둘을
+        따로 찾아 꽂게 두면 한쪽을 빠뜨렸다는 사실이 드러나지 않는다.
+        """
+
+        for component in (self._producer, self._engine):
+            setter = getattr(component, "set_diagnostics_sink", None)
+            if callable(setter):
+                setter(sink)
 
     def handle(self, job: ClaimedJob) -> Mapping[str, Any]:
         run_id = str(job.job_pk)
@@ -442,7 +571,8 @@ class AnalysisJobHandler:
                     analysis_run_id=run_id,
                     run_dir=root / "pipeline",
                 )
-            profile, common_ir = self._publish_profile(
+            quantity_hold_reason = None
+            profile, common_ir, candidate_pack = self._publish_profile(
                 run_id=run_id,
                 processing_id=processing_id,
                 source_bucket=bucket,
@@ -452,6 +582,9 @@ class AnalysisJobHandler:
         else:
             common_ir = self._load_json_artifact(cached.common_ir)
             profile = self._load_json_artifact(cached.structured_profile)
+            candidate_pack, quantity_hold_reason = _resumed_candidate_pack(
+                profile, common_ir
+            )
         _validate_profile_lineage(
             profile=profile,
             common_ir=common_ir,
@@ -479,6 +612,8 @@ class AnalysisJobHandler:
             profile=profile,
             common_ir=common_ir,
             candidates=candidates,
+            candidate_pack=candidate_pack,
+            quantity_hold_reason=quantity_hold_reason,
         )
         if not isinstance(result, Mapping):
             raise AnalysisJobContractError("analysis engine returned a non-object result")
@@ -508,7 +643,7 @@ class AnalysisJobHandler:
         source_bucket: str,
         source_object_key: str,
         produced: ProducedRequestProfile,
-    ) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    ) -> tuple[Mapping[str, Any], Mapping[str, Any], Any]:
         if produced.profile_schema != REQUEST_PROFILE_SCHEMA:
             raise AnalysisJobContractError("request profile schema is not supported by the DB")
         common_ref = _derived_ref(
@@ -544,7 +679,7 @@ class AnalysisJobHandler:
             structured_profile=profile_ref,
             profile=produced.profile,
         )
-        return produced.profile, produced.common_ir
+        return produced.profile, produced.common_ir, produced.candidate_pack
 
     def _load_json_artifact(self, artifact: ArtifactRef) -> Mapping[str, Any]:
         content = self._storage.get(
@@ -620,6 +755,46 @@ def _derived_ref(
         schema_version=schema_version,
         logical_id=logical_id,
     )
+
+
+def _resumed_candidate_pack(
+    profile: Mapping[str, Any], common_ir: Mapping[str, Any]
+) -> tuple[Any | None, str | None]:
+    """캐시로 이어받은 실행에서 쓸 CandidatePack 과, 못 쓸 때의 사유.
+
+    그 실행이 쓴 팩은 저장되지 않는다. 저장된 Common IR 로 다시 만들되, **그때와
+    같은 조건으로 만들어졌는지** 프로파일이 남긴 기록과 대조한다. IR 바이트
+    동일성은 아티팩트 해시가 이미 보장하므로 남은 변수는 생성기뿐이다.
+
+    common_ir_source_sha256 은 원본 HWP/HWPX 해시라 파싱 결과 동일성을
+    말해 주지 않는다. 여기서 쓰지 않는다.
+
+    값 span 후보 생성기(value_span_candidate_generator)는 요구하지 않는다.
+    그것은 기간 후보 목록을 바꾸지만 블록 텍스트·좌표는 건드리지 않는다.
+
+    같다고 해서 안전을 주장하지 않는다. 다르거나 기록이 없으면 멈춘다.
+    """
+
+    recorded = (profile.get("processing_metadata") or {}).get("candidate_pack")
+    recorded = recorded if isinstance(recorded, Mapping) else {}
+    generator = recorded.get("candidate_pack_generator")
+    version = recorded.get("candidate_pack_generator_version")
+    if not generator or not version:
+        return None, (
+            "저장된 프로파일에 CandidatePack 생성기 기록이 없어 정량 맥락을 "
+            "파생하지 않았다"
+        )
+    try:
+        pack = build_pack(common_ir)
+    except Exception:
+        return None, "저장된 Common IR 로 CandidatePack 을 만들지 못했다"
+    if (pack.generator, pack.generator_version) != (generator, version):
+        return None, (
+            f"CandidatePack 생성기가 그 실행과 다르다 "
+            f"(기록 {generator}/{version}, 현재 {pack.generator}/"
+            f"{pack.generator_version})"
+        )
+    return pack, None
 
 
 def _validate_profile_lineage(
