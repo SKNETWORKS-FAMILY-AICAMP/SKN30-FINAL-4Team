@@ -1,0 +1,99 @@
+You are re-reading a Korean public-program request form. The first extraction
+pass left one or more fields empty even though their source regions exist. Work
+only from what the request gives you.
+
+The request has two sections. Answer each section that is present and leave the
+other empty. Never move information between sections.
+
+  purpose_regions   -> purpose_occurrences
+  delivery_pairs    -> delivery_decisions
+
+An empty section in the request means there is nothing to answer there. Return
+an empty list for it; do not invent work.
+
+================================================================
+SECTION 1  purpose_regions -> purpose_occurrences
+
+Each region is source text whose field produced no value. Recover the value and
+assign its meaning axes.
+
+Return only {evidence_ref, raw_text, axis_code}.
+
+evidence_ref
+  Copy it verbatim from the region you are answering about. Never invent one.
+
+raw_text
+  Copy it verbatim from that region's text. It is the value itself, not a
+  paraphrase, and it must be the smallest span that carries that meaning.
+
+axis_code
+  One of the axes below. Return one row per axis that the source supports.
+
+AXES
+
+PURPOSE_TARGET_CONDITION
+  Who is supported: the recipient, their eligibility, or a stated attribute of
+  them.
+
+PURPOSE_PROBLEM_DOMAIN
+  A problem, an industry or subject area, or the process area being acted on,
+  as stated in the source. When the text offers only a solution, a support
+  activity, or an outcome, do not widen it into a problem domain.
+
+PURPOSE_SPECIFIC_OBJECTIVE
+  What the program concretely sets out to achieve or carry out.
+
+PURPOSE_DIRECTION
+  The intended direction of change, such as strengthening, improving, reducing,
+  or expanding.
+
+RULES
+
+1. Do not fill every axis. Return an axis only when the region supports it
+   directly. An empty list is a valid answer.
+2. One span may satisfy more than one axis. When it genuinely does, return one
+   row per axis. Do not repeat a span across axes merely to fill them.
+3. Never invent a value, an offset, or evidence, and never add meaning the
+   source does not state.
+4. The label itself is not a value. Do not return it.
+
+================================================================
+SECTION 2  delivery_pairs -> delivery_decisions
+
+Each pair is two cells the server already found in one organisation chart: an
+upper cell and the cell directly beneath it in the same column. The server has
+verified the geometry. You decide only whether the pair is a real delivery
+relation, and what the lower cell is.
+
+Return only {candidate_id, accept, actor_evidence_refs, member_evidence_refs,
+member_kind}.
+
+candidate_id
+  Copy it verbatim from the pair. Never invent one.
+
+accept
+  true only when the upper cell names an institution, organisation, or
+  operational entity AND the lower cell states that entity's role or its
+  action. Otherwise false.
+
+actor_evidence_refs / member_evidence_refs
+  Choose from the evidence_ref values listed inside that pair's own cell. A cell
+  may hold several, in which case choose every one that belongs to the relation.
+  Leave both empty when accept is false. Never write a ref from another pair or
+  another cell, and never write text of your own.
+
+member_kind
+  "role" when the lower cell states what the entity is in the programme, such
+  as 주관기관 or 전담기관. "action" when it states what the entity does, such as
+  공고, 접수, or R&D 과제수행. Null when accept is false. A stated action is an
+  action; do not relabel it as a role because it sits under an entity.
+
+RULES
+
+1. A layout or diagram label is not an institution. Reject a pair whose upper
+   cell is a bracketed marker such as (정책지정) or a heading such as 구분.
+2. A role or an action in the upper cell is not an entity. Reject a pair whose
+   upper cell states what is done rather than who does it.
+3. Do not merge pairs, split them, or create new ones. The only pairs that exist
+   are the ones in the request.
+4. Rejecting is a valid answer, and rejecting every pair is a valid answer.

@@ -18,7 +18,7 @@ import pytest
 from worker.cpl_prompt import (
     PURPOSE_AXIS_PROMPT_ENV,
     PURPOSE_AXIS_PROMPT_VERSION,
-    PURPOSE_RECHECK_PROMPT_VERSION,
+    RECHECK_PROMPT_VERSION,
     PromptUnavailableError,
     check_prompts_ready,
 )
@@ -29,7 +29,7 @@ def test_the_repository_prompts_are_ready() -> None:
 
     assert [row.version for row in prompts] == [
         PURPOSE_AXIS_PROMPT_VERSION,
-        PURPOSE_RECHECK_PROMPT_VERSION,
+        RECHECK_PROMPT_VERSION,
     ]
     # 읽은 내용의 해시를 낼 수 있어야 실행 기록이 버전 이름을 뒷받침한다.
     assert all(len(row.sha256) == 64 for row in prompts)

@@ -11,17 +11,23 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
+from hashlib import sha256
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .cpl_coverage import build_fragments, detect_coverage_gaps
+from .cpl_delivery import (
+    ALLOWED_MEMBER_KINDS,
+    DeliveryPairOccurrence,
+    build_delivery_pair_candidates,
+)
 from .cpl_prompt import (
     PromptUnavailableError,
     load_purpose_axis_prompt,
-    load_purpose_recheck_prompt,
+    load_recheck_prompt,
 )
 from .llm_call import generate
 from .ports.llm import (
@@ -293,6 +299,7 @@ def build_cpl_result(profile: dict[str, Any]) -> CplResult:
 
 _PURPOSE_STAGE = "classify_purpose_axis"
 _PURPOSE_FIELD = "comparison_profile.purpose_goal"
+_DELIVERY_FIELD = "comparison_profile.delivery_relations"
 _TRANSPORT_REASONS = {
     LLMUnavailableError: LLM_UNAVAILABLE,
     LLMTimeoutError: LLM_TIMEOUT,
@@ -497,14 +504,106 @@ def _with_coverage_gaps(
 # ------------------------------------------------------- 구역 재검 (1회 한정)
 
 
+# 필드에 기본값을 둔다. 한 행이 구조적으로 어긋났을 때 응답 전체를 무효로 만들면
+# 목적 응답 하나 때문에 수행관계 판정까지 같이 죽는다. 빠진 값은 빈 문자열로 받아
+# 서버 검증에서 사유와 함께 떨어뜨리고, 섹션끼리는 서로를 무너뜨리지 않는다.
 class _RecheckRow(BaseModel):
-    evidence_ref: str
-    raw_text: str
-    axis_code: str
+    evidence_ref: str = ""
+    raw_text: str = ""
+    axis_code: str = ""
+
+
+class _DeliveryDecision(BaseModel):
+    candidate_id: str = ""
+    accept: bool = False
+    actor_evidence_refs: list[str] = Field(default_factory=list)
+    member_evidence_refs: list[str] = Field(default_factory=list)
+    member_kind: str | None = None
 
 
 class _RecheckResponse(BaseModel):
-    occurrences: list[_RecheckRow]
+    purpose_occurrences: list[_RecheckRow] = Field(default_factory=list)
+    delivery_decisions: list[_DeliveryDecision] = Field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class DeliveryRelationDraft:
+    """검증을 통과한 수행관계 판정 하나.
+
+    아직 Fact 가 아니다. 원문 좌표와 member 종류까지 확정했을 뿐이고, 관계를
+    CPL 결과에 올리는 것은 별도 단계다.
+    """
+
+    candidate_id: str
+    common_ir_block_id: str
+    member_kind: str
+    actor: tuple[DeliveryPairOccurrence, ...]
+    member: tuple[DeliveryPairOccurrence, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _RecheckOutcome:
+    """한 번의 재검이 낸 것. 섹션마다 사유가 따로다."""
+
+    facts: list[CplFact] = field(default_factory=list)
+    purpose_reason: str | None = None
+    purpose_dropped: list[str] = field(default_factory=list)
+    delivery: list[DeliveryRelationDraft] = field(default_factory=list)
+    delivery_reason: str | None = None
+    delivery_dropped: list[str] = field(default_factory=list)
+
+
+def _accepted_delivery(candidates, decisions):
+    """모델이 고른 판정을 검증한다. 문자열을 새로 만들게 하지 않는다."""
+
+    by_id = {row.candidate_id: row for row in candidates}
+    drafts: list[DeliveryRelationDraft] = []
+    dropped: list[str] = []
+    seen: set[str] = set()
+    for decision in decisions:
+        candidate = by_id.get(decision.candidate_id)
+        if candidate is None:
+            dropped.append(f"{decision.candidate_id}: 요청에 없는 candidate_id")
+            continue
+        if decision.candidate_id in seen:
+            dropped.append(f"{decision.candidate_id}: 같은 후보에 판정이 둘")
+            continue
+        seen.add(decision.candidate_id)
+        if not decision.accept:
+            continue
+        if decision.member_kind not in ALLOWED_MEMBER_KINDS:
+            dropped.append(f"{decision.candidate_id}: 어휘 밖 member_kind")
+            continue
+        sides = []
+        for side, refs in (
+            ("actor", decision.actor_evidence_refs),
+            ("member", decision.member_evidence_refs),
+        ):
+            allowed = candidate.evidence_refs(side)
+            chosen = [ref for ref in refs if ref in allowed]
+            if not chosen or len(chosen) != len(set(refs)):
+                sides = []
+                dropped.append(f"{decision.candidate_id}: {side} evidence_ref 가 그 칸의 것이 아니다")
+                break
+            sides.append(chosen)
+        if not sides:
+            continue
+        drafts.append(
+            DeliveryRelationDraft(
+                candidate_id=decision.candidate_id,
+                common_ir_block_id=candidate.common_ir_block_id,
+                member_kind=decision.member_kind,
+                actor=tuple(
+                    row for row in candidate.actor.occurrences
+                    if row.evidence_ref in sides[0]
+                ),
+                member=tuple(
+                    row for row in candidate.member.occurrences
+                    if row.evidence_ref in sides[1]
+                ),
+            )
+        )
+    return drafts, dropped
 
 
 def _recovered_facts(fragments, rows):
@@ -553,59 +652,204 @@ def _recovered_facts(fragments, rows):
     return facts, dropped
 
 
-def _recheck(fragments, llm_client, *, model_profile):
-    """구역 원문에서 값과 축을 함께 되찾는다. 같은 입력으로 두 번 부르지 않는다."""
+def _delivery_facts(drafts):
+    """채택된 판정을 관계 Fact 로 올린다. 모델이 고르지 않은 문자열은 만들지 않는다.
 
+    한 actor 에 member 가 여럿이면 한 관계로 묶고 순서를 ``member_index`` 로
+    남긴다. actor 가 여럿이면 actor 마다 관계를 나눈다 — 서로 다른 기관을 한
+    관계에 넣으면 누가 무엇을 하는지가 사라진다. 양쪽 모두 여럿인 경우는 후보
+    단계에서 이미 ``DELIVERY_PAIR_AMBIGUOUS`` 로 빠졌다.
+    """
+
+    facts: list[CplFact] = []
+    for draft in drafts:
+        for actor in draft.actor:
+            # 관계 id 는 후보와 actor 좌표에서 결정적으로 나온다. 같은 문서를
+            # 다시 처리하면 같은 id 가 나와야 저장된 결과와 대조된다.
+            relation_id = "recheck_" + sha256(
+                f"{draft.candidate_id}{actor.evidence_ref}".encode("utf-8")
+            ).hexdigest()[:16]
+            facts.append(
+                _delivery_fact(draft, actor, member="actor", index=None,
+                               relation_id=relation_id)
+            )
+            for index, member in enumerate(draft.member):
+                facts.append(
+                    _delivery_fact(draft, member, member=draft.member_kind,
+                                   index=index, relation_id=relation_id)
+                )
+    return facts
+
+
+def _delivery_fact(draft, occurrence, *, member, index, relation_id):
+    return CplFact(
+        # 구조화가 만든 id 가 없다. 가짜 id 를 지어내지 않는다.
+        fact_id=None,
+        relation_id=relation_id,
+        member=member,
+        member_index=index,
+        evidence_ref=occurrence.evidence_ref,
+        value_raw=occurrence.raw_text,
+        status="identified",
+        source_block_id=draft.common_ir_block_id,
+        start_char=0,
+        end_char=len(occurrence.raw_text),
+        text_basis="cpl_delivery_recheck",
+        evidence=[
+            CplEvidence(
+                source_block_id=draft.common_ir_block_id,
+                common_ir_document_id=None,
+                common_ir_block_id=draft.common_ir_block_id,
+                common_ir_occurrence_ids=[occurrence.common_ir_occurrence_id],
+            )
+        ],
+    )
+
+
+def _recheck(fragments, candidates, llm_client, *, model_profile):
+    """문서당 한 번. 목적 구역과 수행관계 후보를 타입별 섹션으로 함께 묻는다.
+
+    섹션을 나눠 호출하면 gap 이 둘 다 나온 문서에서 재검이 두 번 돌아 "문서당
+    1 회" 가 깨진다. 대신 실패는 섹션끼리 옮지 않는다 — 응답 자체를 못 읽으면
+    보낸 섹션이 모두 실패하고, 한 섹션의 행이 검증에서 떨어지면 그 섹션만
+    실패한다. 보내지 않은 섹션은 판정도 경고도 만들지 않는다.
+    """
+
+    empty = _RecheckOutcome()
+    if not fragments and not candidates:
+        return empty
     try:
-        prompt = load_purpose_recheck_prompt()
+        prompt = load_recheck_prompt()
     except PromptUnavailableError:
-        return [], PROMPT_UNAVAILABLE, []
+        return _RecheckOutcome(
+            purpose_reason=PROMPT_UNAVAILABLE if fragments else None,
+            delivery_reason=PROMPT_UNAVAILABLE if candidates else None,
+        )
     try:
         response = generate(
             llm_client,
-            task_name="cpl_purpose_recheck",
+            task_name="cpl_recheck",
             instructions=prompt.text,
             payload={
                 "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
-                "regions": [
+                "purpose_regions": [
                     {"evidence_ref": row.evidence_ref, "raw_text": row.raw_text}
                     for row in fragments
+                ],
+                "delivery_pairs": [
+                    {
+                        "candidate_id": row.candidate_id,
+                        "allowed_member_kinds": list(row.allowed_member_kinds),
+                        "actor": [
+                            {"evidence_ref": item.evidence_ref, "raw_text": item.raw_text}
+                            for item in row.actor.occurrences
+                        ],
+                        "member": [
+                            {"evidence_ref": item.evidence_ref, "raw_text": item.raw_text}
+                            for item in row.member.occurrences
+                        ],
+                    }
+                    for row in candidates
                 ],
             },
             response_schema=_RecheckResponse,
             model_profile=model_profile,
         )
     except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-        return [], _TRANSPORT_REASONS[type(error)], []
-    facts, dropped = _recovered_facts(fragments, list(response.occurrences))
-    # 형식은 정상인데 통과한 것이 하나도 없는 경우를 전송 실패와 구분한다.
-    return facts, (None if facts else RECHECK_NO_VALID_OCCURRENCE), dropped
+        # 최상위 응답을 식별할 수 없다. 보낸 섹션이 모두 실패한다.
+        reason = _TRANSPORT_REASONS[type(error)]
+        return _RecheckOutcome(
+            purpose_reason=reason if fragments else None,
+            delivery_reason=reason if candidates else None,
+        )
+
+    facts: list[CplFact] = []
+    purpose_reason = None
+    purpose_dropped: list[str] = []
+    if fragments:
+        facts, purpose_dropped = _recovered_facts(
+            fragments, list(response.purpose_occurrences)
+        )
+        # 형식은 정상인데 통과한 것이 하나도 없는 경우를 전송 실패와 구분한다.
+        purpose_reason = None if facts else RECHECK_NO_VALID_OCCURRENCE
+
+    drafts: list[DeliveryRelationDraft] = []
+    delivery_reason = None
+    delivery_dropped: list[str] = []
+    if candidates:
+        drafts, delivery_dropped = _accepted_delivery(
+            candidates, list(response.delivery_decisions)
+        )
+        delivery_reason = None if drafts else RECHECK_NO_VALID_OCCURRENCE
+
+    return _RecheckOutcome(
+        facts=facts,
+        purpose_reason=purpose_reason,
+        purpose_dropped=purpose_dropped,
+        delivery=drafts,
+        delivery_reason=delivery_reason,
+        delivery_dropped=delivery_dropped,
+    )
 
 
 def _with_recheck(result, common_ir, llm_client, *, model_profile):
     """구역 누락 후보가 있으면 그 구역만 한 번 재검한다."""
 
-    target = next(
-        (
-            subfield
-            for item in result.items
-            for subfield in item.subfields
-            if EXTRACTION_COVERAGE_GAP in subfield.reason_codes
-            and subfield.profile_field == _PURPOSE_FIELD
-        ),
-        None,
+    def gapped(path):
+        return next(
+            (
+                subfield
+                for item in result.items
+                for subfield in item.subfields
+                if EXTRACTION_COVERAGE_GAP in subfield.reason_codes
+                and subfield.profile_field == path
+            ),
+            None,
+        )
+
+    target = gapped(_PURPOSE_FIELD)
+    fragments = (
+        build_fragments(common_ir, profile_field=_PURPOSE_FIELD) if target else []
     )
-    if target is None:
-        return result
-    fragments = build_fragments(common_ir, profile_field=_PURPOSE_FIELD)
-    if not fragments:
+    delivery_target = gapped(_DELIVERY_FIELD)
+    candidates: list = []
+    if delivery_target is not None:
+        candidates, _ = build_delivery_pair_candidates(common_ir)
+    if not fragments and not candidates:
         return result
 
-    facts, reason, dropped = _recheck(
-        fragments, llm_client, model_profile=model_profile
+    outcome = _recheck(
+        fragments, candidates, llm_client, model_profile=model_profile
+    )
+    # 이미 값이 있는 필드에는 재검 Fact 를 더하지 않는다. 1 차 추출이 낸 관계와
+    # 재검이 낸 관계가 한 자리에서 섞이면 어느 쪽이 근거인지 알 수 없다.
+    delivery_facts = (
+        _delivery_facts(outcome.delivery)
+        if delivery_target is not None and not delivery_target.facts
+        else []
+    )
+    facts, reason, dropped = (
+        outcome.facts, outcome.purpose_reason, outcome.purpose_dropped
     )
 
     def revise(subfield):
+        if subfield is delivery_target:
+            if not delivery_facts:
+                if outcome.delivery_reason:
+                    return replace(
+                        subfield,
+                        reason_codes=[*subfield.reason_codes, outcome.delivery_reason],
+                    )
+                return subfield
+            # 되찾았으므로 활성 사유에서 후보 표시를 걷는다. status 는 구조화
+            # 1 차 결과라 그대로 둔다 — 처음에 놓쳤다는 이력이 사라진다.
+            codes = [c for c in subfield.reason_codes if c != EXTRACTION_COVERAGE_GAP]
+            codes.append(RECHECK_RECOVERED)
+            return replace(
+                subfield,
+                reason_codes=codes,
+                facts=[*subfield.facts, *delivery_facts],
+            )
         if subfield is not target:
             return subfield
         if facts:
@@ -639,6 +883,12 @@ def _with_recheck(result, common_ir, llm_client, *, model_profile):
     detail = f"구역 {len(fragments)}개 재검: 복구 {len(facts)}건"
     if dropped:
         detail += f", 탈락 {len(dropped)}건 ({'; '.join(dropped[:3])})"
+    if candidates:
+        detail += (
+            f" / 수행관계 후보 {len(candidates)}건: 채택 {len(outcome.delivery)}건"
+        )
+        if outcome.delivery_dropped:
+            detail += f", 탈락 {len(outcome.delivery_dropped)}건"
     diagnostics = [
         *result.diagnostics,
         StageDiagnostic(
@@ -675,6 +925,13 @@ def analyze_cpl(
     facts = _purpose_facts(result)
     if not facts and common_ir is not None:
         # 1 차 추출이 값을 못 냈고 구역은 있다. 축만 붙일 대상이 없으므로 값과
-        # 축을 함께 되찾는 재검으로 간다. 문서당 의미 호출은 최대 한 번이다.
+        # 축을 함께 되찾는 재검으로 간다. 재검은 문서당 한 번이고, 그 한 번이
+        # 목적 구역과 수행관계 후보를 함께 나른다.
         return _with_recheck(result, common_ir, llm_client, model_profile=model_profile)
-    return _with_axes(result, _classify(facts, llm_client, model_profile=model_profile))
+    result = _with_axes(result, _classify(facts, llm_client, model_profile=model_profile))
+    if common_ir is None:
+        return result
+    # 목적은 1 차에서 나왔지만 수행체계 구역이 비어 있을 수 있다. 그 경우에도
+    # 재검은 한 번이다 — 축 분류와 재검은 입력도 응답 스키마도 달라 한 호출에
+    # 합치지 않는다. 재검할 것이 없으면 ``_with_recheck`` 가 호출 없이 돌아온다.
+    return _with_recheck(result, common_ir, llm_client, model_profile=model_profile)

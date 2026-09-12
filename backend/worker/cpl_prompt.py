@@ -5,7 +5,8 @@
 분류를 담게 되어 재현성이 깨진다. 그래서 파일을 읽되 내용 해시를 함께 남기고,
 문구를 고치면 ``v0.3`` 파일을 새로 만들어 버전도 같이 올린다.
 
-경로는 저장소 안의 버전 파일이 기본이다. ``CPL_PURPOSE_AXIS_PROMPT_PATH`` 로
+경로는 저장소 안의 버전 파일이 기본이다. ``CPL_PURPOSE_AXIS_PROMPT_PATH`` 와
+``CPL_RECHECK_PROMPT_PATH`` 로
 덮을 수 있지만, 없거나 비었거나 UTF-8 이 아니면 조용히 기본값으로 돌아가지
 않고 즉시 실패한다. 프롬프트를 못 읽은 채 낸 분류는 버전을 신뢰할 수 없다.
 
@@ -24,9 +25,14 @@ from pathlib import Path
 PURPOSE_AXIS_PROMPT_VERSION = "cpl-purpose-axis-v0.2"
 PURPOSE_AXIS_PROMPT_ENV = "CPL_PURPOSE_AXIS_PROMPT_PATH"
 # 재검은 구역 원문에서 값과 축을 함께 받는다. 축만 붙이는 1차 분류와 입력이
-# 달라 프롬프트도 따로 둔다.
-PURPOSE_RECHECK_PROMPT_VERSION = "cpl-purpose-recheck-v0.1"
-PURPOSE_RECHECK_PROMPT_ENV = "CPL_PURPOSE_RECHECK_PROMPT_PATH"
+# 달라 프롬프트도 따로 둔다. v0.2 부터 목적과 수행관계를 타입별 섹션으로 한 번에
+# 묻는다 — 문서당 재검 호출을 하나로 유지하기 위해서다.
+RECHECK_PROMPT_VERSION = "cpl-recheck-v0.2"
+RECHECK_PROMPT_ENV = "CPL_RECHECK_PROMPT_PATH"
+# v0.1 은 목적만 묻고 응답 스키마도 달랐다. 새 요청에 그 파일을 끼우면 모델이
+# 수행관계 섹션을 통째로 못 본 채 조용히 절반만 답한다. fallback 으로 쓰지 않고,
+# 옛 변수만 설정된 배포는 원인이 보이는 설정 오류로 멈춘다.
+_RETIRED_RECHECK_PROMPT_ENV = "CPL_PURPOSE_RECHECK_PROMPT_PATH"
 
 def _prompt_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "config" / "prompts"
@@ -79,10 +85,16 @@ def load_purpose_axis_prompt() -> Prompt:
     return _load(PURPOSE_AXIS_PROMPT_VERSION, PURPOSE_AXIS_PROMPT_ENV)
 
 
-def load_purpose_recheck_prompt() -> Prompt:
+def load_recheck_prompt() -> Prompt:
     """재검 프롬프트를 읽는다. 실패하면 예외를 던진다."""
 
-    return _load(PURPOSE_RECHECK_PROMPT_VERSION, PURPOSE_RECHECK_PROMPT_ENV)
+    retired = (os.environ.get(_RETIRED_RECHECK_PROMPT_ENV) or "").strip()
+    if retired and not (os.environ.get(RECHECK_PROMPT_ENV) or "").strip():
+        raise PromptUnavailableError(
+            f"{_RETIRED_RECHECK_PROMPT_ENV} 는 더 쓰지 않는다. "
+            f"{RECHECK_PROMPT_ENV} 로 {RECHECK_PROMPT_VERSION} 경로를 지정한다"
+        )
+    return _load(RECHECK_PROMPT_VERSION, RECHECK_PROMPT_ENV)
 
 
 def check_prompts_ready() -> list[Prompt]:
@@ -97,7 +109,7 @@ def check_prompts_ready() -> list[Prompt]:
     막힌다. 실제 쓴 SHA 는 실행 결과에 기록하므로 재현성은 거기서 확보한다.
     """
 
-    return [load_purpose_axis_prompt(), load_purpose_recheck_prompt()]
+    return [load_purpose_axis_prompt(), load_recheck_prompt()]
 
 
 __all__ = [
@@ -105,9 +117,9 @@ __all__ = [
     "PURPOSE_AXIS_PROMPT_ENV",
     "Prompt",
     "PromptUnavailableError",
-    "PURPOSE_RECHECK_PROMPT_VERSION",
-    "PURPOSE_RECHECK_PROMPT_ENV",
+    "RECHECK_PROMPT_VERSION",
+    "RECHECK_PROMPT_ENV",
     "check_prompts_ready",
     "load_purpose_axis_prompt",
-    "load_purpose_recheck_prompt",
+    "load_recheck_prompt",
 ]
