@@ -543,7 +543,14 @@ def _axis_fact(fragment: CplFragment, row: PurposeAxisAssignment) -> CplFact:
 _CLAUSE_START = re.compile(r"[\n○◦□■●▪‣]|(?:^|\s)-\s")
 
 
-def _with_quantities(result: CplResult, candidate_pack: Any | None) -> CplResult:
+QUANTITY_CONTEXT_UNAVAILABLE = "QUANTITY_CONTEXT_UNAVAILABLE"
+
+
+def _with_quantities(
+    result: CplResult,
+    candidate_pack: Any | None,
+    hold_reason: str | None = None,
+) -> CplResult:
     """값 안의 정량 표현에 비교 맥락을 붙인다. 값·상태·관계·근거는 그대로다.
 
     맥락은 ``value_raw`` 만으로는 부족하다. ``- 기업당 한도: 최대 5,000만원``
@@ -560,7 +567,22 @@ def _with_quantities(result: CplResult, candidate_pack: Any | None) -> CplResult
     """
 
     if candidate_pack is None:
-        return result
+        if hold_reason is None:
+            return result
+        # 왜 파생하지 않았는지 남긴다. 값이 없는 것과 맥락을 못 붙인 것은
+        # 사용자가 해야 할 다음 행동이 다르다.
+        return replace(
+            result,
+            diagnostics=[
+                *result.diagnostics,
+                StageDiagnostic(
+                    stage="analyze_cpl",
+                    unit=None,
+                    reason_code=QUANTITY_CONTEXT_UNAVAILABLE,
+                    message=hold_reason,
+                ),
+            ],
+        )
     blocks = {row.block_id: row.text for row in candidate_pack.blocks}
 
     def enrich(fact: CplFact) -> CplFact:
@@ -1061,6 +1083,7 @@ def analyze_cpl(
     model_profile: str,
     common_ir: Mapping[str, Any] | None = None,
     candidate_pack: Any | None = None,
+    quantity_hold_reason: str | None = None,
 ) -> CplResult:
     """CPL 13항목에 의미 축까지 확정한다. 예외를 던지지 않는다.
 
@@ -1073,7 +1096,7 @@ def analyze_cpl(
     """
 
     result = build_cpl_result(profile)
-    result = _with_quantities(result, candidate_pack)
+    result = _with_quantities(result, candidate_pack, quantity_hold_reason)
     if common_ir is not None:
         result = _with_coverage_gaps(result, profile, common_ir)
     facts = _purpose_facts(result)

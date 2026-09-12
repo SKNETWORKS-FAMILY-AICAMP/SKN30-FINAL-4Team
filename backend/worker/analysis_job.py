@@ -181,6 +181,7 @@ class AnalysisEngine(Protocol):
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
         candidate_pack: Any = None,
+        quantity_hold_reason: str | None = None,
     ) -> Mapping[str, Any]: ...
 
 
@@ -340,6 +341,7 @@ class CoreAnalysisEngine:
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
         candidate_pack: Any = None,
+        quantity_hold_reason: str | None = None,
     ) -> Mapping[str, Any]:
         request = dict(profile)
         cpl: CplResult = analyze_cpl(
@@ -348,6 +350,7 @@ class CoreAnalysisEngine:
             model_profile=self._cpl_model_profile,
             common_ir=common_ir,
             candidate_pack=candidate_pack,
+            quantity_hold_reason=quantity_hold_reason,
         )
         ml_result = run_ml_reference(
             request,
@@ -460,6 +463,7 @@ class AnalysisJobHandler:
                     analysis_run_id=run_id,
                     run_dir=root / "pipeline",
                 )
+            quantity_hold_reason = None
             profile, common_ir, candidate_pack = self._publish_profile(
                 run_id=run_id,
                 processing_id=processing_id,
@@ -470,9 +474,9 @@ class AnalysisJobHandler:
         else:
             common_ir = self._load_json_artifact(cached.common_ir)
             profile = self._load_json_artifact(cached.structured_profile)
-            # 캐시로 이어받은 실행에는 그때 쓴 팩이 없다. 팩을 새로 만들어
-            # 좌표의 기준을 바꾸는 대신 정량 맥락 파생만 건너뛴다.
-            candidate_pack = None
+            candidate_pack, quantity_hold_reason = _resumed_candidate_pack(
+                profile, common_ir
+            )
         _validate_profile_lineage(
             profile=profile,
             common_ir=common_ir,
@@ -501,6 +505,7 @@ class AnalysisJobHandler:
             common_ir=common_ir,
             candidates=candidates,
             candidate_pack=candidate_pack,
+            quantity_hold_reason=quantity_hold_reason,
         )
         if not isinstance(result, Mapping):
             raise AnalysisJobContractError("analysis engine returned a non-object result")
@@ -642,6 +647,46 @@ def _derived_ref(
         schema_version=schema_version,
         logical_id=logical_id,
     )
+
+
+def _resumed_candidate_pack(
+    profile: Mapping[str, Any], common_ir: Mapping[str, Any]
+) -> tuple[Any | None, str | None]:
+    """캐시로 이어받은 실행에서 쓸 CandidatePack 과, 못 쓸 때의 사유.
+
+    그 실행이 쓴 팩은 저장되지 않는다. 저장된 Common IR 로 다시 만들되, **그때와
+    같은 조건으로 만들어졌는지** 프로파일이 남긴 기록과 대조한다. IR 바이트
+    동일성은 아티팩트 해시가 이미 보장하므로 남은 변수는 생성기뿐이다.
+
+    common_ir_source_sha256 은 원본 HWP/HWPX 해시라 파싱 결과 동일성을
+    말해 주지 않는다. 여기서 쓰지 않는다.
+
+    값 span 후보 생성기(value_span_candidate_generator)는 요구하지 않는다.
+    그것은 기간 후보 목록을 바꾸지만 블록 텍스트·좌표는 건드리지 않는다.
+
+    같다고 해서 안전을 주장하지 않는다. 다르거나 기록이 없으면 멈춘다.
+    """
+
+    recorded = (profile.get("processing_metadata") or {}).get("candidate_pack")
+    recorded = recorded if isinstance(recorded, Mapping) else {}
+    generator = recorded.get("candidate_pack_generator")
+    version = recorded.get("candidate_pack_generator_version")
+    if not generator or not version:
+        return None, (
+            "저장된 프로파일에 CandidatePack 생성기 기록이 없어 정량 맥락을 "
+            "파생하지 않았다"
+        )
+    try:
+        pack = build_pack(common_ir)
+    except Exception:
+        return None, "저장된 Common IR 로 CandidatePack 을 만들지 못했다"
+    if (pack.generator, pack.generator_version) != (generator, version):
+        return None, (
+            f"CandidatePack 생성기가 그 실행과 다르다 "
+            f"(기록 {generator}/{version}, 현재 {pack.generator}/"
+            f"{pack.generator_version})"
+        )
+    return pack, None
 
 
 def _validate_profile_lineage(
