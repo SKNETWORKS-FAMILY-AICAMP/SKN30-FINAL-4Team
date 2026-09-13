@@ -21,65 +21,60 @@ const formatDate = (isoString?: string) => {
 }
 
 export default function HistoryList({ onHistoryClick }: HistoryListProps) {
-    const [histories, setHistories] = useState<any[]>([])
-    const [page, setPage] = useState<number>(0)
+    const [allHistories, setAllHistories] = useState<any[]>([]) // 전체 데이터
+    const [displayedHistories, setDisplayedHistories] = useState<any[]>([]) // 화면에 보여줄 데이터 (5개씩)
+    const [page, setPage] = useState<number>(1)
     const [hasMore, setHasMore] = useState<boolean>(false)
-    const [totalCount, setTotalCount] = useState<number>(0)
     const [isLoading, setIsLoading] = useState(true)
-    const [isFetchingMore, setIsFetchingMore] = useState(false)
 
-    const fetchHistories = async (targetPage: number, isAppend = false) => {
-        try {
-            const limit = 5
-            const { data, count } = await historyService.listHistory(targetPage, limit)
-            const rawList = data || []
-            const total = count || 0
-
-            const mappedList = rawList.map((item: any) => ({
-                id: String(item.analysis_case_id || item.id),
-                title: item.title || item.case_name || '제목 없음',
-                date: formatDate(item.completed_at || item.created_at),
-            }))
-
-            if (isAppend) {
-                setHistories((prev) => [...prev, ...mappedList])
-            } else {
-                setHistories(mappedList)
-            }
-
-            setTotalCount(total)
-            // 현재까지 불러온 개수가 전체 개수보다 적으면 더보기 가능
-            setHasMore((isAppend ? histories.length + mappedList.length : mappedList.length) < total)
-        } catch (error) {
-            if (!isAppend) setHistories([])
-        } finally {
-            setIsLoading(false)
-            setIsFetchingMore(false)
-        }
-    }
+    const PAGE_LIMIT = 5
 
     useEffect(() => {
-        fetchHistories(0, false)
+        const fetchHistories = async () => {
+            try {
+                setIsLoading(true)
+                const { data } = await historyService.listHistory()
+                const rawList = data || []
+
+                const mappedList = rawList.map((item: any) => ({
+                    id: String(item.analysis_case_id || item.id),
+                    title: item.title || item.program_name || item.original_filename || '제목 없음',
+                    date: formatDate(item.completed_at || item.created_at),
+                }))
+
+                setAllHistories(mappedList)
+                setDisplayedHistories(mappedList.slice(0, PAGE_LIMIT))
+                setHasMore(mappedList.length > PAGE_LIMIT)
+            } catch (error) {
+                setAllHistories([])
+                setDisplayedHistories([])
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        fetchHistories()
     }, [])
 
     const handleLoadMore = () => {
-        if (!hasMore || isFetchingMore) return
-        setIsFetchingMore(true)
         const nextPage = page + 1
+        const endIndex = nextPage * PAGE_LIMIT
+        const nextSlice = allHistories.slice(0, endIndex)
+
+        setDisplayedHistories(nextSlice)
         setPage(nextPage)
-        fetchHistories(nextPage, true)
+        setHasMore(endIndex < allHistories.length)
     }
 
-    // 이력이 없거나 로딩 중이면 타이틀을 포함해 통째로 숨김
-    if (isLoading || histories.length === 0) {
+    if (isLoading || displayedHistories.length === 0) {
         return null
     }
 
     return (
         <HistoryListView 
-            histories={histories} 
+            histories={displayedHistories} 
             hasMore={hasMore}
-            totalCount={totalCount}
+            totalCount={allHistories.length}
             onHistoryClick={onHistoryClick} 
             onLoadMore={handleLoadMore}
         />

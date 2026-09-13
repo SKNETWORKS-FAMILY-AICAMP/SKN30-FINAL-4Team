@@ -1,37 +1,32 @@
-import { supabase } from './supabase'
+import { api } from './apiClient'
+import { getFriendlyErrorMessage } from './errorHandler'
 
 export const chatService = {
-    // CHAT-01 · 대화 목록 조회 (View)
-    listMessages: async (caseId: string) => {
-        const { data, error } = await supabase
-            .schema('api')
-            .from('v_conversation_messages')
-            .select()
-            .eq('analysis_case_id', caseId)
-            .order('created_at', { ascending: true })
-        if (error) throw error
-        return data
+    listMessages: async (caseId: string, updatedSince?: string) => {
+        try {
+            let query = `/analysis-cases/${caseId}/messages?limit=50`
+            if (updatedSince) {
+                query += `&updated_since=${encodeURIComponent(updatedSince)}`
+            }
+            return await api.get(query)
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '대화 목록을 불러오는 중 오류가 발생했습니다'))
+        }
     },
 
-    // CHAT-02 · 질문 전송 (Edge Function)
     sendMessage: async (caseId: string, content: string) => {
-        const { data, error } = await supabase.functions.invoke(
-            'edge-conversation-create-message', {
-                body: { analysis_case_id: caseId, content },
-            }
-        )
-        if (error) throw error
-        return data
+        try {
+            return await api.post(`/analysis-cases/${caseId}/messages`, { content })
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '메시지 전송 중 오류가 발생했습니다'))
+        }
     },
 
-    // CHAT-03 · 답변 재시도 (Edge Function)
-    retryMessage: async (assistantMessageId: string) => {
-        const { data, error } = await supabase.functions.invoke(
-            'edge-conversation-retry-message', {
-                body: { assistant_message_id: assistantMessageId },
-            }
-        )
-        if (error) throw error
-        return data
+    retryMessage: async (caseId: string, assistantMessageId: string) => {
+        try {
+            return await api.post(`/analysis-cases/${caseId}/messages/${assistantMessageId}/retry`)
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '답변 재시도 중 오류가 발생했습니다'))
+        }
     },
 }

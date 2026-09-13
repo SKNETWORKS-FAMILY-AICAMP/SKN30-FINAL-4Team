@@ -9,6 +9,7 @@ interface AiChatViewProps {
     onToggleChat: () => void
     onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
     onSendMessage: () => void
+    onRetryMessage: (assistantMessageId?: string) => void
 }
 
 export default function AiChatView({
@@ -19,8 +20,17 @@ export default function AiChatView({
     onToggleChat,
     onInputChange,
     onSendMessage,
+    onRetryMessage,
 }: AiChatViewProps) {
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+
+    // 💡 메시지가 변경되거나 챗창이 열릴 때 스크롤을 항상 최하단(bottom)으로 이동
+    useEffect(() => {
+        if (isChatOpen && scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+        }
+    }, [messages, isChatOpen])
 
     useEffect(() => {
         const textarea = textareaRef.current
@@ -33,7 +43,7 @@ export default function AiChatView({
     return (
         <aside className={`fixed bottom-0 right-md w-[400px] bg-surface border border-outline-variant flex flex-col z-50 shadow-md rounded-t-xl overflow-hidden transition-all duration-300 ${isChatOpen ? 'h-[600px]' : 'h-16'}`}>
 
-            {/* 팝업 헤더 (클릭 시 토글) */}
+            {/* 팝업 헤더 */}
             <div
                 onClick={onToggleChat}
                 className="h-16 bg-primary-container text-on-tertiary px-md flex items-center justify-between shrink-0 cursor-pointer select-none"
@@ -53,29 +63,56 @@ export default function AiChatView({
                 </button>
             </div>
 
-            {/* 팝업 바디 (열렸을 때만 표시) */}
+            {/* 팝업 바디 */}
             {isChatOpen && (
                 <div className="flex-1 p-md bg-surface-bright flex flex-col overflow-hidden animate-fadeIn">
 
-                    {/* 대화 말풍선 리스트 영역 (스크롤 가능, 단어 끊김 방지 적용) */}
-                    <div className="flex-1 overflow-y-auto flex flex-col gap-md pr-xs group/scroll">
+                    {/* 대화 말풍선 리스트 영역 (ref를 부착하여 스크롤 하단 고정 제어) */}
+                    <div 
+                        ref={scrollContainerRef}
+                        className="flex-1 overflow-y-auto flex flex-col gap-md pr-xs group/scroll"
+                    >
                         {messages.map((msg) => {
                             const isUser = msg.sender === 'user'
+                            const isGenerating = msg.status === 'generating'
+                            const isFailed = msg.status === 'failed'
+
                             return (
                                 <div
                                     key={msg.id}
-                                    className={`p-md rounded-lg max-w-[90%] font-body-sm text-[14px] shadow-sm break-words whitespace-pre-wrap ${isUser
-                                        ? 'bg-primary-container text-on-primary rounded-tr-none self-end'
-                                        : 'bg-secondary-container text-on-secondary-container rounded-tl-none self-start'
-                                        }`}
+                                    className={`p-md rounded-lg max-w-[90%] font-body-sm text-[14px] shadow-sm break-words whitespace-pre-wrap flex flex-col gap-xs ${
+                                        isUser
+                                            ? 'bg-primary-container text-on-primary rounded-tr-none self-end'
+                                            : 'bg-secondary-container text-on-secondary-container rounded-tl-none self-start'
+                                    }`}
                                 >
-                                    {msg.text}
+                                    <div>{msg.text}</div>
+
+                                    {/* 생성 중일 때 로딩 표시 */}
+                                    {isGenerating && (
+                                        <div className="flex items-center gap-xs text-xs opacity-70">
+                                            <span className="w-2 h-2 rounded-full bg-current animate-ping" />
+                                            <span>답변 생성 중...</span>
+                                        </div>
+                                    )}
+
+                                    {/* 실패 시 재시도 버튼 노출 */}
+                                    {isFailed && !readOnly && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onRetryMessage(msg.assistantMessageId)}
+                                            className="self-start mt-1 px-2 py-1 bg-error text-on-error rounded text-xs flex items-center gap-1 cursor-pointer hover:opacity-90"
+                                        >
+                                            <span className="material-symbols-outlined text-[14px]">refresh</span>
+                                            재시도
+                                        </button>
+                                    )}
                                 </div>
                             )
                         })}
                     </div>
 
-                    {/* 💡 [핵심] readOnly 여부에 따라 입력창 vs 안내 문구 깔끔하게 분기 */}
+                    {/* 입력 영역 */}
                     <div className="relative mt-md pt-md border-t border-outline-variant">
                         {readOnly && (
                             <div className="absolute flex items-center justify-center gap-xs pt-5 inset-0 bg-surface/80 backdrop-blur-[2px] rounded-xl z-10">

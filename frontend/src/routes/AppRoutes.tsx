@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './ProtectedRoute'
-import { supabase } from '../services/supabase'
+import { authService } from '../services/authService'
 
 // Layouts
 import PublicLayout from '../components/layout/PublicLayout'
@@ -17,25 +17,21 @@ import MainPage from '../pages/MainPage'
 import MyPage from '../pages/MyPage'
 
 export default function AppRoutes() {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
 
     useEffect(() => {
-        // 초기 세션 동기화
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setIsAuthenticated(!!session?.user)
-        }).catch(() => {
-            setIsAuthenticated(false)
-        })
-
-        // 인증 상태 변경 실시간 감지
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setIsAuthenticated(!!session?.user)
-        })
-
-        return () => {
-            subscription.unsubscribe()
-        }
+        authService.getCurrentUser()
+            .then((res) => {
+                setIsAuthenticated(!!res?.user)
+            })
+            .catch(() => {
+                setIsAuthenticated(false)
+            })
     }, [])
+
+    if (isAuthenticated === null) {
+        return null
+    }
 
     return (
         <Routes>
@@ -48,7 +44,7 @@ export default function AppRoutes() {
                     </Route>
                 </Route>
             ) : (
-                // --- 미로그인 상태 (퍼블릭 레이아웃) ---
+                // --- 미로그인 상태 ---
                 <Route element={<PublicLayout />}>
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/login" element={<LoginPage />} />
@@ -57,7 +53,6 @@ export default function AppRoutes() {
                 </Route>
             )}
 
-            {/* --- 잘못된 경로는 루트로 리다이렉트 --- */}
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     )

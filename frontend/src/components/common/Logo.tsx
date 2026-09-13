@@ -16,7 +16,7 @@ export default function Logo({ href = '/', size = 'md', className = '' }: LogoPr
         >
             <img
                 src="/images/pre-review.png"
-                className={`${sizeClasses[size]} w-auto m-auto`}
+                className={`${sizeClasses[size]} inline w-auto m-auto`}
                 alt="Pre-review Logo"
             />
         </a>

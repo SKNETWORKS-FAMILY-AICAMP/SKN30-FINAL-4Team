@@ -41,7 +41,7 @@ export default function AppLayout() {
             // 에러가 나도 로컬 세션 정보는 정리 후 이동
         } finally {
             sessionStorage.removeItem('expire_time')
-            navigate('/')
+            window.location.href = '/'
         }
     }
 
