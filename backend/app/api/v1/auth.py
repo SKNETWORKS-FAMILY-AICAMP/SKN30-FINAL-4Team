@@ -11,9 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from ..auth import (
     ACCESS_COOKIE,
     REFRESH_COOKIE,
+    REFRESH_COOKIE_PATH,
     AuthCookieConfig,
     SupabaseClientDep,
     access_cookie_scheme,
+    display_name_from_metadata,
+    normalize_display_name,
     refresh_cookie_scheme,
     require_trusted_origin,
 )
@@ -55,6 +58,31 @@ class UpdatePasswordRequest(BaseModel):
     password: SecretStr = Field(min_length=8, max_length=1024)
 
 
+class SignUpRequest(BaseModel):
+    """Distinct from :class:`CredentialsRequest`: sign-up always names the user.
+
+    ``display_name`` is required so every new account gets a validated
+    ``user_metadata.display_name`` at creation time instead of relying on the
+    email-local-part fallback from day one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=254)
+    password: SecretStr = Field(min_length=1, max_length=1024)
+    display_name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return CredentialsRequest.normalize_email(value)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        return normalize_display_name(value)
+
+
 class AuthUserResponse(BaseModel):
     """The only identity shape returned across the browser Auth boundary."""
 
@@ -62,6 +90,7 @@ class AuthUserResponse(BaseModel):
 
     id: str
     email: str
+    display_name: str
 
 
 class AuthUserEnvelope(BaseModel):
@@ -94,7 +123,8 @@ def _public_user(payload: object) -> dict[str, str] | None:
     email = user.get("email")
     if not isinstance(user_id, str) or not user_id or not isinstance(email, str) or not email:
         return None
-    return {"id": user_id, "email": email}
+    display_name = display_name_from_metadata(user.get("user_metadata"), email=email)
+    return {"id": user_id, "email": email, "display_name": display_name}
 
 
 def _session(payload: object) -> tuple[str, str, int | None]:
@@ -116,31 +146,36 @@ def _set_session_cookies(response: Response, request: Request, payload: object) 
     access, refresh, access_max_age = _session(payload)
     config = AuthCookieConfig.from_request(request)
     response.set_cookie(ACCESS_COOKIE, access, **config.attributes(max_age=access_max_age))
-    response.set_cookie(REFRESH_COOKIE, refresh, **config.attributes(max_age=config.refresh_max_age))
+    response.set_cookie(
+        REFRESH_COOKIE,
+        refresh,
+        **config.attributes(max_age=config.refresh_max_age, path=REFRESH_COOKIE_PATH),
+    )
 
 
 def _clear_session_cookies(response: Response, request: Request) -> None:
     config = AuthCookieConfig.from_request(request)
     response.delete_cookie(ACCESS_COOKIE, **config.attributes())
-    response.delete_cookie(REFRESH_COOKIE, **config.attributes())
-
-
-def _private(response: Response) -> Response:
-    """Prevent browsers and intermediaries from caching session responses."""
-
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    response.delete_cookie(REFRESH_COOKIE, **config.attributes(path=REFRESH_COOKIE_PATH))
 
 
 def _cleared_auth_error(
     request: Request, *, status_code: int, code: str, message: str
 ) -> JSONResponse:
+    """Build an error response that also deletes both session cookies.
+
+    Reserved for an invalid/expired credential: the only outcome where the
+    stored session itself is known to be dead. Rate limits, transport
+    failures, and malformed upstream payloads are transient and must leave
+    the caller's cookies untouched so a still-valid session is not destroyed.
+    """
+
     response = JSONResponse(
         status_code=status_code,
         content={"code": code, "message": message},
     )
     _clear_session_cookies(response, request)
-    return _private(response)
+    return response
 
 
 def _provider_failure(response_status: int, *, invalid_status: int = status.HTTP_401_UNAUTHORIZED) -> None:
@@ -183,7 +218,7 @@ async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDe
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid user")
     result = JSONResponse(status_code=status.HTTP_200_OK, content={"user": user})
     _set_session_cookies(result, request, payload)
-    return _private(result)
+    return result
 
 
 @router.post(
@@ -192,11 +227,17 @@ async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDe
     status_code=status.HTTP_201_CREATED,
     responses=error_responses(400, 403, 422, 429, 500, 502, 503),
 )
-async def sign_up(request: Request, body: CredentialsRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
+async def sign_up(request: Request, body: SignUpRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
     response = await supabase.request(
         "POST",
         "/signup",
-        json={"email": body.email, "password": body.password.get_secret_value()},
+        json={
+            "email": body.email,
+            "password": body.password.get_secret_value(),
+            # Supabase writes the ``data`` object into user_metadata verbatim,
+            # which is the DB source of truth (auth.users.raw_user_meta_data).
+            "data": {"display_name": body.display_name},
+        },
     )
     if response.status_code not in {status.HTTP_200_OK, status.HTTP_201_CREATED}:
         _provider_failure(response.status_code, invalid_status=status.HTTP_400_BAD_REQUEST)
@@ -211,7 +252,7 @@ async def sign_up(request: Request, body: CredentialsRequest, _: TrustedOriginDe
     result = JSONResponse(status_code=status.HTTP_201_CREATED, content=result_payload)
     if not result_payload["email_confirmation_required"]:
         _set_session_cookies(result, request, payload)
-    return _private(result)
+    return result
 
 
 @router.post(
@@ -222,7 +263,6 @@ async def sign_up(request: Request, body: CredentialsRequest, _: TrustedOriginDe
 )
 async def refresh(request: Request, _: TrustedOriginDep, supabase: SupabaseClientDep) -> Response:
     refresh_token = request.cookies.get(REFRESH_COOKIE, "")
-    result = Response(status_code=status.HTTP_204_NO_CONTENT)
     if not refresh_token:
         return _cleared_auth_error(
             request,
@@ -232,32 +272,27 @@ async def refresh(request: Request, _: TrustedOriginDep, supabase: SupabaseClien
         )
     response = await supabase.request("POST", "/token", params={"grant_type": "refresh_token"}, json={"refresh_token": refresh_token})
     if response.status_code != status.HTTP_200_OK:
-        if response.status_code >= 500:
+        if response.status_code in {400, 401, 403}:
+            # Only an invalid/expired credential proves the session is dead.
             return _cleared_auth_error(
                 request,
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                code="SERVICE_UNAVAILABLE",
-                message="Supabase authentication is unavailable",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                code="UNAUTHORIZED",
+                message="Authentication request was rejected",
             )
-        if response.status_code == 429:
-            return _cleared_auth_error(
-                request,
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                code="HTTP_ERROR",
-                message="Authentication request was rate limited",
-            )
-        return _cleared_auth_error(
-            request,
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            code="UNAUTHORIZED",
-            message="Authentication request was rejected",
-        )
+        # Rate limits, transport failures, and 5xx are transient. Raising
+        # instead of clearing cookies preserves a still-valid refresh cookie
+        # so the browser can retry rather than being forced to sign in again.
+        _provider_failure(response.status_code)
     try:
         payload: Any = response.json()
     except ValueError as exc:
+        # A malformed 200 payload is also transient upstream noise; leave the
+        # existing cookies alone rather than treating it like an invalid grant.
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
+    result = Response(status_code=status.HTTP_204_NO_CONTENT)
     _set_session_cookies(result, request, payload)
-    return _private(result)
+    return result
 
 
 @router.post(
@@ -282,7 +317,7 @@ async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClie
             )
     result = Response(status_code=status.HTTP_204_NO_CONTENT)
     _clear_session_cookies(result, request)
-    return _private(result)
+    return result
 
 
 @router.post(
@@ -290,7 +325,7 @@ async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClie
     response_model=PasswordResetResponse,
     responses=error_responses(403, 422, 500, 503),
 )
-async def password_reset(request: Request, response: Response, body: PasswordResetRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> PasswordResetResponse:
+async def password_reset(request: Request, body: PasswordResetRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> PasswordResetResponse:
     payload = {"email": body.email}
     redirect_to = str(getattr(request.app.state, "auth_password_reset_redirect_to", "") or "").strip()
     params = {"redirect_to": redirect_to} if redirect_to else None
@@ -301,7 +336,6 @@ async def password_reset(request: Request, response: Response, body: PasswordRes
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Supabase authentication is unavailable")
     # Supabase normally returns 200 for unknown accounts. Treat every provider
     # 4xx identically to preserve that non-enumeration boundary.
-    response.headers["Cache-Control"] = "no-store"
     return PasswordResetResponse(
         message="If an account exists, password reset instructions have been sent."
     )
@@ -328,7 +362,7 @@ async def update_password(request: Request, body: UpdatePasswordRequest, _: Trus
         payload = None
     if isinstance(payload, dict) and payload.get("access_token") and payload.get("refresh_token"):
         _set_session_cookies(result, request, payload)
-    return _private(result)
+    return result
 
 
 @router.get(
@@ -337,7 +371,7 @@ async def update_password(request: Request, body: UpdatePasswordRequest, _: Trus
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 429, 500, 502, 503),
 )
-async def me(request: Request, response: Response, supabase: SupabaseClientDep) -> AuthUserEnvelope:
+async def me(request: Request, supabase: SupabaseClientDep) -> AuthUserEnvelope:
     access_token = request.cookies.get(ACCESS_COOKIE, "")
     if not access_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication cookie is required")
@@ -350,5 +384,4 @@ async def me(request: Request, response: Response, supabase: SupabaseClientDep) 
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
     if user is None:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid user")
-    response.headers["Cache-Control"] = "no-store"
     return AuthUserEnvelope(user=AuthUserResponse.model_validate(user))

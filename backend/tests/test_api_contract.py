@@ -46,3 +46,40 @@ def test_retired_in_memory_request_routes_are_not_mounted() -> None:
         assert api.get("/api/v1/requests").status_code == 404
         assert api.get("/api/v1/cases").status_code == 404
         assert api.get("/api/v1/admin/existing/ingestions").status_code == 404
+
+
+def test_offline_mode_defaults_to_false_when_unset(monkeypatch) -> None:
+    """An unset PREREVIEW_OFFLINE_MODE must fail toward the safer boundary.
+
+    Regression guard for the v0.2 fix: the previous default of "true" meant a
+    misconfigured production deployment would silently accept the
+    X-PreReview-Dev-User bypass header instead of requiring the Supabase
+    Auth cookie.
+    """
+
+    monkeypatch.delenv("PREREVIEW_OFFLINE_MODE", raising=False)
+    app = create_app()
+    assert app.state.offline_mode is False
+
+
+def test_cursor_signing_secret_is_read_from_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("PREREVIEW_CURSOR_SIGNING_SECRET", "local-test-secret")
+    app = create_app()
+    assert app.state.cursor_signing_secret == "local-test-secret"
+
+    monkeypatch.delenv("PREREVIEW_CURSOR_SIGNING_SECRET", raising=False)
+    assert create_app().state.cursor_signing_secret == ""
+
+
+def test_dev_headers_are_rejected_unless_offline_mode_is_explicitly_enabled() -> None:
+    app = create_app()
+    app.state.offline_mode = False
+    with TestClient(app) as api:
+        response = api.get(
+            "/api/v1/analysis-sessions/active",
+            headers={"X-PreReview-Dev-User": "11111111-1111-1111-1111-111111111111"},
+        )
+        # The dev header is ignored (not honored as identity) once offline
+        # mode is off; the cookie boundary applies and there is no cookie.
+        assert response.status_code == 401
+        assert response.json()["code"] == "UNAUTHORIZED"

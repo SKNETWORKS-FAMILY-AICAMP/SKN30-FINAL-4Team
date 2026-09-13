@@ -8,6 +8,7 @@ pipeline contract tests do not need an identity provider.
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -22,6 +23,12 @@ REFRESH_COOKIE = "pre_review_refresh"
 DEV_USER_HEADER = "X-PreReview-Dev-User"
 DEV_ROLE_HEADER = "X-PreReview-Dev-Role"
 COOKIE_SAME_SITE = {"lax", "strict", "none"}
+# The refresh cookie is only ever read by ``POST /api/v1/auth/refresh``. Scoping
+# its ``Path`` this narrowly means browsers never attach it to business API
+# calls, matching the "refresh cookie는 auth 경로로 scope를 좁히고 업무 API에는
+# 전송하지 않는다" contract. The access cookie stays at "/" because every
+# business route needs it.
+REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 # These schemes are documentation dependencies.  ``auto_error=False`` keeps
 # the existing runtime boundary intact: online requests are validated by
@@ -46,6 +53,52 @@ refresh_cookie_scheme = APIKeyCookie(
     ),
     auto_error=False,
 )
+
+
+DISPLAY_NAME_MAX_LENGTH = 100
+
+
+def normalize_display_name(value: str) -> str:
+    """Apply the shared NFC/trim/length/control-character contract.
+
+    Raises ``ValueError`` when ``value`` cannot become a valid display name.
+    Request-side validators (sign-up) should let that error surface as a 422.
+    The Auth response boundary instead falls back to the email local-part;
+    see :func:`display_name_from_metadata`.
+    """
+
+    normalized = unicodedata.normalize("NFC", value).strip()
+    if not normalized or len(normalized) > DISPLAY_NAME_MAX_LENGTH:
+        raise ValueError("display_name must be 1-100 characters after trimming")
+    if any(unicodedata.category(character) == "Cc" for character in normalized):
+        raise ValueError("display_name must not contain control characters")
+    return normalized
+
+
+def email_local_part(email: str) -> str:
+    """Fallback identity label used when no valid display_name is stored."""
+
+    local_part = email.split("@", 1)[0].strip()
+    return local_part or email
+
+
+def display_name_from_metadata(metadata: object, *, email: str) -> str:
+    """Read Supabase ``user_metadata.display_name`` with a safe fallback.
+
+    Any shape or content that cannot satisfy the display_name contract —
+    missing, non-string, blank after trim, too long, or containing control
+    characters — falls back to the email local-part instead of rejecting the
+    response. Legacy or externally-edited provider metadata must not break
+    the Auth read boundary.
+    """
+
+    candidate = metadata.get("display_name") if isinstance(metadata, dict) else None
+    if not isinstance(candidate, str):
+        return email_local_part(email)
+    try:
+        return normalize_display_name(candidate)
+    except ValueError:
+        return email_local_part(email)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,12 +138,12 @@ class AuthCookieConfig:
             raise HTTPException(status_code=503, detail="Authentication cookie configuration is invalid")
         return cls(secure=secure, samesite=raw_samesite, domain=raw_domain or None, refresh_max_age=refresh_max_age)
 
-    def attributes(self, *, max_age: int | None = None) -> dict[str, object]:
+    def attributes(self, *, max_age: int | None = None, path: str = "/") -> dict[str, object]:
         attributes: dict[str, object] = {
             "httponly": True,
             "secure": self.secure,
             "samesite": self.samesite,
-            "path": "/",
+            "path": path,
         }
         if self.domain:
             attributes["domain"] = self.domain

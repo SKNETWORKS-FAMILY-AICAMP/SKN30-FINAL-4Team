@@ -15,6 +15,30 @@ class ActiveAnalysisRunExists(AnalysisRunError):
     """The owner already has an upload or analysis in progress."""
 
 
+class IdempotencyKeyConflict(AnalysisRunError):
+    """The same Idempotency-Key was reused for a different owner or source.
+
+    Distinct from :class:`ActiveAnalysisRunExists`: an exact replay (same
+    owner, key, and source) is not a conflict at all — it returns the
+    existing run. This is only the *different input, same key* case (v0.2
+    spec section 5.2, step 3).
+    """
+
+
+class ActiveResultSessionExists(AnalysisRunError):
+    """The owner has an unclosed active result session (spec section 5.1/5.2).
+
+    Distinct from :class:`ActiveAnalysisRunExists` (an in-flight processing
+    run): this fires when the *previous* analysis already finished and its
+    result session is still open. The caller must ``POST
+    /analysis-sessions/{id}/close`` it before a new upload is accepted.
+
+    Not yet raised by :class:`app.infrastructure.postgres_analysis_runs
+    .PostgresAnalysisRunRepository` — see that module's docstring for the
+    parallel ``db-lifecycle`` assumption this depends on.
+    """
+
+
 class AnalysisRunPersistenceUnavailable(AnalysisRunError):
     """The internal database cannot currently serve the request."""
 

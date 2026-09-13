@@ -1,4 +1,21 @@
-"""Direct trusted-Postgres adapter for FastAPI analysis-run commands."""
+"""Direct trusted-Postgres adapter for FastAPI analysis-run commands.
+
+DB assumption (v0.2, parallel ``db-lifecycle`` unit) -- not yet shipped
+------------------------------------------------------------------------
+Spec section 5.1 adds a user-scoped invariant that a new upload must respect
+but that this adapter cannot yet detect: "같은 사용자에게 status='active'인
+result session은 최대 1건이다", enforced with a new partial unique index over
+``result.analysis_session``. Once that index exists, this adapter expects its
+``UniqueViolation`` to name a constraint called
+``uq_result_analysis_session_one_active_per_user`` -- the reservation query
+below already recognizes that exact name and raises
+:class:`app.ports.analysis_runs.ActiveResultSessionExists` (409
+``ACTIVE_RESULT_SESSION``) for it, distinct from
+:class:`app.ports.analysis_runs.ActiveAnalysisRunExists` (409
+``ANALYSIS_RUN_ACTIVE``, the existing in-flight-processing-run constraint).
+If the DB migration lands with a different constraint name, update the
+branch in :meth:`PostgresAnalysisRunRepository.reserve_uploading` to match.
+"""
 
 from __future__ import annotations
 
@@ -11,14 +28,20 @@ from psycopg.rows import dict_row
 
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
+    ActiveResultSessionExists,
     AnalysisRunFinalizationRejected,
     AnalysisRunFinalizationUncertain,
     AnalysisRunPersistenceUnavailable,
     AnalysisRunRecord,
+    IdempotencyKeyConflict,
     SourceObject,
     UploadCleanupObject,
     UploadReservation,
 )
+
+
+# See the module docstring: not yet created by any migration on this branch.
+_ACTIVE_RESULT_SESSION_CONSTRAINT = "uq_result_analysis_session_one_active_per_user"
 
 
 _UPLOAD_RESERVATION_TTL_SECONDS = 15 * 60
@@ -311,7 +334,11 @@ class PostgresAnalysisRunRepository:
             if exc.diag.constraint_name in {
                 "analysis_run_pkey",
                 "uq_workspace_analysis_run_one_active_per_user",
+                _ACTIVE_RESULT_SESSION_CONSTRAINT,
             }:
+                # Step 1-2 of the upload idempotency order (spec 5.2): an
+                # exact replay (same owner, key, and source) always wins,
+                # regardless of which constraint the race collided with.
                 confirmed = await self._read_exact_run(
                     analysis_run_id=analysis_run_id,
                     owner_id=owner_id,
@@ -322,11 +349,23 @@ class PostgresAnalysisRunRepository:
                         record=confirmed,
                         replayed=confirmed.status != "uploading",
                     )
+            if exc.diag.constraint_name == _ACTIVE_RESULT_SESSION_CONSTRAINT:
+                # Step 4-5: a *new* key, but the owner has not closed the
+                # result session from their previous analysis.
+                raise ActiveResultSessionExists(
+                    "An active result session must be closed first"
+                ) from exc
             if exc.diag.constraint_name == "uq_workspace_analysis_run_one_active_per_user":
+                # Step 4-5: a *new* key, but the owner already has an active
+                # processing run.
                 raise ActiveAnalysisRunExists("An active analysis run already exists") from exc
             if exc.diag.constraint_name == "analysis_run_pkey":
-                raise ActiveAnalysisRunExists(
-                    "The idempotency key is already in use"
+                # Step 3: the same key was reused for a different owner or a
+                # different source (filename/hash/size/mime) than the run it
+                # was already bound to. Never conflated with "an analysis is
+                # already running" -- they are different domain errors.
+                raise IdempotencyKeyConflict(
+                    "Idempotency-Key was reused for a different owner or source"
                 ) from exc
             raise AnalysisRunPersistenceUnavailable("Analysis upload could not be reserved") from exc
         except (psycopg.Error, OSError) as exc:

@@ -1,4 +1,4 @@
-"""Polling read endpoints for completed analysis results.
+"""Polling read endpoints for completed analysis results and lifecycle state.
 
 These endpoints intentionally expose no caller-supplied user id and do not
 accept bearer tokens. ``PrincipalDep`` is the same HttpOnly-cookie boundary
@@ -8,32 +8,41 @@ used by every business API route.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, status
+from fastapi import APIRouter, Depends, Query, Request, Response, Security, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.cursor import decode_cursor, encode_cursor
+from app.api.errors import not_found, service_unavailable, validation_error
 from app.ports.results import (
+    AnalysisHistoryPage,
     ResultNotFound,
     ResultRepository,
     ResultRepositoryUnavailable,
 )
 
-from ..auth import PrincipalDep, access_cookie_scheme
+from ..auth import PrincipalDep, access_cookie_scheme, require_trusted_origin
 from .openapi_models import error_responses
 
 
 router = APIRouter(tags=["Analysis results"])
 
+HISTORY_PAGE_SIZE = 5
+_HISTORY_CURSOR_ENDPOINT = "analysis-history"
+_HISTORY_CURSOR_VERSION = 1
+_HISTORY_CURSOR_KEYS = frozenset({"snapshot_at", "completed_at", "analysis_case_id"})
+
 
 class _ReadModel(BaseModel):
     """Strict fixed response boundary around the trusted ``api`` SQL shape.
 
-    The detailed judgement JSON is intentionally extensible: its exact fields
-    belong to versioned CPL/FIT/SIM contracts rather than the transport model.
-    Everything else is explicit so generated OpenAPI clients do not receive an
-    opaque ``additionalProperties`` response.
+    Everything is explicit so generated OpenAPI clients never receive an
+    opaque ``additionalProperties`` response, and so a raw score, fact id, or
+    diagnostics payload cannot silently ride along in an unvalidated field
+    (v0.2 spec section 1, rule 6).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -46,28 +55,100 @@ class AnalysisCaseSummary(_ReadModel):
     completed_at: datetime | None
 
 
-class AnalysisAxisItem(_ReadModel):
+# --- CPL / FIT / SIM public status enums (spec section 7) ------------------
+
+
+class CplStatus(str, Enum):
+    confirmed = "confirmed"
+    needs_confirmation = "needs_confirmation"
+    no_content = "no_content"
+    not_applicable = "not_applicable"
+
+
+class FitStatus(str, Enum):
+    fit = "FIT"
+    needs_review = "NEEDS_REVIEW"
+    conflict = "CONFLICT"
+    insufficient = "INSUFFICIENT"
+    not_applicable = "NOT_APPLICABLE"
+
+
+class SimAxisStatus(str, Enum):
+    similar = "similar"
+    partial = "partial"
+    different = "different"
+    insufficient = "insufficient"
+
+
+# --- CPL / FIT typed public detail (spec section 8.1) -----------------------
+
+
+class CplValueItem(_ReadModel):
+    label: str
+    value: str
+    evidence_ids: list[UUID] = Field(default_factory=list)
+
+
+class CplAxisDetail(_ReadModel):
+    reason_code: str | None = None
+    reason: str | None = None
+    values: list[CplValueItem] = Field(default_factory=list)
+    source_fields: list[str] = Field(default_factory=list)
+    evidence_ids: list[UUID] = Field(default_factory=list)
+
+
+class FitSideDetail(_ReadModel):
+    value_summary: str | None = None
+    evidence_ids: list[UUID] = Field(default_factory=list)
+
+
+class FitAxisDetail(_ReadModel):
+    # True only when both sides had grounded evidence and a real comparison
+    # judgement was made — never just "a provider call happened" (spec 7).
+    comparison_performed: bool
+    reason_code: str | None = None
+    reason: str | None = None
+    left: FitSideDetail
+    right: FitSideDetail
+    evidence_ids: list[UUID] = Field(default_factory=list)
+
+
+class AnalysisCplAxisItem(_ReadModel):
     code: str
-    status: str
+    status: CplStatus
     summary: str | None
-    detail: dict[str, Any] = Field(default_factory=dict)
+    detail: CplAxisDetail
+
+
+class AnalysisFitAxisItem(_ReadModel):
+    code: str
+    status: FitStatus
+    summary: str | None
+    detail: FitAxisDetail
 
 
 class AnalysisCplSection(_ReadModel):
-    items: list[AnalysisAxisItem] = Field(default_factory=list)
+    items: list[AnalysisCplAxisItem] = Field(default_factory=list)
 
 
 class AnalysisFitSection(_ReadModel):
-    items: list[AnalysisAxisItem] = Field(default_factory=list)
+    items: list[AnalysisFitAxisItem] = Field(default_factory=list)
 
 
 class AnalysisSimCandidateSummary(_ReadModel):
     sim_candidate_id: UUID
     rank: int
     title: str | None
+    comparison_status: SimAxisStatus
+    comparison_summary: str | None = None
 
 
 class AnalysisSimSection(_ReadModel):
+    # Pipeline-level status ("completed"/"failed"/...), independent of each
+    # candidate's own comparison_status (spec section 9.1).
+    status: str
+    reason_code: str | None = None
+    summary: str | None = None
     candidates: list[AnalysisSimCandidateSummary] = Field(default_factory=list)
 
 
@@ -143,16 +224,61 @@ class AnalysisResultReadModel(_ReadModel):
     ml: MlReferenceReadModel
     report: ReportReadModel
     session: AnalysisSessionReadModel
+    # CPL/FIT evidence only: sim_candidate_pk IS NULL. SIM evidence never
+    # appears here — it is only ever returned from its own candidate detail,
+    # so evidence from different candidates can never be cross-referenced
+    # (spec section 8.2).
     evidences: list[ResultEvidenceReadModel] = Field(default_factory=list)
 
 
-class CandidateAxesReadModel(_ReadModel):
-    # Axis detail is produced by the comparison contract and may gain fields
-    # without a FastAPI route change.  The four top-level axes are fixed.
-    purpose: dict[str, Any] = Field(default_factory=dict)
-    target: dict[str, Any] = Field(default_factory=dict)
-    support: dict[str, Any] = Field(default_factory=dict)
-    delivery: dict[str, Any] = Field(default_factory=dict)
+# --- Similar-notice candidate detail (spec section 9.2) ---------------------
+
+
+class SimCandidateMetadata(_ReadModel):
+    """Exact snapshot of the Existing profile/source at analysis time.
+
+    Never re-joined against the current KB row — the metadata a user sees
+    must match what was actually compared, even if the source notice is
+    edited or removed afterward.
+    """
+
+    title: str | None
+    support_field: str | None
+    apply_period: str | None
+    ministry: str | None
+    executing_agency: str | None
+    registered_at: str | None
+    notice_status: str | None
+    source_url: str | None
+
+
+class SimCandidateComparison(_ReadModel):
+    status: SimAxisStatus
+    summary: str | None
+    # Only the three core axes feed the overall comparison status
+    # (insufficient > different > partial > similar); delivery is shown
+    # separately and never changes this value (spec section 9.2).
+    comparable_axes: list[Literal["purpose", "target", "support"]] = Field(default_factory=list)
+
+
+class SimCandidateAxisDetail(_ReadModel):
+    code: str
+    status: SimAxisStatus
+    summary: str | None
+    reason_code: str | None = None
+    reason: str | None = None
+    common_points: list[str] = Field(default_factory=list)
+    differences: list[str] = Field(default_factory=list)
+    request_evidence_ids: list[UUID] = Field(default_factory=list)
+    existing_evidence_ids: list[UUID] = Field(default_factory=list)
+
+
+class SimCandidateAxes(_ReadModel):
+    # Internal "content" axis is exposed publicly only as ``support``.
+    purpose: SimCandidateAxisDetail
+    target: SimCandidateAxisDetail
+    support: SimCandidateAxisDetail
+    delivery: SimCandidateAxisDetail
 
 
 class CandidateEvidenceReadModel(ResultEvidenceReadModel):
@@ -163,14 +289,9 @@ class SimCandidateDetailReadModel(_ReadModel):
     sim_candidate_id: UUID
     analysis_case_id: UUID
     rank: int
-    title: str | None
-    issuing_organization: str | None
-    source_url: str | None
-    notice_status: str | None
-    status: str
-    summary: str | None
-    comparable_axes: list[str] = Field(default_factory=list)
-    axes: CandidateAxesReadModel
+    metadata: SimCandidateMetadata
+    comparison: SimCandidateComparison
+    axes: SimCandidateAxes
     evidences: list[CandidateEvidenceReadModel] = Field(default_factory=list)
 
 
@@ -191,29 +312,78 @@ class AnalysisHistoryEntryReadModel(_ReadModel):
     report_completed_at: datetime | None
 
 
-def result_repository(request: Request) -> ResultRepository:
+class AnalysisHistoryEnvelope(_ReadModel):
+    items: list[AnalysisHistoryEntryReadModel] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
+# --- GET /analysis/current discriminated union (spec section 5.4) ----------
+
+
+class CurrentProcessingRun(_ReadModel):
+    analysis_run_id: UUID
+    status: Literal["uploading", "queued", "running"]
+    original_filename: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CurrentReadySession(_ReadModel):
+    analysis_session_id: UUID
+    analysis_case_id: UUID
+    program_name: str | None
+    original_filename: str | None
+    session_expires_at: datetime
+
+
+class AnalysisCurrentProcessing(_ReadModel):
+    state: Literal["processing"]
+    run: CurrentProcessingRun
+    session: None = None
+
+
+class AnalysisCurrentReady(_ReadModel):
+    state: Literal["ready"]
+    run: None = None
+    session: CurrentReadySession
+
+
+class AnalysisCurrentIdle(_ReadModel):
+    state: Literal["idle"]
+    run: None = None
+    session: None = None
+
+
+AnalysisCurrentReadModel = Annotated[
+    AnalysisCurrentProcessing | AnalysisCurrentReady | AnalysisCurrentIdle,
+    Field(discriminator="state"),
+]
+
+
+async def result_repository(request: Request) -> ResultRepository:
+    # ``async def``, not a threadpool-hopping ``def``: see the identical note
+    # on ``analysis_run_service`` in app/api/v1/analysis_runs.py.
     repository = getattr(request.app.state, "result_repository", None)
     if not isinstance(repository, ResultRepository):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Result service is not configured",
-        )
+        raise service_unavailable("Result service is not configured")
     return repository
 
 
 ResultRepositoryDep = Annotated[ResultRepository, Depends(result_repository)]
+TrustedOriginDep = Annotated[None, Depends(require_trusted_origin)]
 
 
-def _not_found(detail: str) -> HTTPException:
+def _not_found(detail: str) -> Exception:
     # Ownership is deliberately indistinguishable from absence.
-    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+    return not_found(detail)
 
 
-def _database_unavailable(exc: ResultRepositoryUnavailable) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Result database is temporarily unavailable",
-    )
+def _database_unavailable(exc: ResultRepositoryUnavailable) -> Exception:
+    return service_unavailable("Result database is temporarily unavailable")
+
+
+def _cursor_secret(request: Request) -> str:
+    return str(getattr(request.app.state, "cursor_signing_secret", "") or "")
 
 
 @router.get(
@@ -272,7 +442,7 @@ async def get_sim_candidate(
         204: {"description": "No active analysis session"},
         **error_responses(401, 403, 422, 500, 503),
     },
-    summary="현재 활성 분석 세션 조회",
+    summary="현재 활성 분석 세션 조회 (호환용 legacy endpoint)",
 )
 async def get_active_analysis_session(
     principal: PrincipalDep,
@@ -288,18 +458,128 @@ async def get_active_analysis_session(
 
 
 @router.get(
+    "/analysis/current",
+    response_model=AnalysisCurrentReadModel,
+    dependencies=[Security(access_cookie_scheme)],
+    responses=error_responses(401, 403, 422, 500, 503),
+    summary="현재 처리 중/열람 가능한 분석 상태 조회 (단일 스냅샷 3상태)",
+)
+async def get_analysis_current(
+    principal: PrincipalDep,
+    repository: ResultRepositoryDep,
+) -> Any:
+    try:
+        payload = await repository.get_current(owner_id=principal.user_id)
+    except ResultRepositoryUnavailable as exc:
+        raise _database_unavailable(exc) from exc
+    return payload
+
+
+@router.post(
+    "/analysis-sessions/{analysis_session_id}/close",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(access_cookie_scheme)],
+    responses=error_responses(401, 403, 404, 422, 500, 503),
+    summary="지정한 분석 세션 종료 (owner-scoped, idempotent)",
+)
+async def close_analysis_session(
+    analysis_session_id: UUID,
+    principal: PrincipalDep,
+    _: TrustedOriginDep,
+    repository: ResultRepositoryDep,
+) -> Response:
+    try:
+        await repository.close_session(
+            owner_id=principal.user_id,
+            analysis_session_id=str(analysis_session_id),
+        )
+    except ResultNotFound as exc:
+        # Also covers "session already closed/expired but not this owner's":
+        # existence is deliberately indistinguishable from absence.
+        raise _not_found("Analysis session not found") from exc
+    except ResultRepositoryUnavailable as exc:
+        raise _database_unavailable(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
     "/analysis-history",
-    response_model=list[AnalysisHistoryEntryReadModel],
-    summary="보관 기간 내 분석 이력 조회",
+    response_model=AnalysisHistoryEnvelope,
+    summary="보관 기간 내 분석 이력 조회 (page size 5, signed snapshot cursor)",
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 422, 500, 503),
 )
 async def list_analysis_history(
+    request: Request,
     principal: PrincipalDep,
     repository: ResultRepositoryDep,
-) -> list[AnalysisHistoryEntryReadModel]:
+    cursor: Annotated[
+        str | None,
+        Query(max_length=2_000, description="이전 응답의 next_cursor를 그대로 전달한다."),
+    ] = None,
+) -> AnalysisHistoryEnvelope:
+    secret = _cursor_secret(request)
+    snapshot_at: datetime | None = None
+    after: tuple[datetime, str] | None = None
+    if cursor is not None:
+        fields = decode_cursor(
+            cursor,
+            secret=secret,
+            endpoint=_HISTORY_CURSOR_ENDPOINT,
+            scope=principal.user_id,
+            version=_HISTORY_CURSOR_VERSION,
+            required_keys=_HISTORY_CURSOR_KEYS,
+        )
+        snapshot_at = _parse_cursor_datetime(fields["snapshot_at"])
+        after = (
+            _parse_cursor_datetime(fields["completed_at"]),
+            _cursor_str(fields["analysis_case_id"]),
+        )
     try:
-        records = await repository.list_analysis_history(owner_id=principal.user_id)
+        page: AnalysisHistoryPage = await repository.list_analysis_history_page(
+            owner_id=principal.user_id,
+            snapshot_at=snapshot_at,
+            after=after,
+            limit=HISTORY_PAGE_SIZE,
+        )
     except ResultRepositoryUnavailable as exc:
         raise _database_unavailable(exc) from exc
-    return [AnalysisHistoryEntryReadModel.model_validate(record) for record in records]
+    items = [AnalysisHistoryEntryReadModel.model_validate(row) for row in page.rows]
+    next_cursor = None
+    if len(page.rows) == HISTORY_PAGE_SIZE:
+        last = page.rows[-1]
+        next_cursor = encode_cursor(
+            secret=secret,
+            endpoint=_HISTORY_CURSOR_ENDPOINT,
+            scope=principal.user_id,
+            version=_HISTORY_CURSOR_VERSION,
+            fields={
+                "snapshot_at": _isoformat(page.snapshot_at),
+                "completed_at": _isoformat(last["completed_at"]),
+                "analysis_case_id": str(last["analysis_case_id"]),
+            },
+        )
+    return AnalysisHistoryEnvelope(items=items, next_cursor=next_cursor)
+
+
+def _isoformat(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _parse_cursor_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise validation_error("cursor is invalid") from exc
+    raise validation_error("cursor is invalid")
+
+
+def _cursor_str(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise validation_error("cursor is invalid")
+    return value

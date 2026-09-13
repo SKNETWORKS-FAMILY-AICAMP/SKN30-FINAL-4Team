@@ -2,12 +2,13 @@
 
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.auth import parse_allowed_origins
 from app.api.router import router as api_router
@@ -21,7 +22,10 @@ from app.services.analysis_runs import AnalysisRunService
 
 def create_app() -> FastAPI:
     app = FastAPI(title="PreReview API", version="0.1.0")
-    app.state.offline_mode = os.getenv("PREREVIEW_OFFLINE_MODE", "true").lower() in {"1", "true", "yes"}
+    # A missing/unset PREREVIEW_OFFLINE_MODE must fail toward the safer,
+    # cookie-only production boundary. Offline dev-header auth is opt-in only
+    # (see app.api.auth.offline_principal); it is never the silent default.
+    app.state.offline_mode = os.getenv("PREREVIEW_OFFLINE_MODE", "false").lower() in {"1", "true", "yes"}
     app.state.upload_max_bytes = int(os.getenv("PREREVIEW_UPLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
     app.state.supabase_url = os.getenv("SUPABASE_URL", "")
     app.state.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY", "")
@@ -36,6 +40,11 @@ def create_app() -> FastAPI:
     app.state.auth_cookie_domain = os.getenv("PREREVIEW_AUTH_COOKIE_DOMAIN", "")
     app.state.auth_refresh_cookie_max_age = int(os.getenv("PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE", str(60 * 60 * 24 * 30)))
     app.state.auth_password_reset_redirect_to = os.getenv("PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO", "")
+    # HMAC key for opaque history/message pagination cursors (see
+    # app.api.v1.cursor). Cursors are bound to owner+endpoint+version, but the
+    # signature itself is only as strong as this secret; treat it like any
+    # other credential and never let it default in production.
+    app.state.cursor_signing_secret = os.getenv("PREREVIEW_CURSOR_SIGNING_SECRET", "")
 
     app.state.analysis_run_service = None
     app.state.result_repository = None
@@ -67,26 +76,56 @@ def create_app() -> FastAPI:
         allow_origins=sorted(app.state.auth_allowed_origins),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-        allow_headers=["Content-Type", "Idempotency-Key", "X-CSRF-Token"],
+        # X-CSRF-Token is not read by any route; the CSRF boundary is the
+        # trusted-Origin check (app.api.auth.require_trusted_origin) plus
+        # HttpOnly, SameSite cookies. Advertising an unused header here would
+        # only widen the browser preflight surface for no benefit.
+        allow_headers=["Content-Type", "Idempotency-Key"],
     )
 
+    # Every /api/v1 response is per-user and must never be cached or reused
+    # across identities by a shared cache, proxy, or the browser's bfcache.
+    # This applies uniformly to auth and business routes rather than each
+    # route setting its own headers, so no new endpoint can forget it.
+    class PrivateNoStoreMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response: Response = await call_next(request)
+            if request.url.path.startswith("/api/v1/"):
+                response.headers["Cache-Control"] = "private, no-store"
+                existing = [
+                    token.strip()
+                    for token in response.headers.get("vary", "").split(",")
+                    if token.strip()
+                ]
+                if "Cookie" not in existing:
+                    existing.append("Cookie")
+                response.headers["Vary"] = ", ".join(existing)
+            return response
+
+    app.add_middleware(PrivateNoStoreMiddleware)
+
+    # Status codes with more than one possible cause (currently every 409)
+    # must not collapse onto a single guessed code. Routes that can fail for
+    # more than one domain reason raise app.api.errors.ApiError explicitly;
+    # this handler only falls back to a generic per-status code for routes
+    # that raise a bare HTTPException, where the status code is unambiguous.
     @app.exception_handler(StarletteHTTPException)
     async def http_error_handler(_, exc: StarletteHTTPException) -> JSONResponse:
         codes = {
             401: "UNAUTHORIZED",
             403: "FORBIDDEN",
             404: "NOT_FOUND",
-            409: "ANALYSIS_ALREADY_ACTIVE",
             413: "FILE_TOO_LARGE",
             415: "UNSUPPORTED_FILE_FORMAT",
             422: "VALIDATION_ERROR",
             503: "SERVICE_UNAVAILABLE",
         }
         message = exc.detail if isinstance(exc.detail, str) else "Request failed"
+        code = getattr(exc, "code", None) or codes.get(exc.status_code, "HTTP_ERROR")
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "code": codes.get(exc.status_code, "HTTP_ERROR"),
+                "code": code,
                 "message": message,
             },
         )

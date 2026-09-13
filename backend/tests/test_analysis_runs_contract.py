@@ -15,6 +15,7 @@ from app.ports.analysis_runs import (
     AnalysisRunFinalizationRejected,
     AnalysisRunFinalizationUncertain,
     AnalysisRunRecord,
+    IdempotencyKeyConflict,
     ObjectStorageUnavailable,
     ObjectStorageWriteUncertain,
     SourceObject,
@@ -89,7 +90,7 @@ class FakeRepository:
                     record=existing[1],
                     replayed=existing[1].status != "uploading",
                 )
-            raise ActiveAnalysisRunExists("idempotency key already exists")
+            raise IdempotencyKeyConflict("idempotency key reused for a different owner or source")
         if any(
             item_owner == owner_id
             and item_record.status in {"uploading", "queued", "running"}
@@ -198,6 +199,7 @@ def configured_client(
     repo.events = events
     objects.events = events
     app = create_app()
+    app.state.offline_mode = True
     app.state.analysis_run_service = AnalysisRunService(repo, objects)
     app.state.auth_allowed_origins = frozenset({ORIGIN})
     app.state.upload_max_bytes = 50 * 1024 * 1024
@@ -374,6 +376,7 @@ def test_idempotency_key_cannot_be_reused_for_different_source() -> None:
         )
     assert first.status_code == 202
     assert mismatch.status_code == 409
+    assert mismatch.json()["code"] == "IDEMPOTENCY_KEY_CONFLICT"
     assert len(storage.objects) == 1
     assert repository.events[-1] == "repository.reserve"
 
@@ -389,6 +392,7 @@ def test_active_run_conflict_happens_before_storage_is_touched() -> None:
             files={"file": ("request.hwp", HWP, "application/x-hwp")},
         )
         assert response.status_code == 409
+        assert response.json()["code"] == "ANALYSIS_RUN_ACTIVE"
         assert not storage.objects
         assert not storage.deleted
         assert repository.events == ["repository.reserve"]

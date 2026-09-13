@@ -62,6 +62,9 @@ def test_openapi_documents_http_only_cookie_security_without_bearer_auth() -> No
         ("/api/v1/sim-candidates/{sim_candidate_id}", "get"),
         ("/api/v1/analysis-sessions/active", "get"),
         ("/api/v1/analysis-history", "get"),
+        ("/api/v1/analysis/current", "get"),
+        ("/api/v1/analysis-sessions/{analysis_session_id}/close", "post"),
+        ("/api/v1/analysis-cases/{analysis_case_id}/messages/{message_id}", "get"),
     ):
         operation = _operation(schema, path, method)
         assert operation["security"] == ACCESS_SECURITY
@@ -94,8 +97,11 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/sim-candidates/{sim_candidate_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-sessions/active", "get"): {"401", "403", "422", "500", "503"},
         ("/api/v1/analysis-history", "get"): {"401", "403", "422", "500", "503"},
+        ("/api/v1/analysis/current", "get"): {"401", "403", "422", "500", "503"},
+        ("/api/v1/analysis-sessions/{analysis_session_id}/close", "post"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-cases/{analysis_case_id}/messages", "post"): {"401", "403", "404", "409", "422", "500", "503"},
         ("/api/v1/analysis-cases/{analysis_case_id}/messages", "get"): {"401", "403", "404", "422", "500", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/messages/{message_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry", "post"): {"401", "403", "404", "409", "422", "500", "503"},
     }
     actual_operations = {
@@ -134,3 +140,52 @@ def test_openapi_exposes_required_upload_idempotency_header() -> None:
     assert idempotency["in"] == "header"
     assert idempotency["required"] is True
     assert idempotency["schema"]["format"] == "uuid4"
+
+
+def test_openapi_exposes_required_chat_idempotency_header() -> None:
+    schema = create_app().openapi()
+    for path in (
+        "/api/v1/analysis-cases/{analysis_case_id}/messages",
+        "/api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry",
+    ):
+        operation = _operation(schema, path, "post")
+        parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+        idempotency = parameters["Idempotency-Key"]
+        assert idempotency["in"] == "header"
+        assert idempotency["required"] is True
+
+
+def test_cors_no_longer_allows_the_unused_csrf_token_header() -> None:
+    from starlette.middleware.cors import CORSMiddleware
+
+    app = create_app()
+    cors = next(
+        middleware
+        for middleware in app.user_middleware
+        if middleware.cls is CORSMiddleware
+    )
+    allow_headers = cors.kwargs["allow_headers"]
+    assert "X-CSRF-Token" not in allow_headers
+    assert "Idempotency-Key" in allow_headers
+
+
+def test_api_v1_responses_are_never_cached_across_identities() -> None:
+    import httpx
+    import asyncio
+
+    app = create_app()
+    app.state.offline_mode = True
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            response = await client.get("/api/v1/auth/me")
+            assert response.headers["cache-control"] == "private, no-store"
+            assert "Cookie" in response.headers["vary"]
+            # /health is not per-identity and must not be forced through the
+            # same header rewrite.
+            health = await client.get("/health/live")
+            assert "cache-control" not in health.headers
+
+    asyncio.run(run())

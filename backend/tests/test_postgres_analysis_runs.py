@@ -17,8 +17,10 @@ from app.infrastructure import postgres_analysis_runs
 from app.infrastructure.postgres_analysis_runs import PostgresAnalysisRunRepository
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
+    ActiveResultSessionExists,
     AnalysisRunFinalizationRejected,
     AnalysisRunFinalizationUncertain,
+    IdempotencyKeyConflict,
     SourceObject,
 )
 
@@ -339,10 +341,15 @@ def test_reserve_unique_violation_replays_exact_non_uploading_reservation(
 
 
 @pytest.mark.parametrize(
-    "constraint_name",
+    ("constraint_name", "expected_exception"),
     [
-        "analysis_run_pkey",
-        "uq_workspace_analysis_run_one_active_per_user",
+        # Same key (PK), but the readback proves the existing row is not an
+        # exact replay -> the caller reused Idempotency-Key for different
+        # input (spec 5.2 step 3), never conflated with "a run is active".
+        ("analysis_run_pkey", IdempotencyKeyConflict),
+        # This constraint only fires for a brand-new key -> a genuinely
+        # active run/session already exists for this owner (spec 5.2 step 5).
+        ("uq_workspace_analysis_run_one_active_per_user", ActiveAnalysisRunExists),
     ],
 )
 @pytest.mark.parametrize(
@@ -359,6 +366,7 @@ def test_reserve_unique_violation_replays_exact_non_uploading_reservation(
 def test_reserve_unique_violation_rejects_immutable_metadata_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     constraint_name: str,
+    expected_exception: type[Exception],
     field: str,
     different_value: object,
 ) -> None:
@@ -391,7 +399,47 @@ def test_reserve_unique_violation_rejects_immutable_metadata_mismatch(
     )
     _install_connect(monkeypatch, attempted, readback)
 
-    with pytest.raises(ActiveAnalysisRunExists):
+    with pytest.raises(expected_exception):
+        asyncio.run(
+            _repository().reserve_uploading(
+                analysis_run_id=RUN_ID,
+                owner_id=OWNER_ID,
+                source=SOURCE,
+            )
+        )
+
+
+def test_reserve_active_result_session_constraint_is_a_distinct_domain_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """New key, no active processing run, but an unclosed result session.
+
+    Assumed constraint name documented in the adapter module docstring; this
+    fixes the FastAPI-side contract (409 ACTIVE_RESULT_SESSION, distinct from
+    ANALYSIS_RUN_ACTIVE) ahead of the parallel db-lifecycle migration.
+    """
+
+    events: list[str] = []
+    attempted = FakeConnection(
+        [
+            Step("reserve.stale_cleanup", "WITH candidate_runs AS MATERIALIZED"),
+            Step(
+                "reserve.run",
+                "INSERT INTO workspace.analysis_run (",
+                error=_unique_violation("uq_result_analysis_session_one_active_per_user"),
+            ),
+        ],
+        events,
+    )
+    # This is a brand-new key: no row exists yet at this PK, so the readback
+    # finds nothing to replay.
+    readback = FakeConnection(
+        [Step("reserve.readback", "analysis_run.original_filename", one=None)],
+        events,
+    )
+    _install_connect(monkeypatch, attempted, readback)
+
+    with pytest.raises(ActiveResultSessionExists):
         asyncio.run(
             _repository().reserve_uploading(
                 analysis_run_id=RUN_ID,

@@ -13,12 +13,21 @@ from app.models.pipeline import PipelineKind
 from app.pipelines.formats import FormatError, validate_format
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
+    ActiveResultSessionExists,
     AnalysisRunPersistenceUnavailable,
+    IdempotencyKeyConflict,
     ObjectStorageUnavailable,
 )
 from app.services.analysis_runs import AnalysisRunService
 
 from ..auth import PrincipalDep, access_cookie_scheme, require_trusted_origin
+from ..errors import (
+    active_result_session,
+    analysis_run_active,
+    idempotency_key_conflict,
+    not_found,
+    service_unavailable,
+)
 from .openapi_models import error_responses
 
 
@@ -65,7 +74,15 @@ class AnalysisRunView(AnalysisRunCreated):
     error_message: str | None = None
 
 
-def analysis_run_service(request: Request) -> AnalysisRunService:
+async def analysis_run_service(request: Request) -> AnalysisRunService:
+    # ``async def`` is deliberate: FastAPI runs a plain ``def`` dependency
+    # through anyio's threadpool on every call. This dependency only reads
+    # ``app.state`` and never blocks, so paying for a thread hop just adds
+    # threadpool contention under load with zero benefit -- it competes for
+    # the same bounded worker pool as genuinely blocking sync calls
+    # elsewhere (e.g. UploadFile's spooled-file reads), which is exactly the
+    # "sync dependency threadpool timeout" the v0.2 validation pass
+    # reproduced and this removes (see tests/test_asgi_sync_dependency.py).
     service = getattr(request.app.state, "analysis_run_service", None)
     if not isinstance(service, AnalysisRunService):
         raise HTTPException(
@@ -169,16 +186,14 @@ async def create_analysis_run(
             content=content,
             mime_type=file.content_type,
         )
+    except IdempotencyKeyConflict as exc:
+        raise idempotency_key_conflict() from exc
+    except ActiveResultSessionExists as exc:
+        raise active_result_session() from exc
     except ActiveAnalysisRunExists as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An active analysis run already exists",
-        ) from exc
+        raise analysis_run_active() from exc
     except (AnalysisRunPersistenceUnavailable, ObjectStorageUnavailable) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Analysis storage is temporarily unavailable",
-        ) from exc
+        raise service_unavailable("Analysis storage is temporarily unavailable") from exc
     return AnalysisRunCreated(
         analysis_run_id=record.analysis_run_id,
         status=record.status,
@@ -203,16 +218,10 @@ async def get_analysis_run(
             analysis_run_id=str(analysis_run_id),
         )
     except AnalysisRunPersistenceUnavailable as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Analysis database is temporarily unavailable",
-        ) from exc
+        raise service_unavailable("Analysis database is temporarily unavailable") from exc
     if record is None:
         # Deliberately hide whether a UUID belongs to another user.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Analysis run not found",
-        )
+        raise not_found("Analysis run not found")
     return AnalysisRunView(
         analysis_run_id=record.analysis_run_id,
         status=record.status,
