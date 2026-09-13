@@ -38,11 +38,41 @@ Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/prom
   `approved-facts-components-role-aware-v2` 한 개가 활성 상태이고, 이전 설정의 400행은
   비활성 상태로 보존돼 있다. 아래 2026-09-10 결과는 통합 전 번호 체계와 로컬 runtime에
   대한 역사적 검증 기록이다.
-- 전체 backend 회귀 테스트 `327 passed`와 별도 Supabase migration/self-hosted 계약 테스트
-  `22 passed`가 통과했다. 생성된 OpenAPI는 `origin/develop`과 byte-canonical SHA-256
+- 전체 backend 회귀 테스트 399개와 별도 Supabase migration/self-hosted 계약 테스트
+  22개, 합계 421개를 수집해 `420 passed, 1 skipped`로 통과했다. 생성된 OpenAPI는 `origin/develop`과 byte-canonical SHA-256
   `9461f69719b391ffdbec4d5f4f56011fa31079627f29ffc73a9cacccffe452b5`로 동일하다.
   Python compile, shell syntax, Compose config와 `git diff --check`도 통과했다.
-- 2026-09-13 합성 HWPX live E2E는 실제 DB와 OpenAI를 통해 완료했다.
+- Docker 배포 구조는 analysis `worker`만 CPU 전용 ML 이미지로 분리하고, API와
+  `chat-worker`에는 ML runtime을 넣지 않는다. Model 1은 Git/image 밖의 검증된
+  read-only bind mount, Model 2/3은 image-local artifact·venv로 구성하며 startup에서
+  Model 1/2/3 SHA-256과 manifest를 fail-closed로 확인하도록 구현됐다.
+- 2026-09-13 전용 Docker worker external live E2E를 실제 DB와 OpenAI로 완료했다.
+  - 최신 run `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
+    `c05d9ae0-d279-4839-8a86-102da0be18fd`
+  - analysis worker `4d6aae5d4c87:1:540b85e666be`, chat worker
+    `ea084ec9c993:1:c39815e56162`가 각각 한 번의 DB queue attempt로 완료됐다.
+    실행 image는 analysis worker `sha256:12adb17d…`, chat worker
+    `sha256:f0669e6e…`였다.
+  - Request Profile은 Terra, FIT/SIM과 결과 근거 기반 채팅은 Luna를 사용했다.
+    Model 1/2/3 DB status는 모두 `OK`였다.
+  - 결과는 CPL 13, FIT 7, SIM 후보 5, evidence snapshot 167개였다. 채팅은
+    `completed`이고 case-scope evidence reference 13개를 저장했다.
+    입력은 `samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx` 합성 fixture였다.
+  - Request Profile의 worker 로그는 최초 호출과 수정 호출 2회, 총 3회의 Terra 호출을
+    보여준다. 성공 run 로그 자체는 validation 상세를 노출하지 않는다. 동일 입력 별도
+    진단에서는 `f_scale_count`의 모호한 legacy anchor를 `value_span_candidate_id`로
+    특정하는 보정, 이어 `stage_support`에 컴포넌트 범위의 수혜자·자격·참여 조건 경계를
+    선택하는 보정이 순차 확인됐다. 이 때문에 호출별 timeout 120초와 수정 한도 2를
+    사용하며, 이는 DB queue attempt 1회와 별개의 내부 구조화 호출 한도다. 같은 bounded
+    repair 상한은 FIT·SIM에도 적용된다.
+  - 리뷰 후 strict worker의 effective UID/GID 0 거부만 추가해 analysis image를
+    `sha256:0847b036…`로 재빌드했다. 이 이미지는 `1000:1000` 기동·ML preflight와
+    강제 `0:0` 실행의 exit code 2를 확인했다. OpenAI 전체 E2E는 직전
+    `sha256:12adb17d…`에서 수행했으며, 후속 변경은 provider/pipeline 경로를 바꾸지 않는다.
+  - 별도 제공된 `docs/pre_review_request_e2e_5_20260909_v1/generated`의 합성 HWPX
+    5개도 같은 worker image의 실제 parser에서 각각 Common IR 2 blocks, schema error
+    0건으로 확인했다. 이 5개는 금액이 미정이라 ML 3축 acceptance 입력으로 쓰지 않았다.
+- 2026-09-13 합성 HWPX host inline live E2E는 실제 DB와 OpenAI를 통해 완료했다.
   - run `5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
     `2d02ae97-85f0-4678-a9fe-e006ab389bd1`
   - Request Profile은 Terra, FIT/SIM과 결과 근거 기반 채팅은 Luna를 사용했다.
@@ -81,7 +111,8 @@ Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/prom
   함수를 제거
 - migration 25: `queued` 전환 전에 동일 run의 source artifact와 dispatch source identity가
   일치하도록 강제하고, active source·dispatch의 핵심 메타데이터 변경을 차단
-- same-server polling worker 조립과 CLI/Docker service
+- same-server PostgreSQL polling worker 조립, API/chat-worker 기본 이미지와 전용 CPU ML
+  worker Docker service 분리
 - 지원되는 Existing KB writer는 `scripts/ingest_existing_profile.py`(batch는 이를
   subprocess로 호출)뿐이다. 과거 `worker/kb_ingest.py`·`worker/kb_store.py`는 retired
   `app.*` 의존성을 지녀 `.dockerignore`로 runtime image에서 제외되어 현 배포 경로로는
@@ -217,6 +248,9 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 - terminal idempotency replay의 HTTP 상태(`200`/`202`) 정규화
 - purpose/target/support 중 일부가 없는 요청을 실패 대신 insufficient 결과로 내리는 정책
 - worker heartbeat/queue lag를 포함한 배포 readiness
+- worker deployment/image identity를 `ops.processing_run.run_metadata`에 기록하고 external
+  E2E의 기대값과 자동 대조하는 검증. 현재 worker ID는 실행 replica만 식별하므로 검증 중
+  대상 Compose worker만 실행한다는 운영 전제가 필요함
 - OpenAI 호출 단위 `ops.model_invocation` 감사 기록 연결
   (현재는 `ops.processing_run`의 시도·성공·실패 이력만 기록)
 - 기존 로컬 runtime에 남아 있을 수 있는 legacy Edge Function 제거 및 direct grant 폐기
@@ -262,14 +296,22 @@ cd backend
 
 # 지정한 HWP 또는 HWPX로 검증
 .venv/bin/python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
+
+# 실행 중인 Docker API와 worker/chat-worker를 통한 배포 acceptance
+.venv/bin/python scripts/run_local_live_e2e.py \
+  --worker-mode external \
+  --api-base-url http://127.0.0.1:8001 \
+  --file /safe/local/request.hwpx
 ```
 
-live E2E 스크립트는 시작 전 analysis/chat queue가 비어 있음을 확인한 뒤 자신이 생성한
-analysis run과 assistant message만 점유한다. 두 worker는 DB queue 계약과 같은 최대 두 번의
-attempt를 수행하며, 결과의 ML 1/2/3 `OK`, 공개 ML projection, completed chat 내용과
-case-scope evidence reference를 확인한다. 첫 시도가 retryable failure로 복귀하면 두 번째
-시도까지 이어가고, 성공·최종 실패·시도 소진 중 하나로 유한하게 종료한다. 자세한 운영 주의사항은
-[FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 따른다.
+기본 `inline` E2E는 시작 전 analysis/chat queue가 비어 있음을 확인한 뒤 자신이 생성한
+analysis run과 assistant message만 직접 점유한다. `external`은 배포된 API가 만든 target을
+실행 중인 worker가 처리하도록 두고 public API를 polling한 다음, DB 감사 이력에서 실제
+worker ID와 순차 attempt를 대조한다. 이때 대상 Compose worker 외 다른 worker/producer가
+없는 전용 검증 창이 필요하다. 두 모드 모두 결과의 ML 1/2/3 `OK`, 공개 ML projection,
+completed chat 내용과 case-scope evidence reference를 확인한다. 첫 시도가 retryable failure로
+복귀하면 두 번째 시도까지 이어가고, 성공·최종 실패·시도 소진 중 하나로 유한하게 종료한다.
+자세한 운영 주의사항은 [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 따른다.
 
 ## online FastAPI 설정
 
@@ -287,6 +329,9 @@ DATABASE_URL=<server-only>
 OPENAI_API_KEY=<worker-only>
 OPENAI_LLM_MODEL=gpt-5.6-luna
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
+PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
+PREREVIEW_MODEL1_RUNTIME_UID=<numeric-owner-uid>
+PREREVIEW_MODEL1_RUNTIME_GID=<numeric-owner-gid>
 ```
 
 FastAPI는 결과 조회에 DB URL, 업로드에 service/secret key를 사용한다. worker는

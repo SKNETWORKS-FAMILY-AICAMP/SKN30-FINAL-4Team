@@ -46,7 +46,13 @@ uv run uvicorn main:app --reload --host 127.0.0.1 --port 8001
 비밀값은 커밋하지 않는다.
 
 ```bash
-# 저장소 루트 .env와 .runtime/supabase-dev/.env가 이미 준비된 로컬 환경
+# 먼저 serving.zip에서 검증된 Model 1 runtime을 준비한다. Docker analysis worker는
+# 이 디렉터리만 read-only로 mount하며, host의 Python venv는 mount하지 않는다.
+python3 scripts/prepare_model1_runtime.py \
+  --destination ../.runtime/model1-serving/model1
+
+# 저장소 루트 .env와 .runtime/supabase-dev/.env가 이미 준비된 로컬 환경.
+# 생성기는 위 Model 1 디렉터리의 절대경로와 숫자 UID/GID를 backend/.env에 기록한다.
 chmod 600 ../.env ../.runtime/supabase-dev/.env
 uv run python scripts/prepare_local_backend_env.py
 
@@ -65,10 +71,17 @@ API와 same-server worker를 Docker Compose로 함께 기동할 때는 분석 `w
 `chat-worker`가 기본 service로 포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만
 호스트 포트로 publish하지 않는다.
 
-기본 Compose는 Model 1/2/3 artifact·ML Python을 mount하거나 설치하지 않는다. 따라서
-`.env`에 ML 경로만 설정해도 모델이 즉시 실행되는 것은 아니며, 설정이 없거나 container
-경로가 준비되지 않으면 ML 결과는 `unavailable`로 남는다. host Python 개발 실행 또는
-운영자 전용 Compose override 준비 절차는 운영 가이드를 따른다.
+현재 Compose는 역할을 분리한다. `api`와 `chat-worker`는 가벼운 기본 이미지로 실행하고,
+analysis `worker`만 `Dockerfile.ml-worker`의 CPU 전용 이미지로 실행한다. Model 2/3 코드와
+고정 artifact, ML child Python venv는 그 이미지 안에만 들어간다. Model 1은 Git과 이미지에
+넣지 않고, `prepare_model1_runtime.py`가 만든 검증된 runtime만 read-only bind mount한다.
+
+analysis worker는 queue polling 전에 Model 1 weight/runtime manifest와 Model 2/3 artifact의
+SHA-256을 모두 확인한다. 하나라도 빠지거나 다르면 `unavailable`로 계속 실행하지 않고
+fail-closed로 종료한다. 따라서 `.env` 생성 전에 Model 1 runtime 준비가 필수이며,
+`PREREVIEW_MODEL1_SERVING_HOST_DIR`, UID, GID를 빈 채로 Compose를 실행할 수 없다.
+호스트의 `.runtime/ml-venv`는 Existing Model 1 one-shot backfill 또는 host 직접 개발용일
+뿐, 컨테이너에 mount하지 않는다.
 
 ```bash
 cd backend
@@ -76,6 +89,14 @@ cd backend
 docker compose up -d --build
 docker compose ps
 ```
+
+Model 2의 `joblib`은 임의 코드 실행 형식이므로, Docker ML worker는 등록된 SHA-256과
+일치하는 신뢰된 artifact만 사용한다. 이 hash 검증은 artifact 교체를 막는 무결성 경계이지,
+ML child를 완전한 sandbox로 만드는 기능은 아니다. 운영 시에는 worker 전용 OS 계정, 최소
+권한 DB credential, private Storage 및 read-only mount를 유지한다. 현재 ML 이미지와
+`rhwp` native parser 경로는 rootful Docker가 동작하는 Linux `amd64`를 기준으로
+검증되었다. host UID가 별도 user namespace로 매핑되는 rootless Docker는 현재 지원하지
+않는다.
 
 환경변수별 의미, 같은 호스트/WSL/EC2 주소 설정, 재기동과 장애 확인은
 [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)에 정리되어 있다.
@@ -100,6 +121,14 @@ PostgreSQL polling queue와 원자적 결과 저장·legacy 완료 경로 폐기
 기본값은 heartbeat 30초, lease 120초, 전체 최대 두 번의 시도다. 오래된 worker는
 새 worker의 결과를 덮어쓸 수 없다.
 
+OpenAI Request Profile 구조화는 Compose 기본 `gpt-5.6-terra`, 호출별 hard timeout
+120초, `OPENAI_MAX_REPAIRS=2`를 사용한다. repair 수는 DB queue 재시도 횟수가 아니다.
+한 worker attempt 안에서 최초 구조화 호출 뒤 서버 검증 오류를 첨부한 수정 호출을 최대
+두 번 더 허용한다(따라서 최대 세 번). 긴 HWP/HWPX의 구조화 응답 시간을 유한하게
+보장하면서도, 한 번의 수정만으로 서로 다른 근거·컴포넌트 검증을 모두 해결하지 못한
+실측 사례를 수용하기 위한 값이다. FIT·SIM·채팅은 단계별 override가 없으면
+`OPENAI_LLM_MODEL`을 사용하고, 같은 bounded repair 상한은 FIT·SIM에도 전달된다.
+
 parser는 기본 120초 hard deadline을 사용하며 timeout 시 process group 전체를
 종료·회수한다. HWPX의 선언된 압축 해제 크기에도 상한을 두고, parser subprocess에는
 DB·Storage·OpenAI 비밀값을 전달하지 않는다.
@@ -116,6 +145,23 @@ docker run --rm --network none \
   backend-api:latest \
   python scripts/validate_synthetic_hwpx_fixtures.py --fixture-dir /fixtures
 ```
+
+2026-09-13 최신 Docker external acceptance는 run
+`f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
+`c05d9ae0-d279-4839-8a86-102da0be18fd`로 완료됐다. analysis worker
+`4d6aae5d4c87:1:540b85e666be`와 chat worker `ea084ec9c993:1:c39815e56162`가 각각
+DB queue attempt 1회로 처리했고, CPL 13, evidence 167, FIT 7, SIM 후보 5,
+Model 1/2/3 모두 `OK`, 채팅 `completed`와 reference 13개를 확인했다. 검증 image는
+analysis worker `sha256:12adb17d…`, chat worker `sha256:f0669e6e…`였다.
+입력은 `samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx` 합성 fixture였다.
+
+이 성공 run에서는 Request Profile용 Terra 호출이 최초 1회와 수정 2회, 총 3회였음이
+worker 로그로 확인됐다. 성공 run의 안전한 로그는 개별 validation 문구를 노출하지 않는다.
+동일 입력의 별도 진단에서는 먼저 `f_scale_count`의 모호한 legacy `anchor_text`에
+`value_span_candidate_id`가 필요했고, 다음으로 `stage_support`에 금액 회차만이 아닌
+컴포넌트 범위의 수혜자·자격·참여 조건 경계가 필요했다. 두 오류를 순서대로 보정한 기록이
+있어 수정 한도를 2로 둔다. 이는 자유 재생성이 아니라 이전 selection과 서버 검증 오류를
+다음 호출에 전달하는 제한된 보정이며, 분석 worker 자체의 DB queue attempt는 1회였다.
 
 상세 계약은 [FastAPI 문서](fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md),
 [worker 저장 계약](fastapi/docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md),

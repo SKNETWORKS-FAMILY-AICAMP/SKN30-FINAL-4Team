@@ -6,10 +6,11 @@
 `01`~`32` fresh apply·전체 replay와 기존 committed migration 31 상태의 upgrade/replay를
 검증했다. 실제 repository SQL과 두 세션 `40001` lock retry도 통과했다. Existing 100건
 Model 1 실제 추론 backfill은 아직 실행하지 않았다. 로컬 DB의 v2 임베딩은 100건 × 4
-scope(활성 400행)로 준비됐고, 합성 HWPX를 사용한 OpenAI live E2E에서 Request Profile
-구조화(Terra), FIT·SIM·Model 1/2/3 결과 저장과 결과 근거 채팅(Luna)을 완주했다.
-전체 backend 회귀 테스트 `327 passed`와 별도 Supabase migration/self-hosted 계약 테스트
-`22 passed`가 통과했으며, 생성 OpenAPI 계약도 별도로 검증한다.
+scope(활성 400행)로 준비됐다. 합성 HWPX를 사용한 **host inline** 및 전용 Docker ML
+worker **external** OpenAI live E2E에서 Request Profile 구조화(Terra), FIT·SIM·Model
+1/2/3 결과 저장과 결과 근거 채팅(Luna)을 모두 완주했다. 전체 Python 회귀 테스트는
+backend 399개와 Supabase 계약 22개, 합계 421개를 수집해 `420 passed, 1 skipped`로
+통과했다.
 
 이 문서는 self-hosted Supabase가 준비된 뒤 FastAPI와 same-server polling worker를
 설정하고 운영하는 방법을 설명한다. Supabase 자체 설치·영속 볼륨·migration 절차는
@@ -38,6 +39,11 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 먼저 실행되어 있어야 한다. Redis/RQ, Edge Function dispatch/callback, 외부 worker HTTP
 서버는 현재 경로에서 사용하지 않는다.
 
+`worker`만 CPU 전용 `Dockerfile.ml-worker`를 사용한다. 이 이미지는 Model 2/3의 필요한
+코드·artifact와 child Python을 포함하고 Model 1은 절대 복사하지 않는다. `api`와
+`chat-worker`는 기본 `Dockerfile`로 실행되므로 ML dependency와 Model 1 내용을 가지지
+않는다. Model 1의 검증된 외부 runtime은 worker에만 read-only bind mount된다.
+
 ## 2. 기동 전 확인
 
 다음 조건이 먼저 충족되어야 한다.
@@ -58,13 +64,13 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
 2. migration 01~32를 적용한다.
-3. server-only `backend/.env`와 Model 1 artifact/child Python을 준비한다.
+3. Git 밖의 Model 1 runtime을 준비하고, server-only `backend/.env`를 생성한다.
 4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
 5. Existing 분류 결과를 쓰는 기능까지 검증할 때는 current Profile 100건에 Model 1을
    dry-run 후 backfill하고 분류 설정을 활성화한다.
 6. v2 embedding을 dry-run 후 100 × 4 scope로 backfill·활성화한다.
 7. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
-8. FastAPI `api`, analysis `worker`, `chat-worker`를 기동한다.
+8. FastAPI `api`, 전용 Docker ML analysis `worker`, `chat-worker`를 기동한다.
 9. Swagger/live E2E에서 `sign-in` → `me` → HWP/HWPX upload → 상태 poll → 결과/채팅 순서로 확인한다.
 
 전체 분석을 안 하고 로그인·`/me`만 확인할 때는 Existing import·Model 1·
@@ -153,9 +159,15 @@ Compose는 `backend` 디렉터리의 `.env`를 읽는다. 저장소 루트 `.env
 ```bash
 cd /path/to/SKN30-FINAL-4Team
 
-# 입력 비밀 파일도 현재 Linux 사용자만 읽을 수 있게 한다.
+# 1) serving.zip의 allowlist만 Git 밖의 runtime에 새로 배치하고 고정 digest를 확인한다.
+# 기본 archive는 $HOME/serving.zip이다. 다른 안전한 로컬 사본일 때만 --archive를 쓴다.
+python3 backend/scripts/prepare_model1_runtime.py \
+  --destination .runtime/model1-serving/model1
+
+# 2) 입력 비밀 파일도 현재 Linux 사용자만 읽을 수 있게 한다.
 chmod 600 .env .runtime/supabase-dev/.env
 
+# 3) 생성기는 위 model1 runtime의 절대 bind 경로와 숫자 UID/GID도 함께 기록한다.
 cd backend
 uv sync --frozen --extra dev
 uv run python scripts/prepare_local_backend_env.py
@@ -169,6 +181,9 @@ uv run python scripts/prepare_local_backend_env.py
   `host.docker.internal:5432`용 `DATABASE_URL`을 만든다.
 - 컨테이너용 `SUPABASE_URL=http://host.docker.internal:8000`, 로컬 Vite·Swagger CORS,
   HTTP 개발용 Cookie 설정을 함께 기록한다.
+- 준비된 `model1` 디렉터리의 절대 bind 경로와 숫자 owner UID/GID를
+  `PREREVIEW_MODEL1_SERVING_HOST_DIR`, `PREREVIEW_MODEL1_RUNTIME_UID`,
+  `PREREVIEW_MODEL1_RUNTIME_GID`에 기록한다.
 - 새 `backend/.env`를 mode `600`으로만 생성한다. 기존 파일이 있으면 실패하며
   덮어쓰지 않는다.
 
@@ -231,8 +246,8 @@ OPENAI_FIT_MODEL=
 OPENAI_SIM_MODEL=
 OPENAI_CHAT_MODEL=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_TIMEOUT_SECONDS=60
-OPENAI_MAX_REPAIRS=1
+OPENAI_TIMEOUT_SECONDS=120
+OPENAI_MAX_REPAIRS=2
 
 # PostgreSQL polling worker
 PREREVIEW_WORKER_HEARTBEAT_SECONDS=30
@@ -244,10 +259,10 @@ PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS=10
 PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS=120
 PREREVIEW_FREETYPE_LIB=/usr/lib/x86_64-linux-gnu/libfreetype.so.6
 
-# worker ML subprocess (절대경로)
-PREREVIEW_ML_ROOT=/absolute/path/to/SKN30-FINAL-4Team/ml
-PREREVIEW_MODEL1_SERVING_DIR=/absolute/path/to/SKN30-FINAL-4Team/.runtime/model1-serving/model1
-PREREVIEW_ML_PYTHON_EXECUTABLE=/absolute/path/to/SKN30-FINAL-4Team/.runtime/ml-venv/bin/python
+# Docker analysis worker 전용 Model 1 read-only bind identity
+PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
+PREREVIEW_MODEL1_RUNTIME_UID=1000
+PREREVIEW_MODEL1_RUNTIME_GID=1000
 PREREVIEW_ML_TIMEOUT_SECONDS=180
 ```
 
@@ -265,22 +280,49 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `DATABASE_URL` | O | O | 필수 | FastAPI repository와 worker queue/result 저장 |
 | `OPENAI_API_KEY` | - | O | 분석 시 필수 | 구조화·embedding·비교 호출 |
 | `OPENAI_LLM_MODEL` | - | O | 선택(기본값 있음) | 모든 LLM 단계의 fallback 모델 |
-| `OPENAI_REQUEST_PROFILE_MODEL` | - | O | 선택 | Request Profile 구조화 모델. 비우면 `OPENAI_LLM_MODEL` |
+| `OPENAI_REQUEST_PROFILE_MODEL` | - | O | 권장 | Request Profile 구조화 모델. Compose 기본값은 `gpt-5.6-terra`; host 직접 실행에서 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_FIT_MODEL` | - | O | 선택 | FIT 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_SIM_MODEL` | - | O | 선택 | SIM 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_CHAT_MODEL` | - | O (chat-worker) | 선택 | 결과 근거 채팅 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_EMBEDDING_MODEL` | - | O | 선택(기본값 있음) | DB active embedding 설정과 일치해야 함 |
+| `OPENAI_TIMEOUT_SECONDS` | - | O | 선택(기본 120초) | 각 OpenAI 호출의 hard timeout. 전체 analysis run 제한이 아님 |
+| `OPENAI_MAX_REPAIRS` | - | O | 선택(기본 2회) | Request Profile·FIT·SIM 단계의 제한된 수정 호출 상한 |
 | `PREREVIEW_FREETYPE_LIB` | - | O | 환경별 선택 | `rhwp` parser subprocess에만 주입 |
-| `PREREVIEW_ML_ROOT` | - | O | ML 실행 시 필수 | 현재 checkout의 `ml/`; pipelines·model 2·3 코드/산출물 root |
-| `PREREVIEW_MODEL1_SERVING_DIR` | - | O | Model 1 실행 시 필수 | 검증된 model 1 serving 디렉터리; `inference.py`와 `model/model.safetensors` 포함 |
-| `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O | 별도 venv 사용 시 필수 | `ml/serving/requirements.runtime.txt`를 설치한 child Python |
+| `PREREVIEW_MODEL1_SERVING_HOST_DIR` | - | O (Compose) | Docker 분석 시 필수 | 검증된 외부 `model1` 디렉터리의 절대 host 경로. `/opt/prereview/model1`로 read-only mount |
+| `PREREVIEW_MODEL1_RUNTIME_UID` / `GID` | - | O (Compose) | Docker 분석 시 필수 | mode 0700 Model 1 runtime의 숫자 owner. non-root 컨테이너 user와 일치해야 함 |
+| `PREREVIEW_ML_ROOT` | - | O (host 직접 실행) | host ML 실행 시 필수 | 현재 checkout의 `ml/`; Docker에서는 이미지의 `/app/ml`로 고정 |
+| `PREREVIEW_MODEL1_SERVING_DIR` | - | O (host 직접 실행) | host Model 1 실행 시 필수 | 검증된 model 1 serving 디렉터리; Docker에서는 `/opt/prereview/model1`로 고정 |
+| `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O (host 직접 실행) | host ML 실행 시 필수 | 별도 child Python. Docker에서는 image-local `/opt/prereview-ml-venv/bin/python`으로 고정 |
 | `PREREVIEW_ML_TIMEOUT_SECONDS` | - | O | 선택(기본 180초) | 각 ML child 호출의 hard timeout |
+| `PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT` | - | O | Docker에서는 필수 | startup 전 Model 1/2/3 artifact·manifest SHA-256을 확인. Compose는 `true`로 고정 |
 
 호환 alias는 새 배포에서 가급적 사용하지 않는다. DB는 `DATABASE_URL`, anon key는
 `SUPABASE_ANON_KEY`를 사용한다. Storage 비밀값은
 `SUPABASE_SECRET_KEY`와 `SUPABASE_SERVICE_ROLE_KEY` 중 실제 배포가 제공하는 하나만
 설정한다. 둘을 서로 다른 값으로 동시에 설정하면 API와 worker의 선택 우선순위가 달라질
 수 있으므로 금지한다.
+
+`OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra`는 긴 원문에서 근거 anchor와 컴포넌트
+경계를 선택하는 Request Profile 구조화 전용 설정이다. FIT·SIM·채팅용 Luna fallback을
+구조화 단계에 암묵적으로 재사용하지 않도록 역할을 분리한다. `OPENAI_TIMEOUT_SECONDS=120`은
+각 OpenAI 호출의 hard timeout이며 전체 analysis run 제한 시간이 아니다. 긴 구조화
+응답에도 시간을 주되 실패가 무한히 걸리지 않도록 한 값이다.
+
+`OPENAI_MAX_REPAIRS=2`는 Request Profile·FIT·SIM의 bounded repair 상한이다. Request
+Profile에서는 최초 호출 뒤 수정 호출을 최대 두 번 허용하므로 최대 세 번 호출한다.
+DB queue의 최대 attempt와는 별개다. 최신
+acceptance의 analysis worker는 queue attempt 1회였지만 worker 로그에는 Terra 호출
+최초 1회와 수정 2회가 관찰됐다. 성공 run 로그는 validation 상세를 노출하지 않았고,
+동일 입력의 별도 진단에서 다음 두 서버 검증이 순서대로 확인됐다.
+
+1. `fact f_scale_count (support_scale)`의 모호한 legacy `anchor_text`에
+   `value_span_candidate_id`가 필요했다.
+2. `stage_support`는 금액 또는 지급 회차만으로 독립 support component가 될 수 없고,
+   컴포넌트 범위의 수혜자·자격·참여 조건 경계를 명시적으로 선택해야 했다.
+
+각 수정 호출에는 이전 selection과 해당 서버 검증 오류를 함께 보내며, 근거나 span을
+임의로 만드는 무제한 재생성이 아니다. 두 보정 뒤에도 검증을 통과하지 못하면 해당
+Request Profile은 fail-closed로 실패한다.
 
 ### Model 1 artifact 준비 (`serving.zip`)
 
@@ -338,23 +380,44 @@ printf '%s' '{"title":"2026년 중소기업 판로 지원","purpose":"판로 개
       .runtime/ml-venv/bin/python backend/worker/adapters/ml_child.py --model model1
 ```
 
-호스트 worker의 `.env.host.local`에는 위 세 경로를 모두 절대경로로 기록한다.
-Compose에서는 `PREREVIEW_ML_*`가 analysis worker에만 전달되지만, 그 값은
-**container 안의 경로**여야 한다. 외부 `ml/`, model 1 directory, ML interpreter를
-각각 read-only bind mount하고 같은 container 경로를 설정한다. 호스트에서 만든
-venv를 서로 다른 OS·Python ABI의 container에 그대로 mount하지 않고, worker
-이미지와 같은 환경에서 ML interpreter를 준비한다. **기본 `compose.yaml`에는 ML
-volume/ML 의존성 설치가 의도적으로 없다.** 따라서 `.env`에 경로만 넣은
-`docker compose up`은 Model 1/2/3을 즉시 실행하지 않으며, 해당 모델은
-`unavailable`로 처리되고 worker 기동 자체는 막지 않는다. Docker에서 ML을 사용할
-운영자는 Git에 넣지 않는 별도 Compose override/image에서 artifact와 container-호환
-interpreter를 read-only로 준비한 뒤에만 이 변수를 설정한다. 가장 단순한 개발 검증은
-아래의 호스트 Python 실행 경로다.
+위 host venv는 **host 직접 실행과 Existing Model 1 one-shot backfill 전용**이다. Docker
+Compose의 analysis worker에는 host venv나 checkout의 `ml/`을 mount하지 않는다.
+`Dockerfile.ml-worker`가 Model 2/3의 코드·등록 artifact와 ML child dependency를
+image-local `/opt/prereview-ml-venv`에 설치하며, Model 1만
+`PREREVIEW_MODEL1_SERVING_HOST_DIR`에서 `/opt/prereview/model1`으로 read-only mount한다.
+`api`와 `chat-worker`에는 ML dependency나 Model 1 mount가 없다.
+
+Compose는 Model 1 host path와 UID/GID를 필수 interpolation으로 두고,
+analysis worker를 그 numeric owner로 실행한다. `prepare_local_backend_env.py`가 이 세
+값을 자동 기록한다. 단, 생성기는 기존 `backend/.env`를 절대 덮어쓰지 않는다. 이미
+`backend/.env`가 있는 설치를 업그레이드할 때는 기존 파일을 mode 600 백업으로 옮긴 뒤
+생성기를 실행하거나, 아래 세 값을 기존 파일에 직접 추가해야 한다.
+
+```dotenv
+PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
+PREREVIEW_MODEL1_RUNTIME_UID=<stat -c %u 로 확인한 숫자 UID>
+PREREVIEW_MODEL1_RUNTIME_GID=<stat -c %g 로 확인한 숫자 GID>
+```
+
+root 소유 runtime이나 group/other 권한이 열린 runtime은 생성기가 거부한다. Model 1을
+준비하고 `backend/.env`를 만든 작업은 `sudo`가 아닌 동일한 전용 Linux 사용자로 실행한다.
+수동 `.env`로 생성기를 우회하더라도 strict worker는 effective UID나 GID가 0이면 기동을
+거부한다.
+컨테이너
+startup은 Model 1 weight와 runtime manifest, image 안의 Model 2
+bundle/cohort/taxonomy 및 Model 3 pool의 SHA-256을 모두 검증한다. 하나라도 다르면
+queue를 polling하지 않고 종료한다.
+이는 배포 누락을 `unavailable` 결과로 숨기지 않기 위한 fail-closed 정책이다.
 
 ML child에는 DB·Supabase·OpenAI credential 환경변수를 넘기지 않고 Hugging Face/
-Transformers network fallback도 강제로 끈다. 다만 subprocess 자체는 filesystem sandbox가
-아니므로 `HOME` 아래 credential 파일까지 격리하지는 않는다. 운영에서는 전용 OS 계정과
-최소 read-only mount를 사용하고 worker 계정의 home에 불필요한 자격증명을 두지 않는다.
+Transformers network fallback도 강제로 끈다. worker root filesystem은 read-only이고
+`/tmp`만 제한된 tmpfs다. 다만 Model 2의 `joblib`은 신뢰된 artifact 전제의 역직렬화
+형식이며 child subprocess 자체는 완전한 filesystem sandbox가 아니다. SHA-256/manifest
+검증은 artifact 바꿔치기를 탐지하는 무결성 경계일 뿐이므로, 운영에서는 전용 OS 계정,
+최소 DB 권한, private Storage와 read-only mount를 함께 사용한다. 이 Docker ML 경로는
+rootful Docker가 동작하는 Linux `amd64`와
+`/usr/lib/x86_64-linux-gnu/libfreetype.so.6`를 기준으로 한다. host UID가 별도 user
+namespace로 다시 매핑되는 rootless Docker는 현재 지원하지 않는다.
 
 ### Existing 100건 Model 1 분류 backfill
 
@@ -547,7 +610,9 @@ HTTPS 서비스에서는 `PREREVIEW_AUTH_COOKIE_SECURE=true`를 사용한다. �
 
 ## 4. 최초 빌드와 기동
 
-Supabase가 먼저 정상 기동된 것을 확인한 뒤 실행한다.
+Supabase가 먼저 정상 기동되고, 3절의 `prepare_model1_runtime.py`와
+`prepare_local_backend_env.py`가 모두 성공한 뒤 실행한다. 생성기 이전에 Model 1 runtime을
+준비하지 않았다면 Compose는 필요한 host path/UID/GID가 비어 있어 fail-closed한다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team/backend
@@ -557,12 +622,14 @@ docker compose up -d --build
 docker compose ps
 ```
 
-`docker compose config --quiet`은 문법만 검사한다. `--quiet`을 빼면 치환된 비밀값이
-터미널에 표시될 수 있으므로 결과를 공유하지 않는다.
+`docker compose config --quiet`은 문법과 필수 interpolation만 검사한다. `--quiet`을 빼면
+치환된 비밀값이 터미널에 표시될 수 있으므로 결과를 공유하지 않는다. 처음에는 이미지가
+ML CPU dependency를 내려받고 Model 2/3 artifact 검증까지 수행하므로 일반 API 이미지보다
+빌드 시간이 길 수 있다.
 
-두 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
-worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는 `8001`이며 `.env`의
-`PREREVIEW_API_PORT`로 바꿀 수 있다. 기본 bind 주소는 `127.0.0.1`이다.
+세 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
+analysis worker와 chat worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
+`8001`이며 `.env`의 `PREREVIEW_API_PORT`로 바꿀 수 있다. 기본 bind 주소는 `127.0.0.1`이다.
 
 ## 5. 코드·설정 변경 후 재기동
 
@@ -644,10 +711,20 @@ polling을 한 번에 검증할 수 있다. DB에 저장된 Model 1·2·3 status
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team/backend
+# inline: 이 프로세스가 analysis/chat queue를 직접 claim해 host Python으로 실행한다.
 uv run python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
+
+# external: 실행 중인 Docker API와 worker/chat-worker를 실제 HTTP로 사용한다.
+# Docker 배포 확인에는 이 모드를 사용한다. HTTP는 loopback API에서만 허용한다.
+uv run python scripts/run_local_live_e2e.py \
+  --worker-mode external \
+  --api-base-url http://127.0.0.1:8001 \
+  --file /safe/local/request.hwpx
 
 # 기본 위치와 다른 보안 설정 파일을 쓰는 경우만 명시한다.
 uv run python scripts/run_local_live_e2e.py \
+  --worker-mode external \
+  --api-base-url http://127.0.0.1:8001 \
   --file /safe/local/request.hwpx \
   --backend-env /safe/local/backend.env \
   --supabase-env /safe/local/supabase.env
@@ -657,31 +734,47 @@ uv run python scripts/run_local_live_e2e.py \
 `.runtime/supabase-dev/.env`다. 스크립트는 임의의 confirmed Auth user를 만들고
 입력·Common IR·Request Profile·분석 결과와 결과 근거 기반 채팅 한 turn을 검증 후에도
 보존한다. 생성한 계정의 email/password, 원문 byte, 질문/답변 본문, 전체 모델 출력은
-터미널에 출력하지 않는다. 성공 JSON에는 ID, 상태, worker outcome/attempt 수와 채팅
-근거 참조 수, Model 1·2·3의 `OK` status처럼 안전한 요약값만 담긴다. 다만 구조화·비교·
-채팅을 위해 테스트 파일에서 추출한 텍스트는 설정된 OpenAI API로 전송된다. 외부 전송이
-허용된 합성/비식별 테스트 파일만 사용한다.
+터미널에 출력하지 않는다. 성공 JSON에는 ID, 상태, DB 감사 이력에서 확인한 실제
+worker ID와 시도별 worker ID·attempt 수, 채팅 근거 참조 수, Model 1·2·3의 `OK`
+status처럼 안전한 요약값만 담긴다. 다만 구조화·비교·채팅을 위해 테스트 파일에서 추출한
+텍스트는 설정된 OpenAI API로 전송된다. 외부 전송이 허용된 합성/비식별 테스트 파일만
+사용한다.
+
+`inline`은 E2E Python process가 자신이 만든 job만 DB queue에서 직접 claim해 host
+runtime으로 수행한다. `external`은 job을 FastAPI에 업로드한 뒤 이미 기동된 Docker
+`worker`와 `chat-worker`가 처리한 상태를 public API로 polling한 뒤, 해당 target의
+`ops.processing_run` 감사 이력과 queue attempt 수를 대조한다. `external`에는 배포된
+`--api-base-url`이 반드시 필요하므로 ASGI API와 외부 worker를 섞은 실행은 허용하지 않는다.
+이 모드는 API·Cookie·Storage·DB queue의 실제 연결과 실행 worker ID를 검증한다. 다만
+worker ID 자체에는 image digest가 없으므로, 아래처럼 다른 producer/worker가 없는 전용
+검증 창에서 대상 Compose replica만 실행 중이라는 전제가 필요하다.
+
+external polling 기본 제한은 분석 1800초, 채팅 600초다. 문서 크기·후보 수·provider
+지연 때문에 더 긴 검증 창이 필요하면 `--analysis-poll-timeout-seconds`와
+`--chat-poll-timeout-seconds`에 양의 초 단위 값을 명시한다. 이 값은 worker나 OpenAI
+호출을 중단하지 않고 E2E가 public 상태를 기다리는 시간만 바꾼다.
 
 live E2E는 `OPENAI_REQUEST_PROFILE_MODEL`을 shell 값, 이어서 `backend/.env`
 값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. `OPENAI_LLM_MODEL`은
 계속 다른 단계의 fallback(예: `gpt-5.6-luna`)으로 둘 수 있다.
 
-스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인하고, 자신이 생성한
-`analysis_run` 하나만 worker로 실행한다. 이후 경쟁으로 예상과 다른 run/message가
-반환되면 claim transaction을 rollback하고 fail-closed한다. 첫 attempt가 retryable
-failure로 queue에 복귀하면 같은 대상을 한 번 더 실행하며, DB queue 계약과 같이 최대
-두 번 후 성공·최종 실패·시도 소진 중 하나로 종료한다.
+스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인한다. `inline`은 자신이
+생성한 target만 claim하며 예상과 다른 run/message가 반환되면 claim transaction을
+rollback하고 fail-closed한다. `external`은 queue를 직접 claim하지 않고 public 상태를
+polling한 뒤 target의 영구 실행 이력에서 실제 worker ID, 순차 attempt 번호, 이전 실패와
+최종 성공, 최대 두 번의 상한을 검증한다.
 
-이 스크립트가 worker runtime을 직접 실행하므로 결과를 재현 가능하게 보려면
-검증 중 상시 `worker`와 `chat-worker` 컨테이너를 일시 중지하고 다른 업로드/채팅을
-막는다. 사전검사 뒤 다른 producer/worker가 끼어드는 경쟁을 스크립트가 원격에서 막을
-수는 없으므로, 위 일시 중지와 작업 차단은 필수다. 그래도 예상과 다른 claim은 commit
-전에 검증해 rollback하므로 다른 작업의 attempt를 소비하지 않는다. 이 잠시 중지는
-Supabase stack이나 영속 volume을 내리는 작업이 아니다.
+`inline`은 worker runtime을 직접 실행하므로 재현 검증 중에는 `worker`와
+`chat-worker` 컨테이너를 일시 중지하고 다른 업로드/채팅을 막아야 한다. 사전검사 뒤
+다른 producer/worker가 끼어드는 경쟁을 script가 원격에서 막을 수는 없으므로, 이 작업
+차단은 필수다. `external`은 반대로 검증할 Compose의 두 worker만 실행한 채 사용하고,
+다른 host worker·복제본·업로드 producer는 잠시 중지해야 한다. 시작 시 queue가 비었는지는
+검사하지만 그 뒤의 경쟁을 원격에서 차단하지는 못하기 때문이다. 이 일시 중지는 Supabase
+stack이나 영속 volume을 내리는 작업이 아니다.
 
 최근 분석 경로 실측에서 실제 Hancom HWP는 Common IR 47 blocks(단락 39, 표 8),
 relation 1, validation error 0으로 파싱됐고 결과 조회까지 성공했다.
-2026-09-13 합성 HWPX 전체 경로 실측에서는 run
+2026-09-13 합성 HWPX **host inline** 전체 경로 실측에서는 run
 `5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
 `2d02ae97-85f0-4678-a9fe-e006ab389bd1`가 분석·채팅 worker 각각 첫 attempt에
 완료됐다. Request Profile은 Terra, FIT·SIM·채팅은 Luna로 실행했고 Model 1·2·3의
@@ -689,6 +782,24 @@ DB status는 모두 `OK`였다. 결과는 CPL 13, FIT 7, SIM 후보 1, evidence 
 검증된 채팅 evidence reference 13개였다. 입력 fixture는
 `samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx`, SHA-256은
 `0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb`다.
+같은 날 Docker external E2E에서는 run
+`f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
+`c05d9ae0-d279-4839-8a86-102da0be18fd`가 완료됐다. analysis worker
+`4d6aae5d4c87:1:540b85e666be`와 chat worker `ea084ec9c993:1:c39815e56162`가 각각
+한 번의 DB queue attempt로 처리했다. 실행 image는 analysis worker
+`sha256:12adb17d…`, chat worker `sha256:f0669e6e…`였다. Model 1/2/3 `OK`, CPL 13,
+FIT 7, SIM 후보 5, evidence 167개, completed chat과 evidence reference 13개를 확인했다.
+입력은 위와 같은 `samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx` 합성
+fixture였다.
+Request Profile에는 Terra를 사용했고 worker 로그에서 최초 1회와 수정 2회, 총 3회의
+호출이 관찰됐다. 성공 run 자체의 안전한 로그는 개별 validation 사유를 남기지 않으므로,
+위의 두 구체 검증 사유는 동일 입력의 별도 진단 결과이며 성공 run 로그에서 직접 읽은
+값으로 간주하지 않는다. 제공된 `docs/pre_review_request_e2e_5_20260909_v1/generated`
+합성 HWPX 5개도 같은 worker image parser에서 각각 Common IR 2 blocks, schema error 0건이었다.
+이 5개는 금액이 미정이므로 ML 3축이 모두 필요한 acceptance 입력으로는 쓰지 않았다.
+리뷰 뒤 strict worker의 effective UID/GID 0 거부만 추가한 image
+`sha256:0847b036…`는 `1000:1000` 정상 기동·ML preflight와 강제 `0:0` 실행의 exit code
+2를 확인했다. 이 후속 변경은 위 OpenAI provider/pipeline 경로를 바꾸지 않는다.
 산출물 수·run/case ID·입력 SHA-256 같은 검증 기록은
 [Backend 구현 현황](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
 
@@ -815,6 +926,7 @@ Cookie Secure를 반드시 활성화한다.
 | 업로드가 503 | service-role/secret key, `request-temp`, DB 연결과 migration |
 | 요청이 계속 `queued` | worker 컨테이너·로그, DB URL, migration 21~26, queue claim |
 | worker가 바로 종료 | 필수 환경변수 이름 누락; worker는 설정 오류 시 exit code 2 |
+| Docker analysis worker가 시작 직후 종료 | `prepare_model1_runtime.py` 실행 여부, `backend/.env`의 Model 1 host path/UID/GID, mount 권한과 startup SHA-256/manifest 오류를 확인. 누락·불일치는 의도된 fail-closed 동작 |
 | HWP/HWPX parser가 `FT_Palette_Data_Get` 오류 | 이미지 재빌드와 `PREREVIEW_FREETYPE_LIB` 경로 |
 | OpenAI HTTP 200 후 `LLM_INVALID_RESPONSE` | HTTP 성공과 domain 구조 검증 성공은 다름. finish/refusal, JSON root, cross-field validation 단계를 확인하되 raw 응답·원문은 로그에 남기지 않음 |
 | `relation_container` cross-field validation 반복 | OpenAI SDK 2.54.0 고정 및 원격 응답 kind별 정규화가 포함된 최신 worker 이미지인지 확인. 필수 container 근거가 없으면 정규화로 값을 만들지 않고 실패하는 것이 정상 |
@@ -833,6 +945,7 @@ Cookie Secure를 반드시 활성화한다.
 - reverse proxy/ASGI 전체 multipart body·part 수 제한과 streaming upload
 - `request-temp` 및 만료 결과의 reference-aware cleanup
 - worker heartbeat/queue lag를 포함한 readiness
+- worker deployment/image identity의 DB 기록과 external E2E 자동 대조
 - 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
 - PDF 보고서·PDF OCR API
 
