@@ -13,12 +13,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import sys
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 import httpx
@@ -47,8 +50,10 @@ SOURCE_MIME_TYPES = {
     ".hwpx": "application/vnd.hancom.hwpx",
 }
 MAX_WORKER_ATTEMPTS = 2
+ANALYSIS_POLL_INTERVAL_SECONDS = 0.5
+ANALYSIS_POLL_TIMEOUT_SECONDS = 1800
 CHAT_POLL_INTERVAL_SECONDS = 0.25
-CHAT_POLL_TIMEOUT_SECONDS = 180
+CHAT_POLL_TIMEOUT_SECONDS = 600
 E2E_CHAT_QUESTION = "이번 분석 결과를 요약하고 근거를 알려주세요."
 ML_ENVIRONMENT_KEYS = (
     "PREREVIEW_ML_ROOT",
@@ -123,6 +128,38 @@ SELECT ml_result
 FROM result.analysis_case
 WHERE analysis_case_pk = %s::uuid
 """
+_ANALYSIS_WORKER_AUDIT_SQL = """
+SELECT
+    dispatch.attempt_count,
+    processing.status,
+    processing.run_metadata
+FROM workspace.analysis_run_dispatch AS dispatch
+JOIN ops.processing_run AS processing
+  ON processing.source_analysis_run_id = dispatch.analysis_run_pk
+ AND processing.run_type = 'analysis'
+WHERE dispatch.analysis_run_pk = %s::uuid
+ORDER BY processing.started_at, processing.created_at, processing.processing_run_pk
+"""
+_CHAT_WORKER_AUDIT_SQL = """
+SELECT
+    dispatch.attempt_count AS current_cycle_attempt_count,
+    message.auto_retry_count,
+    message.manual_retry_count,
+    processing.status,
+    processing.run_metadata
+FROM workspace.conversation_message_dispatch AS dispatch
+JOIN result.conversation_message AS message
+  ON message.message_pk = dispatch.assistant_message_pk
+JOIN ops.processing_run AS processing
+  ON processing.run_type = 'chat'
+ AND processing.run_metadata ->> 'assistant_message_id'
+     = dispatch.assistant_message_pk::text
+ AND processing.run_metadata ->> 'analysis_case_id'
+     = dispatch.analysis_case_pk::text
+WHERE dispatch.assistant_message_pk = %s::uuid
+  AND dispatch.analysis_case_pk = %s::uuid
+ORDER BY processing.started_at, processing.created_at, processing.processing_run_pk
+"""
 _E2E_CHAT_QUEUE_ADVISORY_LOCK = 7_612_330_026
 
 
@@ -136,6 +173,15 @@ class _UnexpectedClaim(E2EFailure):
 
 class _UnexpectedChatClaim(E2EFailure):
     """The guarded chat queue function selected a different assistant message."""
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkerAttemptAudit:
+    """Small, non-secret summary of durable worker-attempt audit rows."""
+
+    final_worker_id: str
+    attempt_count: int
+    attempt_worker_ids: tuple[str, ...]
 
 
 def _claim_value(row: Mapping[str, Any], key: str) -> Any:
@@ -539,6 +585,168 @@ def _require_live_ml_results(
     return statuses
 
 
+def _worker_audit_rows(
+    database_url: str,
+    *,
+    query: str,
+    params: tuple[str, ...],
+    subject: str,
+) -> list[Mapping[str, Any]]:
+    """Read immutable processing attempts without touching either queue."""
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+    except (psycopg.Error, OSError):
+        raise E2EFailure(
+            f"Local E2E {subject} worker audit is unavailable"
+        ) from None
+    if not isinstance(rows, list) or not rows or not all(
+        isinstance(row, Mapping) for row in rows
+    ):
+        raise E2EFailure(f"Local E2E {subject} worker audit is invalid")
+    return rows
+
+
+def _audit_int(value: object, *, subject: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise E2EFailure(f"Local E2E {subject} worker audit is invalid")
+    return value
+
+
+def _audit_metadata(
+    row: Mapping[str, Any],
+    *,
+    subject: str,
+) -> tuple[int, str]:
+    metadata = row.get("run_metadata")
+    if not isinstance(metadata, Mapping):
+        raise E2EFailure(f"Local E2E {subject} worker audit is invalid")
+    attempt_no = _audit_int(metadata.get("attempt_no"), subject=subject)
+    worker_id = metadata.get("worker_id")
+    if (
+        not isinstance(worker_id, str)
+        or not worker_id.strip()
+        or worker_id != worker_id.strip()
+        or len(worker_id) > 256
+        or any(ord(character) < 32 or ord(character) == 127 for character in worker_id)
+    ):
+        raise E2EFailure(f"Local E2E {subject} worker audit is invalid")
+    return attempt_no, worker_id
+
+
+def _require_external_analysis_worker_audit(
+    database_url: str,
+    *,
+    run_id: str,
+) -> _WorkerAttemptAudit:
+    """Prove which external worker attempts produced a terminal analysis."""
+
+    rows = _worker_audit_rows(
+        database_url,
+        query=_ANALYSIS_WORKER_AUDIT_SQL,
+        params=(run_id,),
+        subject="analysis",
+    )
+    attempt_count = _audit_int(rows[0].get("attempt_count"), subject="analysis")
+    if not 1 <= attempt_count <= MAX_WORKER_ATTEMPTS or len(rows) != attempt_count:
+        raise E2EFailure("Local E2E analysis worker audit is invalid")
+
+    worker_ids: list[str] = []
+    for expected_attempt, row in enumerate(rows, start=1):
+        if _audit_int(row.get("attempt_count"), subject="analysis") != attempt_count:
+            raise E2EFailure("Local E2E analysis worker audit is invalid")
+        attempt_no, worker_id = _audit_metadata(row, subject="analysis")
+        expected_status = "succeeded" if expected_attempt == attempt_count else "failed"
+        if attempt_no != expected_attempt or row.get("status") != expected_status:
+            raise E2EFailure("Local E2E analysis worker audit is invalid")
+        worker_ids.append(worker_id)
+
+    return _WorkerAttemptAudit(
+        final_worker_id=worker_ids[-1],
+        attempt_count=attempt_count,
+        attempt_worker_ids=tuple(worker_ids),
+    )
+
+
+def _require_external_chat_worker_audit(
+    database_url: str,
+    *,
+    assistant_message_id: str,
+    case_id: str,
+) -> _WorkerAttemptAudit:
+    """Prove bounded external chat attempts using its durable ops history.
+
+    Chat resets the private dispatch counter after its one automatic retry, so
+    the exact total is the number of immutable ``ops.processing_run`` rows.
+    The current-cycle counter and public retry counters still provide an
+    independent upper/lower bound for that total.
+    """
+
+    rows = _worker_audit_rows(
+        database_url,
+        query=_CHAT_WORKER_AUDIT_SQL,
+        params=(assistant_message_id, case_id),
+        subject="chat",
+    )
+    current_attempt = _audit_int(
+        rows[0].get("current_cycle_attempt_count"), subject="chat"
+    )
+    auto_retries = _audit_int(rows[0].get("auto_retry_count"), subject="chat")
+    manual_retries = _audit_int(rows[0].get("manual_retry_count"), subject="chat")
+    if (
+        not 1 <= current_attempt <= MAX_WORKER_ATTEMPTS
+        or auto_retries > 1
+        or manual_retries != 0
+    ):
+        raise E2EFailure("Local E2E chat worker audit is invalid")
+
+    minimum_total = auto_retries + current_attempt
+    maximum_total = (auto_retries + 1) * MAX_WORKER_ATTEMPTS
+    if not minimum_total <= len(rows) <= maximum_total:
+        raise E2EFailure("Local E2E chat worker audit is invalid")
+
+    worker_ids: list[str] = []
+    cycle_starts = 0
+    previous_attempt = 0
+    for index, row in enumerate(rows):
+        if (
+            _audit_int(row.get("current_cycle_attempt_count"), subject="chat")
+            != current_attempt
+            or _audit_int(row.get("auto_retry_count"), subject="chat")
+            != auto_retries
+            or _audit_int(row.get("manual_retry_count"), subject="chat")
+            != manual_retries
+        ):
+            raise E2EFailure("Local E2E chat worker audit is invalid")
+        attempt_no, worker_id = _audit_metadata(row, subject="chat")
+        if not 1 <= attempt_no <= MAX_WORKER_ATTEMPTS:
+            raise E2EFailure("Local E2E chat worker audit is invalid")
+        if attempt_no == 1:
+            cycle_starts += 1
+        elif previous_attempt != attempt_no - 1:
+            raise E2EFailure("Local E2E chat worker audit is invalid")
+        expected_status = "succeeded" if index == len(rows) - 1 else "failed"
+        if row.get("status") != expected_status:
+            raise E2EFailure("Local E2E chat worker audit is invalid")
+        previous_attempt = attempt_no
+        worker_ids.append(worker_id)
+
+    if cycle_starts != auto_retries + 1 or previous_attempt != current_attempt:
+        raise E2EFailure("Local E2E chat worker audit is invalid")
+    return _WorkerAttemptAudit(
+        final_worker_id=worker_ids[-1],
+        attempt_count=len(rows),
+        attempt_worker_ids=tuple(worker_ids),
+    )
+
+
 def _require_public_ml_projection(result_body: Mapping[str, object]) -> None:
     """Verify that the public result route exposes all three safe ML messages.
 
@@ -565,7 +773,90 @@ def _required(values: dict[str, str | None], name: str) -> str:
     return value
 
 
-def _configure_environment(root_env: Path, supabase_env: Path) -> None:
+def _validated_origin(value: str, *, setting_name: str) -> str:
+    """Accept only a normalized HTTP(S) origin, never a URL with a path."""
+
+    origin = value.strip()
+    try:
+        parsed = urlsplit(origin)
+        # Reading ``port`` forces urlsplit to reject an invalid port instead of
+        # forwarding a surprising Origin header to the API.
+        _ = parsed.port
+    except ValueError:
+        raise E2EFailure(f"{setting_name} must be an HTTP(S) origin") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+    ):
+        raise E2EFailure(f"{setting_name} must be an HTTP(S) origin")
+    return f"{parsed.scheme}://{parsed.netloc}".lower()
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _validated_api_base_url(value: str) -> str:
+    """Limit plaintext deployment tests to the local machine.
+
+    An operator may use HTTPS for any deployment hostname.  Plain HTTP is
+    deliberately limited to a loopback API, which keeps an accidental CLI
+    invocation from sending the generated test-user password over the LAN.
+    """
+
+    base_url = _validated_origin(value, setting_name="--api-base-url")
+    parsed = urlsplit(base_url)
+    if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
+        raise E2EFailure("--api-base-url permits HTTP only for a loopback host")
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
+
+def _external_request_origin(
+    *,
+    explicit_origin: str | None,
+    backend_env: Path,
+) -> str:
+    """Choose an explicit test origin or the first configured server origin."""
+
+    if explicit_origin is not None:
+        return _validated_origin(explicit_origin, setting_name="--request-origin")
+
+    provider = dotenv_values(backend_env)
+    raw_origins = (
+        os.environ["PREREVIEW_AUTH_ALLOWED_ORIGINS"]
+        if "PREREVIEW_AUTH_ALLOWED_ORIGINS" in os.environ
+        else provider.get("PREREVIEW_AUTH_ALLOWED_ORIGINS")
+    )
+    for candidate in str(raw_origins or "").split(","):
+        if candidate.strip():
+            return _validated_origin(
+                candidate,
+                setting_name="PREREVIEW_AUTH_ALLOWED_ORIGINS",
+            )
+    raise E2EFailure(
+        "--api-base-url requires --request-origin or "
+        "PREREVIEW_AUTH_ALLOWED_ORIGINS in backend/.env"
+    )
+
+
+def _configure_environment(
+    root_env: Path,
+    supabase_env: Path,
+    *,
+    auth_allowed_origins: str | None = TEST_ORIGIN,
+) -> None:
     provider = dotenv_values(root_env)
     local = dotenv_values(supabase_env)
     password = _required(local, "POSTGRES_PASSWORD")
@@ -579,7 +870,6 @@ def _configure_environment(root_env: Path, supabase_env: Path) -> None:
 
     settings = {
         "PREREVIEW_OFFLINE_MODE": "false",
-        "PREREVIEW_AUTH_ALLOWED_ORIGINS": TEST_ORIGIN,
         "PREREVIEW_AUTH_COOKIE_SECURE": "false",
         "DATABASE_URL": database_url,
         "SUPABASE_URL": "http://127.0.0.1:8000",
@@ -599,6 +889,8 @@ def _configure_environment(root_env: Path, supabase_env: Path) -> None:
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
         "PREREVIEW_FREETYPE_LIB": "/lib/x86_64-linux-gnu/libfreetype.so.6",
     }
+    if auth_allowed_origins is not None:
+        settings["PREREVIEW_AUTH_ALLOWED_ORIGINS"] = auth_allowed_origins
     # Keep the common fallback independent from stage-specific models.  Shell
     # values take precedence just as python-dotenv's ``override=False`` does;
     # the Request Profile override defaults to Terra for this live smoke test.
@@ -701,6 +993,75 @@ async def _assistant_message_state(
                 raise E2EFailure("FastAPI chat polling response is invalid")
             return message
     raise E2EFailure("FastAPI chat polling response omitted the assistant message")
+
+
+async def _poll_external_analysis_until_terminal(
+    *,
+    client: httpx.AsyncClient,
+    run_id: str,
+    timeout_seconds: float | None = None,
+) -> tuple[dict[str, object], int]:
+    """Wait for an already-running worker through the public status route.
+
+    This intentionally has no repository, queue-claim, or worker-runtime
+    dependency.  It proves the deployed worker consumed the API-created job
+    while keeping the E2E command from taking work away from that worker.
+    """
+
+    effective_timeout = (
+        ANALYSIS_POLL_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
+    deadline = asyncio.get_running_loop().time() + effective_timeout
+    polls = 0
+    while True:
+        state = await _analysis_state(client, run_id)
+        polls += 1
+        status = state.get("status")
+        if status == "succeeded":
+            return state, polls
+        if status in {"failed", "cancelled"}:
+            raise E2EFailure("external analysis worker reached a terminal failure")
+        if status not in {"uploading", "queued", "running", "cleanup_pending"}:
+            raise E2EFailure("external analysis worker returned an invalid status")
+        if asyncio.get_running_loop().time() >= deadline:
+            raise E2EFailure("external analysis worker polling timed out")
+        await asyncio.sleep(ANALYSIS_POLL_INTERVAL_SECONDS)
+
+
+async def _poll_external_chat_until_terminal(
+    *,
+    client: httpx.AsyncClient,
+    case_id: str,
+    assistant_message_id: str,
+    timeout_seconds: float | None = None,
+) -> tuple[dict[str, object], int]:
+    """Wait for an already-running chat worker through the public route."""
+
+    effective_timeout = CHAT_POLL_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    deadline = asyncio.get_running_loop().time() + effective_timeout
+    polls = 0
+    while True:
+        message = await _assistant_message_state(
+            client,
+            case_id,
+            assistant_message_id,
+        )
+        polls += 1
+        status = message["status"]
+        if status == "completed":
+            content = message.get("content")
+            if (
+                not isinstance(content, str)
+                or not content.strip()
+                or len(content) > 12_000
+            ):
+                raise E2EFailure("completed chat response is invalid")
+            return message, polls
+        if status == "failed":
+            raise E2EFailure("external chat worker reached a terminal failure")
+        if asyncio.get_running_loop().time() >= deadline:
+            raise E2EFailure("external chat worker polling timed out")
+        await asyncio.sleep(CHAT_POLL_INTERVAL_SECONDS)
 
 
 async def _poll_chat_message_while_worker_runs(
@@ -903,13 +1264,21 @@ async def _run_target_chat_until_terminal(
     raise E2EFailure("chat worker retry loop ended without a terminal state")
 
 
-async def _run(source: Path) -> dict[str, object]:
-    # Import only after the environment is complete: both composition roots
-    # intentionally read their deployment configuration at construction time.
-    from main import create_app
-    from worker.chat_main import build_chat_worker
-    from worker.main import build_worker, configure_runtime_logging
-    from worker.runtime import WorkerRuntime
+async def _run(
+    source: Path,
+    *,
+    worker_mode: str = "inline",
+    api_base_url: str | None = None,
+    request_origin: str = TEST_ORIGIN,
+    analysis_poll_timeout_seconds: float = ANALYSIS_POLL_TIMEOUT_SECONDS,
+    chat_poll_timeout_seconds: float = CHAT_POLL_TIMEOUT_SECONDS,
+) -> dict[str, object]:
+    from worker.main import configure_runtime_logging
+
+    if worker_mode not in {"inline", "external"}:
+        raise E2EFailure("worker mode must be inline or external")
+    if worker_mode == "external" and api_base_url is None:
+        raise E2EFailure("external worker mode requires a deployed --api-base-url")
 
     # OPENAI_LOG=debug can make the SDK log its full request options, including
     # the uploaded document text.  Apply the same transport-logger floor as the
@@ -921,15 +1290,25 @@ async def _run(source: Path) -> dict[str, object]:
         os.environ["DATABASE_URL"],
     )
     user_id, email, password = await _create_confirmed_test_user()
-    app = create_app()
+    if api_base_url is None:
+        # Keep the default fast, isolated contract mode.  The API deployment
+        # mode below intentionally does not import this local application.
+        from main import create_app
+
+        client_options: dict[str, object] = {
+            "transport": httpx.ASGITransport(app=create_app()),
+            "base_url": TEST_ORIGIN,
+        }
+    else:
+        client_options = {"base_url": api_base_url}
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
-        base_url="http://e2e.local",
+        **client_options,
         timeout=60,
+        follow_redirects=False,
     ) as client:
         signed_in = await client.post(
             "/api/v1/auth/sign-in",
-            headers={"Origin": TEST_ORIGIN},
+            headers={"Origin": request_origin},
             json={"email": email, "password": password},
         )
         if signed_in.status_code != 200:
@@ -940,7 +1319,7 @@ async def _run(source: Path) -> dict[str, object]:
         uploaded = await client.post(
             "/api/v1/analysis-runs",
             headers={
-                "Origin": TEST_ORIGIN,
+                "Origin": request_origin,
                 "Idempotency-Key": str(uuid4()),
             },
             files={
@@ -960,26 +1339,50 @@ async def _run(source: Path) -> dict[str, object]:
         if not isinstance(run_id, str) or payload.get("status") != "queued":
             raise E2EFailure("FastAPI upload response contract is invalid")
 
-        composition = build_worker()
-        target_repository = _TargetRunRepository(
-            composition.repository,
-            target_run_id=run_id,
-            database_url=os.environ["DATABASE_URL"],
-        )
-        runtime = WorkerRuntime(
-            target_repository,
-            composition.handler,
-            worker_id=f"local-e2e-{uuid4().hex[:12]}",
-            heartbeat_seconds=composition.settings.heartbeat_seconds,
-            lease_seconds=composition.settings.lease_seconds,
-            idle_poll_seconds=composition.settings.idle_poll_seconds,
-        )
-        state, worker_outcome, worker_attempts = await _run_target_until_terminal(
-            runtime=runtime,
-            repository=target_repository,
-            client=client,
-            run_id=run_id,
-        )
+        if worker_mode == "external":
+            state, analysis_poll_count = await _poll_external_analysis_until_terminal(
+                client=client,
+                run_id=run_id,
+                timeout_seconds=analysis_poll_timeout_seconds,
+            )
+            analysis_worker_audit = await asyncio.to_thread(
+                _require_external_analysis_worker_audit,
+                os.environ["DATABASE_URL"],
+                run_id=run_id,
+            )
+            worker_outcome: str | None = "external"
+            worker_attempts: int | None = analysis_worker_audit.attempt_count
+            worker_id: str | None = analysis_worker_audit.final_worker_id
+            worker_attempt_worker_ids: list[str] | None = list(
+                analysis_worker_audit.attempt_worker_ids
+            )
+        else:
+            from worker.main import build_worker
+            from worker.runtime import WorkerRuntime
+
+            composition = build_worker()
+            target_repository = _TargetRunRepository(
+                composition.repository,
+                target_run_id=run_id,
+                database_url=os.environ["DATABASE_URL"],
+            )
+            worker_id = f"local-e2e-{uuid4().hex[:12]}"
+            runtime = WorkerRuntime(
+                target_repository,
+                composition.handler,
+                worker_id=worker_id,
+                heartbeat_seconds=composition.settings.heartbeat_seconds,
+                lease_seconds=composition.settings.lease_seconds,
+                idle_poll_seconds=composition.settings.idle_poll_seconds,
+            )
+            state, worker_outcome, worker_attempts = await _run_target_until_terminal(
+                runtime=runtime,
+                repository=target_repository,
+                client=client,
+                run_id=run_id,
+            )
+            worker_attempt_worker_ids = [worker_id] * worker_attempts
+            analysis_poll_count = None
         case_id = state.get("analysis_case_id")
         if not isinstance(case_id, str) or not case_id:
             raise E2EFailure("completed run has no analysis case id")
@@ -1001,7 +1404,7 @@ async def _run(source: Path) -> dict[str, object]:
 
         created_chat = await client.post(
             f"/api/v1/analysis-cases/{case_id}/messages",
-            headers={"Origin": TEST_ORIGIN},
+            headers={"Origin": request_origin},
             json={"content": E2E_CHAT_QUESTION},
         )
         if created_chat.status_code != 202:
@@ -1022,29 +1425,55 @@ async def _run(source: Path) -> dict[str, object]:
             raise E2EFailure("FastAPI chat creation response is invalid")
         assistant_message_id = chat_turn["assistant_message_id"]
 
-        chat_composition = build_chat_worker()
-        target_chat_repository = _TargetChatRepository(
-            chat_composition.repository,
-            target_assistant_message_id=assistant_message_id,
-            database_url=os.environ["DATABASE_URL"],
-        )
-        chat_runtime = WorkerRuntime(
-            target_chat_repository,
-            chat_composition.handler,
-            worker_id=f"local-e2e-chat-{uuid4().hex[:12]}",
-            heartbeat_seconds=chat_composition.settings.heartbeat_seconds,
-            lease_seconds=chat_composition.settings.lease_seconds,
-            idle_poll_seconds=chat_composition.settings.idle_poll_seconds,
-        )
-        chat_message, chat_worker_outcome, chat_worker_attempts = (
-            await _run_target_chat_until_terminal(
-                runtime=chat_runtime,
-                repository=target_chat_repository,
+        if worker_mode == "external":
+            chat_message, chat_poll_count = await _poll_external_chat_until_terminal(
                 client=client,
                 case_id=case_id,
                 assistant_message_id=assistant_message_id,
+                timeout_seconds=chat_poll_timeout_seconds,
             )
-        )
+            chat_worker_audit = await asyncio.to_thread(
+                _require_external_chat_worker_audit,
+                os.environ["DATABASE_URL"],
+                assistant_message_id=assistant_message_id,
+                case_id=case_id,
+            )
+            chat_worker_outcome: str | None = "external"
+            chat_worker_attempts: int | None = chat_worker_audit.attempt_count
+            chat_worker_id: str | None = chat_worker_audit.final_worker_id
+            chat_worker_attempt_worker_ids: list[str] | None = list(
+                chat_worker_audit.attempt_worker_ids
+            )
+        else:
+            from worker.chat_main import build_chat_worker
+            from worker.runtime import WorkerRuntime
+
+            chat_composition = build_chat_worker()
+            target_chat_repository = _TargetChatRepository(
+                chat_composition.repository,
+                target_assistant_message_id=assistant_message_id,
+                database_url=os.environ["DATABASE_URL"],
+            )
+            chat_worker_id = f"local-e2e-chat-{uuid4().hex[:12]}"
+            chat_runtime = WorkerRuntime(
+                target_chat_repository,
+                chat_composition.handler,
+                worker_id=chat_worker_id,
+                heartbeat_seconds=chat_composition.settings.heartbeat_seconds,
+                lease_seconds=chat_composition.settings.lease_seconds,
+                idle_poll_seconds=chat_composition.settings.idle_poll_seconds,
+            )
+            chat_message, chat_worker_outcome, chat_worker_attempts = (
+                await _run_target_chat_until_terminal(
+                    runtime=chat_runtime,
+                    repository=target_chat_repository,
+                    client=client,
+                    case_id=case_id,
+                    assistant_message_id=assistant_message_id,
+                )
+            )
+            chat_worker_attempt_worker_ids = [chat_worker_id] * chat_worker_attempts
+            chat_poll_count = None
         chat_reference_count = await asyncio.to_thread(
             _chat_reference_count,
             os.environ["DATABASE_URL"],
@@ -1053,11 +1482,16 @@ async def _run(source: Path) -> dict[str, object]:
         )
         return {
             "status": "ok",
+            "worker_mode": worker_mode,
+            "api_mode": "deployed" if api_base_url is not None else "asgi",
             "test_user_id": user_id,
             "analysis_run_id": run_id,
             "analysis_case_id": case_id,
             "worker_outcome": worker_outcome,
+            "worker_id": worker_id,
             "worker_attempts": worker_attempts,
+            "worker_attempt_worker_ids": worker_attempt_worker_ids,
+            "analysis_poll_count": analysis_poll_count,
             "cpl_items": len(body.get("cpl", {}).get("items", [])),
             "fit_items": len(body.get("fit", {}).get("items", [])),
             "sim_candidates": len(body.get("sim", {}).get("candidates", [])),
@@ -1066,9 +1500,22 @@ async def _run(source: Path) -> dict[str, object]:
             "chat_assistant_message_id": assistant_message_id,
             "chat_status": chat_message["status"],
             "chat_worker_outcome": chat_worker_outcome,
+            "chat_worker_id": chat_worker_id,
             "chat_worker_attempts": chat_worker_attempts,
+            "chat_worker_attempt_worker_ids": chat_worker_attempt_worker_ids,
+            "chat_poll_count": chat_poll_count,
             "chat_reference_count": chat_reference_count,
         }
+
+
+def _positive_timeout_seconds(raw: str) -> float:
+    try:
+        value = float(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError("timeout must be a number") from None
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError("timeout must be finite and positive")
+    return value
 
 
 def main() -> int:
@@ -1083,12 +1530,83 @@ def main() -> int:
         help="FastAPI/worker runtime .env (default: backend/.env)",
     )
     parser.add_argument("--supabase-env", type=Path, default=DEFAULT_SUPABASE_ENV)
+    parser.add_argument(
+        "--worker-mode",
+        choices=("inline", "external"),
+        default="inline",
+        help=(
+            "inline claims only this E2E job in-process (default); external polls "
+            "already-running analysis and chat workers without claiming jobs"
+        ),
+    )
+    parser.add_argument(
+        "--api-base-url",
+        help=(
+            "optional deployed FastAPI base URL; accepts HTTPS or loopback HTTP "
+            "only (for example http://127.0.0.1:8001)"
+        ),
+    )
+    parser.add_argument(
+        "--request-origin",
+        help=(
+            "explicit allowed HTTP(S) Origin for deployed API requests; defaults "
+            "to the first PREREVIEW_AUTH_ALLOWED_ORIGINS entry in backend/.env"
+        ),
+    )
+    parser.add_argument(
+        "--analysis-poll-timeout-seconds",
+        type=_positive_timeout_seconds,
+        default=ANALYSIS_POLL_TIMEOUT_SECONDS,
+        help=(
+            "external analysis polling deadline in seconds "
+            f"(default: {ANALYSIS_POLL_TIMEOUT_SECONDS})"
+        ),
+    )
+    parser.add_argument(
+        "--chat-poll-timeout-seconds",
+        type=_positive_timeout_seconds,
+        default=CHAT_POLL_TIMEOUT_SECONDS,
+        help=(
+            "external chat polling deadline in seconds "
+            f"(default: {CHAT_POLL_TIMEOUT_SECONDS})"
+        ),
+    )
     args = parser.parse_args()
     if not args.file.is_file():
         raise E2EFailure("--file must be an existing HWP or HWPX file")
     _source_mime_type(args.file)
-    _configure_environment(args.backend_env, args.supabase_env)
-    result = asyncio.run(_run(args.file.resolve()))
+    api_base_url = (
+        _validated_api_base_url(args.api_base_url)
+        if args.api_base_url is not None
+        else None
+    )
+    if args.worker_mode == "external" and api_base_url is None:
+        raise E2EFailure("--worker-mode external requires --api-base-url")
+    if args.request_origin is not None and api_base_url is None:
+        raise E2EFailure("--request-origin requires --api-base-url")
+    request_origin = (
+        _external_request_origin(
+            explicit_origin=args.request_origin,
+            backend_env=args.backend_env,
+        )
+        if api_base_url is not None
+        else TEST_ORIGIN
+    )
+    _configure_environment(
+        args.backend_env,
+        args.supabase_env,
+        auth_allowed_origins=TEST_ORIGIN if api_base_url is None else None,
+    )
+    result = asyncio.run(
+        _run(
+            args.file.resolve(),
+            worker_mode=args.worker_mode,
+            api_base_url=api_base_url,
+            request_origin=request_origin,
+            analysis_poll_timeout_seconds=args.analysis_poll_timeout_seconds,
+            chat_poll_timeout_seconds=args.chat_poll_timeout_seconds,
+        )
+    )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

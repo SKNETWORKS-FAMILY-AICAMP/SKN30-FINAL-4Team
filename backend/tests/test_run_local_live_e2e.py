@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 from collections.abc import Callable
 import importlib.util
 import logging
@@ -40,6 +41,30 @@ def test_source_mime_type_selects_by_supported_extension(
 def test_source_mime_type_rejects_unsupported_extension(filename: str) -> None:
     with pytest.raises(MODULE.E2EFailure, match="must be an HWP or HWPX file"):
         MODULE._source_mime_type(Path(filename))
+
+
+def test_external_mode_requires_a_deployed_api_url() -> None:
+    with pytest.raises(
+        MODULE.E2EFailure,
+        match="external worker mode requires a deployed --api-base-url",
+    ):
+        asyncio.run(
+            MODULE._run(
+                Path("never-read.hwpx"),
+                worker_mode="external",
+                api_base_url=None,
+            )
+        )
+
+
+@pytest.mark.parametrize("raw", ("0", "-1", "nan", "inf", "not-a-number"))
+def test_poll_timeout_rejects_non_positive_or_non_finite_values(raw: str) -> None:
+    with pytest.raises(argparse.ArgumentTypeError):
+        MODULE._positive_timeout_seconds(raw)
+
+
+def test_poll_timeout_accepts_a_positive_value() -> None:
+    assert MODULE._positive_timeout_seconds("123.5") == 123.5
 
 
 def test_configure_environment_carries_ml_settings_and_preserves_shell_override(
@@ -146,6 +171,115 @@ def test_configure_environment_preserves_explicit_blank_stage_override(
 
     assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == ""
     assert environment["OPENAI_CHAT_MODEL"] == ""
+
+
+def test_configure_environment_does_not_override_deployed_api_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text("OPENAI_API_KEY=test-openai-key\n", encoding="utf-8")
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=test-password\n"
+        "POOLER_TENANT_ID=test-tenant\n"
+        "ANON_KEY=test-anon-key\n"
+        "SERVICE_ROLE_KEY=test-service-key\n",
+        encoding="utf-8",
+    )
+    environment: dict[str, str] = {}
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(
+        backend_env,
+        supabase_env,
+        auth_allowed_origins=None,
+    )
+
+    assert "PREREVIEW_AUTH_ALLOWED_ORIGINS" not in environment
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("http://127.0.0.1:8001", "http://127.0.0.1:8001"),
+        ("http://[::1]:8001/", "http://[::1]:8001"),
+        ("https://api.example.test/", "https://api.example.test"),
+    ],
+)
+def test_api_base_url_accepts_https_or_loopback_http(
+    value: str,
+    expected: str,
+) -> None:
+    assert MODULE._validated_api_base_url(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://api.example.test",
+        "ftp://127.0.0.1:8001",
+        "http://user:password@127.0.0.1:8001",
+        "http://127.0.0.1:8001/api",
+        "http://127.0.0.1:8001?next=https://evil.example",
+    ],
+)
+def test_api_base_url_rejects_unsafe_or_non_origin_values(value: str) -> None:
+    with pytest.raises(MODULE.E2EFailure):
+        MODULE._validated_api_base_url(value)
+
+
+def test_external_request_origin_prefers_the_explicit_safe_value(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "PREREVIEW_AUTH_ALLOWED_ORIGINS=https://ignored.example\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE.os, "environ", {})
+
+    origin = MODULE._external_request_origin(
+        explicit_origin="https://frontend.example.test/",
+        backend_env=backend_env,
+    )
+
+    assert origin == "https://frontend.example.test"
+
+
+def test_external_request_origin_uses_first_backend_allowed_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "PREREVIEW_AUTH_ALLOWED_ORIGINS=https://first.example,https://second.example\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE.os, "environ", {})
+
+    origin = MODULE._external_request_origin(
+        explicit_origin=None,
+        backend_env=backend_env,
+    )
+
+    assert origin == "https://first.example"
+
+
+def test_external_request_origin_requires_a_configured_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text("# no allowed origin\n", encoding="utf-8")
+    monkeypatch.setattr(MODULE.os, "environ", {})
+
+    with pytest.raises(MODULE.E2EFailure, match="--api-base-url requires"):
+        MODULE._external_request_origin(
+            explicit_origin=None,
+            backend_env=backend_env,
+        )
 
 
 def test_live_e2e_hardens_provider_logging_before_external_work(
@@ -870,6 +1004,50 @@ def test_retry_loop_surfaces_repository_claim_failure(
     assert client.calls == 0
 
 
+def test_external_analysis_polling_waits_for_the_public_terminal_success() -> None:
+    run_id = "target-run"
+    client = _StateClient(run_id, ["queued", "running", "succeeded"])
+
+    state, polls = asyncio.run(
+        MODULE._poll_external_analysis_until_terminal(
+            client=client,
+            run_id=run_id,
+        )
+    )
+
+    assert state["status"] == "succeeded"
+    assert polls == 3
+    assert client.calls == 3
+
+
+def test_external_analysis_polling_rejects_a_terminal_failure() -> None:
+    client = _StateClient("target-run", ["failed"])
+
+    with pytest.raises(MODULE.E2EFailure, match="external analysis worker reached"):
+        asyncio.run(
+            MODULE._poll_external_analysis_until_terminal(
+                client=client,
+                run_id="target-run",
+            )
+        )
+
+
+def test_external_analysis_polling_is_bounded(
+) -> None:
+    client = _StateClient("target-run", ["queued"])
+
+    with pytest.raises(MODULE.E2EFailure, match="external analysis worker polling timed out"):
+        asyncio.run(
+            MODULE._poll_external_analysis_until_terminal(
+                client=client,
+                run_id="target-run",
+                timeout_seconds=0,
+            )
+        )
+
+    assert client.calls == 1
+
+
 class _SingleRowCursor:
     def __init__(self, row: object, calls: list[tuple[str, object | None]]) -> None:
         self._row = row
@@ -913,6 +1091,62 @@ def _single_row_database(
         assert database_url == "postgresql://test"
         assert kwargs == {"connect_timeout": 10, "row_factory": MODULE.dict_row}
         return _SingleRowConnection(row, calls)
+
+    monkeypatch.setattr(MODULE.psycopg, "connect", connect)
+    return calls
+
+
+class _RowsCursor:
+    def __init__(
+        self,
+        rows: list[object],
+        calls: list[tuple[str, object | None]],
+    ) -> None:
+        self._rows = rows
+        self._calls = calls
+
+    def __enter__(self) -> _RowsCursor:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def execute(self, query: str, params: object | None = None) -> None:
+        self._calls.append((" ".join(query.split()), params))
+
+    def fetchall(self) -> list[object]:
+        return list(self._rows)
+
+
+class _RowsConnection:
+    def __init__(
+        self,
+        rows: list[object],
+        calls: list[tuple[str, object | None]],
+    ) -> None:
+        self._rows = rows
+        self._calls = calls
+
+    def __enter__(self) -> _RowsConnection:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def cursor(self) -> _RowsCursor:
+        return _RowsCursor(self._rows, self._calls)
+
+
+def _rows_database(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: list[object],
+) -> list[tuple[str, object | None]]:
+    calls: list[tuple[str, object | None]] = []
+
+    def connect(database_url: str, **kwargs: object) -> _RowsConnection:
+        assert database_url == "postgresql://test"
+        assert kwargs == {"connect_timeout": 10, "row_factory": MODULE.dict_row}
+        return _RowsConnection(rows, calls)
 
     monkeypatch.setattr(MODULE.psycopg, "connect", connect)
     return calls
@@ -994,6 +1228,68 @@ def test_assistant_message_state_rejects_an_invalid_matching_message(
 
     with pytest.raises(MODULE.E2EFailure, match="chat polling response is invalid"):
         asyncio.run(MODULE._assistant_message_state(client, "case-id", "assistant-id"))
+
+
+def test_external_chat_polling_waits_for_a_completed_public_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = [
+        {"status": "generating"},
+        {"status": "completed", "content": "완료된 안전한 응답"},
+    ]
+
+    async def state(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return messages.pop(0)
+
+    monkeypatch.setattr(MODULE, "_assistant_message_state", state)
+    message, polls = asyncio.run(
+        MODULE._poll_external_chat_until_terminal(
+            client=object(),
+            case_id="case-id",
+            assistant_message_id="assistant-id",
+        )
+    )
+
+    assert message["status"] == "completed"
+    assert polls == 2
+    assert not messages
+
+
+def test_external_chat_polling_rejects_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def state(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"status": "failed"}
+
+    monkeypatch.setattr(MODULE, "_assistant_message_state", state)
+
+    with pytest.raises(MODULE.E2EFailure, match="external chat worker reached"):
+        asyncio.run(
+            MODULE._poll_external_chat_until_terminal(
+                client=object(),
+                case_id="case-id",
+                assistant_message_id="assistant-id",
+            )
+        )
+
+
+def test_external_chat_polling_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def state(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"status": "generating"}
+
+    monkeypatch.setattr(MODULE, "_assistant_message_state", state)
+
+    with pytest.raises(MODULE.E2EFailure, match="external chat worker polling timed out"):
+        asyncio.run(
+            MODULE._poll_external_chat_until_terminal(
+                client=object(),
+                case_id="case-id",
+                assistant_message_id="assistant-id",
+                timeout_seconds=0,
+            )
+        )
 
 
 class _ChatAttemptRuntime:
@@ -1238,6 +1534,156 @@ def test_chat_retry_budget_failure_stops_after_two_attempts(
         )
 
     assert runtime.calls == MODULE.MAX_WORKER_ATTEMPTS
+
+
+def test_external_analysis_worker_audit_reports_exact_durable_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _rows_database(
+        monkeypatch,
+        [
+            {
+                "attempt_count": 2,
+                "status": "failed",
+                "run_metadata": {"attempt_no": 1, "worker_id": "worker-a:10"},
+            },
+            {
+                "attempt_count": 2,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 2, "worker_id": "worker-b:20"},
+            },
+        ],
+    )
+
+    audit = MODULE._require_external_analysis_worker_audit(
+        "postgresql://test",
+        run_id="run-id",
+    )
+
+    assert audit.final_worker_id == "worker-b:20"
+    assert audit.attempt_count == 2
+    assert audit.attempt_worker_ids == ("worker-a:10", "worker-b:20")
+    assert "ops.processing_run" in calls[0][0]
+    assert "claim_next" not in calls[0][0]
+    assert calls[0][1] == ("run-id",)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            {
+                "attempt_count": 2,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "worker-a"},
+            }
+        ],
+        [
+            {
+                "attempt_count": 2,
+                "status": "failed",
+                "run_metadata": {"attempt_no": 1, "worker_id": "worker-a"},
+            },
+            {
+                "attempt_count": 2,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "worker-b"},
+            },
+        ],
+    ],
+)
+def test_external_analysis_worker_audit_rejects_inexact_history(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: list[dict[str, object]],
+) -> None:
+    _rows_database(monkeypatch, rows)
+
+    with pytest.raises(MODULE.E2EFailure, match="analysis worker audit is invalid"):
+        MODULE._require_external_analysis_worker_audit(
+            "postgresql://test",
+            run_id="run-id",
+        )
+
+
+def test_external_chat_worker_audit_reports_exact_reset_cycle_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _rows_database(
+        monkeypatch,
+        [
+            {
+                "current_cycle_attempt_count": 1,
+                "auto_retry_count": 1,
+                "manual_retry_count": 0,
+                "status": "failed",
+                "run_metadata": {"attempt_no": 1, "worker_id": "chat-a:30"},
+            },
+            {
+                "current_cycle_attempt_count": 1,
+                "auto_retry_count": 1,
+                "manual_retry_count": 0,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "chat-b:40"},
+            },
+        ],
+    )
+
+    audit = MODULE._require_external_chat_worker_audit(
+        "postgresql://test",
+        assistant_message_id="assistant-id",
+        case_id="case-id",
+    )
+
+    assert audit.final_worker_id == "chat-b:40"
+    assert audit.attempt_count == 2
+    assert audit.attempt_worker_ids == ("chat-a:30", "chat-b:40")
+    assert "ops.processing_run" in calls[0][0]
+    assert "claim_next" not in calls[0][0]
+    assert calls[0][1] == ("assistant-id", "case-id")
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            {
+                "current_cycle_attempt_count": 1,
+                "auto_retry_count": 0,
+                "manual_retry_count": 1,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "chat-a"},
+            }
+        ],
+        [
+            {
+                "current_cycle_attempt_count": 1,
+                "auto_retry_count": 0,
+                "manual_retry_count": 0,
+                "status": "failed",
+                "run_metadata": {"attempt_no": 1, "worker_id": "chat-a"},
+            },
+            {
+                "current_cycle_attempt_count": 1,
+                "auto_retry_count": 0,
+                "manual_retry_count": 0,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "chat-b"},
+            },
+        ],
+    ],
+)
+def test_external_chat_worker_audit_rejects_out_of_scope_or_unbounded_history(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: list[dict[str, object]],
+) -> None:
+    _rows_database(monkeypatch, rows)
+
+    with pytest.raises(MODULE.E2EFailure, match="chat worker audit is invalid"):
+        MODULE._require_external_chat_worker_audit(
+            "postgresql://test",
+            assistant_message_id="assistant-id",
+            case_id="case-id",
+        )
 
 
 @pytest.mark.parametrize(
