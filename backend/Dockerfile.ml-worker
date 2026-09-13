@@ -49,6 +49,7 @@ RUN sed '/^xgboost==/d' /app/ml/serving/requirements.txt > /tmp/ml-serving-no-xg
 # artifacts, or tracked Model 1 package is copied into this image. Model 1
 # enters only through the verified read-only bind mount.
 COPY backend/app /app/backend/app
+COPY backend/config/prompts /app/backend/config/prompts
 COPY backend/worker /app/backend/worker
 COPY backend/scripts/classify_existing_model1.py /app/backend/scripts/classify_existing_model1.py
 COPY ["ml/serving/shared/preconsultation_adapter.py", "/app/ml/serving/shared/"]

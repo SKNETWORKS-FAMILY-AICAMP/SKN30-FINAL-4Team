@@ -1,16 +1,15 @@
 """Slice 3: Request Profile v0.1.2 → FIT 7관계 판정 (초안 §7.1, §9.0–§9.2.1).
 
-좌우 근거는 전부 프로파일에서 만든다. 다른 관계의 판정 결과를 근거로 쓰지
-않고, 없는 값을 만들어 비교를 성립시키지도 않는다. 그래서
-``app.services.fit`` 아래의 옛 FIT 구현을 import 하지 않는다 — 저쪽은
-CplResult 표시 구조를 다시 해석해서 관계를 만들었고, 그 재해석이 여기서
-금지된 "다른 단계 출력에서 근거 만들기" 다.
+좌우 근거는 CPL이 확정한 ``CplResult`` 에서 만든다. 다른 관계의 판정 결과를
+근거로 쓰지 않고, 없는 값을 만들어 비교를 성립시키지도 않는다. 그래서
+``app.services.fit`` 아래의 옛 FIT 구현을 import 하지 않는다. 워커 CPL 계약이
+확정한 값·상태·근거를 직접 소비하고, FastAPI 표시 모델을 다시 해석하지 않는다.
 (테스트가 worker 소스에 그 모듈 경로 문자열이 없는지도 함께 고정한다.)
 
 수단 배치는 초안 §7.1 표 그대로다.
 
 - FIT-1·2·3·5·6: 의미 비교라 LLM. 표현이 열려 있어 Rule 로 닫히지 않는다.
-- FIT-4: 비교 기준이 확정되지 않았다. 호출 자체를 하지 않는다.
+- FIT-4: 명시된 인접 parent-child 계층을 느슨한 알파 이상징후 탐지로 비교한다.
 - FIT-7: 정량 값 집합 비교라 Rule. LLM 으로 값을 추측하지 않는다.
 
 점수·확인율·비율·등급은 계산하지 않는다.
@@ -18,9 +17,7 @@ CplResult 표시 구조를 다시 해석해서 관계를 만들었고, 그 재�
 
 from __future__ import annotations
 
-from decimal import Decimal
 
-import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -33,13 +30,14 @@ from .ports.llm import (
     LLMUnavailableError,
 )
 
-from .analysis_inputs import facts_at, field_name_of, field_states_by_name, read_path
+from .analysis_inputs import field_name_of
+from .quantities import comparison_key
+from .contracts.cpl_result import CplFact, CplResult
 from .contracts.fit_result import (
     COMPARISON_EVIDENCE_MISSING,
     COMPARISON_VALUE_INVALID,
     EVIDENCE_REF_UNRESOLVED,
     FIT_REASON_CODES,
-    HIERARCHY_COMPARISON_NOT_AVAILABLE,
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
     LLM_UNAVAILABLE,
@@ -49,32 +47,26 @@ from .contracts.fit_result import (
     PURPOSE_AXIS_CODES,
     SELF_COMPARISON,
     SINGLE_SIDED_NO_CONFLICT,
-    CplEvidence,
     FitEvidenceRef,
     FitRelationId,
     FitRelationResult,
     FitResult,
     FitSide,
     FitStatus,
-    PurposeAxisAssignment,
-    PurposeAxisClassification,
-    PurposeAxisCode,
+    CplAxisCode,
     StageDiagnostic,
 )
 
 __all__ = [
     "FIT_PROMPT_VERSION",
     "FIT_RULESET_VERSION",
-    "PURPOSE_AXIS_PROMPT_VERSION",
     "analyze_fit",
 ]
 
 _STAGE = "analyze_fit"
-_PURPOSE_STAGE = "classify_purpose_axis"
 
-FIT_RULESET_VERSION = "fit-rules-v0.1"
-FIT_PROMPT_VERSION = "fit-relations-v0.1"
-PURPOSE_AXIS_PROMPT_VERSION = "fit-purpose-axis-v0.1"
+FIT_RULESET_VERSION = "fit-rules-v0.2"
+FIT_PROMPT_VERSION = "fit-relations-v0.2"
 
 
 # ------------------------------------------------------------ 입력 경로표
@@ -103,12 +95,32 @@ _CONTENT_PATH = "comparison_profile.support_content"
 _SCALE_PATH = "comparison_profile.support_scale"
 _DELIVERY_PATH = "comparison_profile.delivery_relations"
 _DELIVERY_METHODS_PATH = "comparison_profile.delivery_methods"
+_HIERARCHY_PATH = "program_hierarchy.nodes"
+# FIT-4 원문 3축에 해당하는 하위 근거만 보낸다. 지원규모·예산·법적근거·
+# 성과지표는 계층 연결성 비교축이 아니므로 이름이 같은 사업이라도 섞지 않는다.
+_HIERARCHY_ALLOWED_PATHS = frozenset(
+    {
+        _PURPOSE_PATH,
+        *_TARGET_PATHS,
+        *_MEANS_PATHS,
+        _CONTENT_PATH,
+    }
+)
+
+# Structured Profile 이 정의한 계층 어휘의 순서. 명시적 parent_node_id 가
+# 고른 edge 자체가 우선이며, 여러 direct edge 를 함께 다룰 때 비교 시작
+# 레벨을 안정적으로 고르는 보조 기준으로만 사용한다.
+_PROGRAM_LEVEL_ORDER = {
+    "detail_program": 0,
+    "sub_program": 1,
+    "sub_sub_program": 2,
+}
 
 # 좌측이 목적 의미 축에서 오는 관계와, 그 관계가 요구하는 축.
 _PURPOSE_AXIS_OF = {
-    FitRelationId.FIT_1: PurposeAxisCode.TARGET_CONDITION,
-    FitRelationId.FIT_2: PurposeAxisCode.DIRECTION,
-    FitRelationId.FIT_3: PurposeAxisCode.DIRECTION,
+    FitRelationId.FIT_1: CplAxisCode.TARGET_CONDITION,
+    FitRelationId.FIT_2: CplAxisCode.DIRECTION,
+    FitRelationId.FIT_3: CplAxisCode.DIRECTION,
 }
 
 # 관계별 한 줄 질문. LLM payload 에만 쓰이고 결과에는 실리지 않는다.
@@ -116,6 +128,10 @@ _RELATION_QUESTION = {
     FitRelationId.FIT_1: "목적이 말하는 대상 조건과 실제 지원 대상이 같은 대상을 가리키는가.",
     FitRelationId.FIT_2: "목적이 말하는 방향과 지원 활동·수단·품목이 같은 방향인가.",
     FitRelationId.FIT_3: "목적이 말하는 방향과 기대효과·성과지표가 같은 방향인가.",
+    FitRelationId.FIT_4: (
+        "상위사업과 하위사업이 명시된 parent-child 계층 관계에서, "
+        "하위사업이 상위사업을 구체화하거나 일부를 분담하는가."
+    ),
     FitRelationId.FIT_5: "지원 대상군과 신청 조건이 같은 집단을 가리키는가.",
     FitRelationId.FIT_6: "수행기관과 그 역할·절차·전달 방식이 서로 맞물리는가.",
 }
@@ -124,34 +140,57 @@ _RELATION_QUESTION = {
 # ------------------------------------------------------------ 근거 만들기
 
 
-def _fact_id_registry(profile: dict[str, Any]) -> set[str]:
-    """프로파일 안에 실제로 존재하는 모든 항목 id.
+def _facts_at(cpl: CplResult, path: str) -> list[CplFact]:
+    """CPL이 확정한 한 프로파일 경로의 fact만 읽는다."""
 
-    게이트 3번(근거 참조가 실제 fact 로 해소되는가)과 LLM 응답 접지 검사가
-    같은 집합을 본다. 한쪽만 통과하는 id 가 생기지 않게 한 곳에서 만든다.
+    return [
+        fact
+        for item in cpl.items
+        for subfield in item.subfields
+        if subfield.profile_field == path
+        for fact in subfield.facts
+    ]
+
+
+def _all_facts(cpl: CplResult) -> list[CplFact]:
+    return [fact for item in cpl.items for subfield in item.subfields for fact in subfield.facts]
+
+
+def _fit_fact_id(fact: CplFact) -> str | None:
+    """CPL fact 좌표를 기존 FIT fact_id 표기로 옮긴다.
+
+    일반 fact는 원래 id를 그대로 쓰고, id가 없는 delivery 멤버만 CPL이
+    보존한 relation/member 좌표를 기존 공개 표기로 렌더링한다.
     """
 
+    if fact.relation_id and fact.member in {"actor", "role"}:
+        return f"{fact.relation_id}.{fact.member}"
+    if (
+        fact.relation_id
+        and fact.member == "action"
+        and fact.member_index is not None
+    ):
+        return f"{fact.relation_id}.actions[{fact.member_index}]"
+    if fact.fact_id:
+        return fact.fact_id
+    # CPL 재검으로 복구한 값은 구조화가 만든 id 가 없다. 서버가 검증한 구역
+    # 참조를 그대로 쓴다 — 식별자를 지어내지 않으면서 기존 FIT JSON 키를
+    # 유지한다.
+    return fact.evidence_ref
+
+
+def _fact_id_registry(cpl: CplResult) -> set[str]:
+    """CPL facts에 실제로 존재하는 id와 delivery relation id."""
+
     found: set[str] = set()
-    id_keys = (
-        "fact_id",
-        "delivery_relation_id",
-        "program_node_id",
-        "support_component_id",
-    )
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            for key in id_keys:
-                value = node.get(key)
-                if isinstance(value, str):
-                    found.add(value)
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for value in node:
-                walk(value)
-
-    walk(profile)
+    for fact in _all_facts(cpl):
+        if fact.fact_id:
+            found.add(fact.fact_id)
+        if fact.relation_id:
+            found.add(fact.relation_id)
+        rendered = _fit_fact_id(fact)
+        if rendered:
+            found.add(rendered)
     return found
 
 
@@ -161,49 +200,139 @@ def _base_id(fact_id: str) -> str:
     return fact_id.split(".", 1)[0]
 
 
-def _refs_at(profile: dict[str, Any], path: str) -> list[FitEvidenceRef]:
-    """경로 하나를 근거 목록으로 편다. id 가 없는 항목은 인용할 수 없으므로 뺀다."""
+def _refs_at(cpl: CplResult, path: str) -> list[FitEvidenceRef]:
+    """CPL fact를 기존 FIT 근거 모양으로 편다."""
 
     name = field_name_of(path)
-    return [
-        FitEvidenceRef(
-            fact_id=fact.fact_id,
-            field_name=name,
-            value_raw=fact.value_raw,
-            evidence=list(fact.evidence),
-            primary_component_id=fact.primary_component_id,
-        )
-        for fact in facts_at(profile, path)
-        if fact.fact_id
+    refs: list[FitEvidenceRef] = []
+    for fact in _facts_at(cpl, path):
+        fact_id = _fit_fact_id(fact)
+        if fact_id:
+            refs.append(_fit_ref(fact, name, fact_id=fact_id))
+    return refs
+
+
+def _fit_ref(
+    fact: CplFact,
+    field_name: str,
+    *,
+    fact_id: str | None = None,
+) -> FitEvidenceRef:
+    """CPL fact 하나를 FIT 입력 근거로 옮긴다."""
+
+    return FitEvidenceRef(
+        fact_id=fact_id or _fit_fact_id(fact) or "",
+        field_name=field_name,
+        value_raw=fact.value_raw,
+        evidence=list(fact.evidence),
+        primary_component_id=fact.primary_component_id,
+        quantities=fact.quantities,
+    )
+
+
+def _hierarchy_sides(cpl: CplResult) -> tuple[FitSide, FitSide] | None:
+    """명시된 인접 계층 edge 하나를 FIT-4 좌우 근거로 만든다.
+
+    ``program_hierarchy.nodes`` 자체가 계층의 유일한 원천이다. 이름 순서나
+    문자열 포함으로 부모를 추측하지 않고, node 의 ``parent_node_id`` 를
+    실제 node id 와 대조한다. detail→sub 같은 동일한 인접 레벨의 형제 edge는
+    한 관계에 함께 넣을 수 있지만, chain 의 서로 다른 레벨은 같은 node 가
+    좌우에 동시에 들어가므로 가장 상위 인접 레벨 하나만 선택한다.
+    """
+
+    node_by_id: dict[str, CplFact] = {}
+    for fact in _facts_at(cpl, _HIERARCHY_PATH):
+        node_id = fact.program_node_id
+        if node_id and node_id not in node_by_id and (
+            isinstance(fact.value_raw, str) and fact.value_raw.strip()
+        ):
+            node_by_id[node_id] = fact
+    if not node_by_id:
+        return None
+
+    edges: list[tuple[CplFact, CplFact]] = []
+    for child in node_by_id.values():
+        parent_id = child.parent_program_node_id
+        parent = node_by_id.get(parent_id or "")
+        if parent is None:
+            continue
+        # parent_node_id 가 실제 node 를 가리키는 것이 직접적인 계층 근거다.
+        # 모델이 level 을 뒤집거나 누락해도 명시 edge 를 추측으로 무효화하지
+        # 않는다. level 은 아래에서 여러 edge를 안정적으로 고르는 데만 쓴다.
+        edges.append((parent, child))
+    if not edges:
+        return None
+
+    known_parent_levels = [
+        _PROGRAM_LEVEL_ORDER[parent.program_level]
+        for parent, _child in edges
+        if parent.program_level in _PROGRAM_LEVEL_ORDER
     ]
+    selected_parent_level = min(known_parent_levels) if known_parent_levels else None
+    if selected_parent_level is not None:
+        edges = [
+            (parent, child)
+            for parent, child in edges
+            if _PROGRAM_LEVEL_ORDER.get(parent.program_level) == selected_parent_level
+        ]
+
+    parent_nodes: list[CplFact] = []
+    child_nodes: list[CplFact] = []
+    seen_parents: set[str] = set()
+    seen_children: set[str] = set()
+    for parent, child in edges:
+        if parent.program_node_id and parent.program_node_id not in seen_parents:
+            parent_nodes.append(parent)
+            seen_parents.add(parent.program_node_id)
+        if child.program_node_id and child.program_node_id not in seen_children:
+            child_nodes.append(child)
+            seen_children.add(child.program_node_id)
+
+    def side(nodes: list[CplFact], *, include_attached: bool) -> FitSide:
+        refs: list[FitEvidenceRef] = []
+        seen_fact_ids: set[str] = set()
+        field_names = [_HIERARCHY_PATH]
+        for node in nodes:
+            node_ref = _fit_ref(node, _HIERARCHY_PATH)
+            if node_ref.fact_id and node_ref.fact_id not in seen_fact_ids:
+                refs.append(node_ref)
+                seen_fact_ids.add(node_ref.fact_id)
+            if not include_attached or not node.program_node_id:
+                continue
+            for item in cpl.items:
+                for subfield in item.subfields:
+                    for fact in subfield.facts:
+                        if (
+                            fact is node
+                            or fact.program_node_id != node.program_node_id
+                            or subfield.profile_field not in _HIERARCHY_ALLOWED_PATHS
+                        ):
+                            continue
+                        ref = _fit_ref(fact, subfield.profile_field_name)
+                        if ref.fact_id and ref.fact_id not in seen_fact_ids:
+                            if isinstance(ref.value_raw, str) and ref.value_raw.strip():
+                                refs.append(ref)
+                                seen_fact_ids.add(ref.fact_id)
+                                if subfield.profile_field not in field_names:
+                                    field_names.append(subfield.profile_field)
+        return FitSide(
+            field_names=field_names,
+            facts=refs,
+        )
+
+    # Parent-side facts are included when they exist only if they were explicitly
+    # attached to that node; the node name alone is still valid comparison text.
+    return side(parent_nodes, include_attached=True), side(child_nodes, include_attached=True)
 
 
-def _side(profile: dict[str, Any], paths: tuple[str, ...]) -> FitSide:
+def _side(cpl: CplResult, paths: tuple[str, ...]) -> FitSide:
     refs: list[FitEvidenceRef] = []
     for path in paths:
-        refs.extend(_refs_at(profile, path))
+        refs.extend(_refs_at(cpl, path))
     return FitSide(field_names=[field_name_of(path) for path in paths], facts=refs)
 
 
-def _evidence_rows(entry: dict[str, Any]) -> list[CplEvidence]:
-    """항목 하나의 Common IR 접지. 없으면 빈 목록이고 지어내지 않는다."""
-
-    rows = entry.get("evidence")
-    if not isinstance(rows, list):
-        rows = []
-    return [
-        CplEvidence(
-            source_block_id=row.get("source_block_id"),
-            common_ir_document_id=row.get("common_ir_document_id"),
-            common_ir_block_id=row.get("common_ir_block_id"),
-            common_ir_occurrence_ids=list(row.get("common_ir_occurrence_ids") or []),
-        )
-        for row in rows
-        if isinstance(row, dict)
-    ]
-
-
-def _delivery_sides(profile: dict[str, Any]) -> tuple[FitSide, FitSide]:
+def _delivery_sides(cpl: CplResult) -> tuple[FitSide, FitSide]:
     """FIT-6 의 좌우. ``delivery_relations`` 컨테이너 안에서 갈린다.
 
     actor 와 role 은 같은 relation 안에 있어 ``fact_id`` 가 없다. 컨테이너 id
@@ -215,53 +344,35 @@ def _delivery_sides(profile: dict[str, Any]) -> tuple[FitSide, FitSide]:
     아니다. Rule 로 CONFLICT 를 만들지 않는다 (초안 §7.1 FIT-6).
     """
 
-    relations = read_path(profile, _DELIVERY_PATH)
-    rows = relations if isinstance(relations, list) else []
     left: list[FitEvidenceRef] = []
     right: list[FitEvidenceRef] = []
-    for row in rows:
-        if not isinstance(row, dict):
+    for fact in _facts_at(cpl, _DELIVERY_PATH):
+        fact_id = _fit_fact_id(fact)
+        if not fact_id:
             continue
-        relation_id = row.get("delivery_relation_id")
-        if not relation_id:
+        if fact.member == "actor":
+            field_name = "delivery_relations.actor"
+            target = left
+        elif fact.member in {"role", "action"}:
+            field_name = (
+                "delivery_relations.role"
+                if fact.member == "role"
+                else "delivery_relations.actions"
+            )
+            target = right
+        else:
             continue
-        container = row.get("relation_container")
-        container_evidence = (
-            _evidence_rows({"evidence": [container]}) if isinstance(container, dict) else []
+        target.append(
+            FitEvidenceRef(
+                fact_id=fact_id,
+                field_name=field_name,
+                value_raw=fact.value_raw,
+                evidence=list(fact.evidence),
+                primary_component_id=fact.primary_component_id,
+                quantities=fact.quantities,
+            )
         )
-        actor = row.get("actor")
-        if isinstance(actor, dict):
-            left.append(
-                FitEvidenceRef(
-                    fact_id=f"{relation_id}.actor",
-                    field_name="delivery_relations.actor",
-                    value_raw=actor.get("value_raw"),
-                    evidence=_evidence_rows(actor) or container_evidence,
-                )
-            )
-        role = row.get("role")
-        if isinstance(role, dict):
-            right.append(
-                FitEvidenceRef(
-                    fact_id=f"{relation_id}.role",
-                    field_name="delivery_relations.role",
-                    value_raw=role.get("value_raw"),
-                    evidence=_evidence_rows(role) or container_evidence,
-                )
-            )
-        actions = row.get("actions")
-        for index, action in enumerate(actions if isinstance(actions, list) else []):
-            if not isinstance(action, dict):
-                continue
-            right.append(
-                FitEvidenceRef(
-                    fact_id=f"{relation_id}.actions[{index}]",
-                    field_name="delivery_relations.actions",
-                    value_raw=action.get("value_raw"),
-                    evidence=_evidence_rows(action) or container_evidence,
-                )
-            )
-    right.extend(_refs_at(profile, _DELIVERY_METHODS_PATH))
+    right.extend(_refs_at(cpl, _DELIVERY_METHODS_PATH))
     return (
         FitSide(field_names=["delivery_relations.actor"], facts=left),
         FitSide(
@@ -299,7 +410,7 @@ def _gate(left: FitSide, right: FitSide, registry: set[str]) -> str | None:
     return None
 
 
-def _fit5_reason(states: dict[str, dict[str, Any]], left: FitSide) -> str | None:
+def _fit5_reason(cpl: CplResult, left: FitSide) -> str | None:
     """FIT-5 만의 부재·실패 구분 (초안 §7.1 "단순 조건 미기재와 추출 실패").
 
     문서에 있는 조건을 "조건 없음" 으로 단정하지 않는다. 그래서 상태가
@@ -310,8 +421,11 @@ def _fit5_reason(states: dict[str, dict[str, Any]], left: FitSide) -> str | None
     if not left.facts:
         return COMPARISON_EVIDENCE_MISSING
     statuses = [
-        (states.get(field_name_of(path)) or {}).get("status")
+        subfield.status
         for path in _CONDITION_PATHS
+        for item in cpl.items
+        for subfield in item.subfields
+        if subfield.profile_field == path
     ]
     if any(status in ("extraction_failed", "mentioned_unresolved") for status in statuses):
         return COMPARISON_EVIDENCE_MISSING
@@ -321,90 +435,43 @@ def _fit5_reason(states: dict[str, dict[str, Any]], left: FitSide) -> str | None
 
 
 # --------------------------------------------------------- FIT-7 정량 비교
-
-# 금액 단위. ponytail: 이 정규식들은 단위 하나짜리 값만 읽는다. "1억 5000만원"
-# 처럼 단위가 두 번 붙은 복합 표현은 읽지 못한다 — 그리고 **읽지 못한 것을
-# 부분값으로 만들지 않는다** (아래 숫자 시퀀스 소비 규칙). 복합 단위가 필요해
-# 지면 정규식에 예외를 더하는 대신 금액 파서를 따로 둔다.
-_AMOUNT_SCALES = {"조": 10**12, "억": 10**8, "만": 10**4, "천": 10**3}
-_AMOUNT_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([조억만천])?\s*원")
-_COUNT_RE = re.compile(r"(\d[\d,]*)\s*개?\s*(팀|명|개사|건|개)")
-# 기간 수식어가 붙은 횟수(월 2회)는 총 횟수(총 8회)와 같은 축이 아니다.
-_TIMES_RE = re.compile(r"([월주년일])?\s*(\d[\d,]*)\s*회")
-_DIGITS_RE = re.compile(r"\d+")
+#
+# 정량 표현을 읽고 비교 맥락을 붙이는 일은 ``worker.quantities`` 가 하고, CPL 이
+# 그것을 fact 에 붙여 둔다. 여기서는 그 결과를 읽기만 한다 — 원문을 다시 파싱하면
+# 같은 문법이 두 벌이 되어 한쪽만 고쳐지는 상태가 생긴다.
 
 
-# 천 단위 쉼표는 세 자리씩만 인정한다. 정규식의 [\d,]* 가 자리수를 보지 않아
-# "1,2,3만원" 이 1,230,000 원으로, "1,,000원" 이 1,000 원으로 조용히 바뀐다.
-# 잘못된 표기에서 유효한 숫자를 만들지 않는다 (숫자 소비 규칙과 같은 취지).
-_GROUPED_NUMBER_RE = re.compile(r"^\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+def _span_place(ref: FitEvidenceRef, span) -> tuple[str | None, int, int]:
+    """숫자 구간의 원문 자리. 같은 자리면 같은 근거다."""
+
+    block = ref.evidence[0].source_block_id if ref.evidence else None
+    return (block, span.start, span.end)
 
 
-def _plain_number(literal: str) -> str | None:
-    """쉼표 문법이 올바르면 쉼표를 뗀 문자열, 아니면 None."""
+def _shared_spans(
+    left: list[FitEvidenceRef], right: list[FitEvidenceRef]
+) -> frozenset[tuple[str | None, int, int]]:
+    """좌우가 함께 인용한 원문 구간. fact_id 가 달라도 자리가 같으면 같다."""
 
-    if not _GROUPED_NUMBER_RE.match(literal):
-        return None
-    return literal.replace(",", "")
+    def places(refs: list[FitEvidenceRef]) -> set[tuple[str | None, int, int]]:
+        return {
+            _span_place(ref, span)
+            for ref in refs
+            for span in ref.quantities
+            if ref.evidence and ref.evidence[0].source_block_id
+        }
 
-
-def _quantities(value_raw: str | None) -> set[tuple[str, int]]:
-    """원문에서 (축, 정규화 값) 집합을 뽑는다. Rule 만 쓴다.
-
-    축을 함께 달아 두는 이유는 금액과 팀수가 절대 같은 자리에서 비교되지
-    않게 하기 위해서다. 인식하지 못하면 빈 집합이고, 호출자가 그 사실을
-    진단으로 남긴다.
-
-    **숫자 시퀀스 소비 규칙**: 원문의 숫자 하나라도 어떤 매치에도 걸리지
-    않았으면 이 값 전체를 버린다. 문자열 전체를 소비하라는 뜻이 아니라
-    (설명 문구는 무방하다) 숫자 문법을 일부만 읽고 다른 값을 만들지 말라는
-    뜻이다. "10~20개사" 에서 20 만, "1억 5000만원" 에서 5000만원만 읽으면
-    서로 다른 값이 일치로 판정된다.
-    """
-
-    if not value_raw:
-        return set()
-    found: set[tuple[str, int]] = set()
-    spans: list[tuple[int, int]] = []
-    for match in _AMOUNT_RE.finditer(value_raw):
-        # float 로 곱하면 0.29억원이 28,999,999 가 되어 2,900만원과 불일치로
-        # 판정된다. 같은 금액을 다르게 만드는 것은 B 와 같은 종류의 오판이라
-        # 10 진 고정소수로 계산한다.
-        literal = _plain_number(match.group(1))
-        if literal is None:
-            return set()
-        number = Decimal(literal)
-        won = number * _AMOUNT_SCALES.get(match.group(2), 1)
-        if won != won.to_integral_value():
-            # 원 단위 정수가 아니면 반올림 방향을 추측하지 않고 값을 버린다.
-            return set()
-        found.add(("AMOUNT_KRW", int(won)))
-        spans.append(match.span())
-    for match in _COUNT_RE.finditer(value_raw):
-        literal = _plain_number(match.group(1))
-        if literal is None:
-            return set()
-        found.add((f"COUNT:{match.group(2)}", int(literal)))
-        spans.append(match.span())
-    for match in _TIMES_RE.finditer(value_raw):
-        period = match.group(1) or "TOTAL"
-        literal = _plain_number(match.group(2))
-        if literal is None:
-            return set()
-        found.add((f"TIMES:{period}", int(literal)))
-        spans.append(match.span())
-
-    for digits in _DIGITS_RE.finditer(value_raw):
-        if not any(
-            start <= digits.start() and digits.end() <= end for start, end in spans
-        ):
-            return set()
-    return found
+    return frozenset(places(left) & places(right))
 
 
 def _axis_values(
     refs: list[FitEvidenceRef],
-) -> tuple[dict[str | None, dict[str, set[int]]], list[str]]:
+    shared: frozenset[tuple[str | None, int, int]] | None = None,
+) -> tuple[
+    dict[str | None, dict[tuple[str, tuple[str, ...]], set[int]]],
+    list[str],
+    list[str],
+]:
     """component → 축 → 값 집합. 정규화하지 못한 fact_id 를 함께 돌려준다.
 
     ``primary_component_id`` 가 None 인 fact 는 None 그룹에 남는다. 초안 §7.1
@@ -412,20 +479,34 @@ def _axis_values(
     이유로, 소속이 없는 값을 특정 component 값과 붙이지 않는다.
     """
 
-    grouped: dict[str | None, dict[str, set[int]]] = {}
+    grouped: dict[str | None, dict[tuple[str, tuple[str, ...]], set[int]]] = {}
     invalid: list[str] = []
+    withheld: list[str] = []
+    excluded = shared or frozenset()
     for ref in refs:
-        quantities = _quantities(ref.value_raw)
-        if not quantities:
+        if not ref.quantities:
             invalid.append(ref.fact_id)
             continue
-        axes = grouped.setdefault(ref.primary_component_id, {})
-        for axis, value in quantities:
-            axes.setdefault(axis, set()).add(value)
-    return grouped, invalid
+        used = False
+        for span in ref.quantities:
+            if _span_place(ref, span) in excluded:
+                # 좌우가 같은 자리를 인용했다. 숫자 구간 단위로만 뺀다 — 같은
+                # occurrence 의 다른 숫자까지 통째로 버리지 않는다.
+                continue
+            context = comparison_key(span)
+            if context is None:
+                # 값은 읽었지만 같은 수량이라고 말할 근거가 없다. 원문 부재와
+                # 다르므로 따로 센다. 기본값을 채워 비교에 넣지 않는다.
+                continue
+            used = True
+            axes = grouped.setdefault(ref.primary_component_id, {})
+            axes.setdefault((span.axis, context), set()).add(span.value)
+        if not used:
+            withheld.append(ref.fact_id)
+    return grouped, invalid, withheld
 
 
-def _fit7(profile: dict[str, Any]) -> FitRelationResult:
+def _fit7(cpl: CplResult) -> FitRelationResult:
     """FIT-7: 같은 component 안에서 같은 축의 값 집합을 비교한다.
 
     ``total_budget`` · ``cost_sharing`` 은 입력이 아니다 (초안 §7.1).
@@ -433,8 +514,8 @@ def _fit7(profile: dict[str, Any]) -> FitRelationResult:
     "400만원 vs 150만원" 같은 분할 지급 단계액이 거짓 충돌이 된다.
     """
 
-    left = _side(profile, (_CONTENT_PATH,))
-    right = _side(profile, (_SCALE_PATH,))
+    left = _side(cpl, (_CONTENT_PATH,))
+    right = _side(cpl, (_SCALE_PATH,))
     diagnostics: list[StageDiagnostic] = []
 
     def result(status: FitStatus, reason: str | None) -> FitRelationResult:
@@ -450,8 +531,36 @@ def _fit7(profile: dict[str, Any]) -> FitRelationResult:
     if not left.facts or not right.facts:
         return result(FitStatus.INSUFFICIENT, COMPARISON_EVIDENCE_MISSING)
 
-    left_groups, left_invalid = _axis_values(left.facts)
-    right_groups, right_invalid = _axis_values(right.facts)
+    shared = _shared_spans(left.facts, right.facts)
+    if shared:
+        diagnostics.append(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=sorted(shared)[0][0] or "",
+                reason_code=SELF_COMPARISON,
+                message=(
+                    "좌우가 같은 원문 구간을 인용했다. 그 값은 자기 자신과 "
+                    "비교되므로 제외한다. 같은 문구라도 자리가 다르면 남긴다."
+                ),
+            )
+        )
+    left_groups, left_invalid, left_withheld = _axis_values(left.facts, shared)
+    right_groups, right_invalid, right_withheld = _axis_values(right.facts, shared)
+    for fact_id in (*left_withheld, *right_withheld):
+        # 숫자는 읽었는데 같은 수량이라고 말할 근거가 없다. 정규화 실패와 구분해
+        # 내부 진단으로만 남긴다 — 공개 reason code 연결은 아직 확정 전이다.
+        diagnostics.append(
+            StageDiagnostic(
+                stage=_STAGE,
+                unit=fact_id,
+                reason_code=COMPARISON_EVIDENCE_MISSING,
+                message=(
+                    "정량 값의 비교 맥락(기간·대상·성격)을 확정하지 못해 "
+                    "비교에서 보류했다. 표현이 없다는 이유로 기본값을 채우지 "
+                    "않는다."
+                ),
+            )
+        )
     for fact_id in (*left_invalid, *right_invalid):
         diagnostics.append(
             StageDiagnostic(
@@ -487,7 +596,13 @@ def _fit7(profile: dict[str, Any]) -> FitRelationResult:
                 mismatch = True
 
     if mismatch:
+        # 같은 맥락에서 확인된 불일치는 보존한다. 보류된 값이 있어도 이 판정은
+        # 이미 성립한 것이다.
         return result(FitStatus.NEEDS_REVIEW, NUMERIC_MISMATCH)
+    if left_withheld or right_withheld:
+        # 맥락을 확정하지 못해 뺀 값이 있으면, 남은 축이 모두 같아도 전체를
+        # 일치로 올리지 않는다. 뺀 값이 충돌이었을 수 있다.
+        return result(FitStatus.INSUFFICIENT, COMPARISON_EVIDENCE_MISSING)
     if left_invalid or right_invalid:
         # 인식하지 못해 버린 값이 있으면 남은 축의 일치를 전체 일치로 올리지
         # 않고, "한쪽에만 있다" 고 말하지도 않는다. 버린 값이 충돌이었을 수
@@ -504,29 +619,8 @@ def _fit7(profile: dict[str, Any]) -> FitRelationResult:
 # ------------------------------------------------------- 목적 의미 축 보완
 
 
-class _PurposeAxisAssignmentModel(BaseModel):
-    fact_id: str
-    axis_code: str
-    quoted_text: str
-
-
-class _PurposeAxisResponse(BaseModel):
-    # 엔벨로프 키는 필수다. 기본값을 주면 ``{}`` 가 "빈 배치" 로 조용히
-    # 통과해 최상위 오류가 정상 응답으로 둔갑한다.
-    assignments: list[_PurposeAxisAssignmentModel]
-
-
 # axis_code 를 enum 이 아니라 str 로 받는 이유: 어휘 밖의 값이 오면 스키마
 # 단계에서 조용히 터지는 대신 서버가 그 항목만 떨어뜨리고 진단을 남긴다.
-_PURPOSE_AXIS_INSTRUCTION = (
-    "You classify existing purpose statements into meaning axes. "
-    "Return only {fact_id, axis_code, quoted_text} for facts given in the payload. "
-    f"axis_code must be one of {sorted(PURPOSE_AXIS_CODES)}. "
-    "quoted_text must be copied verbatim from that fact's value_raw. "
-    "Never invent a fact_id, a new value, an offset, or evidence. "
-    "Omit any fact you cannot classify; an empty list is a valid answer."
-)
-
 _FIT_COMPARISON_INSTRUCTION = (
     "You compare two grounded evidence sides of a Korean public-program request document. "
     "For each relation in the payload return {relation_id, status, reason_code, "
@@ -534,6 +628,11 @@ _FIT_COMPARISON_INSTRUCTION = (
     f"status must be one of {[status.value for status in FitStatus]}. "
     "Cite only fact_ids that appear on that relation's own side in the payload. "
     "Never invent a fact_id, a value, or a relation that was not asked for. "
+    "For FIT-4, use a loose alpha anomaly-screening standard: an explicit parent-child "
+    "edge plus a visible minimum connection in the programme names or available grounded "
+    "facts is FIT when there is no explicit scope broadening, contradiction, or irrelevance. "
+    "Use NEEDS_REVIEW only for an explicit broadening, contradiction, or unrelated pair. "
+    "Use INSUFFICIENT only when the grounded comparison text is genuinely insufficient. "
     "Do not return any score, percentage, ratio, or grade."
 )
 
@@ -579,158 +678,32 @@ def _generate(
     )
 
 
-def _classify_purpose_axes(
-    profile: dict[str, Any],
-    llm_client: LLMClient,
-    *,
-    model_profile: str,
-    diagnostics: list[StageDiagnostic],
-) -> PurposeAxisClassification:
-    """목적 fact 를 의미 축으로 분류한다. 문서당 한 번 (초안 §9.2).
+def _purpose_side(cpl: CplResult, axis: CplAxisCode) -> FitSide:
+    """그 축이 붙은 목적 근거만 좌측으로 만든다.
 
-    프로파일에는 목적의 대상조건·방향 축이 없다. 없는 축을 코드가 지어낼 수는
-    없고, 목적 전체를 한 축으로 취급하는 것도 초안 §7.1 이 금지한다. 그래서
-    이 한 건만 "의미 분류 미완료" 보완에 해당한다.
+    축은 CPL 이 확정한다. 여기서 다시 분류하지 않는다 — 값을 확정하는 곳과
+    축을 확정하는 곳이 다르면 화면과 판정이 갈라진다. 축이 비어 있으면 좌측이
+    비고 게이트가 ``INSUFFICIENT`` 로 내린다. 비교를 성립시키려고 목적 문장
+    전체를 한 축으로 취급하지 않는다 (초안 §7.1 이 금지한다).
 
-    모델은 축 이름과 인용문만 돌려준다. 값·오프셋·근거는 프로파일 것을 그대로
-    쓴다. 서버가 fact_id 존재·인용문 부분문자열·어휘 소속을 검사하고, 통과하지
-    못한 항목은 진단만 남기고 버린다. 예산은 1이며 같은 입력으로 재시도하지
-    않는다.
-    """
-
-    facts = [fact for fact in facts_at(profile, _PURPOSE_PATH) if fact.fact_id]
-    if not facts:
-        return PurposeAxisClassification(
-            attempted=False, reason_code=COMPARISON_EVIDENCE_MISSING
-        )
-
-    payload = {
-        "axis_vocabulary": sorted(PURPOSE_AXIS_CODES),
-        "facts": [
-            {"fact_id": fact.fact_id, "value_raw": fact.value_raw} for fact in facts
-        ],
-    }
-    try:
-        response = _generate(
-            llm_client,
-            task_name="fit_purpose_axis_classification",
-            instructions=_PURPOSE_AXIS_INSTRUCTION,
-            payload=payload,
-            response_schema=_PurposeAxisResponse,
-            model_profile=model_profile,
-        )
-    except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-        # 배정 하나가 계약을 어겼다고 나머지 배정을 버리지 않는다.
-        recovered = salvage_rows(
-            error,
-            envelope="assignments",
-            row_model=_PurposeAxisAssignmentModel,
-            id_field="fact_id",
-        )
-        if recovered is None:
-            reason = _TRANSPORT_REASONS[type(error)]
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_PURPOSE_STAGE,
-                    unit=_PURPOSE_PATH,
-                    reason_code=reason,
-                    message=str(error)[:2000],
-                    attempt=1,
-                    terminated_because=reason,
-                )
-            )
-            return PurposeAxisClassification(
-                attempted=True,
-                reason_code=reason,
-                prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
-            )
-        response_rows, broken, dropped_rows = recovered
-        for fact_id in broken:
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_PURPOSE_STAGE,
-                    unit=fact_id,
-                    reason_code=LLM_INVALID_RESPONSE,
-                    message="응답 행이 스키마를 어겨 축 분류에서 제외했다.",
-                    attempt=1,
-                )
-            )
-        if dropped_rows:
-            diagnostics.append(
-                StageDiagnostic(
-                    stage=_PURPOSE_STAGE,
-                    unit=None,
-                    reason_code=LLM_INVALID_RESPONSE,
-                    message=f"fact_id 를 알 수 없는 응답 행 {dropped_rows}건을 버렸다.",
-                    attempt=1,
-                )
-            )
-    else:
-        response_rows = list(response.assignments)
-        broken = []
-
-    by_id = {fact.fact_id: fact for fact in facts}
-    assignments: list[PurposeAxisAssignment] = []
-    dropped: list[str] = list(broken)
-    for row in response_rows:
-        fact = by_id.get(row.fact_id)
-        if fact is None:
-            problem = "프로파일에 없는 fact_id"
-        elif row.axis_code not in PURPOSE_AXIS_CODES:
-            problem = "어휘 밖 axis_code"
-        elif not row.quoted_text or row.quoted_text not in (fact.value_raw or ""):
-            problem = "원문 부분문자열이 아닌 인용문"
-        else:
-            assignments.append(
-                PurposeAxisAssignment(
-                    fact_id=row.fact_id,
-                    axis_code=row.axis_code,
-                    quoted_text=row.quoted_text,
-                )
-            )
-            continue
-        dropped.append(row.fact_id)
-        diagnostics.append(
-            StageDiagnostic(
-                stage=_PURPOSE_STAGE,
-                unit=row.fact_id,
-                reason_code=LLM_INVALID_RESPONSE,
-                message=f"{problem} 이므로 축 분류에서 제외했다.",
-                attempt=1,
-            )
-        )
-
-    return PurposeAxisClassification(
-        attempted=True,
-        assignments=assignments,
-        reason_code=None if assignments else PURPOSE_AXIS_UNRESOLVED,
-        dropped=dropped,
-        prompt_version=PURPOSE_AXIS_PROMPT_VERSION,
-    )
-
-
-def _purpose_side(
-    profile: dict[str, Any],
-    classification: PurposeAxisClassification,
-    axis: PurposeAxisCode,
-) -> FitSide:
-    """분류된 축에 해당하는 목적 근거만 좌측으로 만든다.
-
-    ``value_raw`` 는 검증된 인용문이다. 목적 문장 전체가 아니라 그 축에
+    ``value_raw`` 는 CPL 이 검증한 인용문이다. 목적 문장 전체가 아니라 그 축에
     해당하는 부분만 좌측에 놓는다 (초안 §7.1 FIT-1).
     """
 
-    by_id = {fact.fact_id: fact for fact in facts_at(profile, _PURPOSE_PATH)}
+    # CPL 재검으로 복구한 값은 fact_id 가 없고 evidence_ref 로 접지된다.
+    # 식별자가 없다는 이유로 검증된 근거를 버리지 않는다.
     refs = [
         FitEvidenceRef(
-            fact_id=row.fact_id,
+            fact_id=identifier,
             field_name="purpose_goal",
-            value_raw=row.quoted_text,
-            evidence=list(by_id[row.fact_id].evidence),
-            primary_component_id=by_id[row.fact_id].primary_component_id,
+            value_raw=fact.axis_quoted_text,
+            evidence=list(fact.evidence),
+            primary_component_id=fact.primary_component_id,
         )
-        for row in classification.assignments
-        if row.axis_code == axis.value and row.fact_id in by_id
+        for fact, identifier in (
+            (row, _fit_fact_id(row)) for row in _facts_at(cpl, _PURPOSE_PATH)
+        )
+        if fact.axis_code == axis.value and identifier
     ]
     return FitSide(field_names=[f"purpose_goal[{axis.value}]"], facts=refs)
 
@@ -950,79 +923,52 @@ def _compare_relations(
 
 
 def analyze_fit(
-    profile: dict[str, Any],
+    cpl: CplResult,
     llm_client: LLMClient,
     *,
     model_profile: str,
     max_repairs: int = 1,
 ) -> FitResult:
-    """프로파일 dict 하나를 FIT 7관계 결과로 옮긴다. 예외를 던지지 않는다."""
+    """CPL 결과 하나를 FIT 7관계 결과로 옮긴다. 예외를 던지지 않는다."""
 
-    registry = _fact_id_registry(profile)
-    states = field_states_by_name(profile)
+    registry = _fact_id_registry(cpl)
     diagnostics: list[StageDiagnostic] = []
     results: dict[FitRelationId, FitRelationResult] = {}
 
-    # FIT-4: 정책 게이트. payload 를 만들지 않고 포트도 부르지 않는다.
-    # 계층 노드가 있다는 이유만으로 비교를 활성화하지 않는다 (초안 §7.1).
-    results[FitRelationId.FIT_4] = FitRelationResult(
-        relation_id=FitRelationId.FIT_4,
-        status=FitStatus.INSUFFICIENT,
-        reason_code=HIERARCHY_COMPARISON_NOT_AVAILABLE,
-        diagnostics=[
-            StageDiagnostic(
-                stage=_STAGE,
-                unit=FitRelationId.FIT_4.value,
-                reason_code=HIERARCHY_COMPARISON_NOT_AVAILABLE,
-                message=(
-                    "상위·하위 사업 계층 비교 기준이 확정되지 않았다. "
-                    "계층 노드 존재는 비교 활성화 근거가 아니다 (초안 §7.1)."
-                ),
-            )
-        ],
-    )
-
     # FIT-7: Rule. LLM 을 타지 않으므로 응답 실패의 영향도 받지 않는다.
-    results[FitRelationId.FIT_7] = _fit7(profile)
+    results[FitRelationId.FIT_7] = _fit7(cpl)
 
-    # 나머지 다섯 관계의 우측(그리고 FIT-5·6 의 좌측)은 프로파일에서 바로 나온다.
-    delivery_left, delivery_right = _delivery_sides(profile)
+    # FIT-4 는 명시된 계층 edge 가 있을 때만 비교 입력을 만든다. edge 가
+    # 없으면 아래 공통 gate 가 COMPARISON_EVIDENCE_MISSING 으로 남긴다.
+    hierarchy_sides = _hierarchy_sides(cpl)
+
+    # 나머지 관계의 좌우 근거는 CPL에서 바로 나온다.
+    delivery_left, delivery_right = _delivery_sides(cpl)
     sides: dict[FitRelationId, tuple[FitSide, FitSide]] = {
-        FitRelationId.FIT_1: (FitSide(), _side(profile, _TARGET_PATHS)),
-        FitRelationId.FIT_2: (FitSide(), _side(profile, _MEANS_PATHS)),
-        FitRelationId.FIT_3: (FitSide(), _side(profile, _EFFECT_PATHS)),
+        FitRelationId.FIT_1: (FitSide(), _side(cpl, _TARGET_PATHS)),
+        FitRelationId.FIT_2: (FitSide(), _side(cpl, _MEANS_PATHS)),
+        FitRelationId.FIT_3: (FitSide(), _side(cpl, _EFFECT_PATHS)),
         FitRelationId.FIT_5: (
-            _side(profile, _TARGET_PATHS),
-            _side(profile, _CONDITION_PATHS),
+            _side(cpl, _TARGET_PATHS),
+            _side(cpl, _CONDITION_PATHS),
         ),
         FitRelationId.FIT_6: (delivery_left, delivery_right),
     }
+    # 마지막에 넣어 기존 관계 payload 의 순서는 유지하면서도 FIT-4 를 같은
+    # semantic LLM 배치에 포함한다. edge 가 없으면 빈 양쪽으로 공통 gate 를
+    # 태워 관계 결과는 유지하되 모델을 호출하지 않는다.
+    sides[FitRelationId.FIT_4] = hierarchy_sides or (FitSide(), FitSide())
 
     # 목적 의미 축 보완은 문서당 한 번이다. 우측 근거가 하나도 없으면 세
     # 관계 모두 어차피 게이트에서 걸리므로 호출하지 않는다.
-    needs_axis = [
-        relation_id
-        for relation_id in _PURPOSE_AXIS_OF
-        if sides[relation_id][1].facts
-    ]
-    if needs_axis:
-        classification = _classify_purpose_axes(
-            profile, llm_client, model_profile=model_profile, diagnostics=diagnostics
-        )
-    else:
-        classification = PurposeAxisClassification(
-            attempted=False, reason_code=COMPARISON_EVIDENCE_MISSING
-        )
+    # 축은 CPL 이 확정해 왔다. FIT 은 고르기만 한다.
     for relation_id, axis in _PURPOSE_AXIS_OF.items():
-        sides[relation_id] = (
-            _purpose_side(profile, classification, axis),
-            sides[relation_id][1],
-        )
+        sides[relation_id] = (_purpose_side(cpl, axis), sides[relation_id][1])
 
     pending: dict[FitRelationId, tuple[FitSide, FitSide]] = {}
     for relation_id, (left, right) in sides.items():
         reason = (
-            _fit5_reason(states, left) if relation_id is FitRelationId.FIT_5 else None
+            _fit5_reason(cpl, left) if relation_id is FitRelationId.FIT_5 else None
         )
         if reason is None:
             reason = _gate(left, right, registry)
@@ -1047,7 +993,12 @@ def analyze_fit(
                         stage=_STAGE,
                         unit=relation_id.value,
                         reason_code=reason,
-                        message="비교 입력이 성립하지 않아 LLM 을 호출하지 않았다.",
+                        message=(
+                            "명시된 계층 edge 또는 비교 근거가 없어 "
+                            "FIT-4 비교 입력이 성립하지 않는다."
+                            if relation_id is FitRelationId.FIT_4
+                            else "비교 입력이 성립하지 않아 LLM 을 호출하지 않았다."
+                        ),
                     )
                 ],
             )
@@ -1079,16 +1030,11 @@ def analyze_fit(
             used_right_fact_ids=used_right,
         )
 
-    metadata = profile.get("processing_metadata") or {}
-    documents = profile.get("source_documents") or []
-    first_ir = documents[0].get("common_ir", {}) if documents else {}
     return FitResult(
         relations=[results[relation_id] for relation_id in FitRelationId],
-        purpose_axis=classification,
-        profile_id=profile.get("profile_id"),
-        common_ir_document_id=(
-            metadata.get("common_ir_document_id") or first_ir.get("document_id")
-        ),
+        purpose_axis=cpl.purpose_axis,
+        profile_id=cpl.profile_id,
+        common_ir_document_id=cpl.common_ir_document_id,
         model_profile=model_profile,
         ruleset_version=FIT_RULESET_VERSION,
         prompt_version=FIT_PROMPT_VERSION,

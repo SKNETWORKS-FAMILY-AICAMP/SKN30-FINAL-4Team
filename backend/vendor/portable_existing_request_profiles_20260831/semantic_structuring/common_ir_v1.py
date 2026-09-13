@@ -272,6 +272,15 @@ def project_common_ir_v1(document: dict[str, Any]) -> CommonIRV1Projection:
                     common_ir_cell_id=cell["cell_id"],
                     common_ir_occurrence_ids=(occurrence_id,),
                 )
+                # Preserve explicit cell geometry for trusted, server-side
+                # region ownership checks.  This is a Pydantic PrivateAttr and
+                # is therefore absent from model_dump/JSON schema/LLM input.
+                cell_source._common_ir_cell_geometry = (
+                    int(cell.get("row_index") or 0),
+                    max(1, int(cell.get("row_span") or 1)),
+                    int(cell.get("col_index") or 0),
+                    max(1, int(cell.get("col_span") or 1)),
+                )
                 cells.append(cell_source)
                 selected[cell_source.block_id] = [occurrence_id]
     return CommonIRV1Projection(

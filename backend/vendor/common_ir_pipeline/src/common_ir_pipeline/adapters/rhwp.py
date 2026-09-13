@@ -123,10 +123,41 @@ def main() -> None:
                 elif child_kind not in TEXTUAL_KINDS | {"table"}:
                     skipped_other[child_kind or "missing_kind"] = skipped_other.get(child_kind or "missing_kind", 0) + 1
             cell_occurrences.append({"occurrence_id": occurrence_id, "role": "rhwp_cell", "text": text, "provenance": make_provenance("rhwp", None, None, None, cell_location)})
+            # A cell keeps its whole-cell occurrence for evidence_ids and for
+            # addressing the cell as one unit, but its paragraphs stay
+            # separately addressable.  Consumers read `text_occurrence_ids`
+            # positionally as the cell's paragraphs; joining them into one
+            # occurrence forces every downstream exact-span selection to
+            # happen inside a blob that can span an entire form section.
+            # A single-paragraph cell *is* that paragraph, so it adds no
+            # second occurrence and its output is unchanged.
+            paragraph_ids = []
+            for child_index, child in enumerate(cell_blocks):
+                if child.get("kind") not in TEXTUAL_KINDS:
+                    continue
+                child_text = child.get("text") or ""
+                if not child_text.strip():
+                    continue
+                paragraph_ids.append((
+                    f"{occurrence_id}:p{len(paragraph_ids)}",
+                    child_text,
+                    f"{cell_location}/blocks/{child_index}",
+                ))
+            if len(paragraph_ids) > 1:
+                cell_occurrences.extend(
+                    {
+                        "occurrence_id": paragraph_id, "role": "rhwp_cell", "text": paragraph_text,
+                        "provenance": make_provenance("rhwp", None, None, None, paragraph_location),
+                    }
+                    for paragraph_id, paragraph_text, paragraph_location in paragraph_ids
+                )
+                text_occurrence_ids = [paragraph_id for paragraph_id, _text, _location in paragraph_ids]
+            else:
+                text_occurrence_ids = [occurrence_id]
             cells.append({
                 "cell_id": f"{args.source_kind}:t{table_path}:c{cell_index}", "evidence_ids": [occurrence_id],
                 "row_index": cell["row"], "col_index": cell["col"], "row_span": cell["row_span"], "col_span": cell["col_span"],
-                "text_occurrence_ids": [occurrence_id], "provenance": make_provenance("rhwp", None, None, None, cell_location),
+                "text_occurrence_ids": text_occurrence_ids, "provenance": make_provenance("rhwp", None, None, None, cell_location),
             })
         # Derive the table text from direct paragraph content only.  rhwp's
         # optional table["text"] may flatten nested-table text into the

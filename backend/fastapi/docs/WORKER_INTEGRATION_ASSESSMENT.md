@@ -41,6 +41,23 @@ Browser
 worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table을 브라우저에
 노출하는 경로는 없다.
 
+## Profile·ML 용어 경계
+
+Request/Existing Profile JSON이 업무 용어와 사실·근거의 기준이다. 사용자에게
+노출할 지원 금액·한도는 `derived_projections.support_scale_measures`의 검증된
+Profile projection에서만 읽는다. 현재 Model 2 학습·serving 코드의 `stated_cap`,
+`budget_div_count` 같은 표현은 동결된 모델 내부 용어이며 API·DB 도메인
+계약이 아니다. ML subprocess adapter는 이 진단 envelope를 공개 결과로
+승격시키지 않는다.
+
+Model 2의 DB 저장 payload는 기존 `status`, `predicted_amount_won`, `message`,
+`reason_code` 계약을 유지한다. FastAPI 공개 응답은 기존처럼 `message`만
+직렬화하므로 프론트 JSON 필드는 바뀌지 않는다. Profile에 유일하고
+검증된 기업·과제·팀당 한도가 있을 때만 그 범위를 문구에 표시하고,
+없거나 충돌하면 예측 금액만 중립적인 `지원 단위당`으로 표시한다.
+향후 ML을 재학습·교체할 때도 외부 계약은 유지하고 Profile 용어로 입력·라벨·
+feature 정의를 재정렬한다.
+
 ## 검증 완료 범위
 
 - 전체 backend 회귀 테스트 통과
@@ -64,8 +81,9 @@ malformed/timeout 문서 E2E는 아직 별도 범위다.
 - `backend/supabase/functions/`의 Edge Function dispatch/callback 및 signed URL 흐름
 - migration 18의 `api.ingest_comparison_result_core`: fencing이 없어 service-role 실행이
   회수되었으며 새 worker에서 사용 금지
-- `worker/jobs.py`, `worker/queue.py`, `worker/dispatcher.py`, `worker/persistence.py`의
-  옛 `sims.*` queue/result SQL
+- 퇴역한 `worker/jobs.py`·`worker/queue.py`·`worker/dispatcher.py`·`worker/persistence.py`
+  경로는 제거됐다. 현재 운영 진입점은 `worker.main`·`worker.chat_main`이고 큐·저장은
+  `workspace.*` fenced RPC 계약을 쓴다. 옛 `sims.*` SQL은 git 이력에만 남는다
 - mount하지 않은 `app/api/v1/routes.py`의 in-memory `/requests`·`/cases` 예전 계약
 
 ## 남은 운영·기능 작업
@@ -74,6 +92,10 @@ malformed/timeout 문서 E2E는 아직 별도 범위다.
 - reverse proxy/ASGI의 multipart 전체 body·part 수 제한과 streaming upload
 - `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사. 업로드 요청에 묶인
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리
+- Request assembler에서 검증된 `support_scale` Raw Fact를
+  `support_scale_measures`로 생성하는 결정적 producer. 현재 Request Profile은 이
+  projection을 빈 배열로 두므로, 구조화된 한도가 없으면 Model 2는 예측
+  금액만 중립적으로 표시한다
 - worker heartbeat/queue lag를 포함한 readiness
 - `ops.model_invocation` 단위 OpenAI 호출 감사
 - 일부 purpose/target/support 축이 비었을 때 fail 대신 insufficient 결과로 처리할 정책

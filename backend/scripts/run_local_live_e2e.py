@@ -45,6 +45,9 @@ DEFAULT_SOURCE = (
 DEFAULT_BACKEND_ENV = BACKEND_ROOT / ".env"
 DEFAULT_SUPABASE_ENV = REPOSITORY_ROOT / ".runtime" / "supabase-dev" / ".env"
 TEST_ORIGIN = "http://e2e.local"
+# Deployment default, and the retrieval breadth the stored E2E traces were
+# produced with. Keep live runs comparable to those artifacts.
+DEFAULT_TOP_K = 5
 SOURCE_MIME_TYPES = {
     ".hwp": "application/x-hwp",
     ".hwpx": "application/vnd.hancom.hwpx",
@@ -515,6 +518,182 @@ def _source_mime_type(source: Path) -> str:
         raise E2EFailure("--file must be an HWP or HWPX file") from None
 
 
+def _validated_source(source: Path) -> tuple[bytes, str]:
+    """Read and validate the exact HWP/HWPX bytes that will be uploaded."""
+
+    content = source.read_bytes()
+    from app.models.pipeline import PipelineKind
+    from app.pipelines.formats import validate_format
+
+    try:
+        decision = validate_format(PipelineKind.REQUEST, source, content=content)
+    except ValueError as error:
+        raise E2EFailure(f"--file format is invalid: {error}") from None
+    return content, decision.mime_type
+
+
+def _write_trace(
+    trace_dir: Path,
+    *,
+    upload: object,
+    common_ir: object,
+    structured_profile: object,
+    result: dict[str, object],
+    cpl_diagnostics: object = None,
+    run_state: object = None,
+) -> None:
+    """Record persisted E2E artifacts; never rerun a stage just to trace it."""
+
+    if trace_dir.exists():
+        raise E2EFailure("--trace-dir must not already exist")
+    trace_dir.mkdir(parents=True)
+    stages = (
+        ("00_upload.json", upload),
+        ("01_common_ir.json", common_ir),
+        ("02_structured_profile.json", structured_profile),
+        ("03_cpl.json", result.get("cpl")),
+        ("04_fit.json", result.get("fit")),
+        ("05_sim.json", result.get("sim")),
+        ("06_ml.json", result.get("ml")),
+        ("07_result.json", result),
+        ("08_run_state.json", run_state),
+        ("cpl_diagnostics.json", cpl_diagnostics if cpl_diagnostics is not None else []),
+    )
+    for name, payload in stages:
+        (trace_dir / name).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+
+def _cached_artifacts(handler: object, run_id: str) -> tuple[object, object]:
+    """Load worker-persisted intermediate artifacts without recomputation."""
+
+    try:
+        cached = handler._store.cached_request_profile(analysis_run_id=run_id)
+        if cached is None:
+            return None, None
+        return (
+            handler._load_json_artifact(cached.common_ir),
+            handler._load_json_artifact(cached.structured_profile),
+        )
+    except Exception:  # noqa: BLE001 - tracing must not hide the original failure
+        return None, None
+
+
+def _write_analysis_trace_safely(
+    trace_dir: Path | None,
+    *,
+    upload: object,
+    handler: object | None,
+    run_id: str,
+    run_state: object,
+    cpl_diagnostics: object,
+    result: dict[str, object] | None = None,
+) -> bool:
+    """Best-effort trace of persisted analysis state without changing its result.
+
+    This is deliberately usable after a terminal or retry failure.  In
+    particular, it never asks the worker to rerun a stage merely to obtain an
+    artifact, and any unavailable storage or filesystem must leave the E2E's
+    original failure intact.
+    """
+
+    if trace_dir is None:
+        return False
+    common_ir: object = None
+    structured_profile: object = None
+    if handler is not None:
+        common_ir, structured_profile = _cached_artifacts(handler, run_id)
+    try:
+        _write_trace(
+            trace_dir,
+            upload=upload,
+            common_ir=common_ir,
+            structured_profile=structured_profile,
+            result=result if result is not None else {},
+            run_state=run_state,
+            cpl_diagnostics={
+                "analysis_run_id": run_id,
+                "diagnostics": cpl_diagnostics,
+            },
+        )
+    except Exception:  # noqa: BLE001 - tracing must not hide the original failure
+        return False
+    return True
+
+
+def _collect_diagnostics(
+    destination: list[dict[str, object]],
+    _stage: str,
+    rows: object,
+) -> None:
+    """Copy optional worker diagnostics without letting reporting fail a job."""
+
+    try:
+        destination.extend(
+            {
+                "stage": row.stage,
+                "unit": row.unit,
+                "reason_code": row.reason_code,
+                "message": row.message,
+                "attempt": row.attempt,
+            }
+            for row in rows
+        )
+    except Exception:  # noqa: BLE001 - diagnostics must not change worker result
+        return
+
+
+def _report_analysis_stage(
+    stage: str,
+    status: str,
+    detail: str | None,
+) -> None:
+    """Keep inline progress off stdout, which is reserved for summary JSON."""
+
+    message = f"[{stage}] {status}"
+    if detail:
+        message += f" — {detail}"
+    print(message, file=sys.stderr, flush=True)
+
+
+async def _capture_analysis_failure_trace(
+    *,
+    client: httpx.AsyncClient,
+    trace_dir: Path | None,
+    upload: object,
+    handler: object | None,
+    run_id: str,
+    cpl_diagnostics: object,
+) -> bool:
+    """Read only already-persisted failure evidence, including external mode."""
+
+    run_state: object = None
+    try:
+        run_state = await _analysis_state(client, run_id)
+    except Exception:  # noqa: BLE001 - tracing must not hide the original failure
+        pass
+    return _write_analysis_trace_safely(
+        trace_dir,
+        upload=upload,
+        handler=handler,
+        run_id=run_id,
+        run_state=run_state,
+        cpl_diagnostics=cpl_diagnostics,
+    )
+
+
+def _database_endpoint(tenant: str, platform: str = sys.platform) -> tuple[str, int]:
+    """Select the reachable local PostgreSQL endpoint for this host."""
+
+    if platform == "win32":
+        # Docker Desktop exposes the direct PostgreSQL listener on Windows;
+        # the Supabase pooler is not consistently reachable there.
+        return "postgres", 55432
+    return quote(f"postgres.{tenant}", safe=""), 5432
+
+
 def _assert_queues_quiescent(database_url: str) -> None:
     """Refuse an operator E2E while either shared production queue is active."""
 
@@ -856,16 +1035,20 @@ def _configure_environment(
     supabase_env: Path,
     *,
     auth_allowed_origins: str | None = TEST_ORIGIN,
+    llm_model: str | None = None,
+    top_k: int = DEFAULT_TOP_K,
 ) -> None:
+    if not 1 <= top_k <= 100:
+        raise E2EFailure("--top-k must be between 1 and 100")
     provider = dotenv_values(root_env)
     local = dotenv_values(supabase_env)
     password = _required(local, "POSTGRES_PASSWORD")
     tenant = _required(local, "POOLER_TENANT_ID")
     database = str(local.get("POSTGRES_DB") or "postgres").strip() or "postgres"
-    username = quote(f"postgres.{tenant}", safe="")
+    username, database_port = _database_endpoint(tenant)
     database_url = (
         f"postgresql://{username}:{quote(password, safe='')}"
-        f"@127.0.0.1:5432/{quote(database, safe='')}?sslmode=disable"
+        f"@127.0.0.1:{database_port}/{quote(database, safe='')}?sslmode=disable"
     )
 
     settings = {
@@ -876,19 +1059,20 @@ def _configure_environment(
         "SUPABASE_ANON_KEY": _required(local, "ANON_KEY"),
         "SUPABASE_SERVICE_ROLE_KEY": _required(local, "SERVICE_ROLE_KEY"),
         "OPENAI_API_KEY": _required(provider, "OPENAI_API_KEY"),
-        "OPENAI_LLM_MODEL": str(
-            provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-luna"
-        ),
+        "OPENAI_LLM_MODEL": llm_model
+        or str(provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-luna"),
         "OPENAI_EMBEDDING_MODEL": str(
             provider.get("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-small"
         ),
         "OPENAI_TIMEOUT_SECONDS": str(
             provider.get("OPENAI_TIMEOUT_SECONDS") or "120"
         ),
-        "PREREVIEW_WORKER_TOP_K": "1",
+        "PREREVIEW_WORKER_TOP_K": str(top_k),
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
-        "PREREVIEW_FREETYPE_LIB": "/lib/x86_64-linux-gnu/libfreetype.so.6",
+        "PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS": "20",
     }
+    if sys.platform != "win32":
+        settings["PREREVIEW_FREETYPE_LIB"] = "/lib/x86_64-linux-gnu/libfreetype.so.6"
     if auth_allowed_origins is not None:
         settings["PREREVIEW_AUTH_ALLOWED_ORIGINS"] = auth_allowed_origins
     # Keep the common fallback independent from stage-specific models.  Shell
@@ -1272,6 +1456,9 @@ async def _run(
     request_origin: str = TEST_ORIGIN,
     analysis_poll_timeout_seconds: float = ANALYSIS_POLL_TIMEOUT_SECONDS,
     chat_poll_timeout_seconds: float = CHAT_POLL_TIMEOUT_SECONDS,
+    trace_dir: Path | None = None,
+    source_content: bytes | None = None,
+    source_mime_type: str | None = None,
 ) -> dict[str, object]:
     from worker.main import configure_runtime_logging
 
@@ -1285,11 +1472,16 @@ async def _run(
     # long-running worker before any provider call in this operator entrypoint.
     configure_runtime_logging(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
+    if source_content is None or source_mime_type is None:
+        source_content, source_mime_type = _validated_source(source)
+
     await asyncio.to_thread(
         _assert_queues_quiescent,
         os.environ["DATABASE_URL"],
     )
     user_id, email, password = await _create_confirmed_test_user()
+    trace_handler: object | None = None
+    cpl_diagnostics: list[dict[str, object]] = []
     if api_base_url is None:
         # Keep the default fast, isolated contract mode.  The API deployment
         # mode below intentionally does not import this local application.
@@ -1325,8 +1517,8 @@ async def _run(
             files={
                 "file": (
                     source.name,
-                    source.read_bytes(),
-                    _source_mime_type(source),
+                    source_content,
+                    source_mime_type,
                 )
             },
         )
@@ -1339,50 +1531,83 @@ async def _run(
         if not isinstance(run_id, str) or payload.get("status") != "queued":
             raise E2EFailure("FastAPI upload response contract is invalid")
 
-        if worker_mode == "external":
-            state, analysis_poll_count = await _poll_external_analysis_until_terminal(
-                client=client,
-                run_id=run_id,
-                timeout_seconds=analysis_poll_timeout_seconds,
-            )
-            analysis_worker_audit = await asyncio.to_thread(
-                _require_external_analysis_worker_audit,
-                os.environ["DATABASE_URL"],
-                run_id=run_id,
-            )
-            worker_outcome: str | None = "external"
-            worker_attempts: int | None = analysis_worker_audit.attempt_count
-            worker_id: str | None = analysis_worker_audit.final_worker_id
-            worker_attempt_worker_ids: list[str] | None = list(
-                analysis_worker_audit.attempt_worker_ids
-            )
-        else:
-            from worker.main import build_worker
-            from worker.runtime import WorkerRuntime
+        try:
+            if worker_mode == "external":
+                state, analysis_poll_count = await _poll_external_analysis_until_terminal(
+                    client=client,
+                    run_id=run_id,
+                    timeout_seconds=analysis_poll_timeout_seconds,
+                )
+                analysis_worker_audit = await asyncio.to_thread(
+                    _require_external_analysis_worker_audit,
+                    os.environ["DATABASE_URL"],
+                    run_id=run_id,
+                )
+                worker_outcome: str | None = "external"
+                worker_attempts: int | None = analysis_worker_audit.attempt_count
+                worker_id: str | None = analysis_worker_audit.final_worker_id
+                worker_attempt_worker_ids: list[str] | None = list(
+                    analysis_worker_audit.attempt_worker_ids
+                )
+            else:
+                from worker.main import build_worker
+                from worker.runtime import WorkerRuntime
 
-            composition = build_worker()
-            target_repository = _TargetRunRepository(
-                composition.repository,
-                target_run_id=run_id,
-                database_url=os.environ["DATABASE_URL"],
-            )
-            worker_id = f"local-e2e-{uuid4().hex[:12]}"
-            runtime = WorkerRuntime(
-                target_repository,
-                composition.handler,
-                worker_id=worker_id,
-                heartbeat_seconds=composition.settings.heartbeat_seconds,
-                lease_seconds=composition.settings.lease_seconds,
-                idle_poll_seconds=composition.settings.idle_poll_seconds,
-            )
-            state, worker_outcome, worker_attempts = await _run_target_until_terminal(
-                runtime=runtime,
-                repository=target_repository,
+                composition = build_worker()
+                trace_handler = composition.handler
+                # CPL/recheck and structure diagnostics are intentionally not
+                # part of the public result response.  Preserve them for a
+                # requested trace, but never let reporting affect the job.
+                composition.handler.set_diagnostics_sink(
+                    lambda stage, rows: _collect_diagnostics(
+                        cpl_diagnostics, stage, rows
+                    )
+                )
+                # The live run can take several minutes.  The worker already
+                # emits stage events, so expose them without contaminating the
+                # command's final stdout JSON.
+                composition.handler.set_stage_callback(_report_analysis_stage)
+                target_repository = _TargetRunRepository(
+                    composition.repository,
+                    target_run_id=run_id,
+                    database_url=os.environ["DATABASE_URL"],
+                )
+                worker_id = f"local-e2e-{uuid4().hex[:12]}"
+                runtime = WorkerRuntime(
+                    target_repository,
+                    composition.handler,
+                    worker_id=worker_id,
+                    heartbeat_seconds=composition.settings.heartbeat_seconds,
+                    lease_seconds=composition.settings.lease_seconds,
+                    idle_poll_seconds=composition.settings.idle_poll_seconds,
+                )
+                state, worker_outcome, worker_attempts = await _run_target_until_terminal(
+                    runtime=runtime,
+                    repository=target_repository,
+                    client=client,
+                    run_id=run_id,
+                )
+                worker_attempt_worker_ids = [worker_id] * worker_attempts
+                analysis_poll_count = None
+        except E2EFailure:
+            if trace_handler is None and trace_dir is not None:
+                # In external mode this constructs a local read adapter only;
+                # it never claims or executes the API-created job.
+                try:
+                    from worker.main import build_worker
+
+                    trace_handler = build_worker().handler
+                except Exception:  # noqa: BLE001 - preserve original failure
+                    pass
+            await _capture_analysis_failure_trace(
                 client=client,
+                trace_dir=trace_dir,
+                upload=payload,
+                handler=trace_handler,
                 run_id=run_id,
+                cpl_diagnostics=cpl_diagnostics,
             )
-            worker_attempt_worker_ids = [worker_id] * worker_attempts
-            analysis_poll_count = None
+            raise
         case_id = state.get("analysis_case_id")
         if not isinstance(case_id, str) or not case_id:
             raise E2EFailure("completed run has no analysis case id")
@@ -1401,6 +1626,28 @@ async def _run(
             os.environ["DATABASE_URL"],
             case_id=case_id,
         )
+        if trace_dir is not None:
+            if trace_handler is None:
+                # External mode still reads only the artifacts the deployed
+                # worker wrote; it never runs or claims a worker locally.
+                from worker.main import build_worker
+
+                trace_handler = build_worker().handler
+            common_ir, structured_profile = _cached_artifacts(trace_handler, run_id)
+            if structured_profile is None:
+                raise E2EFailure("worker did not persist the structured profile")
+            _write_trace(
+                trace_dir,
+                upload=payload,
+                common_ir=common_ir,
+                structured_profile=structured_profile,
+                result=body,
+                run_state=state,
+                cpl_diagnostics={
+                    "analysis_run_id": run_id,
+                    "diagnostics": cpl_diagnostics,
+                },
+            )
 
         created_chat = await client.post(
             f"/api/v1/analysis-cases/{case_id}/messages",
@@ -1480,7 +1727,7 @@ async def _run(
             assistant_message_id=assistant_message_id,
             case_id=case_id,
         )
-        return {
+        outcome: dict[str, object] = {
             "status": "ok",
             "worker_mode": worker_mode,
             "api_mode": "deployed" if api_base_url is not None else "asgi",
@@ -1506,6 +1753,9 @@ async def _run(
             "chat_poll_count": chat_poll_count,
             "chat_reference_count": chat_reference_count,
         }
+        if trace_dir is not None:
+            outcome["trace_dir"] = str(trace_dir)
+        return outcome
 
 
 def _positive_timeout_seconds(raw: str) -> float:
@@ -1530,6 +1780,21 @@ def main() -> int:
         help="FastAPI/worker runtime .env (default: backend/.env)",
     )
     parser.add_argument("--supabase-env", type=Path, default=DEFAULT_SUPABASE_ENV)
+    parser.add_argument(
+        "--llm-model",
+        help="override OPENAI_LLM_MODEL for this one E2E run",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=DEFAULT_TOP_K,
+        help=f"SIM retrieval breadth for this run (default: {DEFAULT_TOP_K})",
+    )
+    parser.add_argument(
+        "--trace-dir",
+        type=Path,
+        help="new directory for actual upload, stage, result, and CPL diagnostic JSON",
+    )
     parser.add_argument(
         "--worker-mode",
         choices=("inline", "external"),
@@ -1574,7 +1839,9 @@ def main() -> int:
     args = parser.parse_args()
     if not args.file.is_file():
         raise E2EFailure("--file must be an existing HWP or HWPX file")
-    _source_mime_type(args.file)
+    source_content, source_mime_type = _validated_source(args.file)
+    if args.trace_dir is not None and args.trace_dir.exists():
+        raise E2EFailure("--trace-dir must not already exist")
     api_base_url = (
         _validated_api_base_url(args.api_base_url)
         if args.api_base_url is not None
@@ -1596,6 +1863,8 @@ def main() -> int:
         args.backend_env,
         args.supabase_env,
         auth_allowed_origins=TEST_ORIGIN if api_base_url is None else None,
+        llm_model=args.llm_model,
+        top_k=args.top_k,
     )
     result = asyncio.run(
         _run(
@@ -1605,6 +1874,9 @@ def main() -> int:
             request_origin=request_origin,
             analysis_poll_timeout_seconds=args.analysis_poll_timeout_seconds,
             chat_poll_timeout_seconds=args.chat_poll_timeout_seconds,
+            trace_dir=args.trace_dir.resolve() if args.trace_dir is not None else None,
+            source_content=source_content,
+            source_mime_type=source_mime_type,
         )
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))

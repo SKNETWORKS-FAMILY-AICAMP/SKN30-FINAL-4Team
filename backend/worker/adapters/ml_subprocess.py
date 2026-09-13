@@ -319,7 +319,14 @@ def _single_prediction(raw: Any, *, model_name: str) -> dict[str, Any]:
 
 
 def normalize_model2_output(raw: Any) -> dict[str, Any]:
-    """Unwrap team Model 2 ``predictions[0]`` for the L1 contract."""
+    """Unwrap team Model 2 ``predictions[0]`` for the L1 contract.
+
+    The team envelope's ``adapter`` block contains its own text-parser
+    diagnostics.  It is deliberately not promoted into the L1 result: profile
+    facts and their deterministic projections are the only authority for a
+    request amount shown to a user.  Keeping this boundary narrow also means
+    that changing display provenance cannot alter the frozen serving payload.
+    """
 
     return _single_prediction(raw, model_name="model2")
 

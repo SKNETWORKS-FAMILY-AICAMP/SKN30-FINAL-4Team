@@ -2,7 +2,7 @@
 
 원칙 네 줄.
 
-1. 좌우 근거는 **프로파일에서** 만든다. 다른 관계의 판정 결과를 근거로
+1. 좌우 근거는 **CPL 결과에서** 만든다. 다른 FIT 관계의 판정 결과를 근거로
    재활용하지 않는다 (초안 §7.1 "실제 relation 근거를 사용한다").
 2. 비교가 성립하지 않으면 판정이 아니라 ``INSUFFICIENT`` + reason code 다.
    충돌이 확인되지 않았다는 사실이 "맞다" 의 근거가 되지 않는다.
@@ -18,7 +18,15 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from .cpl_result import CplEvidence
+from ..quantities import QuantitySpan
+from .cpl_result import (
+    CplAxisCode,
+    CplEvidence,
+    PURPOSE_AXIS_CODES,
+    PURPOSE_AXIS_UNRESOLVED,
+    PurposeAxisAssignment,
+    PurposeAxisClassification,
+)
 from .profile_snapshot import (
     LLM_INVALID_RESPONSE,
     LLM_TIMEOUT,
@@ -31,7 +39,7 @@ __all__ = [
     "FitStatus",
     "CplEvidence",
     "StageDiagnostic",
-    "PurposeAxisCode",
+    "CplAxisCode",
     "PURPOSE_AXIS_CODES",
     "FIT_NOT_APPLICABLE",
     "FIT_DISPLAY_STATUSES",
@@ -79,22 +87,7 @@ class FitStatus(StrEnum):
     INSUFFICIENT = "INSUFFICIENT"
 
 
-class PurposeAxisCode(StrEnum):
-    """목적 의미 축 어휘 (초안 §7.1 FIT-2 "목적 의미 분류").
-
-    CPL 의 ``CplAxisCode`` 를 가져다 쓰지 않는다. 저쪽은 13항목 표시 축이고
-    이쪽은 FIT 좌측 입력을 만들기 위한 목적 문장 분류 축이라, 어휘가 우연히
-    겹쳐도 같은 계약이 아니다. 한쪽을 고치면 다른 쪽이 조용히 바뀌는 결합을
-    만들지 않는다.
-    """
-
-    TARGET_CONDITION = "PURPOSE_TARGET_CONDITION"
-    DIRECTION = "PURPOSE_DIRECTION"
-    PROBLEM_DOMAIN = "PURPOSE_PROBLEM_DOMAIN"
-    SPECIFIC_OBJECTIVE = "PURPOSE_SPECIFIC_OBJECTIVE"
-
-
-PURPOSE_AXIS_CODES = frozenset(code.value for code in PurposeAxisCode)
+# 축 어휘 정의는 cpl_result 로 옮겼다. 축을 확정하는 쪽이 어휘도 갖는다.
 
 
 # ------------------------------------------------------------- 표시 어휘
@@ -104,10 +97,10 @@ PURPOSE_AXIS_CODES = frozenset(code.value for code in PurposeAxisCode)
 # 다섯째 값은 출력 경계에서만 존재한다.
 #
 # 뜻은 "비교축 자체가 이 문서에 적용되지 않음" 이다. 근거를 못 구한
-# ``INSUFFICIENT`` 와 다르다. FIT-4 는 계층 비교 기준 표본을 확보하기 전까지
-# 항상 ``INSUFFICIENT / HIERARCHY_COMPARISON_NOT_AVAILABLE`` (AGENTS.md) 인데
-# 그것은 기준 미확보이지 미적용이 아니므로 여기로 옮기지 않는다. 그래서 지금
-# 이 값을 만들어내는 판정 경로는 없다 — 어휘만 열어 둔다.
+# ``INSUFFICIENT`` 와 다르다. FIT-4 는 명시된 parent-child edge 를 대상으로
+# 느슨한 알파 이상징후 탐지를 수행하며, 계층이 없을 때는 일반적인
+# ``COMPARISON_EVIDENCE_MISSING`` 으로 남긴다. 이 값은 기존 표시 계약·저장
+# 결과의 호환을 위해 어휘로만 유지한다.
 FIT_NOT_APPLICABLE = "NOT_APPLICABLE"
 
 FIT_DISPLAY_STATUSES = frozenset(
@@ -130,14 +123,15 @@ COMPARISON_EVIDENCE_MISSING = "COMPARISON_EVIDENCE_MISSING"
 COMPARISON_VALUE_INVALID = "COMPARISON_VALUE_INVALID"
 # 근거로 인용된 fact_id 가 프로파일에 없다.
 EVIDENCE_REF_UNRESOLVED = "EVIDENCE_REF_UNRESOLVED"
-# FIT-4 정책 게이트. 계층 노드가 있다는 이유만으로 열리지 않는다 (초안 §7.1).
+# 예전 FIT-4 정책 게이트의 reason code. 현재 FIT-4는 명시된 parent-child edge를
+# 직접 비교하며, 기존 저장 결과와의 호환 때문에 상수만 유지한다.
 HIERARCHY_COMPARISON_NOT_AVAILABLE = "HIERARCHY_COMPARISON_NOT_AVAILABLE"
 # 문서가 조건을 적지 않았다. 조건 추출 실패와 구분한다 (초안 §7.1 FIT-5).
 NO_CONDITIONS_SPECIFIED = "NO_CONDITIONS_SPECIFIED"
 # 같은 축에서 좌우 값 집합이 다르다.
 NUMERIC_MISMATCH = "NUMERIC_MISMATCH"
 # 목적 의미 축 보완이 필요한 축을 만들어내지 못했다.
-PURPOSE_AXIS_UNRESOLVED = "PURPOSE_AXIS_UNRESOLVED"
+# 정의는 cpl_result 로 옮겼다. 축을 확정하는 쪽이 사유도 갖는다.
 # 좌우가 같은 fact 를 가리킨다. 자기 자신과 비교하지 않는다 (초안 §7.1).
 SELF_COMPARISON = "SELF_COMPARISON"
 # 한 축이 한쪽에만 있다. 충돌이 없다는 것이 대응했다는 뜻은 아니다.
@@ -175,6 +169,11 @@ class FitEvidenceRef:
     field_name: str
     value_raw: str | None
     evidence: list[CplEvidence] = field(default_factory=list)
+    # CPL 이 원문에서 파생한 정량 맥락. FIT 은 읽기만 한다 — 여기서 Common IR 을
+    # 다시 읽으면 CPL->FIT 책임 경계가 흐려진다. 공개 payload 에는 싣지 않는다.
+    quantities: tuple[QuantitySpan, ...] = field(
+        default=(), repr=False, metadata={"serialize": False}
+    )
     primary_component_id: str | None = None
 
 
@@ -206,34 +205,13 @@ class FitRelationResult:
 
 
 @dataclass(frozen=True, slots=True)
-class PurposeAxisAssignment:
-    """목적 fact 하나에 붙은 의미 축. 값·오프셋·근거를 새로 만들지 않는다."""
-
-    fact_id: str
-    axis_code: str
-    quoted_text: str
-
-
-@dataclass(frozen=True, slots=True)
-class PurposeAxisClassification:
-    """목적 의미 축 보완 1회의 기록 (초안 §9.2 "의미 분류 미완료").
-
-    ``attempted`` 는 호출 여부, ``reason_code`` 는 호출이 실패했거나 유효한
-    축을 하나도 만들지 못한 사유다. 문서당 한 번이며 같은 입력으로 재시도하지
-    않는다 (초안 §9.2 "같은 입력·근거·진단으로 진전이 없으면 종료한다").
-    """
-
-    attempted: bool
-    assignments: list[PurposeAxisAssignment] = field(default_factory=list)
-    reason_code: str | None = None
-    dropped: list[str] = field(default_factory=list)
-    # 관계 비교와 다른 프롬프트다. 호출하지 않았으면 None 이다.
-    prompt_version: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class FitResult:
-    """7관계 + 목적 축 보완 기록 + 계보. 점수·확인율 필드는 의도적으로 없다."""
+    """7관계 + CPL이 확정한 목적 축 기록 + 계보.
+
+    ``purpose_axis``는 CPL 계약을 그대로 재수출한 단일 타입이다. FIT가 별도
+    형식으로 복제하거나 변환하지 않아 CPL 결과 객체가 그대로 전달된다.
+    점수·확인율 필드는 의도적으로 없다.
+    """
 
     relations: list[FitRelationResult]
     purpose_axis: PurposeAxisClassification

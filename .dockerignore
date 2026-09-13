@@ -6,6 +6,10 @@
 
 !backend/
 !backend/Dockerfile.ml-worker
+!backend/config/
+!backend/config/prompts/
+!backend/config/prompts/cpl-purpose-axis-v0.3.txt
+!backend/config/prompts/cpl-recheck-v0.4.txt
 !backend/vendor/
 !backend/vendor/common_ir_pipeline/
 !backend/vendor/common_ir_pipeline/pyproject.toml
@@ -113,15 +117,3 @@ handover
 handover/**
 **/handover
 **/handover/**
-
-# Retired pre-rebuild worker modules depend on deleted compatibility APIs and
-# are not reachable from worker.main. Keep them out of both worker builders.
-backend/worker/analysis.py
-backend/worker/dispatcher.py
-backend/worker/execution_log.py
-backend/worker/jobs.py
-backend/worker/kb_ingest.py
-backend/worker/kb_store.py
-backend/worker/persistence.py
-backend/worker/queue.py
-backend/worker/report_pdf.py

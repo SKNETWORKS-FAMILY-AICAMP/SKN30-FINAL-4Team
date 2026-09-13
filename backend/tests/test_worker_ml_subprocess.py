@@ -13,6 +13,7 @@ from worker.adapters.ml_subprocess import (
     SubprocessModelError,
     model1_command,
     normalize_model1_output,
+    normalize_model2_output,
 )
 
 
@@ -110,3 +111,22 @@ def test_model1_normalizer_accepts_one_serving_row() -> None:
 def test_model1_normalizer_rejects_invalid_serving_rows(raw: dict[str, object]) -> None:
     with pytest.raises(SubprocessModelError):
         normalize_model1_output(raw)
+
+
+@pytest.mark.parametrize("basis", ["stated_cap", "budget_div_count", None, "unknown"])
+def test_model2_normalizer_discards_adapter_amount_diagnostics(
+    basis: str | None,
+) -> None:
+    result = normalize_model2_output(
+        {
+            "predictions": [{"pred_won": 5_000_000}],
+            "adapter": {
+                "amounts": {
+                    "per_recipient": 8_000_000,
+                    "per_recipient_basis": basis,
+                }
+            },
+        }
+    )
+
+    assert result == {"pred_won": 5_000_000}

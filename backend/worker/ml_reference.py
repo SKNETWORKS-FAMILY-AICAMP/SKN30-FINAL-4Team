@@ -51,6 +51,7 @@ __all__ = [
     "MlModel",
     "MlModelInput",
     "MlUnavailable",
+    "AuthoritativeRequestLimit",
     "UnavailableModel",
     "FakeMlModel",
     "MODEL_INPUT_SOURCES",
@@ -60,6 +61,7 @@ __all__ = [
     "missing_runtime_model",
     "load_entry_module",
     "build_ml_inputs",
+    "resolve_authoritative_request_limit",
     "run_ml_reference",
 ]
 
@@ -141,6 +143,123 @@ class MlModelInput:
             reason_code=self.reason_code,
             metadata=dict(self.metadata),
         )
+
+
+_REQUEST_LIMIT_APPLIES_PER = frozenset({"COMPANY", "PROJECT", "TEAM"})
+_REQUEST_LIMIT_BOUND_COMPARATORS = frozenset({"lt", "lte"})
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoritativeRequestLimit:
+    """A display-safe per-recipient cap from a structured Profile projection.
+
+    This is deliberately distinct from a model feature and from the serving
+    adapter's text-parser output.  It is carried only in ``MlModelInput``
+    metadata, which ``predict()`` never receives.
+    """
+
+    amount_won: int
+    applies_per: str
+
+    def as_metadata(self) -> dict[str, Any]:
+        return {"amount_won": self.amount_won, "applies_per": self.applies_per}
+
+
+def _positive_profile_integer(value: Any) -> int | None:
+    """Read the Profile JSON contract's positive integer amount, or reject it."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _profile_limit_amount(measure: Mapping[str, Any]) -> int | None:
+    """Return one explicit cap value only for an unambiguous bound shape."""
+
+    comparator = measure.get("comparator")
+    lower = _positive_profile_integer(measure.get("lower_value"))
+    upper = _positive_profile_integer(measure.get("upper_value"))
+    if comparator in _REQUEST_LIMIT_BOUND_COMPARATORS:
+        # A one-sided ceiling is the normal ``support_limit`` representation.
+        return upper if lower is None else None
+    if comparator == "eq":
+        # A table header can establish ``support_limit`` while the selected
+        # numeric cell is an equality.  It is safe only when both fields state
+        # the same concrete amount.
+        return upper if lower is not None and lower == upper else None
+    return None
+
+
+def resolve_authoritative_request_limit(
+    profile: Mapping[str, Any],
+) -> AuthoritativeRequestLimit | None:
+    """Resolve one user-visible request limit from Profile projections only.
+
+    A Model 2 adapter may independently parse raw text for frozen serving
+    features, but that parse is not Profile provenance and must never decide a
+    displayed request amount.  Ambiguous, partial, malformed, or conflicting
+    projections deliberately produce no value rather than a guessed cap.
+    """
+
+    projections = profile.get("derived_projections")
+    if not isinstance(projections, list):
+        return None
+    candidates: set[tuple[int, str]] = set()
+    for projection in projections:
+        if not isinstance(projection, Mapping):
+            continue
+        if (
+            projection.get("projection_type") != "support_scale_measures"
+            or projection.get("status") != "identified"
+        ):
+            continue
+        source_fact_ids = projection.get("source_fact_ids")
+        if not isinstance(source_fact_ids, list):
+            continue
+        source_fact_id_set = {
+            fact_id for fact_id in source_fact_ids
+            if isinstance(fact_id, str) and fact_id
+        }
+        if not source_fact_id_set:
+            continue
+        measures = projection.get("measures")
+        if not isinstance(measures, list):
+            continue
+        for measure in measures:
+            if not isinstance(measure, Mapping):
+                continue
+            applies_per = measure.get("applies_per")
+            if (
+                measure.get("measure_type") != "amount"
+                or measure.get("measure_role") != "support_limit"
+                or measure.get("unit") != "KRW"
+                or measure.get("aggregation_scope") != "PER_UNIT"
+                or applies_per not in _REQUEST_LIMIT_APPLIES_PER
+                or measure.get("source_fact_id") not in source_fact_id_set
+            ):
+                continue
+            amount_won = _profile_limit_amount(measure)
+            if amount_won is not None:
+                candidates.add((amount_won, applies_per))
+    if len(candidates) != 1:
+        return None
+    amount_won, applies_per = candidates.pop()
+    return AuthoritativeRequestLimit(amount_won=amount_won, applies_per=applies_per)
+
+
+def _authoritative_limit_from_metadata(
+    metadata: Mapping[str, Any],
+) -> AuthoritativeRequestLimit | None:
+    """Revalidate metadata before it reaches a display sentence."""
+
+    raw = metadata.get("authoritative_request_limit")
+    if not isinstance(raw, Mapping):
+        return None
+    amount_won = _positive_profile_integer(raw.get("amount_won"))
+    applies_per = raw.get("applies_per")
+    if amount_won is None or applies_per not in _REQUEST_LIMIT_APPLIES_PER:
+        return None
+    return AuthoritativeRequestLimit(amount_won=amount_won, applies_per=applies_per)
 
 
 @runtime_checkable
@@ -460,6 +579,10 @@ def build_ml_inputs(
     model_3_evidence_text, model_3_evidence_sources = _quantity_evidence_text(
         profile, quantities, common_ir
     )
+    authoritative_limit = resolve_authoritative_request_limit(profile)
+    model_2_metadata: dict[str, Any] = {}
+    if authoritative_limit is not None:
+        model_2_metadata["authoritative_request_limit"] = authoritative_limit.as_metadata()
     model_2 = MlModelInput(
         model_id=MlModelId.MODEL_2_AMOUNT,
         payload={
@@ -470,6 +593,7 @@ def build_ml_inputs(
         sources=[*evidence_sources, *quantity_sources],
         # 원문이 없으면 여기서 멈춘다. 구조화 요약문으로 바꿔 넣지 않는다.
         reason_code=None if evidence_text else INPUT_EVIDENCE_MISSING,
+        metadata=model_2_metadata,
     )
 
     model_3 = MlModelInput(
@@ -548,9 +672,23 @@ MODEL_3_ALLOWED_LEVELS: tuple[str, ...] = (
 # m13_m3_anomaly.status_of() 가 ALLOWED 밖에서 반환하는 정상 상태. 정상 사례를
 # 이례 문구인 ``확인 필요``로 올려 말하지 않기 위해 별도 상태로 둔다.
 MODEL_3_TYPICAL_LEVEL = "비교군 범위 내"
-MODEL_3_DISPLAY_LEVELS: frozenset[str] = frozenset(
-    (*MODEL_3_ALLOWED_LEVELS, MODEL_3_TYPICAL_LEVEL)
-)
+
+# 표시 어휘를 사용자 문장으로 옮기는 표. 모델이 주는 것은 점수뿐이고 위 어휘는
+# L2 어댑터가 팀의 고정 백분위 구간에서 고른 값이라, 사용자에게 보이는 말은
+# 어차피 전부 서버가 쓴다. "비교군"·"이례성"·"축" 같은 내부 용어를 그대로
+# 내보내는 대신 여기서 한 번에 평문으로 바꾼다.
+#
+# **키 집합이 곧 표시 가능한 level 이다.** 어휘가 늘어났는데 문장을 안 쓰면
+# 그 level 은 표시되지 않고 해당 모델이 실패한다 — 뜻 모를 어휘가 화면으로
+# 새는 쪽보다 낫다.
+MODEL_3_LEVEL_SENTENCES: dict[str, str] = {
+    "과거 사업 패턴과 차이가 큼": "이 사업의 설계는 과거 비슷한 사업들과 차이가 큰 편입니다.",
+    "희귀한 설계 조합": "이 사업의 설계 조합은 과거 비슷한 사업들에서 드물게 나타납니다.",
+    "동일 유형 대비 비전형적": "같은 유형의 과거 사업들과 견주면 흔하지 않은 설계입니다.",
+    "확인 필요": "과거 비슷한 사업들과 다소 차이가 있어 한 번 확인해 볼 만합니다.",
+    MODEL_3_TYPICAL_LEVEL: "이 사업의 설계는 과거 비슷한 사업들의 통상 범위 안에 있습니다.",
+}
+MODEL_3_DISPLAY_LEVELS: frozenset[str] = frozenset(MODEL_3_LEVEL_SENTENCES)
 
 # 화면에서 감추는 것은 확률·점수·백분위지 숫자 전체가 아니다.
 # 초안 30 행: "ML 은 지원유형·예측 금액·이례성 설명을 제공하고 확률·점수는
@@ -575,25 +713,31 @@ _WITHHELD_KEYS = frozenset(
 )
 MODEL_1_ALLOWED_STATUSES: frozenset[str] = frozenset({"신뢰", "참고용", WITHHELD_STATUS})
 
-def _amount_phrase(pred_won: Any) -> str | None:
-    """원 단위 예측 금액을 문구로 만든다.
+def _finite_won(value: Any) -> int | None:
+    """금액값 하나를 원 단위 양의 정수로 읽는다. 읽을 수 없으면 ``None``."""
+
+    # bool 은 int 의 하위형이라 True 가 1 원이 된다. 먼저 막는다.
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except Exception:  # noqa: BLE001 - malformed model values stay model-local
+        return None
+    # NaN·무한대는 int() 에서 OverflowError/ValueError 로 터진다. 값으로 거른다.
+    if not math.isfinite(number) or number <= 0:
+        return None
+    return int(round(number)) or None
+
+
+def _amount_phrase(value: Any) -> str | None:
+    """금액 하나를 문구로 만든다.
 
     초안 30·289 행이 표시하라고 한 값이라 숫자가 그대로 나간다. 확률·백분위와
     달리 이건 감추는 대상이 아니다.
     """
 
-    # bool 은 int 의 하위형이라 True 가 1 원이 된다. 먼저 막는다.
-    if isinstance(pred_won, bool):
-        return None
-    try:
-        value = float(pred_won)
-    except Exception:  # noqa: BLE001 - malformed model values stay model-local
-        return None
-    # NaN·무한대는 int() 에서 OverflowError/ValueError 로 터진다. 값으로 거른다.
-    if not math.isfinite(value) or value <= 0:
-        return None
-    won = int(round(value))
-    if won <= 0:
+    won = _finite_won(value)
+    if won is None:
         return None
     if won >= 100_000_000 and won % 100_000_000 == 0:
         return f"{won // 100_000_000}억원"
@@ -602,11 +746,31 @@ def _amount_phrase(pred_won: Any) -> str | None:
     return f"{won:,}원"
 
 
+def _estimate_phrase(pred_won: Any) -> str | None:
+    """예측 금액 문구. **유효숫자 두 자리로 줄인다.**
+
+    ``8,520,390원`` 처럼 원 단위까지 적으면 추정치가 확정 금액으로 읽힌다.
+    자릿수를 줄이는 것은 값을 감추는 것이 아니라 정밀도를 실제만큼만 말하는
+    것이다 — 원래 값은 ``predicted_amount_won`` 으로 그대로 나간다.
+    """
+
+    won = _finite_won(pred_won)
+    if won is None:
+        return None
+    unit = 10 ** max(len(str(won)) - 2, 0)
+    return _amount_phrase(round(won / unit) * unit)
+
+
 class MlOutputInvalid(RuntimeError):
     """모델 출력이 계약을 어겼다. fallback 으로 덮지 않고 그 모델만 실패시킨다."""
 
 
-def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
+def _validate_reference(
+    model_id: MlModelId,
+    output: dict[str, Any],
+    *,
+    authoritative_request_limit: AuthoritativeRequestLimit | None = None,
+) -> str:
     """모델 출력을 검증하고 사용자 문구를 **서버가 조립한다**.
 
     모델이 준 자유 문장(``statement``)은 절대 쓰지 않는다. 정규식으로 거르면
@@ -631,15 +795,30 @@ def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
         # 팀원 predictor 가 반환하는 정확한 값만 받는다.
         if not isinstance(status, str) or status not in MODEL_1_ALLOWED_STATUSES:
             raise MlOutputInvalid(f"모델 1 status 가 허용 값 밖이다: {status!r}")
-        return f"유사 사업의 지원유형 참고 분류는 '{label.strip()}' 계열이다."
+        return (
+            f"과거 비슷한 사업들과 견주면 이 사업은 '{label.strip()}' 성격에 가깝습니다."
+        )
 
     if model_id is MlModelId.MODEL_2_AMOUNT:
-        phrase = _amount_phrase(output.get("pred_won"))
+        phrase = _estimate_phrase(output.get("pred_won"))
         if phrase is None:
             raise MlOutputInvalid(
                 f"예측 금액이 유한 양수가 아니다: {output.get('pred_won')!r}"
             )
-        return f"비교군 기준 참고 예측 지원액은 {phrase} 수준이다."
+        # The observed request amount is Profile-derived metadata, never a
+        # value independently parsed by the frozen Model 2 serving adapter.
+        if authoritative_request_limit is not None:
+            observed = _amount_phrase(authoritative_request_limit.amount_won)
+            unit_label = {
+                "COMPANY": "기업당",
+                "PROJECT": "과제당",
+                "TEAM": "팀당",
+            }[authoritative_request_limit.applies_per]
+            return (
+                f"사전협의안에 명시된 {unit_label} 지원 한도는 {observed}입니다. "
+                f"조건이 비슷한 과거 사업들의 지원 단위당 예측 금액은 약 {phrase}입니다."
+            )
+        return f"조건이 비슷한 과거 사업들의 지원 단위당 예측 금액은 약 {phrase}입니다."
 
     level = output.get("level")
     if not isinstance(level, str) or level.strip() not in MODEL_3_DISPLAY_LEVELS:
@@ -660,11 +839,12 @@ def _validate_reference(model_id: MlModelId, output: dict[str, Any]) -> str:
     unknown = [a for a in axes if a not in MODEL_3_ALLOWED_AXES]
     if unknown:
         raise MlOutputInvalid(f"허용 축 밖이다: {unknown}")
-    if level.strip() == MODEL_3_TYPICAL_LEVEL:
-        return "비교군 범위 내 설계 특징이다."
-    if axes:
-        return f"비교군 대비 {level.strip()} — 관련 축: {', '.join(axes)}."
-    return f"비교군 대비 {level.strip()}."
+    sentence = MODEL_3_LEVEL_SENTENCES[level.strip()]
+    # 통상 범위 안이라는 말 뒤에 "가장 크게 차이 나는 항목" 을 붙이면 정상
+    # 사례를 이례 사례처럼 읽게 만든다. 축은 벗어난 경우에만 말한다.
+    if level.strip() == MODEL_3_TYPICAL_LEVEL or not axes:
+        return sentence
+    return f"{sentence} 가장 크게 차이 나는 항목은 {', '.join(axes)}입니다."
 
 
 
@@ -762,8 +942,17 @@ def _normalise(
             internal=internal,
             input_metadata=metadata,
         )
+    authoritative_limit = (
+        _authoritative_limit_from_metadata(metadata)
+        if model_id is MlModelId.MODEL_2_AMOUNT
+        else None
+    )
     try:
-        reference_text = _validate_reference(model_id, output)
+        reference_text = _validate_reference(
+            model_id,
+            output,
+            authoritative_request_limit=authoritative_limit,
+        )
     except Exception:
         # 검증기 자체가 터져도 이 모델만 실패한다. 잘못된 출력을 정상
         # 참고정보로 위장하지 않는다 (fallback 으로 덮지 않는다).

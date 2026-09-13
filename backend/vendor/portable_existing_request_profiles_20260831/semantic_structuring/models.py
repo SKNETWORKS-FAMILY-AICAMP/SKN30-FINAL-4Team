@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 
 class StrictModel(BaseModel):
@@ -181,6 +181,13 @@ class SourceBlock(StrictModel):
     common_ir_block_id: str | None = Field(default=None, min_length=1, frozen=True)
     common_ir_cell_id: str | None = Field(default=None, min_length=1, frozen=True)
     common_ir_occurrence_ids: tuple[str, ...] = Field(default_factory=tuple, frozen=True)
+    # Common IR table geometry is needed only while the trusted server builds
+    # field regions.  Keep it private so neither LLM source-block payloads nor
+    # the public CandidatePack/Profile contracts acquire new writable fields.
+    # Tuple order: row_index, row_span, col_index, col_span.
+    _common_ir_cell_geometry: tuple[int, int, int, int] | None = PrivateAttr(
+        default=None
+    )
 
 
 class CandidatePack(StrictModel):

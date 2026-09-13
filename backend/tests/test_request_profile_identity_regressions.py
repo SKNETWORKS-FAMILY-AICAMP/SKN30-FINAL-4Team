@@ -150,3 +150,106 @@ def test_title_falls_back_only_to_a_unique_detail_program_node() -> None:
     )
 
     assert profile["identity"]["title_raw"] == "동구 청년 창업지원사업(지원내용 개편)"
+
+
+def test_table_column_pair_validation_honors_actor_row_span() -> None:
+    document = _example_document()
+    table_id = "request:rowspan-delivery-table"
+    document["blocks"].append(
+        {
+            "block_id": table_id,
+            "kind": "table",
+            "structure_status": "explicit",
+            "reading_order": max(
+                block["reading_order"] for block in document["blocks"]
+            ) + 1,
+            "text": "주무부처 정책수립 및 예산 지원",
+            "text_occurrence_ids": [
+                "occ:rowspan:actor",
+                "occ:rowspan:inside",
+                "occ:rowspan:member",
+            ],
+            "occurrences": [
+                {"occurrence_id": "occ:rowspan:actor", "text": "주무부처"},
+                {"occurrence_id": "occ:rowspan:inside", "text": "병합 셀 옆의 내용"},
+                {
+                    "occurrence_id": "occ:rowspan:member",
+                    "text": "정책수립 및 예산 지원",
+                },
+            ],
+            "cells": [
+                {
+                    "cell_id": "request:rowspan:actor",
+                    "row_index": 0,
+                    "row_span": 2,
+                    "col_index": 0,
+                    "col_span": 1,
+                    "text_occurrence_ids": ["occ:rowspan:actor"],
+                },
+                {
+                    "cell_id": "request:rowspan:inside",
+                    "row_index": 1,
+                    "row_span": 1,
+                    "col_index": 4,
+                    "col_span": 1,
+                    "text_occurrence_ids": ["occ:rowspan:inside"],
+                },
+                {
+                    "cell_id": "request:rowspan:member",
+                    "row_index": 2,
+                    "row_span": 1,
+                    "col_index": 0,
+                    "col_span": 1,
+                    "text_occurrence_ids": ["occ:rowspan:member"],
+                },
+            ],
+        }
+    )
+    pack = build_request_candidate_pack(document)
+    by_cell_id = {
+        block.common_ir_cell_id: block
+        for block in pack.blocks
+        if block.common_ir_cell_id is not None
+    }
+    actor = by_cell_id["request:rowspan:actor"]
+    member = by_cell_id["request:rowspan:member"]
+    raw_selection = _example_selection()
+    raw_selection["profile_id"] = "request:rowspan-delivery"
+    raw_selection["candidate_pack_id"] = pack.pack_id
+    raw_selection["delivery_relations"].append(
+        {
+            "delivery_relation_id": "delivery:rowspan",
+            "actor_anchor": {
+                "source_block_id": actor.block_id,
+                "anchor_text": actor.text,
+            },
+            "role_anchor": {
+                "source_block_id": member.block_id,
+                "anchor_text": member.text,
+            },
+            "actions": [],
+            "relation_container": {
+                "kind": "table_column_pair",
+                "common_ir_block_id": table_id,
+            },
+        }
+    )
+
+    profile = assemble_request_profile_v012(
+        document,
+        pack,
+        RequestSourceSelectionV012.model_validate(raw_selection),
+    )
+
+    relation = next(
+        row
+        for row in profile["comparison_profile"]["delivery_relations"]
+        if row["delivery_relation_id"] == "delivery:rowspan"
+    )
+    assert relation["relation_container"] == {
+        "container_type": "table_column_pair",
+        "common_ir_document_id": document["document"]["document_id"],
+        "common_ir_block_id": table_id,
+        "actor_common_ir_cell_id": "request:rowspan:actor",
+        "role_common_ir_cell_id": "request:rowspan:member",
+    }

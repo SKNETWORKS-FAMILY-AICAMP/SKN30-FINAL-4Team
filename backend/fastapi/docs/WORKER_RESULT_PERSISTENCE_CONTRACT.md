@@ -123,7 +123,7 @@ cross-reference가 필요하면 이 함수/계약을 확장한 migration을 먼�
 ## 금지·레거시 경계
 
 - migration 18의 `api.ingest_comparison_result_core`는 fenced하지 않으므로 새 worker가 사용하지 않는다.
-- `worker/jobs.py`, `worker/queue.py`, `worker/dispatcher.py`, `worker/persistence.py`의 옛 `sims.*` SQL은 현재 DB 계약이 아니다.
+- 퇴역한 `worker/jobs.py`·`worker/queue.py`·`worker/dispatcher.py`·`worker/persistence.py` 경로는 제거됐다. 현재 운영 진입점은 `worker.main`과 `worker.chat_main`이고, 저장은 이 문서의 `workspace.persist_analysis_result_core` 계약을 기준으로 한다. 옛 `sims.*` SQL은 git 이력에만 남는다.
 - Edge Function signed URL/HTTP dispatch/callback 계약은 레거시 참고용이다.
 - request 임베딩은 worker 메모리에서 생성·폐기한다. Existing 임베딩만 `retrieval.existing_profile_embedding`에 영속화한다.
 

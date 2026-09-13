@@ -98,6 +98,9 @@ class OpenAIConfig:
     sim_model: str | None = None
     chat_model: str | None = None
     timeout_seconds: float = 120.0
+    # 보완 호출은 검증이 깨졌을 때만 나간다. 1 회는 근거 span 선택이 한 번
+    # 어긋나면 그대로 실행 전체가 실패한다는 뜻이라, 같은 문서가 어떤 날은
+    # 되고 어떤 날은 안 된다. 정상 실행의 비용은 그대로다.
     max_repairs: int = 2
 
     @classmethod

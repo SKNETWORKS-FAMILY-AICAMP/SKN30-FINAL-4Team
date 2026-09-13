@@ -12,7 +12,7 @@ from enum import Enum
 import math
 from typing import Any
 
-from .contracts.cpl_result import CplEvidence, CplResult, cpl_axis_code
+from .contracts.cpl_result import CplEvidence, CplResult, cpl_display_code
 from .contracts.fit_result import FitResult, fit_axis_code
 from .contracts.ml_result import MlModelId, MlModelResult, MlReferenceResult
 from .contracts.sim_result import (
@@ -28,7 +28,11 @@ def plain(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: plain(getattr(value, field.name)) for field in fields(value)}
+        return {
+            field.name: plain(getattr(value, field.name))
+            for field in fields(value)
+            if field.metadata.get("serialize", True)
+        }
     if isinstance(value, Mapping):
         return {str(plain(key)): plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
@@ -208,11 +212,17 @@ def build_result_payload(
 
     axes: list[dict[str, Any]] = []
     evidences: list[dict[str, Any]] = []
+    # CPL-03과 CPL-05처럼 같은 profile source를 서로 다른 CPL 항목에서
+    # 참조할 수 있다. public payload의 ``evidences`` 는 그대로 DB Evidence
+    # 행이 되므로 item/subfield마다 다시 초기화하면 같은 snapshot이 중복된다.
+    # 축은 의도적으로 키에서 뺀다: 같은 원문 위치를 여러 축으로 투영한 것은
+    # 근거 하나다. 반대로 관계·멤버·좌표·값이 다르면 별개의 근거로 보존한다.
+    seen_cpl_evidence: set[tuple[Any, ...]] = set()
     for item in cpl.items:
         axes.append(
             {
                 "axis_type": "CPL",
-                "axis_code": cpl_axis_code(item.field_code),
+                "axis_code": cpl_display_code(item.field_code),
                 "status": item.representative_status,
                 "summary_text": _CPL_SUMMARY.get(
                     item.representative_status, "추가 확인이 필요합니다."
@@ -221,7 +231,23 @@ def build_result_payload(
             }
         )
         for subfield in item.subfields:
+            # 한 원문이 의미 축을 여럿 가지면 CPL 은 축마다 fact 를 남긴다.
+            # 근거는 그래도 한 줄이다 — 같은 값·같은 좌표를 축 수만큼 저장하면
+            # 프론트 근거 목록과 DB Evidence 행이 축 때문에 불어난다.
+            #
+            # 키는 축을 뺀 fact 좌표 전부다. fact_id 만으로는 모자란다:
+            # delivery_relations 멤버는 자기 id 가 없어서 (relation_id, member,
+            # member_index) 가 자리를 가리키고, 같은 기관이 여러 relation 의
+            # actor 로 나오면 값까지 같다. 그 둘은 서로 다른 근거다.
             for fact in subfield.facts:
+                key = (
+                    fact.fact_id, fact.relation_id, fact.member, fact.member_index,
+                    fact.source_block_id, fact.start_char, fact.end_char,
+                    fact.value_raw,
+                )
+                if key in seen_cpl_evidence:
+                    continue
+                seen_cpl_evidence.add(key)
                 evidences.extend(
                     _evidence(
                         fact.evidence,

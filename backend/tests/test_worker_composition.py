@@ -142,6 +142,7 @@ def test_build_worker_uses_request_profile_override_without_changing_fit_or_sim(
         "request_profile": "configured-terra",
         "fit": "configured-llm",
         "sim": "configured-llm",
+        "cpl": "configured-llm",
     }
 
 
@@ -361,6 +362,7 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
     assert "COPY ml /app/ml" not in dockerfile
     assert "COPY backend /app/backend" not in dockerfile
     assert "COPY backend/app /app/backend/app" in dockerfile
+    assert "COPY backend/config/prompts /app/backend/config/prompts" in dockerfile
     assert "requirements.runtime.txt" in dockerfile
     assert "download.pytorch.org/whl/cpu" in dockerfile
     assert "pip install xgboost-cpu==3.4.1" in dockerfile
@@ -386,10 +388,29 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
     assert "!backend/**" not in rules
     assert "!backend/vendor/**" not in rules
     assert "!backend/vendor/common_ir_pipeline/src/**" in rules
+    assert "!backend/config/" in rules
+    assert "!backend/config/prompts/" in rules
+    assert "!backend/config/prompts/cpl-purpose-axis-v0.3.txt" in rules
+    assert "!backend/config/prompts/cpl-recheck-v0.4.txt" in rules
     assert (
         "!backend/vendor/portable_existing_request_profiles_20260831/"
         "semantic_structuring/*.py"
     ) in rules
+    # New CPL runtime dependencies stay within the deliberately narrow
+    # allowlist: prompts are copied by name; the two vendor modules remain in
+    # the Python-only semantic_structuring closure; and the subprocess adapter
+    # stays in the active worker tree.
+    assert "!backend/worker/**" in rules
+    assert not {
+        "backend/config/prompts/cpl-purpose-axis-v0.3.txt",
+        "backend/config/prompts/cpl-recheck-v0.4.txt",
+        "backend/vendor/portable_existing_request_profiles_20260831/"
+        "semantic_structuring/field_regions.py",
+        "backend/vendor/portable_existing_request_profiles_20260831/"
+        "semantic_structuring/table_relations.py",
+        "backend/worker/adapters/ml_subprocess.py",
+        "backend/worker/ml_reference.py",
+    } & set(rules)
     assert not any("semantic_structuring/**" in rule for rule in rules)
     assert not any("exploratory_study" in rule for rule in rules if rule.startswith("!"))
     assert not any("/examples" in rule for rule in rules if rule.startswith("!"))
@@ -402,8 +423,8 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
     assert "!ml/data/processed/business_taxonomy.parquet" in rules
 
     # Directory allowlists intentionally admit the active source trees. These
-    # last-match exclusions prevent local credentials/caches and the retired
-    # worker implementation from being sent by either builder.
+    # last-match exclusions prevent local credentials and caches from being
+    # sent by either builder.
     broad_worker_rule = rules.index("!backend/worker/**")
     hygiene_rules = {
         "**/.git/**",
@@ -423,22 +444,20 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
         "**/id_rsa.*",
         "**/handover/**",
     }
-    retired_worker_rules = {
-        "backend/worker/analysis.py",
-        "backend/worker/dispatcher.py",
-        "backend/worker/execution_log.py",
-        "backend/worker/jobs.py",
-        "backend/worker/kb_ingest.py",
-        "backend/worker/kb_store.py",
-        "backend/worker/persistence.py",
-        "backend/worker/queue.py",
-        "backend/worker/report_pdf.py",
+    active_worker_paths = {
+        "backend/worker/main.py",
+        "backend/worker/analysis_job.py",
+        "backend/worker/runtime.py",
+        "backend/worker/ml_reference.py",
+        "backend/worker/adapters/ml_subprocess.py",
     }
-    assert hygiene_rules | retired_worker_rules <= set(rules)
+    assert hygiene_rules <= set(rules)
     assert all(
         rules.index(rule) > broad_worker_rule
-        for rule in hygiene_rules | retired_worker_rules
+        for rule in hygiene_rules
     )
+    assert active_worker_paths.isdisjoint(rules)
+    assert all((backend_root.parent / path).is_file() for path in active_worker_paths)
 
 
 def test_compose_restarts_both_runtime_processes_unless_stopped() -> None:
@@ -479,32 +498,33 @@ def test_compose_defaults_to_loopback_and_secure_session_cookies() -> None:
     assert '${PREREVIEW_AUTH_COOKIE_SECURE:-false}' not in api_section
 
 
-def test_runtime_image_excludes_unimportable_retired_worker_modules() -> None:
-    dockerignore = (
-        __import__("pathlib").Path(__file__).resolve().parents[1] / ".dockerignore"
-    ).read_text(encoding="utf-8").splitlines()
+def test_runtime_context_excludes_secrets_and_caches_but_keeps_active_worker_modules() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    rules = {
+        line.strip()
+        for line in (backend_root / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
 
     assert {
-        "worker/analysis.py",
-        "worker/dispatcher.py",
-        "worker/execution_log.py",
-        "worker/jobs.py",
-        "worker/kb_ingest.py",
-        "worker/kb_store.py",
-        "worker/persistence.py",
-        "worker/queue.py",
-        "worker/report_pdf.py",
-    } <= set(dockerignore)
+        ".pytest_cache",
+        "__pycache__",
+        "*.py[cod]",
+        ".venv",
+        "venv",
+        ".env",
+        ".env.*",
+        "**/.env",
+        "**/.env.*",
+        "handover",
+    } <= rules
 
-    # These are active subprocess-boundary modules, not the retired worker.
-    assert "worker/ml_reference.py" not in dockerignore
-    assert "worker/adapters/ml_subprocess.py" not in dockerignore
-
-    # Existing KB의 지원 writer는 scripts/ingest_existing_profile.py다. 이
-    # compatibility path가 supported worker image에 다시 들어오면 migration
-    # activation의 writer boundary가 불명확해진다.
-    main_source = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "worker" / "main.py"
-    ).read_text(encoding="utf-8")
-    assert "kb_store" not in main_source
+    active_worker_paths = {
+        "worker/main.py",
+        "worker/analysis_job.py",
+        "worker/runtime.py",
+        "worker/ml_reference.py",
+        "worker/adapters/ml_subprocess.py",
+    }
+    assert active_worker_paths.isdisjoint(rules)
+    assert all((backend_root / path).is_file() for path in active_worker_paths)

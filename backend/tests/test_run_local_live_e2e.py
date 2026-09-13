@@ -4,7 +4,9 @@ import asyncio
 import argparse
 from collections.abc import Callable
 import importlib.util
+import json
 import logging
+import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -312,7 +314,13 @@ def test_live_e2e_hardens_provider_logging_before_external_work(
         for logger in loggers:
             logger.setLevel(logging.DEBUG)
         with pytest.raises(StopBeforeExternalWork):
-            asyncio.run(MODULE._run(Path("never-read.hwp")))
+            asyncio.run(
+                MODULE._run(
+                    Path("never-read.hwp"),
+                    source_content=b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1fixture",
+                    source_mime_type="application/x-hwp",
+                )
+            )
     finally:
         root_logger.setLevel(original_root_level)
         for logger, original_level in zip(loggers, original_levels, strict=True):
@@ -1816,3 +1824,244 @@ def test_public_ml_projection_requires_all_three_nonempty_messages() -> None:
 def test_public_ml_projection_rejects_missing_or_blank_messages(ml: object) -> None:
     with pytest.raises(MODULE.E2EFailure, match="result ML response is invalid"):
         MODULE._require_public_ml_projection({"ml": ml})
+
+
+def test_trace_writes_actual_stage_layout(tmp_path: Path) -> None:
+    trace_dir = tmp_path / "trace"
+    result = {"cpl": {"items": []}, "fit": {"items": []}, "sim": {}, "ml": {}}
+
+    MODULE._write_trace(
+        trace_dir,
+        upload={"analysis_run_id": "run-1"},
+        common_ir={"schema_version": "common_ir_v1"},
+        structured_profile={"profile_id": "request:run-1"},
+        result=result,
+    )
+
+    assert [path.name for path in sorted(trace_dir.iterdir())] == [
+        "00_upload.json",
+        "01_common_ir.json",
+        "02_structured_profile.json",
+        "03_cpl.json",
+        "04_fit.json",
+        "05_sim.json",
+        "06_ml.json",
+        "07_result.json",
+        "08_run_state.json",
+        "cpl_diagnostics.json",
+    ]
+    assert json.loads((trace_dir / "02_structured_profile.json").read_text("utf-8"))["profile_id"] == "request:run-1"
+    assert json.loads((trace_dir / "03_cpl.json").read_text("utf-8")) == {"items": []}
+
+
+def test_failure_trace_keeps_persisted_artifacts_diagnostics_and_run_state(
+    tmp_path: Path,
+) -> None:
+    trace_dir = tmp_path / "trace"
+
+    class Handler:
+        _store = SimpleNamespace(
+            cached_request_profile=lambda **_kwargs: SimpleNamespace(
+                common_ir="common-ir", structured_profile="structured-profile"
+            )
+        )
+
+        @staticmethod
+        def _load_json_artifact(value: str) -> object:
+            return {"artifact": value}
+
+    written = MODULE._write_analysis_trace_safely(
+        trace_dir,
+        upload={"analysis_run_id": "run-1"},
+        handler=Handler(),
+        run_id="run-1",
+        run_state={"analysis_run_id": "run-1", "status": "failed"},
+        cpl_diagnostics=[{"stage": "structured_profile", "reason_code": "BAD"}],
+    )
+
+    assert written is True
+    assert json.loads((trace_dir / "01_common_ir.json").read_text("utf-8")) == {
+        "artifact": "common-ir"
+    }
+    assert json.loads((trace_dir / "02_structured_profile.json").read_text("utf-8")) == {
+        "artifact": "structured-profile"
+    }
+    assert json.loads((trace_dir / "08_run_state.json").read_text("utf-8")) == {
+        "analysis_run_id": "run-1",
+        "status": "failed",
+    }
+    diagnostics = json.loads((trace_dir / "cpl_diagnostics.json").read_text("utf-8"))
+    assert diagnostics["diagnostics"] == [
+        {"stage": "structured_profile", "reason_code": "BAD"}
+    ]
+
+
+def test_failure_trace_write_error_is_non_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_to_write(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(MODULE, "_write_trace", fail_to_write)
+
+    assert (
+        MODULE._write_analysis_trace_safely(
+            tmp_path / "trace",
+            upload={},
+            handler=None,
+            run_id="run-1",
+            run_state={"status": "failed"},
+            cpl_diagnostics=[],
+        )
+        is False
+    )
+
+
+def test_inline_stage_progress_uses_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    MODULE._report_analysis_stage("cpl", "failed", "contract error")
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "[cpl] failed — contract error\n"
+
+
+def test_trace_never_overwrites_existing_directory(tmp_path: Path) -> None:
+    trace_dir = tmp_path / "trace"
+    trace_dir.mkdir()
+
+    with pytest.raises(MODULE.E2EFailure, match="must not already exist"):
+        MODULE._write_trace(
+            trace_dir,
+            upload={},
+            common_ir={},
+            structured_profile={},
+            result={},
+        )
+
+
+@pytest.mark.parametrize(
+    ("filename", "content", "mime_type"),
+    [
+        ("request.hwp", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1fixture", "application/x-hwp"),
+        ("request.hwpx", b"PK\x03\x04fixture", "application/vnd.hancom.hwpx"),
+    ],
+)
+def test_validated_source_accepts_hwp_and_hwpx(
+    tmp_path: Path, filename: str, content: bytes, mime_type: str
+) -> None:
+    source = tmp_path / filename
+    source.write_bytes(content)
+
+    uploaded, detected_mime_type = MODULE._validated_source(source)
+
+    assert uploaded == content
+    assert detected_mime_type == mime_type
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("request.hwp", b"PK\x03\x04not-ole"),
+        ("request.hwpx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1not-zip"),
+        ("request.pdf", b"%PDF-1.7"),
+    ],
+)
+def test_validated_source_rejects_wrong_magic_or_extension(
+    tmp_path: Path, filename: str, content: bytes
+) -> None:
+    source = tmp_path / filename
+    source.write_bytes(content)
+
+    with pytest.raises(MODULE.E2EFailure, match="format is invalid"):
+        MODULE._validated_source(source)
+
+
+@pytest.mark.parametrize("top_k", [0, -1, 101])
+def test_configure_environment_rejects_out_of_range_top_k(
+    tmp_path: Path, top_k: int
+) -> None:
+    with pytest.raises(MODULE.E2EFailure, match="between 1 and 100"):
+        MODULE._configure_environment(
+            tmp_path / "backend.env", tmp_path / "supabase.env", top_k=top_k
+        )
+
+
+def test_top_k_defaults_to_the_stored_trace_baseline() -> None:
+    assert MODULE.DEFAULT_TOP_K == 5
+
+
+def test_windows_uses_the_direct_postgres_listener() -> None:
+    assert MODULE._database_endpoint("acme", "win32") == ("postgres", 55432)
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_other_platforms_keep_the_supabase_pooler(platform: str) -> None:
+    assert MODULE._database_endpoint("acme", platform) == ("postgres.acme", 5432)
+
+
+def test_pooler_username_is_url_quoted() -> None:
+    username, port = MODULE._database_endpoint("a/c me", "linux")
+    assert username == "postgres.a%2Fc%20me"
+    assert port == 5432
+
+
+@pytest.fixture
+def isolated_environ(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    copy = dict(os.environ)
+    monkeypatch.setattr(MODULE.os, "environ", copy)
+    return copy
+
+
+def _env_files(tmp_path: Path, model1_line: str) -> tuple[Path, Path]:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "OPENAI_API_KEY=sk-test-not-a-real-key\n" + model1_line, encoding="utf-8"
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=pw\nPOOLER_TENANT_ID=acme\n"
+        "JWT_SECRET=s\nANON_KEY=a\nSERVICE_ROLE_KEY=r\n",
+        encoding="utf-8",
+    )
+    return backend_env, supabase_env
+
+
+def test_model1_serving_dir_reaches_the_worker_environment(
+    tmp_path: Path, isolated_environ: dict[str, str]
+) -> None:
+    served = r"C:\models\model1\serving"
+    backend_env, supabase_env = _env_files(
+        tmp_path, f"PREREVIEW_MODEL1_SERVING_DIR={served}\n"
+    )
+    isolated_environ.pop("PREREVIEW_MODEL1_SERVING_DIR", None)
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert isolated_environ["PREREVIEW_MODEL1_SERVING_DIR"] == served
+
+
+@pytest.mark.parametrize("line", ["", "PREREVIEW_MODEL1_SERVING_DIR=   \n"])
+def test_a_blank_model1_serving_dir_never_overwrites_the_caller(
+    tmp_path: Path, isolated_environ: dict[str, str], line: str
+) -> None:
+    backend_env, supabase_env = _env_files(tmp_path, line)
+    isolated_environ["PREREVIEW_MODEL1_SERVING_DIR"] = "/already/exported"
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert isolated_environ["PREREVIEW_MODEL1_SERVING_DIR"] == "/already/exported"
+
+
+def test_configure_environment_prints_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], isolated_environ: dict[str, str]
+) -> None:
+    backend_env, supabase_env = _env_files(
+        tmp_path, "PREREVIEW_MODEL1_SERVING_DIR=/models/model1/serving\n"
+    )
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
