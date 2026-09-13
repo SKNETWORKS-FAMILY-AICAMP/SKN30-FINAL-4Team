@@ -19,7 +19,7 @@ from pathlib import Path
 import sys
 from typing import Any
 from urllib.parse import quote
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import psycopg
@@ -47,22 +47,22 @@ SOURCE_MIME_TYPES = {
     ".hwpx": "application/vnd.hancom.hwpx",
 }
 MAX_WORKER_ATTEMPTS = 2
+CHAT_POLL_INTERVAL_SECONDS = 0.25
+CHAT_POLL_TIMEOUT_SECONDS = 180
+E2E_CHAT_QUESTION = "이번 분석 결과를 요약하고 근거를 알려주세요."
+ML_ENVIRONMENT_KEYS = (
+    "PREREVIEW_ML_ROOT",
+    "PREREVIEW_MODEL1_SERVING_DIR",
+    "PREREVIEW_ML_PYTHON_EXECUTABLE",
+    "PREREVIEW_ML_TIMEOUT_SECONDS",
+)
+OPTIONAL_STAGE_MODEL_ENVIRONMENT_KEYS = (
+    "OPENAI_REQUEST_PROFILE_MODEL",
+    "OPENAI_FIT_MODEL",
+    "OPENAI_SIM_MODEL",
+    "OPENAI_CHAT_MODEL",
+)
 
-# Keep every other non-terminal row locked in a separate transaction while the
-# normal migration-21 claim function runs.  That function uses SKIP LOCKED, so
-# this local one-shot can exercise exactly the run it created without consuming
-# an attempt from an older queued request.  Locking live rows too closes the
-# edge where another run's lease expires between a preflight query and claim.
-_LOCK_OTHER_ACTIVE_RUNS_SQL = """
-SELECT ar.analysis_run_pk
-FROM workspace.analysis_run AS ar
-JOIN workspace.analysis_run_dispatch AS dispatch
-  ON dispatch.analysis_run_pk = ar.analysis_run_pk
-WHERE ar.analysis_run_pk <> %s::uuid
-  AND ar.status IN ('uploading', 'queued', 'running', 'cleanup_pending')
-ORDER BY ar.created_at, ar.analysis_run_pk
-FOR UPDATE OF ar, dispatch
-"""
 _CLAIM_NEXT_RUN_SQL = """
 SELECT
     analysis_run_pk,
@@ -77,6 +77,54 @@ FROM workspace.claim_next_analysis_run(%s, %s)
 """
 _E2E_QUEUE_ADVISORY_LOCK = 7_612_330_025
 
+_CLAIM_NEXT_CHAT_MESSAGE_SQL = """
+SELECT
+    assistant_message_id,
+    analysis_case_id,
+    analysis_session_id,
+    user_message_id,
+    owner_id,
+    question,
+    result_payload,
+    conversation,
+    processing_run_pk,
+    attempt_count,
+    lease_expires_at,
+    heartbeat_interval_seconds
+FROM workspace.claim_next_conversation_message(%s, %s)
+"""
+_CHAT_REFERENCE_COUNTS_SQL = """
+SELECT
+    count(*)::integer AS reference_count,
+    count(*) FILTER (
+        WHERE e.analysis_case_pk = %s::uuid
+          AND e.usage_scope IN ('RESULT', 'CONVERSATION')
+    )::integer AS valid_reference_count
+FROM result.conversation_reference AS r
+LEFT JOIN result.evidence_snapshot AS e
+  ON e.evidence_snapshot_pk = r.evidence_snapshot_pk
+WHERE r.message_pk = %s::uuid
+"""
+_QUEUE_QUIESCENCE_SQL = """
+SELECT
+    (
+        SELECT count(*)::integer
+        FROM workspace.analysis_run
+        WHERE status IN ('uploading', 'queued', 'running', 'cleanup_pending')
+    ) AS active_analysis_runs,
+    (
+        SELECT count(*)::integer
+        FROM result.conversation_message
+        WHERE role = 'assistant' AND status = 'generating'
+    ) AS active_chat_messages
+"""
+_ML_RESULT_SQL = """
+SELECT ml_result
+FROM result.analysis_case
+WHERE analysis_case_pk = %s::uuid
+"""
+_E2E_CHAT_QUEUE_ADVISORY_LOCK = 7_612_330_026
+
 
 class E2EFailure(RuntimeError):
     """A safe stage-level failure that never contains credentials or content."""
@@ -86,6 +134,10 @@ class _UnexpectedClaim(E2EFailure):
     """The guarded queue function selected a run other than this E2E's run."""
 
 
+class _UnexpectedChatClaim(E2EFailure):
+    """The guarded chat queue function selected a different assistant message."""
+
+
 def _claim_value(row: Mapping[str, Any], key: str) -> Any:
     value = row.get(key)
     if value is None or (isinstance(value, str) and not value.strip()):
@@ -93,15 +145,13 @@ def _claim_value(row: Mapping[str, Any], key: str) -> Any:
     return value
 
 
-def _acquire_target_claim_guard(cursor: Any, target_run_id: str) -> None:
-    """Acquire the short-lived transaction guard for one operator E2E claim.
+def _acquire_target_claim_guard(cursor: Any) -> None:
+    """Serialize the short-lived claim transaction between E2E operators.
 
-    Only this setup is an *isolation acquisition* step.  The caller executes
-    ``claim_next_analysis_run`` after this function returns, so a database
-    error from the claim itself is not incorrectly reported as a failure to
-    acquire the guard.  The transaction deliberately ends immediately after
-    the target row is claimed; it must not hold queue row locks while the
-    worker performs long-running parsing or LLM work.
+    Production workers do not honor this advisory lock.  Queue safety instead
+    comes from the explicit empty-queue precondition plus verifying the
+    migration-owned claim before commit.  If another producer races the E2E,
+    an unexpected claim is rolled back rather than consuming its attempt.
     """
 
     try:
@@ -110,15 +160,11 @@ def _acquire_target_claim_guard(cursor: Any, target_run_id: str) -> None:
         # worker or an abandoned transaction.
         cursor.execute("SET LOCAL lock_timeout = '5s'")
         cursor.execute("SET LOCAL statement_timeout = '15s'")
-        # Serialise concurrent copies of this operator-only script.  A regular
-        # worker need not know about this lock: the row locks below make it
-        # skip non-target work for the brief claim call.
+        # Serialise concurrent copies of this operator-only script.
         cursor.execute(
             "SELECT pg_advisory_xact_lock(%s)",
             (_E2E_QUEUE_ADVISORY_LOCK,),
         )
-        cursor.execute(_LOCK_OTHER_ACTIVE_RUNS_SQL, (target_run_id,))
-        cursor.fetchall()
     except (psycopg.Error, OSError):
         raise E2EFailure("Local E2E queue isolation is unavailable") from None
 
@@ -149,7 +195,7 @@ def _claim_target_analysis_run(
     try:
         with connection:
             with connection.cursor() as cursor:
-                _acquire_target_claim_guard(cursor, target_run_id)
+                _acquire_target_claim_guard(cursor)
                 # This is intentionally outside the guard-acquisition
                 # exception boundary.  A failed claim/commit is not evidence
                 # that queue isolation was unavailable, so it receives its
@@ -260,11 +306,256 @@ class _TargetRunRepository:
         return self._delegate.fail(**kwargs)
 
 
+def _chat_uuid(row: Mapping[str, Any], key: str) -> UUID:
+    value = _claim_value(row, key)
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        raise E2EFailure("Local E2E chat queue returned an invalid claim") from None
+
+
+def _claim_target_chat_message(
+    database_url: str,
+    target_assistant_message_id: str,
+    *,
+    worker_id: str,
+    lease_seconds: int,
+) -> Any:
+    """Claim exactly one API-created assistant message, or fail closed.
+
+    The normal chat repository intentionally has no targeted production claim
+    API.  The operator command requires both queues to be empty before it
+    starts.  This transaction serialises concurrent E2E operators, calls the
+    migration-owned claim function, and verifies the returned row before
+    commit.  A racing unrelated claim is therefore rolled back fail-closed.
+    """
+
+    from worker.runtime import ClaimedJob
+
+    try:
+        connection = psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        )
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E chat queue isolation is unavailable") from None
+
+    try:
+        with connection:
+            with connection.cursor() as cursor:
+                try:
+                    cursor.execute("SET LOCAL lock_timeout = '5s'")
+                    cursor.execute("SET LOCAL statement_timeout = '15s'")
+                    cursor.execute(
+                        "SELECT pg_advisory_xact_lock(%s)",
+                        (_E2E_CHAT_QUEUE_ADVISORY_LOCK,),
+                    )
+                except (psycopg.Error, OSError):
+                    raise E2EFailure(
+                        "Local E2E chat queue isolation is unavailable"
+                    ) from None
+
+                cursor.execute(
+                    _CLAIM_NEXT_CHAT_MESSAGE_SQL, (worker_id, lease_seconds)
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                if not isinstance(row, Mapping):
+                    raise E2EFailure("Local E2E chat queue returned an invalid claim")
+                assistant_message_id = _chat_uuid(row, "assistant_message_id")
+                if str(assistant_message_id) != target_assistant_message_id:
+                    # Roll back the migration claim before it can consume a
+                    # real user's attempt.
+                    raise _UnexpectedChatClaim(
+                        "Local E2E worker claimed an unexpected chat message"
+                    )
+                attempt_count = _claim_value(row, "attempt_count")
+                heartbeat_interval = _claim_value(
+                    row, "heartbeat_interval_seconds"
+                )
+                result_payload = _claim_value(row, "result_payload")
+                conversation = row.get("conversation")
+                if conversation is None:
+                    conversation = []
+                if (
+                    not isinstance(attempt_count, int)
+                    or isinstance(attempt_count, bool)
+                    or not isinstance(heartbeat_interval, int)
+                    or isinstance(heartbeat_interval, bool)
+                    or not isinstance(result_payload, Mapping)
+                    or not isinstance(conversation, list)
+                ):
+                    raise E2EFailure("Local E2E chat queue returned an invalid claim")
+                return ClaimedJob(
+                    job_pk=assistant_message_id,
+                    processing_run_pk=_chat_uuid(row, "processing_run_pk"),
+                    payload={
+                        "question": _claim_value(row, "question"),
+                        "result_payload": dict(result_payload),
+                        "conversation": conversation,
+                        "analysis_case_id": _chat_uuid(row, "analysis_case_id"),
+                        "analysis_session_id": _chat_uuid(
+                            row, "analysis_session_id"
+                        ),
+                        "user_message_id": _chat_uuid(row, "user_message_id"),
+                        "owner_id": _chat_uuid(row, "owner_id"),
+                        "attempt_count": attempt_count,
+                        "lease_expires_at": _claim_value(row, "lease_expires_at"),
+                        "heartbeat_interval_seconds": heartbeat_interval,
+                    },
+                )
+    except E2EFailure:
+        raise
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E chat queue claim failed") from None
+
+
+class _TargetChatRepository:
+    """Limit one normal chat runtime invocation to the E2E assistant row."""
+
+    def __init__(
+        self,
+        delegate: Any,
+        *,
+        target_assistant_message_id: str,
+        database_url: str,
+        claim_target: Callable[..., Any] | None = None,
+    ) -> None:
+        self._delegate = delegate
+        self._target_assistant_message_id = target_assistant_message_id
+        self._claim_target = claim_target or (
+            lambda **values: _claim_target_chat_message(
+                database_url,
+                target_assistant_message_id,
+                **values,
+            )
+        )
+        self.target_claims = 0
+        self.unexpected_claim = False
+        self.claim_error: E2EFailure | None = None
+
+    def claim(self, *, worker_id: str, lease_seconds: int) -> Any:
+        try:
+            job = self._claim_target(worker_id=worker_id, lease_seconds=lease_seconds)
+        except E2EFailure as error:
+            self.claim_error = error
+            if isinstance(error, _UnexpectedChatClaim):
+                self.unexpected_claim = True
+            raise
+        if job is None:
+            return None
+        if str(job.job_pk) != self._target_assistant_message_id:
+            self.unexpected_claim = True
+            raise E2EFailure("Local E2E worker claimed an unexpected chat message")
+        self.target_claims += 1
+        return job
+
+    def heartbeat(self, **kwargs: Any) -> bool:
+        return self._delegate.heartbeat(**kwargs)
+
+    def complete(self, **kwargs: Any) -> bool:
+        return self._delegate.complete(**kwargs)
+
+    def fail(self, **kwargs: Any) -> bool:
+        return self._delegate.fail(**kwargs)
+
+
 def _source_mime_type(source: Path) -> str:
     try:
         return SOURCE_MIME_TYPES[source.suffix.lower()]
     except KeyError:
         raise E2EFailure("--file must be an HWP or HWPX file") from None
+
+
+def _assert_queues_quiescent(database_url: str) -> None:
+    """Refuse an operator E2E while either shared production queue is active."""
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(_QUEUE_QUIESCENCE_SQL)
+                row = cursor.fetchone()
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E queue preflight is unavailable") from None
+    if not isinstance(row, Mapping):
+        raise E2EFailure("Local E2E queue preflight returned an invalid result")
+    analysis_count = row.get("active_analysis_runs")
+    chat_count = row.get("active_chat_messages")
+    if (
+        not isinstance(analysis_count, int)
+        or isinstance(analysis_count, bool)
+        or not isinstance(chat_count, int)
+        or isinstance(chat_count, bool)
+        or analysis_count < 0
+        or chat_count < 0
+    ):
+        raise E2EFailure("Local E2E queue preflight returned an invalid result")
+    if analysis_count or chat_count:
+        raise E2EFailure(
+            "Local E2E requires empty analysis and chat queues; "
+            f"active analysis={analysis_count}, chat={chat_count}"
+        )
+
+
+def _require_live_ml_results(
+    database_url: str,
+    *,
+    case_id: str,
+) -> dict[str, str]:
+    """Prove all three persisted ML adapters completed, without exposing output."""
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(_ML_RESULT_SQL, (case_id,))
+                row = cursor.fetchone()
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E ML result validation is unavailable") from None
+    ml_result = row.get("ml_result") if isinstance(row, Mapping) else None
+    if not isinstance(ml_result, Mapping):
+        raise E2EFailure("Local E2E ML result validation is invalid")
+
+    statuses: dict[str, str] = {}
+    for model_name in ("model_1", "model_2", "model_3"):
+        model = ml_result.get(model_name)
+        status = model.get("status") if isinstance(model, Mapping) else None
+        if status not in {"OK", "UNAVAILABLE", "FAILED"}:
+            raise E2EFailure("Local E2E ML result validation is invalid")
+        statuses[model_name] = status
+    failed = [name for name, status in statuses.items() if status != "OK"]
+    if failed:
+        summary = ", ".join(f"{name}={statuses[name]}" for name in failed)
+        raise E2EFailure(f"live ML execution did not complete: {summary}")
+    return statuses
+
+
+def _require_public_ml_projection(result_body: Mapping[str, object]) -> None:
+    """Verify that the public result route exposes all three safe ML messages.
+
+    The HTTP contract intentionally excludes internal status, scores, and model
+    diagnostics.  Persisted ``OK`` status is therefore checked separately via
+    :func:`_require_live_ml_results`; this check protects the public projection
+    from silently dropping a model section or its server-assembled message.
+    """
+
+    ml = result_body.get("ml")
+    if not isinstance(ml, Mapping):
+        raise E2EFailure("FastAPI result ML response is invalid")
+    for model_name in ("model_1", "model_2", "model_3"):
+        model = ml.get(model_name)
+        message = model.get("message") if isinstance(model, Mapping) else None
+        if not isinstance(message, str) or not message.strip():
+            raise E2EFailure("FastAPI result ML response is invalid")
 
 
 def _required(values: dict[str, str | None], name: str) -> str:
@@ -308,6 +599,30 @@ def _configure_environment(root_env: Path, supabase_env: Path) -> None:
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
         "PREREVIEW_FREETYPE_LIB": "/lib/x86_64-linux-gnu/libfreetype.so.6",
     }
+    # Keep the common fallback independent from stage-specific models.  Shell
+    # values take precedence just as python-dotenv's ``override=False`` does;
+    # the Request Profile override defaults to Terra for this live smoke test.
+    for name in OPTIONAL_STAGE_MODEL_ENVIRONMENT_KEYS:
+        default = "gpt-5.6-terra" if name == "OPENAI_REQUEST_PROFILE_MODEL" else ""
+        if name in os.environ:
+            configured = os.environ[name]
+        elif name in provider:
+            configured = provider[name]
+        else:
+            configured = default
+        value = str(configured or "").strip()
+        if value:
+            settings[name] = value
+    # ``dotenv_values`` does not update the process.  Carry the server-only ML
+    # paths explicitly so an operator does not get silent UNAVAILABLE/FAILED
+    # model results after correctly filling backend/.env.  An explicit shell
+    # environment wins, matching python-dotenv's normal ``override=False``
+    # deployment semantics.
+    for name in ML_ENVIRONMENT_KEYS:
+        configured = os.environ[name] if name in os.environ else provider.get(name)
+        value = str(configured or "").strip()
+        if value:
+            settings[name] = value
     os.environ.update(settings)
 
 
@@ -359,6 +674,121 @@ async def _analysis_state(client: httpx.AsyncClient, run_id: str) -> dict[str, o
     return state
 
 
+async def _assistant_message_state(
+    client: httpx.AsyncClient,
+    case_id: str,
+    assistant_message_id: str,
+) -> dict[str, object]:
+    response = await client.get(f"/api/v1/analysis-cases/{case_id}/messages")
+    if response.status_code != 200:
+        raise E2EFailure(
+            f"FastAPI chat polling failed with HTTP {response.status_code}"
+        )
+    try:
+        messages = response.json()
+    except ValueError:
+        raise E2EFailure("FastAPI chat polling response is invalid") from None
+    if not isinstance(messages, list):
+        raise E2EFailure("FastAPI chat polling response is invalid")
+    for message in messages:
+        if isinstance(message, dict) and message.get("message_id") == assistant_message_id:
+            if (
+                message.get("analysis_case_id") != case_id
+                or message.get("role") != "assistant"
+            ):
+                raise E2EFailure("FastAPI chat polling response is invalid")
+            if message.get("status") not in {"generating", "completed", "failed"}:
+                raise E2EFailure("FastAPI chat polling response is invalid")
+            return message
+    raise E2EFailure("FastAPI chat polling response omitted the assistant message")
+
+
+async def _poll_chat_message_while_worker_runs(
+    *,
+    client: httpx.AsyncClient,
+    case_id: str,
+    assistant_message_id: str,
+    worker_task: asyncio.Task[object],
+) -> dict[str, object]:
+    """Poll the public route while one scoped runtime processes its job.
+
+    A first failed attempt is intentionally returned as ``generating`` by the
+    queue so the caller can run the bounded second attempt immediately.
+    """
+
+    deadline = asyncio.get_running_loop().time() + CHAT_POLL_TIMEOUT_SECONDS
+    while True:
+        message = await _assistant_message_state(
+            client, case_id, assistant_message_id
+        )
+        if message["status"] in {"completed", "failed"}:
+            return message
+        if worker_task.done():
+            # The first GET may have raced the worker's final commit.  Read
+            # once more after the task has settled rather than handing the
+            # caller a stale ``generating`` snapshot for a completed job.
+            await asyncio.sleep(0)
+            return await _assistant_message_state(
+                client, case_id, assistant_message_id
+            )
+        if asyncio.get_running_loop().time() >= deadline:
+            # Do not abandon a running thread which owns a DB lease.  Its
+            # result must settle before returning.  Re-read after the commit:
+            # a slow but successful provider call must not become a false E2E
+            # failure merely because public polling reached its soft limit.
+            outcome = await worker_task
+            settled = await _assistant_message_state(
+                client, case_id, assistant_message_id
+            )
+            outcome_value = str(getattr(outcome, "value", outcome))
+            if settled["status"] in {"completed", "failed"}:
+                return settled
+            # A retryable first failure intentionally leaves the public row in
+            # ``generating``; let the bounded caller perform attempt two.
+            if outcome_value == "failed":
+                return settled
+            raise E2EFailure("chat worker polling timed out")
+        await asyncio.sleep(CHAT_POLL_INTERVAL_SECONDS)
+
+
+def _chat_reference_count(
+    database_url: str,
+    *,
+    assistant_message_id: str,
+    case_id: str,
+) -> int:
+    """Require at least one persisted, case-scoped reference for this E2E question."""
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    _CHAT_REFERENCE_COUNTS_SQL,
+                    (case_id, assistant_message_id),
+                )
+                row = cursor.fetchone()
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Local E2E chat reference validation is unavailable") from None
+    if not isinstance(row, Mapping):
+        raise E2EFailure("Local E2E chat reference validation is invalid")
+    count = row.get("reference_count")
+    valid_count = row.get("valid_reference_count")
+    if (
+        not isinstance(count, int)
+        or isinstance(count, bool)
+        or not isinstance(valid_count, int)
+        or isinstance(valid_count, bool)
+        or count <= 0
+        or valid_count != count
+    ):
+        raise E2EFailure("Local E2E chat references are invalid")
+    return count
+
+
 async def _run_target_until_terminal(
     *,
     runtime: Any,
@@ -383,7 +813,7 @@ async def _run_target_until_terminal(
 
         state = await _analysis_state(client, run_id)
         run_status = state.get("status")
-        if run_status == "succeeded":
+        if run_status == "succeeded" and last_outcome == "completed":
             return state, last_outcome, expected_attempt
         if run_status == "failed":
             raise E2EFailure(
@@ -403,10 +833,81 @@ async def _run_target_until_terminal(
     raise E2EFailure("worker retry loop ended without a terminal state")
 
 
+async def _run_target_chat_until_terminal(
+    *,
+    runtime: Any,
+    repository: _TargetChatRepository,
+    client: httpx.AsyncClient,
+    case_id: str,
+    assistant_message_id: str,
+) -> tuple[dict[str, object], str, int]:
+    """Drive at most the queue's two automatic chat attempts for one row."""
+
+    last_outcome = "not_started"
+    for expected_attempt in range(1, MAX_WORKER_ATTEMPTS + 1):
+        worker_task = asyncio.create_task(asyncio.to_thread(runtime.run_once))
+        try:
+            message = await _poll_chat_message_while_worker_runs(
+                client=client,
+                case_id=case_id,
+                assistant_message_id=assistant_message_id,
+                worker_task=worker_task,
+            )
+        except Exception:
+            # A polling/contract error must not leave an unobserved worker
+            # task holding a DB lease in the background.
+            try:
+                await worker_task
+            except Exception:
+                pass
+            raise
+        try:
+            outcome = await worker_task
+        except Exception:
+            raise E2EFailure("Local E2E chat worker execution failed") from None
+        last_outcome = str(getattr(outcome, "value", outcome))
+        if repository.claim_error is not None:
+            raise repository.claim_error
+        if repository.unexpected_claim:
+            raise E2EFailure("Local E2E chat queue isolation failed")
+        if repository.target_claims != expected_attempt:
+            raise E2EFailure(
+                "Local E2E worker did not claim the requested chat message"
+            )
+
+        status = message["status"]
+        if status == "completed" and last_outcome == "completed":
+            content = message.get("content")
+            if (
+                not isinstance(content, str)
+                or not content.strip()
+                or len(content) > 12_000
+            ):
+                raise E2EFailure("completed chat response is invalid")
+            return message, last_outcome, expected_attempt
+        if status == "failed":
+            raise E2EFailure(
+                f"chat worker reached terminal failure after {expected_attempt} attempt(s)"
+            )
+        if status == "generating" and last_outcome == "failed":
+            if expected_attempt < MAX_WORKER_ATTEMPTS:
+                continue
+            raise E2EFailure(
+                "chat worker retry budget was exhausted without a terminal state"
+            )
+        raise E2EFailure(
+            "chat worker left the target message in an unexpected state: "
+            f"outcome={last_outcome}, status={status}"
+        )
+
+    raise E2EFailure("chat worker retry loop ended without a terminal state")
+
+
 async def _run(source: Path) -> dict[str, object]:
     # Import only after the environment is complete: both composition roots
     # intentionally read their deployment configuration at construction time.
     from main import create_app
+    from worker.chat_main import build_chat_worker
     from worker.main import build_worker, configure_runtime_logging
     from worker.runtime import WorkerRuntime
 
@@ -415,6 +916,10 @@ async def _run(source: Path) -> dict[str, object]:
     # long-running worker before any provider call in this operator entrypoint.
     configure_runtime_logging(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
+    await asyncio.to_thread(
+        _assert_queues_quiescent,
+        os.environ["DATABASE_URL"],
+    )
     user_id, email, password = await _create_confirmed_test_user()
     app = create_app()
     async with httpx.AsyncClient(
@@ -485,6 +990,67 @@ async def _run(source: Path) -> dict[str, object]:
                 f"FastAPI result read failed with HTTP {result.status_code}"
             )
         body = result.json()
+        if not isinstance(body, dict):
+            raise E2EFailure("FastAPI result response is invalid")
+        _require_public_ml_projection(body)
+        ml_statuses = await asyncio.to_thread(
+            _require_live_ml_results,
+            os.environ["DATABASE_URL"],
+            case_id=case_id,
+        )
+
+        created_chat = await client.post(
+            f"/api/v1/analysis-cases/{case_id}/messages",
+            headers={"Origin": TEST_ORIGIN},
+            json={"content": E2E_CHAT_QUESTION},
+        )
+        if created_chat.status_code != 202:
+            raise E2EFailure(
+                f"FastAPI chat creation failed with HTTP {created_chat.status_code}"
+            )
+        try:
+            chat_turn = created_chat.json()
+        except ValueError:
+            raise E2EFailure("FastAPI chat creation response is invalid") from None
+        if (
+            not isinstance(chat_turn, dict)
+            or chat_turn.get("status") != "generating"
+            or not isinstance(chat_turn.get("assistant_message_id"), str)
+            or not isinstance(chat_turn.get("user_message_id"), str)
+            or not isinstance(chat_turn.get("analysis_session_id"), str)
+        ):
+            raise E2EFailure("FastAPI chat creation response is invalid")
+        assistant_message_id = chat_turn["assistant_message_id"]
+
+        chat_composition = build_chat_worker()
+        target_chat_repository = _TargetChatRepository(
+            chat_composition.repository,
+            target_assistant_message_id=assistant_message_id,
+            database_url=os.environ["DATABASE_URL"],
+        )
+        chat_runtime = WorkerRuntime(
+            target_chat_repository,
+            chat_composition.handler,
+            worker_id=f"local-e2e-chat-{uuid4().hex[:12]}",
+            heartbeat_seconds=chat_composition.settings.heartbeat_seconds,
+            lease_seconds=chat_composition.settings.lease_seconds,
+            idle_poll_seconds=chat_composition.settings.idle_poll_seconds,
+        )
+        chat_message, chat_worker_outcome, chat_worker_attempts = (
+            await _run_target_chat_until_terminal(
+                runtime=chat_runtime,
+                repository=target_chat_repository,
+                client=client,
+                case_id=case_id,
+                assistant_message_id=assistant_message_id,
+            )
+        )
+        chat_reference_count = await asyncio.to_thread(
+            _chat_reference_count,
+            os.environ["DATABASE_URL"],
+            assistant_message_id=assistant_message_id,
+            case_id=case_id,
+        )
         return {
             "status": "ok",
             "test_user_id": user_id,
@@ -496,6 +1062,12 @@ async def _run(source: Path) -> dict[str, object]:
             "fit_items": len(body.get("fit", {}).get("items", [])),
             "sim_candidates": len(body.get("sim", {}).get("candidates", [])),
             "evidences": len(body.get("evidences", [])),
+            "ml_statuses": ml_statuses,
+            "chat_assistant_message_id": assistant_message_id,
+            "chat_status": chat_message["status"],
+            "chat_worker_outcome": chat_worker_outcome,
+            "chat_worker_attempts": chat_worker_attempts,
+            "chat_reference_count": chat_reference_count,
         }
 
 

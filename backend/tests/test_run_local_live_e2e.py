@@ -42,6 +42,112 @@ def test_source_mime_type_rejects_unsupported_extension(filename: str) -> None:
         MODULE._source_mime_type(Path(filename))
 
 
+def test_configure_environment_carries_ml_settings_and_preserves_shell_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "\n".join(
+            (
+                "OPENAI_API_KEY=test-openai-key",
+                "OPENAI_REQUEST_PROFILE_MODEL=from-backend-env-terra",
+                "PREREVIEW_ML_ROOT=/from/backend-env/ml",
+                "PREREVIEW_MODEL1_SERVING_DIR=/from/backend-env/model1",
+                "PREREVIEW_ML_PYTHON_EXECUTABLE=/from/backend-env/python",
+                "PREREVIEW_ML_TIMEOUT_SECONDS=180",
+            )
+        ),
+        encoding="utf-8",
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "\n".join(
+            (
+                "POSTGRES_PASSWORD=test-password",
+                "POOLER_TENANT_ID=test-tenant",
+                "ANON_KEY=test-anon-key",
+                "SERVICE_ROLE_KEY=test-service-key",
+            )
+        ),
+        encoding="utf-8",
+    )
+    environment = {
+        "PREREVIEW_ML_TIMEOUT_SECONDS": "240",
+        "OPENAI_REQUEST_PROFILE_MODEL": "from-shell-terra",
+    }
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert environment["PREREVIEW_ML_ROOT"] == "/from/backend-env/ml"
+    assert environment["PREREVIEW_MODEL1_SERVING_DIR"] == "/from/backend-env/model1"
+    assert (
+        environment["PREREVIEW_ML_PYTHON_EXECUTABLE"]
+        == "/from/backend-env/python"
+    )
+    assert environment["PREREVIEW_ML_TIMEOUT_SECONDS"] == "240"
+    assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == "from-shell-terra"
+
+
+def test_configure_environment_defaults_request_profile_model_to_terra(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text("OPENAI_API_KEY=test-openai-key\n", encoding="utf-8")
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "\n".join(
+            (
+                "POSTGRES_PASSWORD=test-password",
+                "POOLER_TENANT_ID=test-tenant",
+                "ANON_KEY=test-anon-key",
+                "SERVICE_ROLE_KEY=test-service-key",
+            )
+        ),
+        encoding="utf-8",
+    )
+    environment: dict[str, str] = {}
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert environment["OPENAI_LLM_MODEL"] == "gpt-5.6-luna"
+    assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
+
+
+def test_configure_environment_preserves_explicit_blank_stage_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "OPENAI_API_KEY=test-openai-key\n"
+        "OPENAI_REQUEST_PROFILE_MODEL=from-backend-env-terra\n"
+        "OPENAI_CHAT_MODEL=from-backend-env-chat\n",
+        encoding="utf-8",
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=test-password\n"
+        "POOLER_TENANT_ID=test-tenant\n"
+        "ANON_KEY=test-anon-key\n"
+        "SERVICE_ROLE_KEY=test-service-key\n",
+        encoding="utf-8",
+    )
+    environment = {
+        "OPENAI_REQUEST_PROFILE_MODEL": "",
+        "OPENAI_CHAT_MODEL": "",
+    }
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == ""
+    assert environment["OPENAI_CHAT_MODEL"] == ""
+
+
 def test_live_e2e_hardens_provider_logging_before_external_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -60,6 +166,9 @@ def test_live_e2e_hardens_provider_logging_before_external_work(
 
     monkeypatch.setenv("OPENAI_LOG", "debug")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("DATABASE_URL", "not-used")
+    monkeypatch.setattr(MODULE, "_assert_queues_quiescent", lambda _url: None)
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
     monkeypatch.setattr(
         MODULE,
         "_create_confirmed_test_user",
@@ -149,6 +258,132 @@ def test_target_repository_retains_safe_guard_failure() -> None:
     assert repository.claim_error is not None
 
 
+def test_target_chat_repository_claims_only_the_created_assistant_message() -> None:
+    target = "8c5ce7e8-6be4-4d86-bc4c-7c2af01db4d1"
+    delegate = _DelegateRepository(target)
+    repository = MODULE._TargetChatRepository(
+        delegate,
+        target_assistant_message_id=target,
+        database_url="not-used",
+        claim_target=delegate.claim,
+    )
+
+    job = repository.claim(worker_id="worker-test", lease_seconds=120)
+
+    assert job is not None
+    assert job.job_pk == target
+    assert repository.target_claims == 1
+    assert repository.unexpected_claim is False
+
+
+def test_target_chat_repository_fails_closed_on_an_unexpected_claim() -> None:
+    delegate = _DelegateRepository("another-message")
+    repository = MODULE._TargetChatRepository(
+        delegate,
+        target_assistant_message_id="target-message",
+        database_url="not-used",
+        claim_target=delegate.claim,
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="unexpected chat message"):
+        repository.claim(worker_id="worker-test", lease_seconds=120)
+
+    assert repository.target_claims == 0
+    assert repository.unexpected_claim is True
+
+
+def test_target_chat_repository_retains_safe_guard_failure() -> None:
+    def unavailable_claim(**_kwargs: object) -> None:
+        raise MODULE.E2EFailure("Local E2E chat queue isolation is unavailable")
+
+    repository = MODULE._TargetChatRepository(
+        _DelegateRepository("target-message"),
+        target_assistant_message_id="target-message",
+        database_url="not-used",
+        claim_target=unavailable_claim,
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="chat queue isolation is unavailable"):
+        repository.claim(worker_id="worker-test", lease_seconds=120)
+
+    assert repository.claim_error is not None
+
+
+def test_target_chat_claim_is_verified_before_database_transaction_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object | None]] = []
+    exits: list[type[BaseException] | None] = []
+    assistant_id = "8c5ce7e8-6be4-4d86-bc4c-7c2af01db4d1"
+    row = {
+        "assistant_message_id": assistant_id,
+        "analysis_case_id": "64e71208-51ea-4fb6-a1b7-1490c15da1e2",
+        "analysis_session_id": "df4cfc7c-a0b2-4aa9-a425-17bc633a73ec",
+        "user_message_id": "eef28123-aa10-4717-883a-01b5ae8c093a",
+        "owner_id": "bbf2cbe8-95ef-4c83-b7c8-9072a2c6d53c",
+        "question": "분석 결과를 요약해 주세요.",
+        "result_payload": {"ml": {}},
+        "conversation": [],
+        "processing_run_pk": "7f4b5f49-f24f-4cdb-9271-8d5340068ec7",
+        "attempt_count": 1,
+        "lease_expires_at": "later",
+        "heartbeat_interval_seconds": 30,
+    }
+
+    class Cursor:
+        def __enter__(self) -> Cursor:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(self, query: str, params: object | None = None) -> None:
+            calls.append((" ".join(query.split()), params))
+
+        def fetchall(self) -> list[object]:
+            return []
+
+        def fetchone(self) -> dict[str, object]:
+            return dict(row)
+
+    class Connection:
+        def __enter__(self) -> Connection:
+            return self
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            _exc: object,
+            _traceback: object,
+        ) -> None:
+            exits.append(exc_type)
+            return None
+
+        def cursor(self) -> Cursor:
+            return Cursor()
+
+    monkeypatch.setattr(
+        MODULE.psycopg,
+        "connect",
+        lambda *_args, **_kwargs: Connection(),
+    )
+
+    job = MODULE._claim_target_chat_message(
+        "postgresql://test",
+        assistant_id,
+        worker_id="chat-worker-test",
+        lease_seconds=120,
+    )
+
+    assert str(job.job_pk) == assistant_id
+    assert calls[0] == ("SET LOCAL lock_timeout = '5s'", None)
+    assert calls[1] == ("SET LOCAL statement_timeout = '15s'", None)
+    assert "pg_advisory_xact_lock" in calls[2][0]
+    assert "workspace.claim_next_conversation_message" in calls[3][0]
+    assert calls[3][1] == ("chat-worker-test", 120)
+    assert exits == [None]
+
+
 def test_target_claim_is_verified_before_database_transaction_commits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -216,10 +451,8 @@ def test_target_claim_is_verified_before_database_transaction_commits(
     assert calls[0] == ("SET LOCAL lock_timeout = '5s'", None)
     assert calls[1] == ("SET LOCAL statement_timeout = '15s'", None)
     assert "pg_advisory_xact_lock" in calls[2][0]
-    assert "FOR UPDATE OF ar, dispatch" in calls[3][0]
-    assert calls[3][1] == ("target-run",)
-    assert "workspace.claim_next_analysis_run" in calls[4][0]
-    assert calls[4][1] == ("worker-test", 120)
+    assert "workspace.claim_next_analysis_run" in calls[3][0]
+    assert calls[3][1] == ("worker-test", 120)
     assert exits == [None]
 
 
@@ -542,6 +775,29 @@ def test_retryable_first_failure_runs_the_same_target_again(
     assert client.calls == 2
 
 
+def test_succeeded_analysis_is_rejected_when_this_worker_was_fenced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
+    run_id = "target-run"
+    repository = SimpleNamespace(target_claims=0, unexpected_claim=False)
+    runtime = _AttemptRuntime(repository, ["fenced"])
+    client = _StateClient(run_id, ["succeeded"])
+
+    with pytest.raises(MODULE.E2EFailure, match="unexpected state"):
+        asyncio.run(
+            MODULE._run_target_until_terminal(
+                runtime=runtime,
+                repository=repository,
+                client=client,
+                run_id=run_id,
+            )
+        )
+
+    assert runtime.calls == 1
+    assert client.calls == 1
+
+
 def test_retry_loop_is_bounded_by_the_database_attempt_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -612,3 +868,505 @@ def test_retry_loop_surfaces_repository_claim_failure(
         )
 
     assert client.calls == 0
+
+
+class _SingleRowCursor:
+    def __init__(self, row: object, calls: list[tuple[str, object | None]]) -> None:
+        self._row = row
+        self._calls = calls
+
+    def __enter__(self) -> _SingleRowCursor:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def execute(self, query: str, params: object | None = None) -> None:
+        self._calls.append((" ".join(query.split()), params))
+
+    def fetchone(self) -> object:
+        return self._row
+
+
+class _SingleRowConnection:
+    def __init__(self, row: object, calls: list[tuple[str, object | None]]) -> None:
+        self._row = row
+        self._calls = calls
+
+    def __enter__(self) -> _SingleRowConnection:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def cursor(self) -> _SingleRowCursor:
+        return _SingleRowCursor(self._row, self._calls)
+
+
+def _single_row_database(
+    monkeypatch: pytest.MonkeyPatch,
+    row: object,
+) -> list[tuple[str, object | None]]:
+    calls: list[tuple[str, object | None]] = []
+
+    def connect(database_url: str, **kwargs: object) -> _SingleRowConnection:
+        assert database_url == "postgresql://test"
+        assert kwargs == {"connect_timeout": 10, "row_factory": MODULE.dict_row}
+        return _SingleRowConnection(row, calls)
+
+    monkeypatch.setattr(MODULE.psycopg, "connect", connect)
+    return calls
+
+
+class _ChatMessageResponse:
+    status_code = 200
+
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _ChatMessageClient:
+    def __init__(self, case_id: str, payload: object) -> None:
+        self._case_id = case_id
+        self._payload = payload
+        self.calls = 0
+
+    async def get(self, path: str) -> _ChatMessageResponse:
+        assert path == f"/api/v1/analysis-cases/{self._case_id}/messages"
+        self.calls += 1
+        return _ChatMessageResponse(self._payload)
+
+
+def test_assistant_message_state_returns_only_a_valid_matching_assistant() -> None:
+    case_id = "case-id"
+    assistant_id = "assistant-id"
+    client = _ChatMessageClient(
+        case_id,
+        [
+            {"message_id": "user-id", "role": "user", "status": "completed"},
+            {
+                "message_id": assistant_id,
+                "analysis_case_id": case_id,
+                "role": "assistant",
+                "status": "generating",
+            },
+        ],
+    )
+
+    state = asyncio.run(
+        MODULE._assistant_message_state(client, case_id, assistant_id)
+    )
+
+    assert state["message_id"] == assistant_id
+    assert client.calls == 1
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {
+            "message_id": "assistant-id",
+            "analysis_case_id": "other-case",
+            "role": "assistant",
+            "status": "completed",
+        },
+        {
+            "message_id": "assistant-id",
+            "analysis_case_id": "case-id",
+            "role": "user",
+            "status": "completed",
+        },
+        {
+            "message_id": "assistant-id",
+            "analysis_case_id": "case-id",
+            "role": "assistant",
+            "status": "unexpected",
+        },
+    ],
+)
+def test_assistant_message_state_rejects_an_invalid_matching_message(
+    message: dict[str, str],
+) -> None:
+    client = _ChatMessageClient("case-id", [message])
+
+    with pytest.raises(MODULE.E2EFailure, match="chat polling response is invalid"):
+        asyncio.run(MODULE._assistant_message_state(client, "case-id", "assistant-id"))
+
+
+class _ChatAttemptRuntime:
+    def __init__(self, repository: object, outcomes: list[str]) -> None:
+        self.repository = repository
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    def run_once(self) -> object:
+        self.calls += 1
+        self.repository.target_claims += 1
+        return SimpleNamespace(value=self.outcomes.pop(0))
+
+
+def _chat_poll_responses(
+    messages: list[dict[str, object]],
+) -> Callable[..., object]:
+    async def poll(**kwargs: object) -> dict[str, object]:
+        worker_task = kwargs["worker_task"]
+        assert isinstance(worker_task, asyncio.Task)
+        await worker_task
+        return messages.pop(0)
+
+    return poll
+
+
+def test_chat_poll_rereads_public_state_after_worker_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = [
+        {"status": "generating"},
+        {"status": "completed", "content": "완료"},
+    ]
+
+    async def state(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return responses.pop(0)
+
+    async def scenario() -> dict[str, object]:
+        task = asyncio.create_task(asyncio.sleep(0, result="completed"))
+        await task
+        return await MODULE._poll_chat_message_while_worker_runs(
+            client=object(),
+            case_id="case-id",
+            assistant_message_id="assistant-id",
+            worker_task=task,
+        )
+
+    monkeypatch.setattr(MODULE, "_assistant_message_state", state)
+
+    assert asyncio.run(scenario())["status"] == "completed"
+    assert not responses
+
+
+def test_chat_poll_soft_deadline_accepts_worker_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate: asyncio.Event
+    responses = [
+        {"status": "generating"},
+        {"status": "completed", "content": "늦게 완료"},
+    ]
+
+    async def state(*_args: object, **_kwargs: object) -> dict[str, object]:
+        gate.set()
+        return responses.pop(0)
+
+    async def worker() -> SimpleNamespace:
+        await gate.wait()
+        return SimpleNamespace(value="completed")
+
+    async def scenario() -> dict[str, object]:
+        nonlocal gate
+        gate = asyncio.Event()
+        task = asyncio.create_task(worker())
+        return await MODULE._poll_chat_message_while_worker_runs(
+            client=object(),
+            case_id="case-id",
+            assistant_message_id="assistant-id",
+            worker_task=task,
+        )
+
+    monkeypatch.setattr(MODULE, "CHAT_POLL_TIMEOUT_SECONDS", 0)
+    monkeypatch.setattr(MODULE, "_assistant_message_state", state)
+
+    assert asyncio.run(scenario())["status"] == "completed"
+    assert not responses
+
+
+def test_chat_first_completed_attempt_returns_valid_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
+    repository = SimpleNamespace(
+        target_claims=0,
+        unexpected_claim=False,
+        claim_error=None,
+    )
+    runtime = _ChatAttemptRuntime(repository, ["completed"])
+    monkeypatch.setattr(
+        MODULE,
+        "_poll_chat_message_while_worker_runs",
+        _chat_poll_responses([{"status": "completed", "content": "요약입니다."}]),
+    )
+
+    message, outcome, attempts = asyncio.run(
+        MODULE._run_target_chat_until_terminal(
+            runtime=runtime,
+            repository=repository,
+            client=object(),
+            case_id="case-id",
+            assistant_message_id="assistant-id",
+        )
+    )
+
+    assert message["status"] == "completed"
+    assert outcome == "completed"
+    assert attempts == 1
+    assert runtime.calls == 1
+
+
+def test_completed_chat_is_rejected_when_this_worker_was_fenced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
+    repository = SimpleNamespace(
+        target_claims=0,
+        unexpected_claim=False,
+        claim_error=None,
+    )
+    runtime = _ChatAttemptRuntime(repository, ["fenced"])
+    monkeypatch.setattr(
+        MODULE,
+        "_poll_chat_message_while_worker_runs",
+        _chat_poll_responses([{"status": "completed", "content": "요약입니다."}]),
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="unexpected state"):
+        asyncio.run(
+            MODULE._run_target_chat_until_terminal(
+                runtime=runtime,
+                repository=repository,
+                client=object(),
+                case_id="case-id",
+                assistant_message_id="assistant-id",
+            )
+        )
+
+    assert runtime.calls == 1
+
+
+def test_chat_retryable_first_failure_retries_then_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
+    repository = SimpleNamespace(
+        target_claims=0,
+        unexpected_claim=False,
+        claim_error=None,
+    )
+    runtime = _ChatAttemptRuntime(repository, ["failed", "completed"])
+    monkeypatch.setattr(
+        MODULE,
+        "_poll_chat_message_while_worker_runs",
+        _chat_poll_responses(
+            [
+                {"status": "generating"},
+                {"status": "completed", "content": "재시도 후 요약입니다."},
+            ]
+        ),
+    )
+
+    _message, outcome, attempts = asyncio.run(
+        MODULE._run_target_chat_until_terminal(
+            runtime=runtime,
+            repository=repository,
+            client=object(),
+            case_id="case-id",
+            assistant_message_id="assistant-id",
+        )
+    )
+
+    assert outcome == "completed"
+    assert attempts == 2
+    assert runtime.calls == 2
+
+
+def test_chat_terminal_failure_stops_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
+    repository = SimpleNamespace(
+        target_claims=0,
+        unexpected_claim=False,
+        claim_error=None,
+    )
+    runtime = _ChatAttemptRuntime(repository, ["failed"])
+    monkeypatch.setattr(
+        MODULE,
+        "_poll_chat_message_while_worker_runs",
+        _chat_poll_responses([{"status": "failed"}]),
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="terminal failure after 1 attempt"):
+        asyncio.run(
+            MODULE._run_target_chat_until_terminal(
+                runtime=runtime,
+                repository=repository,
+                client=object(),
+                case_id="case-id",
+                assistant_message_id="assistant-id",
+            )
+        )
+
+    assert runtime.calls == 1
+
+
+def test_chat_retry_budget_failure_stops_after_two_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE.asyncio, "to_thread", _inline_to_thread)
+    repository = SimpleNamespace(
+        target_claims=0,
+        unexpected_claim=False,
+        claim_error=None,
+    )
+    runtime = _ChatAttemptRuntime(repository, ["failed", "failed"])
+    monkeypatch.setattr(
+        MODULE,
+        "_poll_chat_message_while_worker_runs",
+        _chat_poll_responses([{"status": "generating"}, {"status": "generating"}]),
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="retry budget was exhausted"):
+        asyncio.run(
+            MODULE._run_target_chat_until_terminal(
+                runtime=runtime,
+                repository=repository,
+                client=object(),
+                case_id="case-id",
+                assistant_message_id="assistant-id",
+            )
+        )
+
+    assert runtime.calls == MODULE.MAX_WORKER_ATTEMPTS
+
+
+@pytest.mark.parametrize(
+    ("row", "expected_count"),
+    [
+        ({"reference_count": 2, "valid_reference_count": 2}, 2),
+        ({"reference_count": 0, "valid_reference_count": 0}, None),
+        ({"reference_count": 2, "valid_reference_count": 1}, None),
+    ],
+)
+def test_chat_reference_count_requires_nonzero_valid_references(
+    monkeypatch: pytest.MonkeyPatch,
+    row: dict[str, int],
+    expected_count: int | None,
+) -> None:
+    calls = _single_row_database(monkeypatch, row)
+
+    if expected_count is None:
+        with pytest.raises(MODULE.E2EFailure, match="chat references are invalid"):
+            MODULE._chat_reference_count(
+                "postgresql://test",
+                assistant_message_id="assistant-id",
+                case_id="case-id",
+            )
+    else:
+        assert (
+            MODULE._chat_reference_count(
+                "postgresql://test",
+                assistant_message_id="assistant-id",
+                case_id="case-id",
+            )
+            == expected_count
+        )
+
+    assert "result.conversation_reference" in calls[0][0]
+    assert calls[0][1] == ("case-id", "assistant-id")
+
+
+@pytest.mark.parametrize(
+    ("row", "error"),
+    [
+        ({"active_analysis_runs": 0, "active_chat_messages": 0}, None),
+        ({"active_analysis_runs": 1, "active_chat_messages": 0}, "analysis=1, chat=0"),
+        ({"active_analysis_runs": 0, "active_chat_messages": 2}, "analysis=0, chat=2"),
+    ],
+)
+def test_queue_preflight_allows_only_quiescent_queues(
+    monkeypatch: pytest.MonkeyPatch,
+    row: dict[str, int],
+    error: str | None,
+) -> None:
+    calls = _single_row_database(monkeypatch, row)
+
+    if error is None:
+        MODULE._assert_queues_quiescent("postgresql://test")
+    else:
+        with pytest.raises(MODULE.E2EFailure, match=error):
+            MODULE._assert_queues_quiescent("postgresql://test")
+
+    assert "workspace.analysis_run" in calls[0][0]
+    assert "result.conversation_message" in calls[0][0]
+
+
+def test_live_ml_results_require_all_models_to_finish_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _single_row_database(
+        monkeypatch,
+        {
+            "ml_result": {
+                "model_1": {"status": "OK"},
+                "model_2": {"status": "OK"},
+                "model_3": {"status": "OK"},
+            }
+        },
+    )
+
+    assert MODULE._require_live_ml_results(
+        "postgresql://test", case_id="case-id"
+    ) == {"model_1": "OK", "model_2": "OK", "model_3": "OK"}
+    assert "result.analysis_case" in calls[0][0]
+    assert calls[0][1] == ("case-id",)
+
+
+def test_live_ml_results_reject_unavailable_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _single_row_database(
+        monkeypatch,
+        {
+            "ml_result": {
+                "model_1": {"status": "OK"},
+                "model_2": {"status": "UNAVAILABLE"},
+                "model_3": {"status": "OK"},
+            }
+        },
+    )
+
+    with pytest.raises(
+        MODULE.E2EFailure,
+        match="live ML execution did not complete: model_2=UNAVAILABLE",
+    ):
+        MODULE._require_live_ml_results("postgresql://test", case_id="case-id")
+
+
+def test_public_ml_projection_requires_all_three_nonempty_messages() -> None:
+    MODULE._require_public_ml_projection(
+        {
+            "ml": {
+                "model_1": {"message": "지원 유형 결과"},
+                "model_2": {"message": "금액 예측 결과"},
+                "model_3": {"message": "이상치 결과"},
+            }
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "ml",
+    [
+        None,
+        {},
+        {
+            "model_1": {"message": "지원 유형 결과"},
+            "model_2": {"message": ""},
+            "model_3": {"message": "이상치 결과"},
+        },
+    ],
+)
+def test_public_ml_projection_rejects_missing_or_blank_messages(ml: object) -> None:
+    with pytest.raises(MODULE.E2EFailure, match="result ML response is invalid"):
+        MODULE._require_public_ml_projection({"ml": ml})
