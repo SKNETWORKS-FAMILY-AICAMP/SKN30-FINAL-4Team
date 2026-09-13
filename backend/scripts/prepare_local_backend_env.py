@@ -29,6 +29,9 @@ REPOSITORY_ROOT = BACKEND_ROOT.parent
 DEFAULT_PROVIDER_ENV = REPOSITORY_ROOT / ".env"
 DEFAULT_SUPABASE_ENV = REPOSITORY_ROOT / ".runtime" / "supabase-dev" / ".env"
 DEFAULT_OUTPUT = BACKEND_ROOT / ".env"
+DEFAULT_MODEL1_SERVING_DIR = (
+    REPOSITORY_ROOT / ".runtime" / "model1-serving" / "model1"
+)
 
 DEFAULT_FRONTEND_ORIGINS = (
     "http://localhost:3000",
@@ -68,6 +71,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_OUTPUT,
         help="새로 만들 backend runtime env (기본: backend/.env)",
+    )
+    parser.add_argument(
+        "--model1-serving-dir",
+        type=Path,
+        default=DEFAULT_MODEL1_SERVING_DIR,
+        help=(
+            "prepare_model1_runtime.py로 준비한 model1 디렉터리 "
+            "(기본: 저장소 .runtime/model1-serving/model1)"
+        ),
     )
     parser.add_argument(
         "--frontend-origin",
@@ -110,6 +122,70 @@ def _load_env(path: Path, *, label: str) -> dict[str, str]:
     if not values:
         raise ConfigurationError(f"{label} 파일에서 설정을 읽지 못했습니다: {path}")
     return values
+
+
+def _model1_mount_identity(path: Path) -> tuple[str, str, str]:
+    """Return a verified absolute bind path and its numeric owner identity."""
+
+    candidate = path.expanduser()
+    if candidate.is_symlink():
+        raise ConfigurationError("Model 1 runtime 경로는 symlink일 수 없습니다.")
+    try:
+        resolved = candidate.resolve(strict=True)
+        directory_stat = resolved.stat()
+    except FileNotFoundError:
+        raise ConfigurationError(
+            "Model 1 runtime을 찾을 수 없습니다. 먼저 "
+            "prepare_model1_runtime.py를 실행하세요."
+        ) from None
+    if not stat.S_ISDIR(directory_stat.st_mode) or resolved.name.lower() != "model1":
+        raise ConfigurationError(
+            "--model1-serving-dir은 이름이 model1인 실제 디렉터리여야 합니다."
+        )
+    if os.name == "posix":
+        if directory_stat.st_uid == 0:
+            raise ConfigurationError(
+                "Model 1 runtime은 root가 아닌 전용 사용자 소유여야 합니다. "
+                "sudo 없이 prepare_model1_runtime.py를 다시 실행하세요."
+            )
+        if stat.S_IMODE(directory_stat.st_mode) & 0o077:
+            raise ConfigurationError(
+                "Model 1 runtime 디렉터리 권한이 너무 넓습니다. "
+                f"먼저 chmod 700 {resolved} 를 실행하세요."
+            )
+
+    model_directory = resolved / "model"
+    if model_directory.is_symlink():
+        raise ConfigurationError(
+            "Model 1 runtime의 model 디렉터리는 symlink일 수 없습니다."
+        )
+    try:
+        model_directory_stat = model_directory.stat()
+    except FileNotFoundError:
+        raise ConfigurationError(
+            "Model 1 runtime 필수 디렉터리가 없습니다: model"
+        ) from None
+    if not stat.S_ISDIR(model_directory_stat.st_mode):
+        raise ConfigurationError(
+            "Model 1 runtime 필수 경로가 디렉터리가 아닙니다: model"
+        )
+    for relative in ("inference.py", "model/model.safetensors"):
+        artifact = resolved / relative
+        if artifact.is_symlink():
+            raise ConfigurationError(
+                f"Model 1 runtime 필수 파일은 symlink일 수 없습니다: {relative}"
+            )
+        try:
+            artifact_stat = artifact.stat()
+        except FileNotFoundError:
+            raise ConfigurationError(
+                f"Model 1 runtime 필수 파일이 없습니다: {relative}"
+            ) from None
+        if not stat.S_ISREG(artifact_stat.st_mode):
+            raise ConfigurationError(
+                f"Model 1 runtime 필수 경로가 일반 파일이 아닙니다: {relative}"
+            )
+    return str(resolved), str(directory_stat.st_uid), str(directory_stat.st_gid)
 
 
 def _required(values: Mapping[str, str], name: str, *, label: str) -> str:
@@ -157,6 +233,9 @@ def build_settings(
     supabase: Mapping[str, str],
     *,
     extra_frontend_origins: Sequence[str] = (),
+    model1_serving_host_dir: str = "",
+    model1_runtime_uid: str = "",
+    model1_runtime_gid: str = "",
 ) -> list[tuple[str, str]]:
     """Return ordered runtime settings without performing I/O."""
 
@@ -252,11 +331,11 @@ def build_settings(
         ("OPENAI_EMBEDDING_DIMENSIONS", "1536"),
         (
             "OPENAI_TIMEOUT_SECONDS",
-            _optional(provider, "OPENAI_TIMEOUT_SECONDS", "60", label=provider_label),
+            _optional(provider, "OPENAI_TIMEOUT_SECONDS", "120", label=provider_label),
         ),
         (
             "OPENAI_MAX_REPAIRS",
-            _optional(provider, "OPENAI_MAX_REPAIRS", "1", label=provider_label),
+            _optional(provider, "OPENAI_MAX_REPAIRS", "2", label=provider_label),
         ),
         ("PREREVIEW_WORKER_HEARTBEAT_SECONDS", "30"),
         ("PREREVIEW_WORKER_LEASE_SECONDS", "120"),
@@ -269,6 +348,12 @@ def build_settings(
             "PREREVIEW_FREETYPE_LIB",
             "/usr/lib/x86_64-linux-gnu/libfreetype.so.6",
         ),
+        (
+            "PREREVIEW_MODEL1_SERVING_HOST_DIR",
+            model1_serving_host_dir,
+        ),
+        ("PREREVIEW_MODEL1_RUNTIME_UID", model1_runtime_uid),
+        ("PREREVIEW_MODEL1_RUNTIME_GID", model1_runtime_gid),
     ]
 
 
@@ -287,6 +372,9 @@ def render_env(settings: Sequence[tuple[str, str]]) -> str:
         "DATABASE_URL": "\n# PostgreSQL pooler session port (server-only)",
         "OPENAI_API_KEY": "\n# OpenAI worker configuration (server-only)",
         "PREREVIEW_WORKER_HEARTBEAT_SECONDS": "\n# PostgreSQL polling worker",
+        "PREREVIEW_MODEL1_SERVING_HOST_DIR": (
+            "\n# Docker analysis-worker Model 1 read-only bind identity"
+        ),
     }
     lines = [
         "# Generated by scripts/prepare_local_backend_env.py.",
@@ -354,10 +442,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ConfigurationError(
                 f"출력 파일이 이미 있어 덮어쓰지 않습니다: {output_path}"
             )
+        model1_path, model1_uid, model1_gid = _model1_mount_identity(
+            args.model1_serving_dir
+        )
         settings = build_settings(
             _load_env(provider_path, label="provider env"),
             _load_env(supabase_path, label="Supabase env"),
             extra_frontend_origins=args.frontend_origin,
+            model1_serving_host_dir=model1_path,
+            model1_runtime_uid=model1_uid,
+            model1_runtime_gid=model1_gid,
         )
         written = write_new_private_file(output_path, render_env(settings))
     except ConfigurationError as exc:

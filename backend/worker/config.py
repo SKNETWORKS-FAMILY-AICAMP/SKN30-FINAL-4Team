@@ -97,8 +97,8 @@ class OpenAIConfig:
     fit_model: str | None = None
     sim_model: str | None = None
     chat_model: str | None = None
-    timeout_seconds: float = 60.0
-    max_repairs: int = 1
+    timeout_seconds: float = 120.0
+    max_repairs: int = 2
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "OpenAIConfig":
@@ -110,8 +110,8 @@ class OpenAIConfig:
             fit_model=_optional("OPENAI_FIT_MODEL", env),
             sim_model=_optional("OPENAI_SIM_MODEL", env),
             chat_model=_optional("OPENAI_CHAT_MODEL", env),
-            timeout_seconds=_float_from_env("OPENAI_TIMEOUT_SECONDS", 60.0, env),
-            max_repairs=_int_from_env("OPENAI_MAX_REPAIRS", 1, env),
+            timeout_seconds=_float_from_env("OPENAI_TIMEOUT_SECONDS", 120.0, env),
+            max_repairs=_int_from_env("OPENAI_MAX_REPAIRS", 2, env),
         )
 
     def llm_model_profiles(self, *names: str) -> dict[str, str]:

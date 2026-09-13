@@ -32,8 +32,16 @@ services:
   # 경유하지 않고 PostgreSQL queue와 private Storage만 사용한다.
   worker:
     build:
-      context: .
+      # ML Model 1/2/3 belongs only in the long-running analysis worker.
+      # The root context makes the tracked ml/ source available at /app/ml;
+      # Dockerfile.ml-worker deliberately remains separate from API/chat.
+      context: ..
+      dockerfile: backend/Dockerfile.ml-worker
     command: ["python", "-m", "worker.main"]
+    # The verified Model 1 tree is chmod 700 by its preparation command.
+    # Run as its numeric host owner rather than as container root; values are
+    # required so a deployment cannot accidentally use a mismatched mount.
+    user: "${PREREVIEW_MODEL1_RUNTIME_UID:?set PREREVIEW_MODEL1_RUNTIME_UID to the Model 1 runtime owner UID}:${PREREVIEW_MODEL1_RUNTIME_GID:?set PREREVIEW_MODEL1_RUNTIME_GID to the Model 1 runtime owner GID}"
     restart: unless-stopped
     # SIGTERM 후 현재 claim을 정리할 시간을 준다. 배포 전 queue drain이 우선이다.
     stop_grace_period: 10m
@@ -45,12 +53,12 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_LLM_MODEL: "${OPENAI_LLM_MODEL:-}"
-      OPENAI_REQUEST_PROFILE_MODEL: "${OPENAI_REQUEST_PROFILE_MODEL:-}"
+      OPENAI_REQUEST_PROFILE_MODEL: "${OPENAI_REQUEST_PROFILE_MODEL:-gpt-5.6-terra}"
       OPENAI_FIT_MODEL: "${OPENAI_FIT_MODEL:-}"
       OPENAI_SIM_MODEL: "${OPENAI_SIM_MODEL:-}"
       OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
-      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-60}"
-      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-1}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-120}"
+      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-2}"
       PREREVIEW_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_WORKER_HEARTBEAT_SECONDS:-30}"
       PREREVIEW_WORKER_LEASE_SECONDS: "${PREREVIEW_WORKER_LEASE_SECONDS:-120}"
       PREREVIEW_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_WORKER_IDLE_POLL_SECONDS:-1}"
@@ -60,12 +68,40 @@ services:
       PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS:-120}"
       # rhwp의 native FreeType 호환성은 parser subprocess에만 적용된다.
       PREREVIEW_FREETYPE_LIB: "${PREREVIEW_FREETYPE_LIB:-/usr/lib/x86_64-linux-gnu/libfreetype.so.6}"
-      # ML은 child process로만 실행된다. 경로는 container 안에도
-      # 실제로 존재해야 하므로 external artifact는 read-only bind mount한다.
-      PREREVIEW_ML_ROOT: "${PREREVIEW_ML_ROOT:-}"
-      PREREVIEW_MODEL1_SERVING_DIR: "${PREREVIEW_MODEL1_SERVING_DIR:-}"
-      PREREVIEW_ML_PYTHON_EXECUTABLE: "${PREREVIEW_ML_PYTHON_EXECUTABLE:-}"
+      # ML is child-process-only.  Model 2/3 source and registered artifacts
+      # are tracked inside the dedicated image; the verified Model 1 package
+      # is deliberately never copied into it.
+      PREREVIEW_ML_ROOT: "/app/ml"
+      PREREVIEW_MODEL1_SERVING_DIR: "/opt/prereview/model1"
+      PREREVIEW_ML_PYTHON_EXECUTABLE: "/opt/prereview-ml-venv/bin/python"
       PREREVIEW_ML_TIMEOUT_SECONDS: "${PREREVIEW_ML_TIMEOUT_SECONDS:-180}"
+      PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT: "true"
+      # Compose starts under a numeric artifact owner that may not have a
+      # passwd entry. All caches/scratch writes stay on the tmpfs below.
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      HF_HOME: "/tmp/.cache/huggingface"
+      TORCH_HOME: "/tmp/.cache/torch"
+      TRANSFORMERS_CACHE: "/tmp/.cache/transformers"
+    volumes:
+      # Required for this service: a compose deployment must fail closed rather
+      # than silently publish Model 1 as unavailable.  The host value can be
+      # any absolute path, including a path outside this checkout.
+      - type: bind
+        source: "${PREREVIEW_MODEL1_SERVING_HOST_DIR:?set PREREVIEW_MODEL1_SERVING_HOST_DIR to the verified Model 1 runtime directory}"
+        target: /opt/prereview/model1
+        read_only: true
+        bind:
+          create_host_path: false
+    # The source/artifact image and the Model 1 bind mount are immutable at
+    # runtime.  Parser/model scratch space is explicitly limited to /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -84,8 +120,8 @@ services:
       OPENAI_LLM_MODEL: "${OPENAI_LLM_MODEL:-}"
       OPENAI_CHAT_MODEL: "${OPENAI_CHAT_MODEL:-}"
       OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
-      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-60}"
-      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-1}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-120}"
+      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-2}"
       PREREVIEW_CHAT_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_CHAT_WORKER_HEARTBEAT_SECONDS:-30}"
       PREREVIEW_CHAT_WORKER_LEASE_SECONDS: "${PREREVIEW_CHAT_WORKER_LEASE_SECONDS:-120}"
       PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS:-1}"

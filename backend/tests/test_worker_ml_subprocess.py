@@ -48,6 +48,7 @@ def test_ml_child_environment_excludes_parent_secrets(
     assert child_environment["CUDA_VISIBLE_DEVICES"] == "0"
     assert child_environment["HF_HUB_OFFLINE"] == "1"
     assert child_environment["TRANSFORMERS_OFFLINE"] == "1"
+    assert child_environment["PYTHONDONTWRITEBYTECODE"] == "1"
     assert "OPENAI_API_KEY" not in child_environment
     assert "DATABASE_URL" not in child_environment
     assert "SUPABASE_SERVICE_ROLE_KEY" not in child_environment

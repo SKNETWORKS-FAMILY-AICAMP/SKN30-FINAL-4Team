@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from worker.analysis_job import AnalysisJobHandler
+from worker import main as worker_main
 from worker.main import (
     WorkerConfigurationError,
     WorkerSettings,
+    _strict_ml_runtime_preflight_enabled,
+    _validate_strict_ml_process_identity,
     build_worker,
     configure_runtime_logging,
 )
 from worker.postgres_repository import PostgresJobRepository
+from worker.ml_runtime_preflight import MlRuntimePreflightError
 
 
 def _environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -139,6 +145,101 @@ def test_build_worker_uses_request_profile_override_without_changing_fit_or_sim(
     }
 
 
+def test_main_refuses_to_poll_when_ml_preflight_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT", "true")
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 1000)
+    settings = SimpleNamespace(
+        ml_root=Path("/app/ml"), model1_serving_dir=Path("/opt/prereview/model1"),
+        heartbeat_seconds=30.0,
+        lease_seconds=120,
+        idle_poll_seconds=1.0,
+        top_k=5,
+    )
+    monkeypatch.setattr(
+        worker_main, "build_worker", lambda: SimpleNamespace(settings=settings)
+    )
+
+    def fail_preflight(**_kwargs: object) -> None:
+        raise MlRuntimePreflightError("test mismatch")
+
+    monkeypatch.setattr(worker_main, "verify_ml_runtime", fail_preflight)
+    monkeypatch.setattr(
+        worker_main,
+        "run_worker",
+        lambda *_args, **_kwargs: pytest.fail("queue polling must not start"),
+    )
+
+    assert worker_main.main() == 2
+
+
+@pytest.mark.parametrize("value", ("1", "true", "TRUE", "yes", "on"))
+def test_strict_ml_preflight_accepts_explicit_true_values(value: str) -> None:
+    assert _strict_ml_runtime_preflight_enabled(value) is True
+
+
+@pytest.mark.parametrize("value", (None, "", "0", "false", "FALSE", "no", "off"))
+def test_strict_ml_preflight_accepts_explicit_false_values(value: str | None) -> None:
+    assert _strict_ml_runtime_preflight_enabled(value) is False
+
+
+@pytest.mark.parametrize("value", ("ture", "enabled", "2"))
+def test_strict_ml_preflight_rejects_unknown_values(value: str) -> None:
+    with pytest.raises(WorkerConfigurationError, match="must be one of"):
+        _strict_ml_runtime_preflight_enabled(value)
+
+
+def test_strict_ml_process_identity_is_not_checked_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 0)
+
+    _validate_strict_ml_process_identity(enabled=False)
+
+
+@pytest.mark.parametrize("effective_uid,effective_gid", ((0, 1000), (1000, 0)))
+def test_strict_ml_process_identity_rejects_root_user_or_group(
+    monkeypatch: pytest.MonkeyPatch,
+    effective_uid: int,
+    effective_gid: int,
+) -> None:
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: effective_uid)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: effective_gid)
+
+    with pytest.raises(WorkerConfigurationError, match="non-zero"):
+        _validate_strict_ml_process_identity(enabled=True)
+
+
+def test_strict_ml_process_identity_accepts_non_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 1000)
+
+    _validate_strict_ml_process_identity(enabled=True)
+
+
+def test_main_refuses_to_build_or_poll_for_an_invalid_preflight_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT", "ture")
+    monkeypatch.setattr(
+        worker_main,
+        "build_worker",
+        lambda: pytest.fail("worker composition must not be built"),
+    )
+    monkeypatch.setattr(
+        worker_main,
+        "run_worker",
+        lambda *_args, **_kwargs: pytest.fail("queue polling must not start"),
+    )
+
+    assert worker_main.main() == 2
+
+
 def test_debug_mode_never_enables_provider_or_transport_request_logging(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -187,7 +288,7 @@ def test_compose_starts_worker_by_module_without_publishing_a_port() -> None:
     assert "redis" not in worker_section.lower()
 
 
-def test_compose_passes_external_ml_boundaries_only_to_analysis_worker() -> None:
+def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
     compose = (
         __import__("pathlib").Path(__file__).resolve().parents[1] / "compose.yaml"
     ).read_text(encoding="utf-8")
@@ -202,10 +303,142 @@ def test_compose_passes_external_ml_boundaries_only_to_analysis_worker() -> None
         "PREREVIEW_MODEL1_SERVING_DIR",
         "PREREVIEW_ML_PYTHON_EXECUTABLE",
         "PREREVIEW_ML_TIMEOUT_SECONDS",
+        "PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT",
     ):
-        assert f'{name}: "${{{name}:-' in worker_section
         assert name not in api_section
         assert name not in chat_worker_section
+
+    assert 'PREREVIEW_ML_ROOT: "/app/ml"' in worker_section
+    assert 'PREREVIEW_MODEL1_SERVING_DIR: "/opt/prereview/model1"' in worker_section
+    assert (
+        'PREREVIEW_ML_PYTHON_EXECUTABLE: "/opt/prereview-ml-venv/bin/python"'
+        in worker_section
+    )
+    assert 'PREREVIEW_ML_TIMEOUT_SECONDS: "${PREREVIEW_ML_TIMEOUT_SECONDS:-180}"' in worker_section
+    assert 'OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-120}"' in worker_section
+    assert 'OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-2}"' in worker_section
+    assert (
+        'OPENAI_REQUEST_PROFILE_MODEL: '
+        '"${OPENAI_REQUEST_PROFILE_MODEL:-gpt-5.6-terra}"'
+        in worker_section
+    )
+    assert 'PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT: "true"' in worker_section
+    assert "PREREVIEW_MODEL1_SERVING_HOST_DIR:?" in worker_section
+    assert "PREREVIEW_MODEL1_RUNTIME_UID:?" in worker_section
+    assert "PREREVIEW_MODEL1_RUNTIME_GID:?" in worker_section
+    assert "target: /opt/prereview/model1" in worker_section
+    assert "read_only: true" in worker_section
+    assert "create_host_path: false" in worker_section
+    assert 'HOME: "/tmp"' in worker_section
+    assert 'XDG_CACHE_HOME: "/tmp/.cache"' in worker_section
+
+
+def test_compose_keeps_api_and_chat_on_the_lightweight_image() -> None:
+    compose = (
+        __import__("pathlib").Path(__file__).resolve().parents[1] / "compose.yaml"
+    ).read_text(encoding="utf-8")
+    api_section = compose.split("\n  api:\n", 1)[1].split("\n  worker:\n", 1)[0]
+    worker_section = compose.split("\n  worker:\n", 1)[1].split(
+        "\n  chat-worker:\n", 1
+    )[0]
+    chat_worker_section = compose.split("\n  chat-worker:\n", 1)[1]
+
+    assert "context: ." in api_section
+    assert "context: ." in chat_worker_section
+    assert "context: .." in worker_section
+    assert "dockerfile: backend/Dockerfile.ml-worker" in worker_section
+
+
+def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    dockerfile = (backend_root / "Dockerfile.ml-worker").read_text(encoding="utf-8")
+    buildkit_dockerignore_path = backend_root / "Dockerfile.ml-worker.dockerignore"
+    classic_dockerignore_path = backend_root.parent / ".dockerignore"
+    dockerignore = buildkit_dockerignore_path.read_text(encoding="utf-8")
+
+    assert "VIRTUAL_ENV=/opt/prereview-ml-venv" in dockerfile
+    assert "PREREVIEW_ML_PYTHON_EXECUTABLE=/opt/prereview-ml-venv/bin/python" in dockerfile
+    assert "COPY ml /app/ml" not in dockerfile
+    assert "COPY backend /app/backend" not in dockerfile
+    assert "COPY backend/app /app/backend/app" in dockerfile
+    assert "requirements.runtime.txt" in dockerfile
+    assert "download.pytorch.org/whl/cpu" in dockerfile
+    assert "pip install xgboost-cpu==3.4.1" in dockerfile
+    assert "import joblib, numpy, pandas, pyarrow, scipy" in dockerfile
+    assert "sha256sum -c -" in dockerfile
+    assert "joblib.load('/app/ml/models/model2_canonical/model2_p3_bundle.joblib')" in dockerfile
+    assert "business_taxonomy.parquet" in dockerfile
+    assert "/app/ml/data/processed" in dockerfile
+    assert "/app/ml/reports/model2/core" in dockerfile
+    assert "libgomp1" in dockerfile
+    assert "PREREVIEW_MODEL1_SERVING_DIR=/opt/prereview/model1" in dockerfile
+    # BuildKit reads the Dockerfile-specific ignore file. The classic builder
+    # reads only the context-root file, so both security boundaries must stay
+    # exactly synchronized.
+    assert classic_dockerignore_path.read_bytes() == buildkit_dockerignore_path.read_bytes()
+
+    rules = [
+        line
+        for raw_line in dockerignore.splitlines()
+        if (line := raw_line.strip()) and not line.startswith("#")
+    ]
+    assert rules[0] == "*"
+    assert "!backend/**" not in rules
+    assert "!backend/vendor/**" not in rules
+    assert "!backend/vendor/common_ir_pipeline/src/**" in rules
+    assert (
+        "!backend/vendor/portable_existing_request_profiles_20260831/"
+        "semantic_structuring/*.py"
+    ) in rules
+    assert not any("semantic_structuring/**" in rule for rule in rules)
+    assert not any("exploratory_study" in rule for rule in rules if rule.startswith("!"))
+    assert not any("/examples" in rule for rule in rules if rule.startswith("!"))
+    assert "!ml/serving/model1/" not in rules
+    assert "!ml/research/" not in rules
+    assert "!ml/data/raw/" not in rules
+    assert "!ml/reports/" not in rules
+    assert "!ml/figures/" not in rules
+    assert "!ml/models/model2_canonical/model2_p3_bundle.joblib" in rules
+    assert "!ml/data/processed/business_taxonomy.parquet" in rules
+
+    # Directory allowlists intentionally admit the active source trees. These
+    # last-match exclusions prevent local credentials/caches and the retired
+    # worker implementation from being sent by either builder.
+    broad_worker_rule = rules.index("!backend/worker/**")
+    hygiene_rules = {
+        "**/.git/**",
+        "**/.pytest_cache/**",
+        "**/__pycache__/**",
+        "**/*.py[cod]",
+        "**/.venv/**",
+        "**/venv/**",
+        "**/*.egg-info/**",
+        "**/.env",
+        "**/.env.*",
+        "**/*.pem",
+        "**/*.key",
+        "**/*.p12",
+        "**/*.pfx",
+        "**/id_rsa",
+        "**/id_rsa.*",
+        "**/handover/**",
+    }
+    retired_worker_rules = {
+        "backend/worker/analysis.py",
+        "backend/worker/dispatcher.py",
+        "backend/worker/execution_log.py",
+        "backend/worker/jobs.py",
+        "backend/worker/kb_ingest.py",
+        "backend/worker/kb_store.py",
+        "backend/worker/persistence.py",
+        "backend/worker/queue.py",
+        "backend/worker/report_pdf.py",
+    }
+    assert hygiene_rules | retired_worker_rules <= set(rules)
+    assert all(
+        rules.index(rule) > broad_worker_rule
+        for rule in hygiene_rules | retired_worker_rules
+    )
 
 
 def test_compose_restarts_both_runtime_processes_unless_stopped() -> None:

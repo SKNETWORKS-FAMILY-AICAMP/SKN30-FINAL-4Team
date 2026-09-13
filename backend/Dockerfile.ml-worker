@@ -1,0 +1,96 @@
+# Dedicated CPU-only runtime for the analysis polling worker. API and chat
+# retain Dockerfile, so they never carry this ML dependency/source closure.
+FROM python:3.13-slim@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPYCACHEPREFIX=/tmp/prereview-python-cache \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app/backend/vendor/portable_existing_request_profiles_20260831 \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache \
+    VIRTUAL_ENV=/opt/prereview-ml-venv \
+    PREREVIEW_ML_ROOT=/app/ml \
+    PREREVIEW_MODEL1_SERVING_DIR=/opt/prereview/model1 \
+    PREREVIEW_ML_PYTHON_EXECUTABLE=/opt/prereview-ml-venv/bin/python \
+    PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT=true
+
+WORKDIR /app/backend
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libexpat1 \
+        libfreetype6 \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m venv "$VIRTUAL_ENV"
+
+COPY backend/vendor ./vendor
+COPY backend/requirements.txt ./requirements.txt
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r requirements.txt \
+    && mkdir -p "$TIKTOKEN_CACHE_DIR" \
+    && python -c "from pathlib import Path; import tiktoken; assert tiktoken.get_encoding('cl100k_base').name == 'cl100k_base'; assert any(Path('/opt/tiktoken-cache').iterdir())"
+
+# Install the ML closure into an image-local venv, never a bind-mounted host
+# environment. The official CPU-only XGBoost distribution avoids the regular
+# package's unnecessary 252MB NVIDIA NCCL dependency.
+COPY ml/serving/requirements.txt ml/serving/requirements.runtime.txt /app/ml/serving/
+RUN sed '/^xgboost==/d' /app/ml/serving/requirements.txt > /tmp/ml-serving-no-xgboost.txt \
+    && sed 's|^-r requirements.txt$|-r /tmp/ml-serving-no-xgboost.txt|' /app/ml/serving/requirements.runtime.txt > /tmp/ml-runtime-no-xgboost.txt \
+    && /opt/prereview-ml-venv/bin/python -m pip install --upgrade pip \
+    && /opt/prereview-ml-venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.13.0+cpu' \
+    && /opt/prereview-ml-venv/bin/python -m pip install -r /tmp/ml-runtime-no-xgboost.txt \
+    && /opt/prereview-ml-venv/bin/python -m pip install xgboost-cpu==3.4.1 \
+    && /opt/prereview-ml-venv/bin/python -m pip check \
+    && /opt/prereview-ml-venv/bin/python -c "import joblib, numpy, pandas, pyarrow, scipy, sklearn, torch, transformers, xgboost; assert xgboost.__version__ == '3.4.1'"
+
+# Curated serving closure: no research data/reports/figures, legacy Model 2
+# artifacts, or tracked Model 1 package is copied into this image. Model 1
+# enters only through the verified read-only bind mount.
+COPY backend/app /app/backend/app
+COPY backend/worker /app/backend/worker
+COPY backend/scripts/classify_existing_model1.py /app/backend/scripts/classify_existing_model1.py
+COPY ["ml/serving/shared/preconsultation_adapter.py", "/app/ml/serving/shared/"]
+COPY ["ml/serving/model2/predict.py", "ml/serving/model2/feature_builder.py", "ml/serving/model2/preprocessing.py", "ml/serving/model2/masking.py", "ml/serving/model2/proximity.py", "ml/serving/model2/router.py", "ml/serving/model2/cohort_reference.parquet", "/app/ml/serving/model2/"]
+COPY ["ml/serving/model3/score.py", "ml/serving/model3/inference.py", "ml/serving/model3/design_features_v3.parquet", "/app/ml/serving/model3/"]
+COPY ml/models/model2_canonical/model2_p3_bundle.joblib /app/ml/models/model2_canonical/model2_p3_bundle.joblib
+COPY ml/data/processed/business_taxonomy.parquet /app/ml/data/processed/business_taxonomy.parquet
+COPY ml/pipelines/shared /app/ml/pipelines/shared
+COPY ["ml/pipelines/model1/dl07_m1_apply.py", "ml/pipelines/model1/m01_support_type.py", "/app/ml/pipelines/model1/"]
+COPY ml/pipelines/model2 /app/ml/pipelines/model2
+COPY ml/pipelines/model3 /app/ml/pipelines/model3
+COPY ml/experiments/model2/core /app/ml/experiments/model2/core
+
+# Assert the image contains the exact artifacts registered by the strict
+# startup gate, then prove the CPU venv can deserialize/read each one.
+RUN printf '%s  %s\n' \
+        '0c5b93e2a04c778ace8e07d7551b1fc7c3cc2b91cde80d94b2b1b1cf38cbabff' '/app/ml/models/model2_canonical/model2_p3_bundle.joblib' \
+        '551c4b2018d567419cc39344e87646e70f2d0a2ce58b6748d36573254ba0439d' '/app/ml/serving/model2/cohort_reference.parquet' \
+        '78ebba0d5264fc2b9d8092baba4f790d4fea147e0ad98e4ede3c87f248c22239' '/app/ml/data/processed/business_taxonomy.parquet' \
+        '79649c095b1775832b73c18c629eca7695688a3eaa3554f3af3b96565a23a0bf' '/app/ml/serving/model3/design_features_v3.parquet' \
+    | sha256sum -c - \
+    && /opt/prereview-ml-venv/bin/python -c "import joblib, pandas as pd; joblib.load('/app/ml/models/model2_canonical/model2_p3_bundle.joblib'); pd.read_parquet('/app/ml/serving/model2/cohort_reference.parquet'); pd.read_parquet('/app/ml/data/processed/business_taxonomy.parquet'); pd.read_parquet('/app/ml/serving/model3/design_features_v3.parquet')"
+
+# Historical imports require the layout markers but must not create data or
+# cache files outside the explicitly writable /tmp mount at runtime.
+RUN mkdir -p \
+        /app/ml/data/raw/attachments \
+        /app/ml/data/processed \
+        /app/ml/reports \
+        /app/ml/reports/model1/core \
+        /app/ml/reports/model1/validation \
+        /app/ml/reports/model1/archive \
+        /app/ml/reports/model2/core \
+        /app/ml/reports/model2/validation \
+        /app/ml/reports/model2/archive \
+        /app/ml/reports/model3/core \
+        /app/ml/reports/model3/validation \
+        /app/ml/reports/model3/archive \
+        /app/ml/reports/pipeline \
+        /app/ml/reports/shared \
+        /app/ml/figures \
+        /app/ml/models \
+    && chmod -R a-w /app/ml
+
+CMD ["python", "-m", "worker.main"]

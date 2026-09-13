@@ -280,6 +280,19 @@ def test_openai_config_keeps_model_ids_in_environment_configuration(monkeypatch:
     }
 
 
+def test_openai_config_defaults_to_a_document_safe_timeout() -> None:
+    config = OpenAIConfig.from_env(
+        {
+            "OPENAI_API_KEY": "test",
+            "OPENAI_LLM_MODEL": "configured-llm",
+            "OPENAI_EMBEDDING_MODEL": "configured-embedding",
+        }
+    )
+
+    assert config.timeout_seconds == 120.0
+    assert config.max_repairs == 2
+
+
 def test_openai_config_uses_stage_model_overrides_without_changing_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

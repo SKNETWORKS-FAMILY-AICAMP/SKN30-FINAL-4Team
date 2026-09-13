@@ -25,7 +25,7 @@ def _write_private(path: Path, content: str) -> None:
     path.chmod(0o600)
 
 
-def _valid_inputs(tmp_path: Path) -> tuple[Path, Path]:
+def _valid_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     provider = tmp_path / "provider.env"
     supabase = tmp_path / "supabase.env"
     _write_private(
@@ -42,7 +42,16 @@ def _valid_inputs(tmp_path: Path) -> tuple[Path, Path]:
         "ANON_KEY='anon-test-secret'\n"
         "SERVICE_ROLE_KEY='service-test-secret'\n",
     )
-    return provider, supabase
+    model1 = tmp_path / "model1"
+    (model1 / "model").mkdir(parents=True)
+    (model1 / "inference.py").write_text("# test runtime\n", encoding="utf-8")
+    (model1 / "model" / "model.safetensors").write_bytes(b"test-weight")
+    model1.chmod(0o700)
+    if os.name == "posix" and os.geteuid() == 0:
+        # Production rejects a root-owned mount. Keep the general test fixture
+        # valid even when CI itself happens to run pytest as root.
+        model1.chown(65534, 65534)
+    return provider, supabase, model1
 
 
 def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None:
@@ -60,6 +69,9 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
                 "SERVICE_ROLE_KEY": "service-test-secret",
             },
             extra_frontend_origins=["http://192.168.0.67:3000"],
+            model1_serving_host_dir="/srv/prereview/model1",
+            model1_runtime_uid="1001",
+            model1_runtime_gid="1002",
         )
     )
 
@@ -77,15 +89,20 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
     assert settings["OPENAI_API_KEY"] == "openai-test-secret"
     assert settings["OPENAI_LLM_MODEL"] == "test-luna"
     assert settings["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
+    assert settings["OPENAI_TIMEOUT_SECONDS"] == "120"
+    assert settings["OPENAI_MAX_REPAIRS"] == "2"
     assert settings["PREREVIEW_OFFLINE_MODE"] == "false"
     assert settings["PREREVIEW_API_BIND_ADDRESS"] == "127.0.0.1"
+    assert settings["PREREVIEW_MODEL1_SERVING_HOST_DIR"] == "/srv/prereview/model1"
+    assert settings["PREREVIEW_MODEL1_RUNTIME_UID"] == "1001"
+    assert settings["PREREVIEW_MODEL1_RUNTIME_GID"] == "1002"
     assert "http://192.168.0.67:3000" in settings[
         "PREREVIEW_AUTH_ALLOWED_ORIGINS"
     ].split(",")
 
 
 def test_cli_creates_mode_600_env_without_printing_secrets(tmp_path: Path) -> None:
-    provider, supabase = _valid_inputs(tmp_path)
+    provider, supabase, model1 = _valid_inputs(tmp_path)
     output = tmp_path / "backend.env"
 
     result = subprocess.run(
@@ -98,6 +115,8 @@ def test_cli_creates_mode_600_env_without_printing_secrets(tmp_path: Path) -> No
             str(supabase),
             "--output",
             str(output),
+            "--model1-serving-dir",
+            str(model1),
         ],
         check=False,
         capture_output=True,
@@ -122,10 +141,13 @@ def test_cli_creates_mode_600_env_without_printing_secrets(tmp_path: Path) -> No
         "@host.docker.internal:5432/postgres?sslmode=disable"
     )
     assert generated["OPENAI_API_KEY"] == "openai-test-secret"
+    assert generated["PREREVIEW_MODEL1_SERVING_HOST_DIR"] == str(model1.resolve())
+    assert generated["PREREVIEW_MODEL1_RUNTIME_UID"] == str(model1.stat().st_uid)
+    assert generated["PREREVIEW_MODEL1_RUNTIME_GID"] == str(model1.stat().st_gid)
 
 
 def test_cli_never_overwrites_existing_output(tmp_path: Path) -> None:
-    provider, supabase = _valid_inputs(tmp_path)
+    provider, supabase, model1 = _valid_inputs(tmp_path)
     output = tmp_path / "backend.env"
     sentinel = "keep-existing-file\n"
     _write_private(output, sentinel)
@@ -140,6 +162,8 @@ def test_cli_never_overwrites_existing_output(tmp_path: Path) -> None:
             str(supabase),
             "--output",
             str(output),
+            "--model1-serving-dir",
+            str(model1),
         ],
         check=False,
         capture_output=True,
@@ -152,7 +176,7 @@ def test_cli_never_overwrites_existing_output(tmp_path: Path) -> None:
 
 
 def test_cli_never_follows_existing_output_symlink(tmp_path: Path) -> None:
-    provider, supabase = _valid_inputs(tmp_path)
+    provider, supabase, model1 = _valid_inputs(tmp_path)
     target = tmp_path / "target.env"
     output = tmp_path / "backend.env"
     output.symlink_to(target)
@@ -167,6 +191,8 @@ def test_cli_never_follows_existing_output_symlink(tmp_path: Path) -> None:
             str(supabase),
             "--output",
             str(output),
+            "--model1-serving-dir",
+            str(model1),
         ],
         check=False,
         capture_output=True,
@@ -181,7 +207,7 @@ def test_cli_never_follows_existing_output_symlink(tmp_path: Path) -> None:
 def test_cli_rejects_world_readable_secret_inputs_without_reading_values(
     tmp_path: Path,
 ) -> None:
-    provider, supabase = _valid_inputs(tmp_path)
+    provider, supabase, model1 = _valid_inputs(tmp_path)
     provider.chmod(0o644)
     output = tmp_path / "backend.env"
 
@@ -195,6 +221,8 @@ def test_cli_rejects_world_readable_secret_inputs_without_reading_values(
             str(supabase),
             "--output",
             str(output),
+            "--model1-serving-dir",
+            str(model1),
         ],
         check=False,
         capture_output=True,
@@ -205,6 +233,81 @@ def test_cli_rejects_world_readable_secret_inputs_without_reading_values(
     assert "chmod 600" in result.stderr
     assert "openai-test-secret" not in result.stderr
     assert not output.exists()
+
+
+def test_cli_requires_prepared_model1_runtime_before_writing_env(tmp_path: Path) -> None:
+    provider, supabase, _model1 = _valid_inputs(tmp_path)
+    output = tmp_path / "backend.env"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--provider-env",
+            str(provider),
+            "--supabase-env",
+            str(supabase),
+            "--output",
+            str(output),
+            "--model1-serving-dir",
+            str(tmp_path / "missing-model1"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "prepare_model1_runtime.py" in result.stderr
+    assert not output.exists()
+
+
+def test_model1_mount_identity_rejects_symlink(tmp_path: Path) -> None:
+    _provider, _supabase, model1 = _valid_inputs(tmp_path)
+    linked = tmp_path / "linked-model1"
+    linked.symlink_to(model1, target_is_directory=True)
+
+    with pytest.raises(MODULE.ConfigurationError, match="symlink"):
+        MODULE._model1_mount_identity(linked)
+
+
+def test_model1_mount_identity_rejects_symlinked_model_directory(
+    tmp_path: Path,
+) -> None:
+    model1 = tmp_path / "model1"
+    external_model = tmp_path / "external-model"
+    external_model.mkdir()
+    (external_model / "model.safetensors").write_bytes(b"test-weight")
+    model1.mkdir(mode=0o700)
+    (model1 / "inference.py").write_text("# test runtime\n", encoding="utf-8")
+    (model1 / "model").symlink_to(external_model, target_is_directory=True)
+
+    with pytest.raises(MODULE.ConfigurationError, match="model.*symlink"):
+        MODULE._model1_mount_identity(model1)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX ownership/mode policy")
+def test_model1_mount_identity_rejects_group_or_world_access(tmp_path: Path) -> None:
+    _provider, _supabase, model1 = _valid_inputs(tmp_path)
+    model1.chmod(0o750)
+
+    with pytest.raises(MODULE.ConfigurationError, match="chmod 700"):
+        MODULE._model1_mount_identity(model1)
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() != 0,
+    reason="root-owned runtime can only be constructed by a root test process",
+)
+def test_model1_mount_identity_rejects_root_owner(tmp_path: Path) -> None:
+    model1 = tmp_path / "model1"
+    (model1 / "model").mkdir(parents=True)
+    (model1 / "inference.py").write_text("# test runtime\n", encoding="utf-8")
+    (model1 / "model" / "model.safetensors").write_bytes(b"test-weight")
+    model1.chmod(0o700)
+
+    with pytest.raises(MODULE.ConfigurationError, match="root가 아닌"):
+        MODULE._model1_mount_identity(model1)
 
 
 @pytest.mark.parametrize(

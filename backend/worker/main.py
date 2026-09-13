@@ -54,11 +54,15 @@ from worker.ml_reference import (
     missing_artifact_model,
     missing_runtime_model,
 )
+from worker.ml_runtime_preflight import MlRuntimePreflightError, verify_ml_runtime
 
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_ML_ROOT = Path(__file__).resolve().parents[2] / "ml"
 DEFAULT_ML_TIMEOUT_SECONDS = 180.0
+STRICT_ML_RUNTIME_PREFLIGHT_ENV = "PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT"
+_TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_ENV_VALUES = frozenset({"", "0", "false", "no", "off"})
 
 
 # These SDKs can include request details in DEBUG records.  The worker sends
@@ -444,16 +448,72 @@ def run_worker(
         runtime.run_forever()
 
 
+def _strict_ml_runtime_preflight_enabled(raw_value: str | None) -> bool:
+    """Parse the integrity gate setting without silently accepting typos."""
+
+    normalized = (raw_value or "").strip().lower()
+    if normalized in _TRUE_ENV_VALUES:
+        return True
+    if normalized in _FALSE_ENV_VALUES:
+        return False
+    raise WorkerConfigurationError(
+        f"{STRICT_ML_RUNTIME_PREFLIGHT_ENV} must be one of "
+        "1,true,yes,on,0,false,no,off"
+    )
+
+
+def _validate_strict_ml_process_identity(*, enabled: bool) -> None:
+    """Keep a manually written Compose environment from restoring root."""
+
+    if not enabled:
+        return
+    get_euid = getattr(os, "geteuid", None)
+    get_egid = getattr(os, "getegid", None)
+    if not callable(get_euid) or not callable(get_egid):
+        raise WorkerConfigurationError(
+            "strict ML worker requires POSIX effective UID/GID inspection"
+        )
+    if get_euid() == 0 or get_egid() == 0:
+        raise WorkerConfigurationError(
+            "strict ML worker must run with non-zero effective UID and GID"
+        )
+
+
 def main() -> int:
     """Run the worker without ever printing deployment secrets."""
 
     load_dotenv(override=False)
     configure_runtime_logging(level=os.getenv("LOG_LEVEL", "INFO").upper())
     try:
+        strict_ml_preflight = _strict_ml_runtime_preflight_enabled(
+            os.getenv(STRICT_ML_RUNTIME_PREFLIGHT_ENV)
+        )
+        _validate_strict_ml_process_identity(enabled=strict_ml_preflight)
         composition = build_worker()
     except (WorkerConfigurationError, MissingConfigError) as error:
         LOGGER.error("worker configuration is invalid: %s", error)
         return 2
+
+    # Docker Compose opts into this strict gate because it supplies a required,
+    # read-only Model 1 mount and a curated image-local Model 2/3 closure. A
+    # direct host worker intentionally preserves the documented best-effort
+    # unavailable-model mode unless its operator explicitly enables the gate.
+    if strict_ml_preflight:
+        try:
+            verify_ml_runtime(
+                ml_root=composition.settings.ml_root,
+                model1_serving_dir=composition.settings.model1_serving_dir
+                or Path("/nonexistent-model1-runtime"),
+                backend_root=Path(__file__).resolve().parents[1],
+            )
+        except MlRuntimePreflightError as error:
+            LOGGER.error("worker ML runtime preflight failed: %s", error)
+            return 2
+        except OSError:
+            LOGGER.error(
+                "worker ML runtime preflight failed: a runtime input is inaccessible"
+            )
+            return 2
 
     LOGGER.info(
         "starting PostgreSQL polling worker heartbeat_seconds=%s lease_seconds=%s "
