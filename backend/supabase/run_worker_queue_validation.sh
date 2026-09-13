@@ -9,7 +9,11 @@ SUPABASE_DIR="${SUPABASE_DIR:?Set SUPABASE_DIR to the local Supabase Compose dir
   exit 1
 }
 
-(cd "$SUPABASE_DIR" && docker compose exec -T db \
-  psql -U postgres -d postgres) < "$SCRIPT_DIR/tests/analysis_worker_queue_runtime.sql"
+for runtime_test in \
+  "$SCRIPT_DIR/tests/analysis_worker_queue_runtime.sql" \
+  "$SCRIPT_DIR/tests/v02_runtime.sql"; do
+  (cd "$SUPABASE_DIR" && docker compose exec -T db \
+    psql -U postgres -d postgres) < "$runtime_test"
+done
 
-echo "Analysis worker queue runtime contract passed (transaction rolled back)."
+echo "Analysis worker queue and v0.2 runtime contracts passed (transactions rolled back)."
