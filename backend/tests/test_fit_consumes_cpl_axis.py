@@ -8,6 +8,7 @@ FIT 이 같은 문장을 다시 분류하다 실패해 FIT-1·2·3 이 근거 0 
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ from worker.contracts.fit_result import (
 
 _VALUE = "부산 관내 제조 중소기업의 기술경쟁력을 강화하여 매출 성장을 달성"
 _TARGET = "부산 관내 제조 중소기업"
+_OBJECTIVE = "기술경쟁력을 강화"
 _DIRECTION = "매출 성장을 달성"
 _REGION = "○ (사업목적) " + _VALUE
 
@@ -98,6 +100,58 @@ def _rows() -> list[dict[str, str]]:
         {"evidence_ref": _ref(), "axis_code": CplAxisCode.DIRECTION.value,
          "quoted_text": _DIRECTION},
     ]
+
+
+def _rows_with_objective() -> list[dict[str, str]]:
+    return [
+        *_rows()[:1],
+        {"evidence_ref": _ref(), "axis_code": CplAxisCode.SPECIFIC_OBJECTIVE.value,
+         "quoted_text": _OBJECTIVE},
+        *_rows()[1:],
+    ]
+
+
+def _comparison_profile() -> dict[str, Any]:
+    profile = _profile()
+    profile["comparison_profile"].update({
+        "support_activities": [{
+            "fact_id": "fact_3", "value_raw": "기술 컨설팅", "status": "identified",
+        }],
+        "support_methods": [{
+            "fact_id": "fact_4", "value_raw": "보조금", "status": "identified",
+        }],
+    })
+    profile["request_context"] = {
+        "expected_effect": [{
+            "fact_id": "fact_5", "value_raw": "매출 성장", "status": "identified",
+        }],
+    }
+    profile["field_states"].extend([
+        {"field_name": "support_activities", "status": "identified"},
+        {"field_name": "support_methods", "status": "identified"},
+        {"field_name": "expected_effect", "status": "identified"},
+    ])
+    return profile
+
+
+class _FitPayloadRecorder:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    async def generate_structured(
+        self, *, task_name: str, messages: list[Any],
+        response_schema: type[BaseModel], model_profile: str,
+    ) -> BaseModel:
+        assert task_name == "fit_relation_comparison"
+        payload = json.loads(messages[-1].content)
+        self.payloads.append(payload)
+        return response_schema.model_validate({
+            "relations": [{
+                "relation_id": relation["relation_id"],
+                "status": FitStatus.INSUFFICIENT.value,
+                "reason_code": "COMPARISON_EVIDENCE_MISSING",
+            } for relation in payload["relations"]],
+        })
 
 
 def _cpl(assignments: list[dict[str, str]] | None = None):
@@ -181,3 +235,49 @@ def test_the_seven_relation_output_shape_is_unchanged() -> None:
 
     assert len(fit.relations) == 7
     assert [row.relation_id for row in fit.relations] == list(FitRelationId)
+    assert fit.prompt_version == "fit-relations-v0.3"
+
+
+def test_fit2_uses_specific_objective_and_direction_but_fit3_stays_direction_only() -> None:
+    cpl = analyze_cpl(
+        _comparison_profile(), _Recorder(_rows_with_objective()),
+        model_profile="default", common_ir=_ir(),
+    )
+    llm = _FitPayloadRecorder()
+
+    fit = analyze_fit(cpl, llm, model_profile="default")
+
+    payload_by_id = {
+        relation["relation_id"]: relation
+        for relation in llm.payloads[0]["relations"]
+    }
+    assert [row["value_raw"] for row in payload_by_id["FIT-2"]["left"]] == [
+        _OBJECTIVE, _DIRECTION,
+    ]
+    assert [row.value_raw for row in _left(fit, FitRelationId.FIT_2).facts] == [
+        _OBJECTIVE, _DIRECTION,
+    ]
+    assert [row["value_raw"] for row in payload_by_id["FIT-3"]["left"]] == [
+        _DIRECTION,
+    ]
+    assert [row.value_raw for row in _left(fit, FitRelationId.FIT_3).facts] == [
+        _DIRECTION,
+    ]
+
+
+def test_fit2_falls_back_to_direction_when_specific_objective_is_absent() -> None:
+    cpl = analyze_cpl(
+        _comparison_profile(), _Recorder(_rows()),
+        model_profile="default", common_ir=_ir(),
+    )
+    llm = _FitPayloadRecorder()
+
+    fit = analyze_fit(cpl, llm, model_profile="default")
+
+    fit2 = next(row for row in fit.relations if row.relation_id is FitRelationId.FIT_2)
+    payload_fit2 = next(
+        relation for relation in llm.payloads[0]["relations"]
+        if relation["relation_id"] == "FIT-2"
+    )
+    assert [row.value_raw for row in fit2.left.facts] == [_DIRECTION]
+    assert [row["value_raw"] for row in payload_fit2["left"]] == [_DIRECTION]
