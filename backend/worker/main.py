@@ -381,7 +381,7 @@ def build_worker() -> WorkerComposition:
         producer=VendoredRequestProfileProducer(
             llm,
             model_profile="request_profile",
-            model_id=openai.llm_model,
+            model_id=openai.llm_model_for("request_profile"),
             max_repairs=openai.max_repairs,
             parse_timeout_seconds=settings.parse_timeout_seconds,
         ),

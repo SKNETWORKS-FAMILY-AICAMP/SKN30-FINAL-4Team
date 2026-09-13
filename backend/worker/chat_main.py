@@ -89,15 +89,6 @@ class ChatWorkerComposition:
     settings: ChatWorkerSettings
 
 
-def _required(env: Mapping[str, str], name: str) -> str:
-    value = env.get(name, "").strip()
-    if not value:
-        raise ChatWorkerConfigurationError(
-            f"required environment variable is not set: {name}"
-        )
-    return value
-
-
 def _first_required(env: Mapping[str, str], *names: str) -> str:
     for name in names:
         value = env.get(name, "").strip()
@@ -121,23 +112,6 @@ def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:
     if value <= 0:
         raise ChatWorkerConfigurationError(
             f"environment variable must be positive: {name}"
-        )
-    return value
-
-
-def _nonnegative_int(env: Mapping[str, str], name: str, default: int) -> int:
-    raw = env.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        raise ChatWorkerConfigurationError(
-            f"environment variable must be an integer: {name}"
-        ) from None
-    if value < 0:
-        raise ChatWorkerConfigurationError(
-            f"environment variable must not be negative: {name}"
         )
     return value
 
@@ -182,15 +156,7 @@ def build_chat_worker(
 def _openai_config(env: Mapping[str, str] | None) -> OpenAIConfig:
     """Use the shared OpenAIConfig while keeping composition tests injectable."""
 
-    if env is None:
-        return OpenAIConfig.from_env()
-    return OpenAIConfig(
-        api_key=_required(env, "OPENAI_API_KEY"),
-        llm_model=_required(env, "OPENAI_LLM_MODEL"),
-        embedding_model=_required(env, "OPENAI_EMBEDDING_MODEL"),
-        timeout_seconds=_positive_float(env, "OPENAI_TIMEOUT_SECONDS", 60.0),
-        max_repairs=_nonnegative_int(env, "OPENAI_MAX_REPAIRS", 1),
-    )
+    return OpenAIConfig.from_env(env)
 
 
 def run_chat_worker(

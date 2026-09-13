@@ -220,6 +220,27 @@ def build_settings(
             _optional(provider, "OPENAI_LLM_MODEL", "gpt-5.6-luna", label=provider_label),
         ),
         (
+            "OPENAI_REQUEST_PROFILE_MODEL",
+            _optional(
+                provider,
+                "OPENAI_REQUEST_PROFILE_MODEL",
+                "gpt-5.6-terra",
+                label=provider_label,
+            ),
+        ),
+        (
+            "OPENAI_FIT_MODEL",
+            _optional(provider, "OPENAI_FIT_MODEL", "", label=provider_label),
+        ),
+        (
+            "OPENAI_SIM_MODEL",
+            _optional(provider, "OPENAI_SIM_MODEL", "", label=provider_label),
+        ),
+        (
+            "OPENAI_CHAT_MODEL",
+            _optional(provider, "OPENAI_CHAT_MODEL", "", label=provider_label),
+        ),
+        (
             "OPENAI_EMBEDDING_MODEL",
             _optional(
                 provider,

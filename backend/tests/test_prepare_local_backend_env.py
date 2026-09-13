@@ -76,6 +76,7 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
     assert settings["SUPABASE_SECRET_KEY"] == ""
     assert settings["OPENAI_API_KEY"] == "openai-test-secret"
     assert settings["OPENAI_LLM_MODEL"] == "test-luna"
+    assert settings["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
     assert settings["PREREVIEW_OFFLINE_MODE"] == "false"
     assert settings["PREREVIEW_API_BIND_ADDRESS"] == "127.0.0.1"
     assert "http://192.168.0.67:3000" in settings[

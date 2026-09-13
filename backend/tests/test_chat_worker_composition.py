@@ -65,6 +65,14 @@ def test_build_chat_worker_uses_dedicated_chat_repository_and_llm_profile() -> N
     assert isinstance(composition.repository, PostgresChatJobRepository)
     assert isinstance(composition.handler, ResultGroundedChatHandler)
     assert composition.settings.lease_seconds == 120
+    assert composition.handler._llm._model_profiles == {"chat": "configured-llm"}  # type: ignore[attr-defined]
     rendered = repr(composition.repository) + repr(composition.handler)
     assert "never-print" not in rendered
 
+
+def test_build_chat_worker_uses_chat_model_override_without_changing_fallback() -> None:
+    environment = _environment() | {"OPENAI_CHAT_MODEL": "configured-chat"}
+
+    composition = build_chat_worker(environment)
+
+    assert composition.handler._llm._model_profiles == {"chat": "configured-chat"}  # type: ignore[attr-defined]

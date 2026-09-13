@@ -280,6 +280,28 @@ def test_openai_config_keeps_model_ids_in_environment_configuration(monkeypatch:
     }
 
 
+def test_openai_config_uses_stage_model_overrides_without_changing_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv("OPENAI_LLM_MODEL", "configured-luna")
+    monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "configured-embedding")
+    monkeypatch.setenv("OPENAI_REQUEST_PROFILE_MODEL", "configured-terra")
+    monkeypatch.setenv("OPENAI_FIT_MODEL", "configured-fit")
+    monkeypatch.setenv("OPENAI_SIM_MODEL", "configured-sim")
+    monkeypatch.setenv("OPENAI_CHAT_MODEL", "configured-chat")
+
+    config = OpenAIConfig.from_env()
+
+    assert config.llm_model_profiles("request_profile", "fit", "sim", "chat", "other") == {
+        "request_profile": "configured-terra",
+        "fit": "configured-fit",
+        "sim": "configured-sim",
+        "chat": "configured-chat",
+        "other": "configured-luna",
+    }
+
+
 def test_openai_adapters_offline_happy_path_and_schema_failure() -> None:
     chat = _FakeChatCompletions('{"value":"grounded"}')
     llm = OpenAILLMClient(

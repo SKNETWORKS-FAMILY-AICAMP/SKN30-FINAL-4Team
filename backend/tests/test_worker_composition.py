@@ -123,6 +123,22 @@ def test_build_worker_connects_only_trusted_server_adapters(
     assert "never-print" not in rendered
 
 
+def test_build_worker_uses_request_profile_override_without_changing_fit_or_sim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _environment(monkeypatch)
+    monkeypatch.setenv("OPENAI_REQUEST_PROFILE_MODEL", "configured-terra")
+
+    composition = build_worker()
+
+    assert composition.handler._producer._model_id == "configured-terra"  # type: ignore[attr-defined]
+    assert composition.handler._producer._llm._model_profiles == {  # type: ignore[attr-defined]
+        "request_profile": "configured-terra",
+        "fit": "configured-llm",
+        "sim": "configured-llm",
+    }
+
+
 def test_debug_mode_never_enables_provider_or_transport_request_logging(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

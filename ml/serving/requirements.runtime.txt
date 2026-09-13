@@ -1,0 +1,8 @@
+# Operator runtime dependency closure.  Keep requirements.txt unchanged: its
+# exact bytes are part of Model 1's registered d440... runtime manifest.
+-r requirements.txt
+
+# Pandas needs an explicit Parquet engine for Model 2 bundle inputs and Model 3
+# reference cohorts.  Keeping this overlay out of requirements.txt preserves
+# the already-registered Model 1 manifest identity.
+pyarrow==25.0.1

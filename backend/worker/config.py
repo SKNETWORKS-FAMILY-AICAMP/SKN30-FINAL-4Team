@@ -4,6 +4,7 @@
 비밀값에 기본값을 두지 않는다: 없으면 변수 이름을 밝히고 실패한다.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import math
 import os
@@ -13,8 +14,9 @@ class MissingConfigError(RuntimeError):
     pass
 
 
-def _required(name: str) -> str:
-    value = os.environ.get(name)
+def _required(name: str, env: Mapping[str, str] | None = None) -> str:
+    values = os.environ if env is None else env
+    value = values.get(name)
     if value is None or not value.strip():
         raise MissingConfigError(f"required environment variable is not set: {name}")
     return value.strip()
@@ -50,6 +52,14 @@ def _float(name: str, default: float) -> float:
     return value
 
 
+def _optional(name: str, env: Mapping[str, str] | None = None) -> str | None:
+    values = os.environ if env is None else env
+    value = values.get(name)
+    if value is None or not value.strip():
+        return None
+    return value.strip()
+
+
 @dataclass(frozen=True, slots=True)
 class VllmConfig:
     base_url: str
@@ -83,28 +93,85 @@ class OpenAIConfig:
     api_key: str
     llm_model: str
     embedding_model: str
+    request_profile_model: str | None = None
+    fit_model: str | None = None
+    sim_model: str | None = None
+    chat_model: str | None = None
     timeout_seconds: float = 60.0
     max_repairs: int = 1
 
     @classmethod
-    def from_env(cls) -> "OpenAIConfig":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "OpenAIConfig":
         return cls(
-            api_key=_required("OPENAI_API_KEY"),
-            llm_model=_required("OPENAI_LLM_MODEL"),
-            embedding_model=_required("OPENAI_EMBEDDING_MODEL"),
-            timeout_seconds=_float("OPENAI_TIMEOUT_SECONDS", 60.0),
-            max_repairs=_int("OPENAI_MAX_REPAIRS", 1),
+            api_key=_required("OPENAI_API_KEY", env),
+            llm_model=_required("OPENAI_LLM_MODEL", env),
+            embedding_model=_required("OPENAI_EMBEDDING_MODEL", env),
+            request_profile_model=_optional("OPENAI_REQUEST_PROFILE_MODEL", env),
+            fit_model=_optional("OPENAI_FIT_MODEL", env),
+            sim_model=_optional("OPENAI_SIM_MODEL", env),
+            chat_model=_optional("OPENAI_CHAT_MODEL", env),
+            timeout_seconds=_float_from_env("OPENAI_TIMEOUT_SECONDS", 60.0, env),
+            max_repairs=_int_from_env("OPENAI_MAX_REPAIRS", 1, env),
         )
 
     def llm_model_profiles(self, *names: str) -> dict[str, str]:
-        """Map selected stage profile names to the configured model ID.
+        """Map selected stage profile names to an override or common fallback.
 
-        This is a deliberate deployment helper, not a hardcoded model policy.
-        Callers with several models can pass their own mapping directly to the
-        adapter instead.
+        ``OPENAI_LLM_MODEL`` remains the fallback for every stage.  The four
+        named worker stages may each select a different deployment-owned model
+        ID without changing callers that use the fallback.
         """
 
         requested = names or ("default",)
         if any(not name.strip() for name in requested):
             raise ValueError("OpenAI model profile names must not be blank")
-        return {name: self.llm_model for name in requested}
+        return {name: self.llm_model_for(name) for name in requested}
+
+    def llm_model_for(self, name: str) -> str:
+        """Return the resolved model ID for one named LLM stage."""
+
+        if not name.strip():
+            raise ValueError("OpenAI model profile names must not be blank")
+        overrides = {
+            "request_profile": self.request_profile_model,
+            "fit": self.fit_model,
+            "sim": self.sim_model,
+            "chat": self.chat_model,
+        }
+        return overrides.get(name) or self.llm_model
+
+
+def _int_from_env(name: str, default: int, env: Mapping[str, str] | None) -> int:
+    if env is None:
+        return _int(name, default)
+    raw = env.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise MissingConfigError(
+            f"environment variable must be an integer: {name}"
+        ) from None
+
+
+def _float_from_env(
+    name: str, default: float, env: Mapping[str, str] | None
+) -> float:
+    if env is None:
+        return _float(name, default)
+    raw = env.get(name)
+    if raw is None or not raw.strip():
+        value = default
+    else:
+        try:
+            value = float(raw)
+        except ValueError:
+            raise MissingConfigError(
+                f"environment variable must be a number: {name}"
+            ) from None
+    if not math.isfinite(value) or value <= 0:
+        raise MissingConfigError(
+            f"environment variable must be a finite positive number: {name}"
+        )
+    return value
