@@ -68,7 +68,7 @@ __all__ = [
 _STAGE = "analyze_fit"
 
 FIT_RULESET_VERSION = "fit-rules-v0.2"
-FIT_PROMPT_VERSION = "fit-relations-v0.2"
+FIT_PROMPT_VERSION = "fit-relations-v0.3"
 
 
 # ------------------------------------------------------------ 입력 경로표
@@ -120,15 +120,18 @@ _PROGRAM_LEVEL_ORDER = {
 
 # 좌측이 목적 의미 축에서 오는 관계와, 그 관계가 요구하는 축.
 _PURPOSE_AXIS_OF = {
-    FitRelationId.FIT_1: CplAxisCode.TARGET_CONDITION,
-    FitRelationId.FIT_2: CplAxisCode.DIRECTION,
-    FitRelationId.FIT_3: CplAxisCode.DIRECTION,
+    FitRelationId.FIT_1: (CplAxisCode.TARGET_CONDITION,),
+    FitRelationId.FIT_2: (
+        CplAxisCode.SPECIFIC_OBJECTIVE,
+        CplAxisCode.DIRECTION,
+    ),
+    FitRelationId.FIT_3: (CplAxisCode.DIRECTION,),
 }
 
 # 관계별 한 줄 질문. LLM payload 에만 쓰이고 결과에는 실리지 않는다.
 _RELATION_QUESTION = {
     FitRelationId.FIT_1: "목적이 말하는 대상 조건과 실제 지원 대상이 같은 대상을 가리키는가.",
-    FitRelationId.FIT_2: "목적이 말하는 방향과 지원 활동·수단·품목이 같은 방향인가.",
+    FitRelationId.FIT_2: "목적이 말하는 구체적 목적·방향과 지원 활동·수단·품목이 연결되는가.",
     FitRelationId.FIT_3: "목적이 말하는 방향과 기대효과·성과지표가 같은 방향인가.",
     FitRelationId.FIT_4: (
         "상위사업과 하위사업이 명시된 parent-child 계층 관계에서, "
@@ -680,8 +683,12 @@ def _generate(
     )
 
 
-def _purpose_side(cpl: CplResult, axis: CplAxisCode) -> FitSide:
-    """그 축이 붙은 목적 근거만 좌측으로 만든다.
+def _purpose_side(
+    cpl: CplResult,
+    axis: CplAxisCode,
+    *additional_axes: CplAxisCode,
+) -> FitSide:
+    """그 축들이 붙은 목적 근거만 좌측으로 만든다.
 
     축은 CPL 이 확정한다. 여기서 다시 분류하지 않는다 — 값을 확정하는 곳과
     축을 확정하는 곳이 다르면 화면과 판정이 갈라진다. 축이 비어 있으면 좌측이
@@ -694,6 +701,8 @@ def _purpose_side(cpl: CplResult, axis: CplAxisCode) -> FitSide:
 
     # CPL 재검으로 복구한 값은 fact_id 가 없고 evidence_ref 로 접지된다.
     # 식별자가 없다는 이유로 검증된 근거를 버리지 않는다.
+    axes = (axis, *additional_axes)
+    axis_values = {axis.value for axis in axes}
     refs = [
         FitEvidenceRef(
             fact_id=identifier,
@@ -705,9 +714,12 @@ def _purpose_side(cpl: CplResult, axis: CplAxisCode) -> FitSide:
         for fact, identifier in (
             (row, _fit_fact_id(row)) for row in _facts_at(cpl, _PURPOSE_PATH)
         )
-        if fact.axis_code == axis.value and identifier
+        if fact.axis_code in axis_values and identifier
     ]
-    return FitSide(field_names=[f"purpose_goal[{axis.value}]"], facts=refs)
+    return FitSide(
+        field_names=[f"purpose_goal[{axis.value}]" for axis in axes],
+        facts=refs,
+    )
 
 
 # ------------------------------------------------------------ 의미 비교 호출
@@ -964,8 +976,8 @@ def analyze_fit(
     # 목적 의미 축 보완은 문서당 한 번이다. 우측 근거가 하나도 없으면 세
     # 관계 모두 어차피 게이트에서 걸리므로 호출하지 않는다.
     # 축은 CPL 이 확정해 왔다. FIT 은 고르기만 한다.
-    for relation_id, axis in _PURPOSE_AXIS_OF.items():
-        sides[relation_id] = (_purpose_side(cpl, axis), sides[relation_id][1])
+    for relation_id, axes in _PURPOSE_AXIS_OF.items():
+        sides[relation_id] = (_purpose_side(cpl, *axes), sides[relation_id][1])
 
     pending: dict[FitRelationId, tuple[FitSide, FitSide]] = {}
     for relation_id, (left, right) in sides.items():
