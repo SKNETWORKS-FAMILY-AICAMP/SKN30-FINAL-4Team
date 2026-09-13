@@ -33,13 +33,25 @@ Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/prom
 - 공식 `supabase/postgres:17.6.1.169` 임시 DB에서 migration `01`~`32`의 fresh apply와
   전체 replay, 기존 committed migration 31 상태에서 31·32 upgrade/replay를 검증했다.
   실제 repository SQL과 두 세션 classification/embedding invalidation의 `40001` 전체
-  transaction retry도 검증했다. 다만 Existing 100건 Model 1 실제 추론 backfill,
-  v2 재임베딩, 실제 ML/채팅 OpenAI E2E는 아직 실행하지 않았다. 아래 2026-09-10 결과는
-  통합 전 번호 체계와 로컬 runtime에 대한 역사적 검증 기록이다.
-- 기본 backend 회귀 테스트 289건과 Supabase/self-hosted/Existing Model 1 중심 계약 테스트
-  85건이 통과했다. 생성된 OpenAPI는 `origin/develop`과 byte-canonical SHA-256
+  transaction retry도 검증했다. Existing 100건 Model 1 실제 추론 backfill은 아직
+  실행하지 않았다. 로컬 DB의 v2 재임베딩은 100건 × 4 scope(400행)를 완료해
+  `approved-facts-components-role-aware-v2` 한 개가 활성 상태이고, 이전 설정의 400행은
+  비활성 상태로 보존돼 있다. 아래 2026-09-10 결과는 통합 전 번호 체계와 로컬 runtime에
+  대한 역사적 검증 기록이다.
+- 전체 backend 회귀 테스트 `327 passed`와 별도 Supabase migration/self-hosted 계약 테스트
+  `22 passed`가 통과했다. 생성된 OpenAPI는 `origin/develop`과 byte-canonical SHA-256
   `9461f69719b391ffdbec4d5f4f56011fa31079627f29ffc73a9cacccffe452b5`로 동일하다.
   Python compile, shell syntax, Compose config와 `git diff --check`도 통과했다.
+- 2026-09-13 합성 HWPX live E2E는 실제 DB와 OpenAI를 통해 완료했다.
+  - run `5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
+    `2d02ae97-85f0-4678-a9fe-e006ab389bd1`
+  - Request Profile은 Terra, FIT/SIM과 결과 근거 기반 채팅은 Luna를 사용했다.
+    analysis worker와 chat worker는 각각 한 번의 attempt로 완료했고, 저장된 ML 1/2/3
+    상태는 모두 `OK`였다.
+  - CPL 13, FIT 7, SIM 후보 1, evidence 77, chat reference 13을 확인했다. 이 검증은
+    `samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx`
+    (SHA-256 `0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb`)
+    한 건의 범위이며 실제 Hancom 작성 HWP/HWPX의 완전 재검증을 뜻하지 않는다.
 
 ## 완료된 기반
 
@@ -88,10 +100,10 @@ Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/prom
 현재 통합 번호로는 각각 28/29/30에 해당한다. 당시 실제 DB는 Model 결과·채팅 queue·Existing
 Model 1 분류 migration을 포함하지 않았다.
 
-- 전체 backend 회귀 테스트: `226 passed`
-- Request Profile vendor 계약 테스트: `58 passed`
-- Supabase migration·self-hosted 설치/경로 안전성 계약 테스트: `17 passed`
-- 합성 HWPX 5건 offline parser/preflight: `5/5 passed`
+- 전체 backend 회귀 테스트 통과
+- Request Profile vendor 계약 테스트 통과
+- Supabase migration·self-hosted 설치/경로 안전성 계약 테스트 통과
+- 합성 HWPX offline parser/preflight 통과
   - ZIP·manifest SHA-256·Common IR provenance·본문 보존
   - 각 2 Common IR blocks, `detail_program_new` 판정
 - 실제 Luna Request Profile 생성: 성공, exact candidate-pack span `6/6`
@@ -158,7 +170,7 @@ Model 1 분류 migration을 포함하지 않았다.
   - v2 비용 없는 dry-run: Profile 100건, 4 scope 400입력, 총 64,973 tokens,
     scope 최대 2,906 tokens로 모두 8,192 상한 안에 있음
 - Docker 이미지 build: 성공. 최신 이미지의 `--network none` 컨테이너에서 전체 회귀
-  테스트 210건과 합성 HWPX parser 5/5 성공
+  테스트와 합성 HWPX parser 5/5 성공
   (`rhwp-python` native runtime에 `libexpat1`, `libfreetype6` 필요)
 - `cl100k_base` tokenizer cache를 이미지에 포함해 retrieval token 계산이 런타임
   인터넷 연결에 의존하지 않음
@@ -182,25 +194,21 @@ migration 25 최종 적용 직전의 최신 백업은
 `265d0c3d5a060c2ed717139ed7e6f2459572f71e9efbe50d0997eb11936b48db`다.
 DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 
-PDF/OCR은 현재 요청 처리 범위에서 제외한다. 채팅은 별도 queue/API/worker와
-결과 근거 제한 로직까지 구현했으며, 현재 번호의 migration 27 적용 후 실제 LLM E2E를
-확인해야 한다.
-PDF 생성은 데이터 모델은 있지만 별도 queue/API 구현 전이라 E2E 완료 범위가 아니다.
+채팅은 migration 27의 별도 queue, owner-scoped API, 결과 근거 제한 handler와 worker로
+구현되어 있으며, 위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
+확인했다. PDF/OCR은 현재 요청 처리 범위에서 제외하며, PDF 생성도 E2E 완료 범위가 아니다.
 
-현재 이 체크아웃에는 mode `600`인 `backend/.env`가 준비되어 있고 API·worker가 online으로
-실행 중이다. 새 checkout/서버에서는 Supabase migration, Existing KB bootstrap과
+위 로컬 검증 환경에는 mode `600`인 `backend/.env`와 online API·worker가 준비되어 있었다.
+환경 파일과 실행 상태는 Git 산출물이 아니다. 새 checkout/서버에서는 Supabase migration, Existing KB bootstrap과
 Supabase/Auth·PostgreSQL·OpenAI server-only 환경 설정을 먼저 준비해야 한다. 환경 파일은
 Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)와
 [Existing KB bootstrap 가이드](supabase/EXISTING_KB_BOOTSTRAP.md)를 따라 새로 만든다.
 
 ## 남은 작업
 
-- Existing Profile 100건을 `approved-facts-components-role-aware-v2`로 재임베딩하고
-  scope별 100건(총 400행) 및 live retrieval을 다시 검증
 - migration 31·32를 적용한 뒤 Existing current Profile 100건의 Model 1 분류 backfill과
   active-configuration gate를 검증
-- 통합된 Model 1/2/3 결과 저장과 채팅 worker를 실제 DB/LLM으로 각각 E2E 검증
-- 수정된 Request Profile v0.1.3으로 실제 Hancom HWP live E2E를 재실행해 사업명,
+- 수정된 Request Profile v0.1.3으로 실제 Hancom HWP와 HWPX live E2E를 완전 재검증해 사업명,
   사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검
 - password recovery link를 HttpOnly session cookie로 교환하는 callback/PKCE 흐름
 - reverse proxy/ASGI 경계의 multipart 전체 body·part 수 제한과 streaming upload
@@ -256,10 +264,11 @@ cd backend
 .venv/bin/python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
 ```
 
-live E2E 스크립트는 자신이 생성한 동일 run만 점유하고 DB queue 계약과
-같은 최대 두 번의 attempt를 수행한다. 첫 시도가 retryable failure로
-`queued`에 복귀하면 두 번째 시도까지 이어가고, 성공·최종 실패·시도
-소진 중 하나로 유한하게 종료한다. 자세한 운영 주의사항은
+live E2E 스크립트는 시작 전 analysis/chat queue가 비어 있음을 확인한 뒤 자신이 생성한
+analysis run과 assistant message만 점유한다. 두 worker는 DB queue 계약과 같은 최대 두 번의
+attempt를 수행하며, 결과의 ML 1/2/3 `OK`, 공개 ML projection, completed chat 내용과
+case-scope evidence reference를 확인한다. 첫 시도가 retryable failure로 복귀하면 두 번째
+시도까지 이어가고, 성공·최종 실패·시도 소진 중 하나로 유한하게 종료한다. 자세한 운영 주의사항은
 [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 따른다.
 
 ## online FastAPI 설정
@@ -276,6 +285,8 @@ SUPABASE_ANON_KEY=<server-only>
 SUPABASE_SECRET_KEY=<server-only>
 DATABASE_URL=<server-only>
 OPENAI_API_KEY=<worker-only>
+OPENAI_LLM_MODEL=gpt-5.6-luna
+OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 ```
 
 FastAPI는 결과 조회에 DB URL, 업로드에 service/secret key를 사용한다. worker는

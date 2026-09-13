@@ -27,6 +27,7 @@ dispatch/callback, 외부 GPU worker, SSE/Realtime 상태 push. `backend/supabas
 | FastAPI | Supabase Auth proxy, Origin 검증, 업로드, 소유권 확인, 결과 read API |
 | Supabase | Auth, Postgres/pgvector, private Storage |
 | analysis worker | DB queue claim, HWP/HWPX → Common IR → Request Profile, 임베딩/후보 검색, OpenAI 비교, 결과 materialisation |
+| chat worker | 결과 근거 기반 답변의 별도 queue claim, LLM 답변·reference fenced 저장 |
 | PostgreSQL | durable queue, attempt audit, fencing, 결과/lineage/벡터 데이터 |
 
 브라우저에는 Supabase URL/key, service/secret key, DB URL, OpenAI key를 전달하지
@@ -54,6 +55,7 @@ Cookie 상태 변경 요청은 허용 origin 목록으로 검사한다. CORS도 
 | `POST /analysis-runs` | `Idempotency-Key` → DB `uploading` 예약 → Storage → artifact+`queued` 원자 확정 |
 | `GET /analysis-runs/{id}` | 소유자 상태 polling |
 | 결과/후보/세션/이력 GET | `api` views/RPC를 서버 PostgreSQL 연결로 owner-scoped 조회 |
+| `POST /analysis-cases/{id}/messages`, `GET .../messages`, `POST .../messages/{assistant_id}/retry` | 소유자 확인 후 assistant turn 생성·조회·재시도; chat worker가 별도 queue에서 답변/reference 완료 |
 
 분석 run은 `queued`, `running`, `succeeded`, `failed` 등의 작은 공개 상태만 가진다.
 worker의 claim/lease/error detail은 공개 run이 아니라 dispatch·operations 영역에 둔다.
@@ -112,6 +114,7 @@ Request Profile의 관계형 projection은 trusted worker가
 | `DATABASE_URL` | FastAPI repository와 same-server worker |
 | `OPENAI_API_KEY`, 모델 설정 | worker |
 | `PREREVIEW_WORKER_*` | worker polling/lease 설정 |
+| `PREREVIEW_CHAT_WORKER_*` | chat worker polling/lease 설정 |
 
 실제 값은 서버 `.env` 또는 secret store에만 둔다. 로그, Git, 브라우저에 출력하지
 않는다.
@@ -122,12 +125,21 @@ Request Profile의 관계형 projection은 trusted worker가
 runtime, Supabase private Storage, OpenAI LLM/embedding adapter,
 HWP/HWPX → Common IR → Request Profile → retrieval/CPL/FIT/SIM handler를 조립한다.
 Common IR/Profile artifact·lineage·Request Profile projection과 fenced 결과 저장도 이
-경로에 포함된다.
+경로에 포함된다. Model 1/2/3 결과는 analysis result와 함께 저장되며, 공개 결과에는
+안전한 projection만 노출된다.
 
-아직 request 분석과 별도로 남은 범위는 채팅/PDF job type·공개 API, worker
-readiness의 queue lag/heartbeat 관측, `ops.model_invocation` 호출 감사 기록,
-request-temp 및 만료 결과 cleanup이다. 이들은 현재 `analysis_run` worker 계약을
-확장하기 전에 별도 계약과 migration으로 정의한다.
+채팅은 request 분석과 분리된 queue/API/worker로 구현되어 있다. migration 27은
+assistant message의 lease/fencing과 근거 reference 저장을 소유하고,
+`worker.chat_main`이 결과 근거 기반 handler를 조립한다. 2026-09-13 합성 HWPX live E2E에서
+run `5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
+`2d02ae97-85f0-4678-a9fe-e006ab389bd1`가 analysis/chat worker 각각 한 번의 attempt로
+완료했다. Request Profile은 Terra, FIT/SIM과 채팅은 Luna였고, ML 1/2/3은 모두 `OK`,
+CPL 13/FIT 7/SIM 후보 1/evidence 77/chat reference 13이었다.
+
+이는 합성 HWPX 한 건의 E2E 결과다. 실제 Hancom 작성 HWP/HWPX의 완전 재검증과 Existing
+Model 1 backfill은 아직 완료되지 않았다. PDF/OCR 및 PDF 생성도 현재 구현·E2E 완료 범위가
+아니다. 추가 운영 범위는 worker readiness의 queue lag/heartbeat 관측,
+`ops.model_invocation` 호출 감사 기록, request-temp 및 만료 결과 cleanup이다.
 
 공개 API 상세는 [0.FASTAPI_FRONTEND_API_SPEC.md](0.FASTAPI_FRONTEND_API_SPEC.md),
 worker payload는 [WORKER_RESULT_PERSISTENCE_CONTRACT.md](WORKER_RESULT_PERSISTENCE_CONTRACT.md)를

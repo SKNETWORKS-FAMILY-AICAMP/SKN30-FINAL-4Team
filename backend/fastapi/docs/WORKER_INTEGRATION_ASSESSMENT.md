@@ -1,6 +1,6 @@
 # Worker 연동 구현 현황
 
-마지막 확인일: 2026-09-10
+마지막 확인일: 2026-09-13
 적용 경로: `backend-rebuild`의 FastAPI + same-server polling worker
 
 ## 결론
@@ -17,8 +17,9 @@ Browser
       claim/heartbeat (processing_run_pk fence)
       → HWP/HWPX → Common IR → Request Profile
       → OpenAI embeddings + pgvector Existing retrieval
-      → CPL/FIT/SIM → fenced result materialisation
+      → CPL/FIT/SIM + ML 1/2/3 → fenced result materialisation
   → FastAPI result read
+  → FastAPI conversation API → PostgreSQL chat queue → result-grounded chat worker
 ```
 
 ## 현재 구현 경계
@@ -30,8 +31,10 @@ Browser
 | worker runtime | 상주 polling, SIGTERM graceful stop, 별도 DB connection heartbeat, stale fence 차단 | `worker/runtime.py`, `worker/main.py` |
 | source/profile | private Storage download/hash 확인, Common IR·Request Profile upload, source → Common IR → Profile lineage와 request projection 등록 | `worker/analysis_job.py`, `worker/postgres_analysis_store.py`, `worker/supabase_storage.py` |
 | retrieval | OpenAI `text-embedding-3-small` 1,536 dimensions, request 3축 임시 embedding, Existing persistent vector 3축 match | `worker/retrieval_inputs.py`, `worker/postgres_analysis_store.py` |
+| ML result | Model 1/2/3 adapter 결과를 analysis result와 함께 저장하고, 공개 결과에는 서버가 조립한 안전한 message만 projection | `worker/analysis_job.py`, `worker/result_payload.py`, `supabase/migrations/26_ml_result_contract.sql` |
 | result | exact Existing profile version을 포함한 CPL/FIT/SIM/evidence payload를 fenced transaction으로 저장 | `worker/result_payload.py`, `supabase/migrations/23_result_read_retention_and_candidate_evidence.sql` |
 | browser read | Cookie 소유권 확인 후 `api` view/RPC를 authenticated role로 조회 | `app/api/v1/results.py`, `app/infrastructure/postgres_results.py` |
+| chat | message create/list/retry API, 별도 lease/fencing queue, 결과 근거 기반 LLM answer와 reference 저장 | `app/api/v1/conversations.py`, `worker/chat_main.py`, `worker/postgres_chat_repository.py`, `supabase/migrations/27_chat_worker_queue.sql` |
 
 `ops.processing_run`은 attempt별 이력·fencing token이고, 공개 상태는
 `workspace.analysis_run`, 점유/lease/source 위치는 `workspace.analysis_run_dispatch`다.
@@ -40,17 +43,21 @@ worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table
 
 ## 검증 완료 범위
 
-- backend 회귀: 210 tests
+- 전체 backend 회귀 테스트 통과
 - 합성 HWPX 5건: ZIP/manifest SHA-256/Common IR provenance/본문 보존/request type preflight
   모두 통과
-- 실제 1건: Supabase Auth → FastAPI upload → queue → HWPX/Common IR/Request Profile →
-  OpenAI embedding/pgvector → CPL/FIT/SIM → fenced result → FastAPI polling/read 성공
-- 실제 Hancom HWP 1건: 47 Common IR blocks(단락 39, 표 8) → Request Profile →
-  CPL 13/FIT 7/SIM 후보 1/evidence 63 → fenced result와 FastAPI read 성공
-- Docker build 및 network 없는 container의 210개 회귀·합성 parser 실행 성공
+- 2026-09-13 합성 HWPX live E2E: run `5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
+  `2d02ae97-85f0-4678-a9fe-e006ab389bd1`에서 Supabase Auth → FastAPI upload → analysis
+  queue → HWPX/Common IR/Request Profile(Terra) → ML 1/2/3 모두 `OK` → embedding/pgvector
+  → CPL 13/FIT 7/SIM 후보 1/evidence 77 → fenced result/FastAPI read → chat(Luna) 완료와
+  reference 13 저장을 확인했다. analysis worker와 chat worker는 각각 한 번의 attempt로
+  완료했다.
+- Docker build 및 network 없는 container의 전체 회귀·합성 parser 실행 성공
 
-합성 HWPX는 양식을 흉내 낸 파일로 현재 파서에서 각 2개 텍스트 블록으로 평탄화된다.
-추가 실제 HWPX corpus와 malformed/timeout 문서는 아직 별도 E2E 범위다.
+기존 합성 fixture 5건은 양식을 흉내 낸 파일이며 당시 각 2개 텍스트 블록으로
+평탄화됐다. 위 live E2E의 `mockup_08`은 별도의 CPL 전항목 합성 fixture이고 Common IR
+6개 block으로 파싱됐다. 이 결과는 합성 HWPX 한 건의 검증이다. 실제 Hancom 작성 HWP/HWPX의 완전 재검증과
+malformed/timeout 문서 E2E는 아직 별도 범위다.
 
 ## 사용하면 안 되는 레거시 경로
 
@@ -70,4 +77,4 @@ worker가 브라우저 access token·Cookie·anon key를 받거나 DB base table
 - worker heartbeat/queue lag를 포함한 readiness
 - `ops.model_invocation` 단위 OpenAI 호출 감사
 - 일부 purpose/target/support 축이 비었을 때 fail 대신 insufficient 결과로 처리할 정책
-- PDF/OCR, PDF 보고서, 채팅: 별도 queue와 공개 API를 정의한 뒤 추가
+- PDF/OCR 및 PDF 보고서 생성: 별도 구현·E2E 검증 필요

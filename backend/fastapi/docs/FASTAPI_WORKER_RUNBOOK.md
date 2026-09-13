@@ -5,10 +5,11 @@
 이 날짜의 통합 checkout에서는 공식 `supabase/postgres:17.6.1.169` 임시 DB에 migration
 `01`~`32` fresh apply·전체 replay와 기존 committed migration 31 상태의 upgrade/replay를
 검증했다. 실제 repository SQL과 두 세션 `40001` lock retry도 통과했다. Existing 100건
-Model 1 실제 추론 backfill, v2 재임베딩, ML/채팅 OpenAI live E2E는 아직 실행하지 않았다.
-기본 backend 회귀 테스트 289건과 Supabase/self-hosted/Existing Model 1 중심 계약 테스트
-85건이 통과했으며, 생성 OpenAPI SHA-256은 `origin/develop`과 동일한
-`9461f69719b391ffdbec4d5f4f56011fa31079627f29ffc73a9cacccffe452b5`다.
+Model 1 실제 추론 backfill은 아직 실행하지 않았다. 로컬 DB의 v2 임베딩은 100건 × 4
+scope(활성 400행)로 준비됐고, 합성 HWPX를 사용한 OpenAI live E2E에서 Request Profile
+구조화(Terra), FIT·SIM·Model 1/2/3 결과 저장과 결과 근거 채팅(Luna)을 완주했다.
+전체 backend 회귀 테스트 `327 passed`와 별도 Supabase migration/self-hosted 계약 테스트
+`22 passed`가 통과했으며, 생성 OpenAPI 계약도 별도로 검증한다.
 
 이 문서는 self-hosted Supabase가 준비된 뒤 FastAPI와 same-server polling worker를
 설정하고 운영하는 방법을 설명한다. Supabase 자체 설치·영속 볼륨·migration 절차는
@@ -44,7 +45,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
 - `backend/supabase/migrations/01`부터 `32`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
-- Existing Profile 100건과 active Model 1 분류, v2 `retrieval.existing_profile_embedding`이 준비되어 있다.
+- Existing Profile 100건과 active v2 `retrieval.existing_profile_embedding` 100건 × 4 scope가 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
 - 서버에서 OpenAI API에 HTTPS로 접근할 수 있다.
 
@@ -59,15 +60,18 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 2. migration 01~32를 적용한다.
 3. server-only `backend/.env`와 Model 1 artifact/child Python을 준비한다.
 4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
-5. Existing current Profile 100건에 Model 1을 dry-run 후 backfill하고 분류 설정을 활성화한다.
+5. Existing 분류 결과를 쓰는 기능까지 검증할 때는 current Profile 100건에 Model 1을
+   dry-run 후 backfill하고 분류 설정을 활성화한다.
 6. v2 embedding을 dry-run 후 100 × 4 scope로 backfill·활성화한다.
 7. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
 8. FastAPI `api`, analysis `worker`, `chat-worker`를 기동한다.
 9. Swagger/live E2E에서 `sign-in` → `me` → HWP/HWPX upload → 상태 poll → 결과/채팅 순서로 확인한다.
 
 전체 분석을 안 하고 로그인·`/me`만 확인할 때는 Existing import·Model 1·
-embedding을 생략할 수 있다. 전체 bootstrap에서는 `Existing import → Model 1
-분류 → v2 embedding → Auth/E2E`의 순서를 사용한다.
+embedding을 생략할 수 있다. 현재 분석 E2E에는 Existing import와 v2 embedding이
+필수지만 Existing Model 1 분류는 아직 조회 경로에 연결되지 않아 필수 조건이 아니다.
+분류 소비 기능까지 포함한 전체 bootstrap에서는 `Existing import → Model 1 분류 →
+v2 embedding → Auth/E2E`의 순서를 사용한다.
 
 Supabase 설치·migration 및 로컬 Auth 준비의 반대쪽 안내는
 [Supabase 운영 안내](../../supabase/README.md)에 있다.
@@ -218,7 +222,14 @@ SUPABASE_DB_URL=
 
 # worker 전용 OpenAI
 OPENAI_API_KEY=<openai-api-key>
+# 모든 LLM 단계의 fallback. 단계별 override가 비어 있으면 이 모델을 사용한다.
 OPENAI_LLM_MODEL=gpt-5.6-luna
+# Request Profile 구조화는 별도 모델을 권장한다.
+OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
+# 아래 단계별 override는 필요할 때만 설정한다.
+OPENAI_FIT_MODEL=
+OPENAI_SIM_MODEL=
+OPENAI_CHAT_MODEL=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_TIMEOUT_SECONDS=60
 OPENAI_MAX_REPAIRS=1
@@ -253,12 +264,16 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY` | O | O | 필수 | private Storage용 서버 비밀값 |
 | `DATABASE_URL` | O | O | 필수 | FastAPI repository와 worker queue/result 저장 |
 | `OPENAI_API_KEY` | - | O | 분석 시 필수 | 구조화·embedding·비교 호출 |
-| `OPENAI_LLM_MODEL` | - | O | 선택(기본값 있음) | Request Profile·FIT·SIM 모델 |
+| `OPENAI_LLM_MODEL` | - | O | 선택(기본값 있음) | 모든 LLM 단계의 fallback 모델 |
+| `OPENAI_REQUEST_PROFILE_MODEL` | - | O | 선택 | Request Profile 구조화 모델. 비우면 `OPENAI_LLM_MODEL` |
+| `OPENAI_FIT_MODEL` | - | O | 선택 | FIT 모델. 비우면 `OPENAI_LLM_MODEL` |
+| `OPENAI_SIM_MODEL` | - | O | 선택 | SIM 모델. 비우면 `OPENAI_LLM_MODEL` |
+| `OPENAI_CHAT_MODEL` | - | O (chat-worker) | 선택 | 결과 근거 채팅 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_EMBEDDING_MODEL` | - | O | 선택(기본값 있음) | DB active embedding 설정과 일치해야 함 |
 | `PREREVIEW_FREETYPE_LIB` | - | O | 환경별 선택 | `rhwp` parser subprocess에만 주입 |
 | `PREREVIEW_ML_ROOT` | - | O | ML 실행 시 필수 | 현재 checkout의 `ml/`; pipelines·model 2·3 코드/산출물 root |
 | `PREREVIEW_MODEL1_SERVING_DIR` | - | O | Model 1 실행 시 필수 | 검증된 model 1 serving 디렉터리; `inference.py`와 `model/model.safetensors` 포함 |
-| `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O | 별도 venv 사용 시 필수 | `ml/serving/requirements.txt`를 설치한 child Python |
+| `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O | 별도 venv 사용 시 필수 | `ml/serving/requirements.runtime.txt`를 설치한 child Python |
 | `PREREVIEW_ML_TIMEOUT_SECONDS` | - | O | 선택(기본 180초) | 각 ML child 호출의 hard timeout |
 
 호환 alias는 새 배포에서 가급적 사용하지 않는다. DB는 `DATABASE_URL`, anon key는
@@ -270,7 +285,7 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 ### Model 1 artifact 준비 (`serving.zip`)
 
 최신 `develop`에는 worker adapter와 `ml/pipelines/`, model 1 wrapper·tokenizer·label
-mapping이 이미 있다. `/home/paim/serving.zip`에서 추가로 필요한 것은 Git에
+mapping이 이미 있다. 기본 입력 위치인 `$HOME/serving.zip`에서 추가로 필요한 것은 Git에
 없는 `model1/model/model.safetensors`다. ZIP 전체를 checkout의 `ml/`에 풀거나
 압축 안의 Python 코드로 tracked 파일을 덮어쓰지 않는다. 현재 인수한 artifact의
 고정 digest는 다음과 같다. 다른 서버에서는 archive를 안전한 로컬 경로로 별도 전달하되
@@ -278,71 +293,38 @@ mapping이 이미 있다. `/home/paim/serving.zip`에서 추가로 필요한 것
 
 | 대상 | SHA-256 |
 |---|---|
-| `/home/paim/serving.zip` | `0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41` |
+| `$HOME/serving.zip` | `0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41` |
 | `model1/model/model.safetensors` | `8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779` |
 | Model 1 runtime manifest | `d44007342e06d7f20039d53e140e04221e8029b4cd6735dd3fbacc6864eb7912` |
 
-다음 절차는 tracked serving 코드를 Git에서 복사하고 442 MB weight 한 파일만
-Git에서 제외된 `.runtime/`에 새로 쓴다. 기존 디렉터리나 파일을 덮어쓰지
-않으며, ZIP과 weight digest를 둘 다 확인한다.
+다음 스크립트는 SHA-256이 고정된 archive에서 Model 1에 필요한 allowlist 파일만
+Git에서 제외된 `.runtime/`에 새로 쓴다. archive와 weight digest, 그리고 DB에 등록된
+Model 1 runtime manifest(`d440...`)까지 확인하며, 대상이 이미 있으면 실패한다.
+따라서 tracked checkout 파일이나 기존 runtime을 덮어쓰지 않는다. 현재 checkout의
+wrapper는 archive와 byte-identical하지 않으므로, 등록된 runtime을 재현할 때 archive의
+검증된 wrapper를 사용해야 한다.
 
 ```bash
 cd /absolute/path/to/SKN30-FINAL-4Team
-test ! -e .runtime/model1-serving
-install -d -m 700 .runtime/model1-serving/model1
-cp -a ml/serving/model1/. .runtime/model1-serving/model1/
-
-python3 - /home/paim/serving.zip \
-  .runtime/model1-serving/model1/model/model.safetensors <<'PY'
-from pathlib import Path
-import hashlib
-import shutil
-import sys
-import zipfile
-
-archive = Path(sys.argv[1])
-output = Path(sys.argv[2])
-archive_sha256 = "0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41"
-weight_sha256 = "8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779"
-
-def digest(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            value.update(chunk)
-    return value.hexdigest()
-
-if digest(archive) != archive_sha256:
-    raise SystemExit("serving.zip SHA-256 mismatch")
-output.parent.mkdir(parents=True, exist_ok=True)
-created = False
-try:
-    with zipfile.ZipFile(archive) as bundle:
-        member = bundle.getinfo("model1/model/model.safetensors")
-        with bundle.open(member) as source, output.open("xb") as target:
-            created = True
-            shutil.copyfileobj(source, target, length=1024 * 1024)
-    if digest(output) != weight_sha256:
-        output.unlink()
-        created = False
-        raise SystemExit("model.safetensors SHA-256 mismatch")
-except Exception:
-    if created and output.exists():
-        output.unlink()
-    raise
-print("model1 artifact verified")
-PY
-
-chmod -R go-rwx .runtime/model1-serving
+python3 backend/scripts/prepare_model1_runtime.py \
+  --destination .runtime/model1-serving/model1
 ```
 
-ML 의존성은 backend 부모 process와 분리한 child interpreter에 설치한다. 이
-경로도 `.runtime/`이므로 Git에 추가되지 않는다.
+기본 archive(`$HOME/serving.zip`) 외의 안전한 로컬 사본을 쓸 때만
+`--archive /safe/path/serving.zip`을 추가한다. destination의 마지막 디렉터리 이름은
+worker child 계약에 맞춰 반드시 `model1`이어야 한다. 다른 digest의 archive를
+받아들이는 옵션은 없다.
+
+ML 의존성은 backend 부모 process와 분리한 child interpreter에 설치한다. 이 경로도
+`.runtime/`이므로 Git에 추가되지 않는다. `uv`의 CPU PyTorch backend를 명시하고,
+base requirements에 `pyarrow`를 보완한 complete runtime file을 설치한다. base
+`requirements.txt` 바이트는 이미 등록된 Model 1 manifest의 일부라 수정하지 않는다.
 
 ```bash
 cd /absolute/path/to/SKN30-FINAL-4Team
-python3 -m venv .runtime/ml-venv
-.runtime/ml-venv/bin/python -m pip install -r ml/serving/requirements.txt
+uv venv .runtime/ml-venv
+uv pip install --python .runtime/ml-venv/bin/python --torch-backend cpu \
+  -r ml/serving/requirements.runtime.txt
 ```
 
 실제 문서나 비밀값 없이 model 1 child 경계를 검증한다. 성공 시 stdout은
@@ -653,10 +635,12 @@ LIMIT 20;
 
 ### Operator용 HWP/HWPX live E2E
 
-로컬 Supabase·migration 01~32·Existing KB/Model 1 분류/v2 embedding·`backend/.env`가 준비된 개발
-환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue →
-worker → polling/result read를 한 번에 검증할 수 있다. PDF는 받지 않고 HWP·HWPX만
-받는다.
+로컬 Supabase·migration 01~32·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
+환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue → analysis
+worker → 결과 조회 → cookie 인증·trusted Origin 채팅 POST → chat-worker → 메시지 GET
+polling을 한 번에 검증할 수 있다. DB에 저장된 Model 1·2·3 status가 모두 `OK`인지도
+직접 확인하므로, ML이 `UNAVAILABLE`인 채로 분석만 성공한 경우에는 E2E 성공으로 보지
+않는다. PDF는 받지 않고 HWP·HWPX만 받는다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team/backend
@@ -671,22 +655,40 @@ uv run python scripts/run_local_live_e2e.py \
 
 기본 `--backend-env`는 `backend/.env`, `--supabase-env`는 저장소의
 `.runtime/supabase-dev/.env`다. 스크립트는 임의의 confirmed Auth user를 만들고
-입력·Common IR·Request Profile·분석 결과를 검증 후에도 보존한다. 생성한 계정의
-email/password, 원문 byte, 전체 모델 출력은 터미널에 출력하지 않는다.
+입력·Common IR·Request Profile·분석 결과와 결과 근거 기반 채팅 한 turn을 검증 후에도
+보존한다. 생성한 계정의 email/password, 원문 byte, 질문/답변 본문, 전체 모델 출력은
+터미널에 출력하지 않는다. 성공 JSON에는 ID, 상태, worker outcome/attempt 수와 채팅
+근거 참조 수, Model 1·2·3의 `OK` status처럼 안전한 요약값만 담긴다. 다만 구조화·비교·
+채팅을 위해 테스트 파일에서 추출한 텍스트는 설정된 OpenAI API로 전송된다. 외부 전송이
+허용된 합성/비식별 테스트 파일만 사용한다.
 
-스크립트는 자신이 생성한 `analysis_run` 하나만 worker로 실행한다. 다른
-non-terminal run을 점유하지 않도록 claim 구간에서 보호하고, 예상과 다른 run이
-반환되면 파이프라인을 실행하지 않고 fail-closed한다. 첫 attempt가 retryable
-failure로 `queued`에 복귀하면 같은 run을 한 번 더 실행하며, DB queue
-계약과 같이 최대 두 번 후 성공·최종 실패·시도 소진 중 하나로 종료한다.
+live E2E는 `OPENAI_REQUEST_PROFILE_MODEL`을 shell 값, 이어서 `backend/.env`
+값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. `OPENAI_LLM_MODEL`은
+계속 다른 단계의 fallback(예: `gpt-5.6-luna`)으로 둘 수 있다.
+
+스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인하고, 자신이 생성한
+`analysis_run` 하나만 worker로 실행한다. 이후 경쟁으로 예상과 다른 run/message가
+반환되면 claim transaction을 rollback하고 fail-closed한다. 첫 attempt가 retryable
+failure로 queue에 복귀하면 같은 대상을 한 번 더 실행하며, DB queue 계약과 같이 최대
+두 번 후 성공·최종 실패·시도 소진 중 하나로 종료한다.
 
 이 스크립트가 worker runtime을 직접 실행하므로 결과를 재현 가능하게 보려면
-검증 중 상시 `worker` 컨테이너를 일시 중지하고 다른 업로드를 막는다. 동시에
-실행 중인 다른 worker가 대상 run을 먼저 점유하면 스크립트는 안전하게 실패할 수
-있다. 이 잠시 중지는 Supabase stack이나 영속 volume을 내리는 작업이 아니다.
+검증 중 상시 `worker`와 `chat-worker` 컨테이너를 일시 중지하고 다른 업로드/채팅을
+막는다. 사전검사 뒤 다른 producer/worker가 끼어드는 경쟁을 스크립트가 원격에서 막을
+수는 없으므로, 위 일시 중지와 작업 차단은 필수다. 그래도 예상과 다른 claim은 commit
+전에 검증해 rollback하므로 다른 작업의 attempt를 소비하지 않는다. 이 잠시 중지는
+Supabase stack이나 영속 volume을 내리는 작업이 아니다.
 
-최근 실측에서 실제 Hancom HWP는 Common IR 47 blocks(단락 39, 표 8),
-relation 1, validation error 0으로 파싱됐고 전체 live E2E도 성공했다.
+최근 분석 경로 실측에서 실제 Hancom HWP는 Common IR 47 blocks(단락 39, 표 8),
+relation 1, validation error 0으로 파싱됐고 결과 조회까지 성공했다.
+2026-09-13 합성 HWPX 전체 경로 실측에서는 run
+`5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
+`2d02ae97-85f0-4678-a9fe-e006ab389bd1`가 분석·채팅 worker 각각 첫 attempt에
+완료됐다. Request Profile은 Terra, FIT·SIM·채팅은 Luna로 실행했고 Model 1·2·3의
+DB status는 모두 `OK`였다. 결과는 CPL 13, FIT 7, SIM 후보 1, evidence 77,
+검증된 채팅 evidence reference 13개였다. 입력 fixture는
+`samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx`, SHA-256은
+`0054617fb553125e2b701d7ff9b37612048d95ab4d19ee3717a89bedd42e7ebb`다.
 산출물 수·run/case ID·입력 SHA-256 같은 검증 기록은
 [Backend 구현 현황](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
 
@@ -832,7 +834,7 @@ Cookie Secure를 반드시 활성화한다.
 - `request-temp` 및 만료 결과의 reference-aware cleanup
 - worker heartbeat/queue lag를 포함한 readiness
 - 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
-- 채팅·PDF 보고서·PDF OCR API
+- PDF 보고서·PDF OCR API
 
 최신 완료·미완료 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
 확인한다.

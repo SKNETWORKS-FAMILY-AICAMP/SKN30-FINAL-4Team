@@ -30,6 +30,7 @@ ml/serving/
 │  ├─ design_features_v3.parquet   ml/data/processed/ 사본
 │  └─ inference.py                 m3_lab.score_pool() 을 감싸는 wrapper
 ├─ requirements.txt
+├─ requirements.runtime.txt         운영용 완결 dependency overlay (pyarrow 포함)
 └─ README.md   (이 파일)
 ```
 
@@ -144,8 +145,19 @@ python ml/serving/model1/inference.py
 
 ### dependency
 
-`torch`, `transformers` — `ml/serving/requirements.txt`. GPU 없이도
-동작한다(CPU 로 스모크 테스트 완료). 학습(재학습)에는 GPU 가 필요하지만
+운영 runtime은 `ml/serving/requirements.runtime.txt`를 설치한다. 이 파일은
+base `requirements.txt`를 include하고 Parquet engine `pyarrow`를 보완한다.
+Model 1의 등록 runtime manifest는 base `requirements.txt`의 정확한 바이트를
+포함하므로, `pyarrow`를 base에 직접 추가하지 않는다.
+
+```bash
+uv venv .runtime/ml-venv
+uv pip install --python .runtime/ml-venv/bin/python --torch-backend cpu \
+  -r ml/serving/requirements.runtime.txt
+```
+
+`torch`, `transformers`는 CPU PyTorch backend로 설치되어 GPU 없이도 동작한다
+(CPU 로 스모크 테스트 완료). 학습(재학습)에는 GPU 가 필요하지만
 **추론에는 필요 없다** — `inference.py` 는 `torch.cuda.is_available()` 로
 있으면 쓰고 없으면 CPU 로 돈다.
 

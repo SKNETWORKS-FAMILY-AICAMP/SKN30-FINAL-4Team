@@ -127,7 +127,7 @@ cross-reference가 필요하면 이 함수/계약을 확장한 migration을 먼�
 - Edge Function signed URL/HTTP dispatch/callback 계약은 레거시 참고용이다.
 - request 임베딩은 worker 메모리에서 생성·폐기한다. Existing 임베딩만 `retrieval.existing_profile_embedding`에 영속화한다.
 
-## 결과 확인
+## 결과 확인과 별도 채팅 계약
 
 FastAPI는 Cookie 사용자의 소유권을 확인한 뒤 `api` views/RPC로 결과를 읽는다.
 
@@ -135,5 +135,19 @@ FastAPI는 Cookie 사용자의 소유권을 확인한 뒤 `api` views/RPC로 결
 - `GET /api/v1/analysis-cases/{case_id}`: 전체 결과
 - `GET /api/v1/sim-candidates/{candidate_id}`: 후보 상세
 
-PDF와 채팅은 현재 이 worker 완료 계약에 넣지 않는다. 별도 job type/queue와 공개 API가
-정의된 후 추가한다.
+채팅은 analysis-result 완료 transaction에 섞지 않는 **별도** job type이다. FastAPI의
+`POST /api/v1/analysis-cases/{case_id}/messages`, `GET .../messages`, retry route가
+assistant row를 만들거나 조회하고, migration 27의
+`workspace.claim_next_conversation_message()`와 lease/fencing transition을 chat worker가
+사용한다. 완료 시에는 결과 근거에 연결된 `result.conversation_reference`만 저장한다.
+구현 경계는 `app/api/v1/conversations.py`, `worker/chat_main.py`,
+`worker/postgres_chat_repository.py`, `worker/chat/handler.py`다.
+
+2026-09-13 합성 HWPX live E2E(run
+`5e51dae9-3c6e-4ed8-b4c6-96185917b08b`, case
+`2d02ae97-85f0-4678-a9fe-e006ab389bd1`)에서 analysis worker와 chat worker는 각각 한 번의
+attempt로 완료했고, 채팅 reference 13개를 확인했다. 같은 run에서 저장된 ML 1/2/3 상태도
+모두 `OK`였다. 이는 합성 HWPX 한 건의 범위이며 실제 Hancom 작성 HWP/HWPX의 완전 재검증은
+아직 완료되지 않았다.
+
+PDF/OCR과 PDF 생성은 이 계약 및 현재 E2E 완료 범위에 포함하지 않는다.
