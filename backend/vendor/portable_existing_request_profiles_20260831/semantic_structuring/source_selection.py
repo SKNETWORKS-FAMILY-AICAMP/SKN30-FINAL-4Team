@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from enum import StrEnum
 
@@ -352,13 +353,46 @@ class NumericCandidate(StrictModel):
     end_char: int = Field(gt=0)
 
 
+_GROUPED_DECIMAL_NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+_NUMERIC_TOKEN_PREFIX = r"(?<![\d.])(?<!\d,)(?<!\d，)(?<![,，][,，])"
+_NUMERIC_TOKEN_SUFFIX = r"(?!\d|[,，]\d|\.\d)"
 _NUMERIC_CANDIDATE_PATTERN = re.compile(
-    r"(?:\d[\d,]*\s*(?:천|만|억)?\s*원|\d+(?:\.\d+)?\s*%|\d+\s*(?:개사|개팀|개 과제|개과제|명|팀|사))"
+    rf"{_NUMERIC_TOKEN_PREFIX}(?:{_GROUPED_DECIMAL_NUMBER}\s*(?:천|만|억)?\s*원|"
+    rf"\d+(?:\.\d+)?\s*%|\d+\s*(?:개사|개팀|개 과제|개과제|명|팀|사)){_NUMERIC_TOKEN_SUFFIX}"
 )
 
-_AMOUNT_PATTERN = re.compile(r"(?P<number>\d[\d,]*)\s*(?P<suffix>천|만|억)?\s*원")
+_AMOUNT_PATTERN = re.compile(rf"(?P<number>{_GROUPED_DECIMAL_NUMBER})\s*(?P<suffix>천|만|억)?\s*원")
 _RATE_PATTERN = re.compile(r"(?P<number>\d+(?:\.\d+)?)\s*%")
 _COUNT_PATTERN = re.compile(r"(?P<number>\d+)\s*(?P<unit>개사|개팀|개 과제|개과제|명|팀|사)")
+
+
+def _decimal_to_int(value: Decimal) -> int | None:
+    """Return an exact integer representation, or fail closed."""
+
+    if value != value.to_integral_value():
+        return None
+    return int(value)
+
+
+def _amount_krw(match: re.Match[str]) -> int | None:
+    """Normalize a Korean won amount without binary floating-point arithmetic."""
+
+    factor = {None: 1, "천": 1_000, "만": 10_000, "억": 100_000_000}[match.group("suffix")]
+    try:
+        value = Decimal(match.group("number").replace(",", "")) * factor
+    except InvalidOperation:
+        return None
+    return _decimal_to_int(value)
+
+
+def _rate_bps(match: re.Match[str]) -> int | None:
+    """Normalize a percent expression to exact basis points."""
+
+    try:
+        value = Decimal(match.group("number")) * 100
+    except InvalidOperation:
+        return None
+    return _decimal_to_int(value)
 
 # A package/type/stage's own support facts: the fields a support component can
 # own and that an explicit employment-condition variant can modify.  Shared by
@@ -381,7 +415,8 @@ _PACKAGE_SUPPORT_FIELDS = {
 # duration (개월/년/...) is support_period, not support_scale -- neither
 # belongs in this pattern.
 _AMOUNT_OR_RATE_CANDIDATE_PATTERN = re.compile(
-    r"(?:\d[\d,]*\s*(?:천|만|억)?\s*원|\d+(?:\.\d+)?\s*%)"
+    rf"{_NUMERIC_TOKEN_PREFIX}(?:{_GROUPED_DECIMAL_NUMBER}\s*(?:천|만|억)?\s*원|"
+    rf"\d+(?:\.\d+)?\s*%){_NUMERIC_TOKEN_SUFFIX}"
 )
 _EXPLICIT_CAP_PATTERN = re.compile(
     rf"(?:최대|한도|상한)\s*[:：]?\s*{_AMOUNT_OR_RATE_CANDIDATE_PATTERN.pattern}"
@@ -483,8 +518,9 @@ def derive_support_scale_measures_v02(
                 lower_value = upper_value = 0
 
             if amount:
-                factor = {None: 1, "천": 1_000, "만": 10_000, "억": 100_000_000}[amount.group("suffix")]
-                value = int(amount.group("number").replace(",", "")) * factor
+                value = _amount_krw(amount)
+                if value is None:
+                    continue
                 measure_type = MeasureType.AMOUNT
                 # A table header such as ``업체당 지원한도`` can establish a
                 # limit even when the numeric cell itself is just ``18억원``.
@@ -502,7 +538,9 @@ def derive_support_scale_measures_v02(
                 )
                 unit = "KRW"
             elif rate:
-                value = int(float(rate.group("number")) * 100)
+                value = _rate_bps(rate)
+                if value is None:
+                    continue
                 measure_type, role, unit = MeasureType.RATE, MeasureRole.SUPPORT_RATE, "BPS"
             elif count:
                 value = int(count.group("number"))
@@ -517,16 +555,7 @@ def derive_support_scale_measures_v02(
             else:
                 lower_value = upper_value = value
 
-            applies_per = None
-            aggregation_scope = None
-            if "기업당" in text:
-                applies_per, aggregation_scope = "COMPANY", AggregationScope.PER_UNIT
-            elif "팀당" in text:
-                applies_per, aggregation_scope = "TEAM", AggregationScope.PER_UNIT
-            elif "인당" in text or "1인당" in text:
-                applies_per, aggregation_scope = "PERSON", AggregationScope.PER_UNIT
-            elif re.search(r"(?:총\s*|전체\s*)", text):
-                aggregation_scope = AggregationScope.TOTAL
+            applies_per, aggregation_scope = parse_support_scale_scope(text)
 
             measures.append(SupportScaleMeasure(
                 measure_type=measure_type,
@@ -545,6 +574,282 @@ def derive_support_scale_measures_v02(
 
     if not measures:
         return []
+    return [SupportScaleMeasuresProjection(
+        source_fact_ids=sorted({measure.source_fact_id for measure in measures}),
+        measures=measures,
+        status=SelectionStatus.IDENTIFIED,
+    )]
+
+
+_REQUEST_MARKER_PATTERN = re.compile(
+    r"기업당|과제당|프로젝트당|팀당|1인당|인당|(?:총\s*|전체\s*)|"
+    r"최대|이내|한도|상한|내외|약|정도"
+)
+_REQUEST_LIMIT_PREFIX_MARKERS = frozenset({"최대"})
+_REQUEST_LIMIT_SUFFIX_MARKERS = frozenset({"이내"})
+_REQUEST_LIMIT_NEUTRAL_MARKERS = frozenset({"한도", "상한"})
+_REQUEST_APPROX_PREFIX_MARKERS = frozenset({"약"})
+_REQUEST_APPROX_SUFFIX_MARKERS = frozenset({"내외", "정도"})
+_REQUEST_APPROX_MARKERS = (
+    _REQUEST_APPROX_PREFIX_MARKERS | _REQUEST_APPROX_SUFFIX_MARKERS
+)
+# A period followed by a digit belongs to a decimal/date token; every other
+# period ends a source clause, including a dotted date's final ``.``.
+_REQUEST_CLAUSE_BOUNDARY = re.compile(r"[,，;；\n]|\.(?!\d)|。")
+
+
+def parse_support_scale_scope(
+    text: str,
+    *,
+    allow_person: bool = True,
+    allow_total: bool = True,
+) -> tuple[str | None, AggregationScope | None]:
+    """Parse only literal, source-visible support-scale scope wording.
+
+    Existing and Request profiles share the same literal scope grammar.  The
+    normalized scope remains provenance-preserving metadata, not an inferred
+    recipient: downstream matching may choose to ignore PERSON or TOTAL when
+    it needs a comparable per-recipient limit.
+    """
+
+    if "기업당" in text:
+        return "COMPANY", AggregationScope.PER_UNIT
+    if "과제당" in text or "프로젝트당" in text:
+        return "PROJECT", AggregationScope.PER_UNIT
+    if "팀당" in text:
+        return "TEAM", AggregationScope.PER_UNIT
+    if allow_person and ("인당" in text or "1인당" in text):
+        return "PERSON", AggregationScope.PER_UNIT
+    if allow_total and re.search(r"(?:총\s*|전체\s*)", text):
+        return None, AggregationScope.TOTAL
+    return None, None
+
+
+def _request_marker_assignment(
+    marker: re.Match[str],
+    candidates: list[NumericCandidate],
+    *,
+    value_raw: str,
+    value_start_char: int,
+) -> int | None:
+    """Assign one literal modifier to its nearest exact numeral.
+
+    Source facts may faithfully contain multiple quantities.  We therefore do
+    not let a clause-level ``이내`` or ``최대`` leak to every number in that
+    Raw Fact. Prefix terms (``기업당``, ``최대``) can bind only to a following
+    number in the same delimiter-bounded clause; suffix terms (``이내``,
+    ``내외``) only to a preceding one. Neutral terms use nearest-number
+    resolution. This is a deterministic syntax rule, never a semantic guess
+    from unselected context.
+    """
+
+    marker_text = marker.group(0).strip()
+    prefix_marker = marker_text in (
+        _REQUEST_LIMIT_PREFIX_MARKERS | _REQUEST_APPROX_PREFIX_MARKERS
+    ) or marker_text in {
+        "기업당", "과제당", "프로젝트당", "팀당", "1인당", "인당",
+    } or marker_text.startswith(("총", "전체"))
+    suffix_marker = marker_text in (
+        _REQUEST_LIMIT_SUFFIX_MARKERS | _REQUEST_APPROX_SUFFIX_MARKERS
+    )
+    if prefix_marker:
+        tie_direction = "following"
+    elif suffix_marker:
+        tie_direction = "preceding"
+    else:  # ``한도``: nearest wins; a following numeral wins only on a tie.
+        tie_direction = "following"
+
+    candidate_spans = [
+        (
+            candidate.start_char - value_start_char,
+            candidate.end_char - value_start_char,
+        )
+        for candidate in candidates
+    ]
+    clause_boundaries = [
+        boundary.start()
+        for boundary in _REQUEST_CLAUSE_BOUNDARY.finditer(value_raw)
+        if not any(start <= boundary.start() < end for start, end in candidate_spans)
+    ]
+    marker_clause = sum(position < marker.start() for position in clause_boundaries)
+    ranked: list[tuple[int, int, int]] = []
+    for index, candidate in enumerate(candidates):
+        start = candidate.start_char - value_start_char
+        end = candidate.end_char - value_start_char
+        candidate_clause = sum(position < start for position in clause_boundaries)
+        if candidate_clause != marker_clause:
+            continue
+        # Prefix and suffix modifiers are grammar, not merely proximity hints:
+        # ``1억원 최대 지원비율 70%`` must bind 최대 to 70%, while
+        # ``10% 이내`` must bind 이내 to 10%.  Only neutral terms (한도/상한)
+        # use nearest-candidate resolution in either direction.
+        if prefix_marker and start < marker.end():
+            continue
+        if suffix_marker and end > marker.start():
+            continue
+        if end <= marker.start():
+            distance, direction = marker.start() - end, "preceding"
+        elif start >= marker.end():
+            distance, direction = start - marker.end(), "following"
+        else:
+            distance, direction = 0, "overlap"
+        direction_penalty = 0 if direction == tie_direction or direction == "overlap" else 1
+        ranked.append((distance, direction_penalty, index))
+    if not ranked:
+        return None
+    return min(ranked)[2]
+
+
+def _request_candidate_numeric_semantics(
+    value_raw: str,
+    candidates: list[NumericCandidate],
+    *,
+    value_start_char: int,
+) -> dict[str, tuple[Comparator, str | None, AggregationScope | None]]:
+    """Return candidate-local comparator and literal scope metadata."""
+
+    markers_by_candidate: dict[int, list[str]] = {index: [] for index in range(len(candidates))}
+    for marker in _REQUEST_MARKER_PATTERN.finditer(value_raw):
+        index = _request_marker_assignment(
+            marker,
+            candidates,
+            value_raw=value_raw,
+            value_start_char=value_start_char,
+        )
+        if index is not None:
+            markers_by_candidate[index].append(marker.group(0).strip())
+
+    semantics: dict[str, tuple[Comparator, str | None, AggregationScope | None]] = {}
+    for index, candidate in enumerate(candidates):
+        markers = markers_by_candidate[index]
+        if any(marker in _REQUEST_LIMIT_PREFIX_MARKERS | _REQUEST_LIMIT_SUFFIX_MARKERS | _REQUEST_LIMIT_NEUTRAL_MARKERS for marker in markers):
+            comparator = Comparator.LTE
+        elif any(marker in _REQUEST_APPROX_MARKERS for marker in markers):
+            comparator = Comparator.APPROX
+        else:
+            comparator = Comparator.EQ
+        scopes = {
+            parse_support_scale_scope(marker)
+            for marker in markers
+            if parse_support_scale_scope(marker) != (None, None)
+        }
+        applies_per, aggregation_scope = next(iter(scopes)) if len(scopes) == 1 else (None, None)
+        semantics[candidate.numeric_candidate_id] = (comparator, applies_per, aggregation_scope)
+    return semantics
+
+
+def derive_request_support_scale_measures_v012(
+    support_scale_facts: list[dict[str, object]],
+    candidates: list[NumericCandidate],
+    *,
+    source_block_texts: dict[str, str],
+) -> list[SupportScaleMeasuresProjection]:
+    """Derive Request numeric projections from already materialized Raw Facts.
+
+    The Request contract has no trusted semantic-role signal.  A
+    ``support_limit`` is therefore emitted only where the numeric span's own
+    exact Raw-Fact clause says ``최대``, ``이내``, ``한도``, or ``상한``.  In
+    particular, this function never derives an amount by dividing a total
+    budget by a selection count, and never reads an unselected context block.
+
+    Each candidate must be an exact numeric span inside a validated
+    ``value_source``.  Invalid or ambiguous caller data produces no projection
+    for that fact; final profile validation repeats these provenance checks and
+    fails closed before a profile can be emitted.
+    """
+
+    candidates_by_block: dict[str, list[NumericCandidate]] = {}
+    for candidate in candidates:
+        block_text = source_block_texts.get(candidate.source_block_id)
+        if (
+            block_text is None
+            or candidate.end_char > len(block_text)
+            or block_text[candidate.start_char:candidate.end_char] != candidate.anchor_text
+        ):
+            continue
+        candidates_by_block.setdefault(candidate.source_block_id, []).append(candidate)
+
+    measures: list[SupportScaleMeasure] = []
+    for fact in support_scale_facts:
+        fact_id = fact.get("fact_id")
+        value_raw = fact.get("value_raw")
+        raw_source = fact.get("value_source")
+        if not isinstance(fact_id, str) or not fact_id or not isinstance(value_raw, str):
+            continue
+        try:
+            resolved = ValueSource.model_validate(raw_source)
+        except ValueError:
+            continue
+        block_text = source_block_texts.get(resolved.source_block_id)
+        if (
+            block_text is None
+            or resolved.end_char > len(block_text)
+            or block_text[resolved.start_char:resolved.end_char] != value_raw
+        ):
+            continue
+
+        fact_candidates = [
+            candidate
+            for candidate in candidates_by_block.get(resolved.source_block_id, [])
+            if _numeric_candidate_within_value_source(candidate, resolved)
+        ]
+        candidate_semantics = _request_candidate_numeric_semantics(
+            value_raw,
+            fact_candidates,
+            value_start_char=resolved.start_char,
+        )
+        for candidate in fact_candidates:
+            comparator, applies_per, aggregation_scope = candidate_semantics[
+                candidate.numeric_candidate_id
+            ]
+            amount = _AMOUNT_PATTERN.fullmatch(candidate.anchor_text)
+            rate = _RATE_PATTERN.fullmatch(candidate.anchor_text)
+            count = _COUNT_PATTERN.fullmatch(candidate.anchor_text)
+            if amount:
+                value = _amount_krw(amount)
+                if value is None:
+                    continue
+                measure_type = MeasureType.AMOUNT
+                measure_role = (
+                    MeasureRole.SUPPORT_LIMIT
+                    if comparator == Comparator.LTE
+                    else MeasureRole.SUPPORT_AMOUNT
+                )
+                unit = "KRW"
+            elif rate:
+                value = _rate_bps(rate)
+                if value is None:
+                    continue
+                measure_type = MeasureType.RATE
+                measure_role = MeasureRole.SUPPORT_RATE
+                unit = "BPS"
+            elif count:
+                value = int(count.group("number"))
+                measure_type = MeasureType.COUNT
+                measure_role = MeasureRole.SELECTION_CAPACITY
+                unit = count.group("unit")
+            else:
+                continue
+
+            measures.append(SupportScaleMeasure(
+                measure_type=measure_type,
+                measure_role=measure_role,
+                lower_value=None if comparator == Comparator.LTE else value,
+                upper_value=value,
+                unit=unit,
+                comparator=comparator,
+                source_fact_id=fact_id,
+                source_numeric_candidate_id=candidate.numeric_candidate_id,
+                applies_per=applies_per,
+                aggregation_scope=aggregation_scope,
+            ))
+
+    if not measures:
+        return []
+    measures.sort(key=lambda measure: (
+        measure.source_fact_id,
+        measure.source_numeric_candidate_id,
+    ))
     return [SupportScaleMeasuresProjection(
         source_fact_ids=sorted({measure.source_fact_id for measure in measures}),
         measures=measures,

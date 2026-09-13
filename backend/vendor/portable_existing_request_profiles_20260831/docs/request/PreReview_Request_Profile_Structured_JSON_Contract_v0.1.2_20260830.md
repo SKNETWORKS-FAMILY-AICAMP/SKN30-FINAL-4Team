@@ -20,7 +20,7 @@
 3. `value_source`는 CandidatePack exact-span locator만 담당하고, Common IR document/block/cell/occurrence provenance는 `evidence[]`로 분리한다.
 4. `source_documents[]`는 원본 메타와 `common_ir` lineage를 분리하는 구조로 동기화한다.
 5. `processing_metadata.candidate_pack` lineage를 Existing v0.2와 동일한 필드명으로 보존한다.
-6. `source_numeric_candidate_id = {source_block_id}#num[{index}]` 계약과 `numeric_candidate_extractor_version = numeric_candidate_v1` 추적 규칙을 확정한다.
+6. `source_numeric_candidate_id = {source_block_id}#num[{index}]` 계약과 numeric candidate extractor 추적 규칙을 확정한다. 신규 producer의 canonical 값은 `numeric_candidate_v2`이며, 기존 적재 Profile 검증에서는 `numeric_candidate_v1`도 legacy 값으로 허용한다.
 7. Existing `source_profile_id` 형식은 Request `profile_id`에 강제하지 않는다. 각 프로필의 전역 식별 계약은 독립적으로 유지한다.
 
 ## 1. 설계 원칙
@@ -606,7 +606,7 @@ hwp:t45#r2c1p0#num[1]
 - locator를 해석·재현할 때는 `processing_metadata.candidate_pack.candidate_pack_id`와 함께 사용한다.
 - 각 measure의 `source_fact_id`는 필수이며 해당 Fact의 `field_name`은 `support_scale`이어야 한다.
 - 동일 locator 재현에는 동일 CandidatePack과 동일 수치 추출 규칙·버전이 필요하다.
-- `support_scale_measures` Projection이 실제 생성된 경우에만 `processing_metadata.derived_projection_producers.support_scale_measures.numeric_candidate_extractor_version`을 기록한다. 현재 canonical 값은 `numeric_candidate_v1`이다.
+- `support_scale_measures` Projection이 실제 생성된 경우에만 `processing_metadata.derived_projection_producers.support_scale_measures.numeric_candidate_extractor_version`을 기록한다. 신규 producer의 canonical 값은 `numeric_candidate_v2`이며, 읽기·검증 호환성을 위해 기존 `numeric_candidate_v1`은 legacy 값으로 허용한다.
 - v0.1에는 독립 `numeric_measure_normalizer_version`을 두지 않는다. 별도 versioned normalizer가 도입되는 시점에 Request/Existing 계약을 함께 revision한다.
 - `source_numeric_candidate_id`로 Common IR `blocks[]`, `cells[]`, `occurrences[]`를 직접 조인하지 않는다. Common IR provenance는 Fact의 `evidence[]`를 사용한다.
 
@@ -1360,7 +1360,7 @@ Request Structured JSON은 실제 구조화에 사용한 원본 문서 메타와
 
     "derived_projection_producers": {
       "support_scale_measures": {
-        "numeric_candidate_extractor_version": "numeric_candidate_v1"
+        "numeric_candidate_extractor_version": "numeric_candidate_v2"
       }
     },
 

@@ -92,10 +92,12 @@ malformed/timeout 문서 E2E는 아직 별도 범위다.
 - reverse proxy/ASGI의 multipart 전체 body·part 수 제한과 streaming upload
 - `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사. 업로드 요청에 묶인
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리
-- Request assembler에서 검증된 `support_scale` Raw Fact를
-  `support_scale_measures`로 생성하는 결정적 producer. 현재 Request Profile은 이
-  projection을 빈 배열로 두므로, 구조화된 한도가 없으면 Model 2는 예측
-  금액만 중립적으로 표시한다
+- Request assembler는 검증된 `support_scale` Raw Fact에서 결정적으로
+  `support_scale_measures`를 생성한다(`request_profile_v0.1.4`,
+  `numeric_candidate_v2`). 각 숫자는 자기 Raw-Fact 내부의 exact locator와
+  candidate-local 한도·범위 문법으로 검증된다. 명시적인 COMPANY/PROJECT/TEAM
+  단위 상한만 Model 2의 원문 한도 표시에 사용하고, PERSON/TOTAL·그 외 값은
+  Profile provenance에는 보존하되 해당 표시에는 승격하지 않는다
 - worker heartbeat/queue lag를 포함한 readiness
 - `ops.model_invocation` 단위 OpenAI 호출 감사
 - 일부 purpose/target/support 축이 비었을 때 fail 대신 insufficient 결과로 처리할 정책

@@ -13,6 +13,7 @@ from worker.result_payload import build_result_payload
 
 from semantic_structuring.models import CandidatePack, SourceBlock, SourceRelation
 from semantic_structuring.request_profile_v012 import (
+    REQUEST_PIPELINE_VERSION,
     RequestSourceSelectionV012,
     assemble_request_profile_v012,
     build_request_candidate_pack,
@@ -253,3 +254,101 @@ def test_table_column_pair_validation_honors_actor_row_span() -> None:
         "actor_common_ir_cell_id": "request:rowspan:actor",
         "role_common_ir_cell_id": "request:rowspan:member",
     }
+
+
+def test_request_profile_derives_per_team_amount_only_from_selected_raw_fact() -> None:
+    """A selected Request amount is projected without inventing a cap role."""
+
+    document = _example_document()
+    pack = build_request_candidate_pack(document)
+    raw_selection = _example_selection()
+    raw_selection["profile_id"] = "request:scale-projection"
+    raw_selection["candidate_pack_id"] = pack.pack_id
+
+    profile = assemble_request_profile_v012(
+        document, pack, RequestSourceSelectionV012.model_validate(raw_selection)
+    )
+
+    projections = profile["derived_projections"]
+    assert len(projections) == 1
+    measures = projections[0]["measures"]
+    team_amount = next(
+        measure for measure in measures
+        if measure["source_fact_id"] == "fact:grant_total_scale"
+    )
+    assert team_amount == {
+        "measure_type": "amount",
+        "measure_role": "support_amount",
+        "lower_value": 4_000_000,
+        "upper_value": 4_000_000,
+        "unit": "KRW",
+        "comparator": "eq",
+        "source_fact_id": "fact:grant_total_scale",
+        "source_numeric_candidate_id": "markdown:PREREVIEW-TEST-2027-03:b43#num[1]",
+        "applies_per": "TEAM",
+        "calculation_basis": None,
+        "frequency": None,
+        "aggregation_scope": "PER_UNIT",
+    }
+    assert all(measure["measure_role"] != "support_limit" for measure in measures)
+    assert profile["processing_metadata"]["pipeline_version"] == REQUEST_PIPELINE_VERSION
+    assert profile["processing_metadata"]["derived_projection_producers"] == {
+        "support_scale_measures": {"numeric_candidate_extractor_version": "numeric_candidate_v2"}
+    }
+
+
+def test_request_profile_derives_only_explicit_limit_and_never_divides_budget() -> None:
+    """Per-recipient caps require their own selected lexical evidence."""
+
+    document = _example_document()
+    original = build_request_candidate_pack(document)
+    cap_block = SourceBlock(
+        block_id="request:synthetic-cap#p0",
+        text="기업당 최대 1,000만원",
+        relation=SourceRelation.CANDIDATE,
+        common_ir_block_id="request:synthetic-cap",
+    )
+    budget_block = SourceBlock(
+        block_id="request:synthetic-budget#p0",
+        text="총예산 2,000만원, 선정 4개팀",
+        relation=SourceRelation.CANDIDATE,
+        common_ir_block_id="request:synthetic-budget",
+    )
+    pack = original.model_copy(update={"blocks": [*original.blocks, cap_block, budget_block]})
+    selection = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request:explicit-cap",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [
+            {
+                "fact_id": "scale:cap",
+                "field_name": "support_scale",
+                "value_anchor": {
+                    "source_block_id": cap_block.block_id,
+                    "anchor_text": cap_block.text,
+                },
+            },
+            {
+                "fact_id": "scale:budget-and-count",
+                "field_name": "support_scale",
+                "value_anchor": {
+                    "source_block_id": budget_block.block_id,
+                    "anchor_text": budget_block.text,
+                },
+            },
+        ],
+    })
+
+    profile = assemble_request_profile_v012(document, pack, selection)
+    measures = profile["derived_projections"][0]["measures"]
+    cap = next(measure for measure in measures if measure["source_fact_id"] == "scale:cap")
+    assert cap["measure_role"] == "support_limit"
+    assert cap["comparator"] == "lte"
+    assert cap["upper_value"] == 10_000_000
+    assert cap["applies_per"] == "COMPANY"
+    assert cap["aggregation_scope"] == "PER_UNIT"
+    # The total and count remain distinct facts; no derived 5,000,000 KRW
+    # per-team amount can appear through arithmetic inference.
+    assert not any(
+        measure["lower_value"] == 5_000_000 or measure["upper_value"] == 5_000_000
+        for measure in measures
+    )

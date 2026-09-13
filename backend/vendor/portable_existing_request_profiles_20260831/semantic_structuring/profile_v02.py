@@ -149,7 +149,14 @@ class SupportScaleMeasuresProjection(StrictModel):
 # numeric_candidate_extractor_version, and only when the assembled profile
 # actually carries a support_scale_measures projection derived from it; it is
 # otherwise absent, not merely null.
-NUMERIC_CANDIDATE_EXTRACTOR_VERSION = "numeric_candidate_v1"
+# v2 admits exact decimal Korean-money candidates (for example ``1.5억원``)
+# and normalizes percentages without binary floating-point arithmetic.
+NUMERIC_CANDIDATE_EXTRACTOR_VERSION = "numeric_candidate_v2"
+NUMERIC_CANDIDATE_EXTRACTOR_LEGACY_VERSIONS = frozenset({"numeric_candidate_v1"})
+ACCEPTED_NUMERIC_CANDIDATE_EXTRACTOR_VERSIONS = (
+    NUMERIC_CANDIDATE_EXTRACTOR_LEGACY_VERSIONS
+    | frozenset({NUMERIC_CANDIDATE_EXTRACTOR_VERSION})
+)
 
 _COMMON_IR_LINEAGE_REQUIRED_KEYS = frozenset({
     "document_id", "schema_version", "source_kind", "source_sha256", "source_location",
@@ -319,10 +326,16 @@ def validate_profile_v02(profile: dict[str, Any], block_texts: dict[str, str]) -
         "processing_metadata.derived_projection_producers.support_scale_measures."
         "numeric_candidate_extractor_version"
     )
-    if has_scale_measures_projection and numeric_extractor_version != NUMERIC_CANDIDATE_EXTRACTOR_VERSION:
+    if (
+        has_scale_measures_projection
+        and (
+            not isinstance(numeric_extractor_version, str)
+            or numeric_extractor_version not in ACCEPTED_NUMERIC_CANDIDATE_EXTRACTOR_VERSIONS
+        )
+    ):
         issues.append(
-            f"{version_path} is required and must be "
-            f"{NUMERIC_CANDIDATE_EXTRACTOR_VERSION!r} when a support_scale_measures projection is present"
+            f"{version_path} is required and must be one of "
+            f"{sorted(ACCEPTED_NUMERIC_CANDIDATE_EXTRACTOR_VERSIONS)!r} when a support_scale_measures projection is present"
         )
     if not has_scale_measures_projection and numeric_extractor_version is not None:
         issues.append(f"{version_path} must only be present alongside a support_scale_measures projection")

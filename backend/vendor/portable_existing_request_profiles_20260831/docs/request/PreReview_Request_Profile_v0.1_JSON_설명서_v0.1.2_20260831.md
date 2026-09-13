@@ -434,7 +434,11 @@ numeric_candidate_extractor_version
 현재:
 
 ```text
-numeric_candidate_extractor_version = numeric_candidate_v1
+numeric_candidate_extractor_version = numeric_candidate_v2
+
+신규 producer는 소수 금액·비율의 exact numeric span을 지원하는
+`numeric_candidate_v2`를 기록한다. 이전에 적재된 Profile의
+`numeric_candidate_v1`은 읽기·검증 호환을 위해 legacy 값으로 허용한다.
 ```
 
 독립 `numeric_measure_normalizer_version`은 아직 없다.

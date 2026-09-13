@@ -26,11 +26,23 @@ from .common_ir_v1 import (
 )
 from .field_regions import RequestFieldRegion, build_field_regions
 from .models import CandidatePack, ComponentKind, SourceBlock, SourceRelation
-from .profile_v02 import ValueSource, find_all_occurrences, materialize_value_source, validate_common_ir_lineage
+from .profile_v02 import (
+    NUMERIC_CANDIDATE_EXTRACTOR_VERSION,
+    SupportScaleMeasuresProjection,
+    ValueSource,
+    find_all_occurrences,
+    materialize_value_source,
+    validate_common_ir_lineage,
+    validate_support_scale_measure_shape,
+)
+from .source_selection import (
+    build_numeric_candidates,
+    derive_request_support_scale_measures_v012,
+)
 
 
 REQUEST_SCHEMA_VERSION = "pre_review_request_profile/v0.1"
-REQUEST_PIPELINE_VERSION = "request_profile_v0.1.3"
+REQUEST_PIPELINE_VERSION = "request_profile_v0.1.4"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
 # Names the value-span candidate generator, not the CandidatePack block
 # projection above it.  Bump both together whenever the span grammar
@@ -1302,6 +1314,112 @@ def _validate_request_profile(profile: dict[str, Any], pack: CandidatePack) -> l
         for component_id in state.get("component_ids", []):
             if component_id not in component_ids:
                 issues.append(f"field_state references unknown component {component_id}")
+
+    numeric_candidates = {
+        candidate.numeric_candidate_id: candidate
+        for candidate in build_numeric_candidates(pack)
+    }
+    has_scale_measure_projection = False
+    for projection in profile.get("derived_projections", []):
+        if projection.get("projection_type") != "support_scale_measures":
+            issues.append("unsupported Request derived projection type")
+            continue
+        has_scale_measure_projection = True
+        try:
+            parsed = SupportScaleMeasuresProjection.model_validate(projection)
+        except ValueError as error:
+            issues.append(f"support_scale_measures: {error}")
+            continue
+        declared_fact_ids = set(parsed.source_fact_ids)
+        for fact_id in declared_fact_ids:
+            fact = facts.get(fact_id)
+            if fact is None:
+                issues.append(f"support_scale_measures: dangling source_fact_id {fact_id}")
+            elif fact.get("field_name") != "support_scale":
+                issues.append(
+                    f"support_scale_measures: source_fact_id {fact_id} must reference a support_scale Raw Fact"
+                )
+        for measure in parsed.measures:
+            try:
+                validate_support_scale_measure_shape(measure)
+            except ValueError as error:
+                issues.append(f"support_scale_measure: {error}")
+                continue
+            fact = facts.get(measure.source_fact_id)
+            candidate = numeric_candidates.get(measure.source_numeric_candidate_id)
+            if measure.source_fact_id not in declared_fact_ids:
+                issues.append(
+                    "support_scale_measure: source_fact_id must be declared by the projection"
+                )
+            if fact is None or fact.get("field_name") != "support_scale":
+                issues.append(
+                    f"support_scale_measure: invalid source_fact_id {measure.source_fact_id}"
+                )
+                continue
+            if candidate is None:
+                issues.append(
+                    "support_scale_measure: unknown source_numeric_candidate_id "
+                    f"{measure.source_numeric_candidate_id}"
+                )
+                continue
+            try:
+                source = ValueSource.model_validate(fact.get("value_source"))
+            except ValueError:
+                issues.append(
+                    f"support_scale_measure: source_fact_id {measure.source_fact_id} has invalid value_source"
+                )
+                continue
+            if not (
+                candidate.source_block_id == source.source_block_id
+                and candidate.start_char >= source.start_char
+                and candidate.end_char <= source.end_char
+            ):
+                issues.append(
+                    "support_scale_measure: numeric candidate must be inside its source fact's exact value_source"
+                )
+
+    producers = (profile.get("processing_metadata") or {}).get(
+        "derived_projection_producers"
+    ) or {}
+    numeric_version = (producers.get("support_scale_measures") or {}).get(
+        "numeric_candidate_extractor_version"
+    )
+    version_path = (
+        "processing_metadata.derived_projection_producers.support_scale_measures."
+        "numeric_candidate_extractor_version"
+    )
+    if has_scale_measure_projection and numeric_version != NUMERIC_CANDIDATE_EXTRACTOR_VERSION:
+        issues.append(
+            f"{version_path} is required and must be "
+            f"{NUMERIC_CANDIDATE_EXTRACTOR_VERSION!r} when a support_scale_measures projection is present"
+        )
+    if not has_scale_measure_projection and numeric_version is not None:
+        issues.append(f"{version_path} must only be present alongside a support_scale_measures projection")
+
+    # Raw Facts and CandidatePack spans are authoritative.  Do not merely
+    # validate the shape of a persisted projection: re-derive the entire
+    # deterministic payload so a changed normalized amount, comparator, scope,
+    # source_fact_ids list, or candidate locator fails closed.
+    expected_scale_projections = [
+        projection.model_dump(mode="json")
+        for projection in derive_request_support_scale_measures_v012(
+            [
+                fact for fact in facts.values()
+                if fact.get("field_name") == "support_scale"
+            ],
+            list(numeric_candidates.values()),
+            source_block_texts=block_texts,
+        )
+    ]
+    actual_scale_projections = [
+        projection
+        for projection in profile.get("derived_projections", [])
+        if projection.get("projection_type") == "support_scale_measures"
+    ]
+    if actual_scale_projections != expected_scale_projections:
+        issues.append(
+            "support_scale_measures must exactly equal deterministic Raw-Fact re-derivation"
+        )
     return issues
 
 
@@ -1723,6 +1841,38 @@ def assemble_request_profile_v012(
     states.append({"field_name": "support_components", "status": component_status, **({"component_ids": component_ids} if component_ids else {}), **({"reason_codes": component_codes} if component_codes else {})})
 
     source_doc = _source_document(document)
+    derived_projections = derive_request_support_scale_measures_v012(
+        comparison["support_scale"],
+        build_numeric_candidates(pack),
+        source_block_texts={block.block_id: block.text for block in pack.blocks},
+    )
+    processing_metadata: dict[str, Any] = {
+        "pipeline_version": REQUEST_PIPELINE_VERSION,
+        "structured_schema_version": REQUEST_SCHEMA_VERSION,
+        "input_contract": "common_ir_v1",
+        "common_ir_document_id": identity["document_id"],
+        "common_ir_source_sha256": identity["source_sha256"],
+        "common_ir_schema_version": document["schema_version"],
+        "common_ir_generator": document["document"]["provenance"]["generator"],
+        "common_ir_generator_version": document["document"]["provenance"]["generator_version"],
+        "candidate_pack": {
+            "candidate_pack_id": pack.pack_id,
+            "candidate_pack_generator": pack.generator,
+            "candidate_pack_generator_version": pack.generator_version,
+            "common_ir_document_id": identity["document_id"],
+            "common_ir_source_sha256": identity["source_sha256"],
+            "text_basis": TEXT_BASIS,
+        },
+        "model_id": model_id,
+        "prompt_version": prompt_version,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if derived_projections:
+        processing_metadata["derived_projection_producers"] = {
+            "support_scale_measures": {
+                "numeric_candidate_extractor_version": NUMERIC_CANDIDATE_EXTRACTOR_VERSION,
+            }
+        }
     profile = {
         "schema_version": REQUEST_SCHEMA_VERSION,
         "profile_id": selection.profile_id,
@@ -1733,31 +1883,13 @@ def assemble_request_profile_v012(
         "request_context": request_context,
         "comparison_profile": comparison,
         "support_components": components,
-        "derived_projections": [],
+        "derived_projections": [
+            projection.model_dump(mode="json") for projection in derived_projections
+        ],
         "field_states": states,
         "unresolved_relations": [],
         "source_documents": [source_doc],
-        "processing_metadata": {
-            "pipeline_version": REQUEST_PIPELINE_VERSION,
-            "structured_schema_version": REQUEST_SCHEMA_VERSION,
-            "input_contract": "common_ir_v1",
-            "common_ir_document_id": identity["document_id"],
-            "common_ir_source_sha256": identity["source_sha256"],
-            "common_ir_schema_version": document["schema_version"],
-            "common_ir_generator": document["document"]["provenance"]["generator"],
-            "common_ir_generator_version": document["document"]["provenance"]["generator_version"],
-            "candidate_pack": {
-                "candidate_pack_id": pack.pack_id,
-                "candidate_pack_generator": pack.generator,
-                "candidate_pack_generator_version": pack.generator_version,
-                "common_ir_document_id": identity["document_id"],
-                "common_ir_source_sha256": identity["source_sha256"],
-                "text_basis": TEXT_BASIS,
-            },
-            "model_id": model_id,
-            "prompt_version": prompt_version,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
-        },
+        "processing_metadata": processing_metadata,
     }
     issues = _validate_request_profile(profile, pack)
     if issues:
