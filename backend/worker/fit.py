@@ -17,21 +17,14 @@
 
 from __future__ import annotations
 
-
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from worker.llm_call import generate as shared_generate, salvage_rows
-from .ports.llm import (
-    LLMClient,
-    LLMInvalidResponseError,
-    LLMTimeoutError,
-    LLMUnavailableError,
-)
+from worker.llm_call import generate as shared_generate
+from worker.llm_call import salvage_rows
 
 from .analysis_inputs import field_name_of
-from .quantities import comparison_key
 from .contracts.cpl_result import CplFact, CplResult
 from .contracts.fit_result import (
     COMPARISON_EVIDENCE_MISSING,
@@ -44,18 +37,24 @@ from .contracts.fit_result import (
     NO_CONDITIONS_SPECIFIED,
     NUMERIC_MISMATCH,
     PURPOSE_AXIS_UNRESOLVED,
-    PURPOSE_AXIS_CODES,
     SELF_COMPARISON,
     SINGLE_SIDED_NO_CONFLICT,
+    CplAxisCode,
     FitEvidenceRef,
     FitRelationId,
     FitRelationResult,
     FitResult,
     FitSide,
     FitStatus,
-    CplAxisCode,
     StageDiagnostic,
 )
+from .ports.llm import (
+    LLMClient,
+    LLMInvalidResponseError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+)
+from .quantities import comparison_key
 
 __all__ = [
     "FIT_PROMPT_VERSION",
@@ -156,7 +155,12 @@ def _facts_at(cpl: CplResult, path: str) -> list[CplFact]:
 
 
 def _all_facts(cpl: CplResult) -> list[CplFact]:
-    return [fact for item in cpl.items for subfield in item.subfields for fact in subfield.facts]
+    return [
+        fact
+        for item in cpl.items
+        for subfield in item.subfields
+        for fact in subfield.facts
+    ]
 
 
 def _fit_fact_id(fact: CplFact) -> str | None:
@@ -168,11 +172,7 @@ def _fit_fact_id(fact: CplFact) -> str | None:
 
     if fact.relation_id and fact.member in {"actor", "role"}:
         return f"{fact.relation_id}.{fact.member}"
-    if (
-        fact.relation_id
-        and fact.member == "action"
-        and fact.member_index is not None
-    ):
+    if fact.relation_id and fact.member == "action" and fact.member_index is not None:
         return f"{fact.relation_id}.actions[{fact.member_index}]"
     if fact.fact_id:
         return fact.fact_id
@@ -246,8 +246,10 @@ def _hierarchy_sides(cpl: CplResult) -> tuple[FitSide, FitSide] | None:
     node_by_id: dict[str, CplFact] = {}
     for fact in _facts_at(cpl, _HIERARCHY_PATH):
         node_id = fact.program_node_id
-        if node_id and node_id not in node_by_id and (
-            isinstance(fact.value_raw, str) and fact.value_raw.strip()
+        if (
+            node_id
+            and node_id not in node_by_id
+            and (isinstance(fact.value_raw, str) and fact.value_raw.strip())
         ):
             node_by_id[node_id] = fact
     if not node_by_id:
@@ -312,12 +314,16 @@ def _hierarchy_sides(cpl: CplResult) -> tuple[FitSide, FitSide] | None:
                         ):
                             continue
                         ref = _fit_ref(fact, subfield.profile_field_name)
-                        if ref.fact_id and ref.fact_id not in seen_fact_ids:
-                            if isinstance(ref.value_raw, str) and ref.value_raw.strip():
-                                refs.append(ref)
-                                seen_fact_ids.add(ref.fact_id)
-                                if subfield.profile_field not in field_names:
-                                    field_names.append(subfield.profile_field)
+                        if (
+                            ref.fact_id
+                            and ref.fact_id not in seen_fact_ids
+                            and isinstance(ref.value_raw, str)
+                            and ref.value_raw.strip()
+                        ):
+                            refs.append(ref)
+                            seen_fact_ids.add(ref.fact_id)
+                            if subfield.profile_field not in field_names:
+                                field_names.append(subfield.profile_field)
         return FitSide(
             field_names=field_names,
             facts=refs,
@@ -325,7 +331,9 @@ def _hierarchy_sides(cpl: CplResult) -> tuple[FitSide, FitSide] | None:
 
     # Parent-side facts are included when they exist only if they were explicitly
     # attached to that node; the node name alone is still valid comparison text.
-    return side(parent_nodes, include_attached=True), side(child_nodes, include_attached=True)
+    return side(parent_nodes, include_attached=True), side(
+        child_nodes, include_attached=True
+    )
 
 
 def _side(cpl: CplResult, paths: tuple[str, ...]) -> FitSide:
@@ -406,8 +414,7 @@ def _gate(left: FitSide, right: FitSide, registry: set[str]) -> str | None:
     if left_ids & {ref.fact_id for ref in right.facts}:
         return SELF_COMPARISON
     if any(
-        _base_id(ref.fact_id) not in registry
-        for ref in (*left.facts, *right.facts)
+        _base_id(ref.fact_id) not in registry for ref in (*left.facts, *right.facts)
     ):
         return EVIDENCE_REF_UNRESOLVED
     return None
@@ -430,7 +437,9 @@ def _fit5_reason(cpl: CplResult, left: FitSide) -> str | None:
         for subfield in item.subfields
         if subfield.profile_field == path
     ]
-    if any(status in ("extraction_failed", "mentioned_unresolved") for status in statuses):
+    if any(
+        status in ("extraction_failed", "mentioned_unresolved") for status in statuses
+    ):
         return COMPARISON_EVIDENCE_MISSING
     if all(status == "not_found" for status in statuses):
         return NO_CONDITIONS_SPECIFIED
@@ -522,12 +531,21 @@ def _fit7(cpl: CplResult) -> FitRelationResult:
     diagnostics: list[StageDiagnostic] = []
 
     def result(status: FitStatus, reason: str | None) -> FitRelationResult:
+        # FIT-7 is a rule decision.  When it reaches a verdict, both complete
+        # side inputs were actually inspected; persist those selected inputs
+        # rather than inventing an LLM-style citation list.  Withheld or
+        # invalid comparison leaves no evidence because no comparison occurred.
+        compared = status in {FitStatus.FIT, FitStatus.NEEDS_REVIEW}
         return FitRelationResult(
             relation_id=FitRelationId.FIT_7,
             status=status,
             reason_code=reason,
             left=left,
             right=right,
+            used_left_fact_ids=[ref.fact_id for ref in left.facts] if compared else [],
+            used_right_fact_ids=[ref.fact_id for ref in right.facts]
+            if compared
+            else [],
             diagnostics=diagnostics,
         )
 
@@ -539,7 +557,7 @@ def _fit7(cpl: CplResult) -> FitRelationResult:
         diagnostics.append(
             StageDiagnostic(
                 stage=_STAGE,
-                unit=sorted(shared)[0][0] or "",
+                unit=min(shared)[0] or "",
                 reason_code=SELF_COMPARISON,
                 message=(
                     "좌우가 같은 원문 구간을 인용했다. 그 값은 자기 자신과 "
@@ -628,7 +646,7 @@ _FIT_COMPARISON_INSTRUCTION = (
     "You compare two grounded evidence sides of a Korean public-program request document. "
     "For each relation in the payload return {relation_id, status, reason_code, "
     "left_fact_ids, right_fact_ids}. "
-    f"status must be one of {[status.value for status in FitStatus]}. "
+    f"status must be one of {[status.value for status in FitStatus if status is not FitStatus.NOT_APPLICABLE]}. "
     "Cite only fact_ids that appear on that relation's own side in the payload. "
     "Never invent a fact_id, a value, or a relation that was not asked for. "
     "For FIT-4, use a loose alpha anomaly-screening standard: an explicit parent-child "
@@ -766,6 +784,8 @@ def _validate_verdict(
         status = FitStatus(row.status)
     except ValueError:
         return f"알 수 없는 status {row.status!r}"
+    if status is FitStatus.NOT_APPLICABLE:
+        return "LLM은 NOT_APPLICABLE을 판정할 수 없다"
     left_ids = {ref.fact_id for ref in left.facts}
     right_ids = {ref.fact_id for ref in right.facts}
     unknown = [
@@ -809,7 +829,9 @@ def _compare_relations(
     의미 보완과 별도 카운터로 두라고 했고, 재시도의 자리는 포트 어댑터다.
     """
 
-    verdicts: dict[FitRelationId, tuple[FitStatus, str | None, list[str], list[str]]] = {}
+    verdicts: dict[
+        FitRelationId, tuple[FitStatus, str | None, list[str], list[str]]
+    ] = {}
     errors: dict[FitRelationId, str] = {}
     remaining = dict(pending)
     attempt = 0
@@ -921,9 +943,7 @@ def _compare_relations(
                     attempt=attempt,
                 )
             )
-        remaining = {
-            relation_id: remaining[relation_id] for relation_id in errors
-        }
+        remaining = {relation_id: remaining[relation_id] for relation_id in errors}
 
     # 예산을 다 쓰고도 남은 관계는 그 관계만 정보 부족으로 남는다.
     for relation_id in remaining:
@@ -950,8 +970,10 @@ def analyze_fit(
     # FIT-7: Rule. LLM 을 타지 않으므로 응답 실패의 영향도 받지 않는다.
     results[FitRelationId.FIT_7] = _fit7(cpl)
 
-    # FIT-4 는 명시된 계층 edge 가 있을 때만 비교 입력을 만든다. edge 가
-    # 없으면 아래 공통 gate 가 COMPARISON_EVIDENCE_MISSING 으로 남긴다.
+    # FIT-4 distinguishes an absent hierarchy from a malformed/ungrounded
+    # hierarchy.  Only the former is NOT_APPLICABLE; existing hierarchy facts
+    # without a usable parent-child comparison remain INSUFFICIENT.
+    hierarchy_facts = _facts_at(cpl, _HIERARCHY_PATH)
     hierarchy_sides = _hierarchy_sides(cpl)
 
     # 나머지 관계의 좌우 근거는 CPL에서 바로 나온다.
@@ -966,10 +988,16 @@ def analyze_fit(
         ),
         FitRelationId.FIT_6: (delivery_left, delivery_right),
     }
-    # 마지막에 넣어 기존 관계 payload 의 순서는 유지하면서도 FIT-4 를 같은
-    # semantic LLM 배치에 포함한다. edge 가 없으면 빈 양쪽으로 공통 gate 를
-    # 태워 관계 결과는 유지하되 모델을 호출하지 않는다.
-    sides[FitRelationId.FIT_4] = hierarchy_sides or (FitSide(), FitSide())
+    if not hierarchy_facts:
+        results[FitRelationId.FIT_4] = FitRelationResult(
+            relation_id=FitRelationId.FIT_4,
+            status=FitStatus.NOT_APPLICABLE,
+            reason_code=None,
+        )
+    else:
+        # Preserve the original evidence-poor outcome for a hierarchy that
+        # exists but cannot form a grounded direct edge.
+        sides[FitRelationId.FIT_4] = hierarchy_sides or (FitSide(), FitSide())
 
     # 목적 의미 축 보완은 문서당 한 번이다. 우측 근거가 하나도 없으면 세
     # 관계 모두 어차피 게이트에서 걸리므로 호출하지 않는다.
@@ -979,9 +1007,9 @@ def analyze_fit(
 
     pending: dict[FitRelationId, tuple[FitSide, FitSide]] = {}
     for relation_id, (left, right) in sides.items():
-        reason = (
-            _fit5_reason(cpl, left) if relation_id is FitRelationId.FIT_5 else None
-        )
+        if relation_id in results:
+            continue
+        reason = _fit5_reason(cpl, left) if relation_id is FitRelationId.FIT_5 else None
         if reason is None:
             reason = _gate(left, right, registry)
         if (

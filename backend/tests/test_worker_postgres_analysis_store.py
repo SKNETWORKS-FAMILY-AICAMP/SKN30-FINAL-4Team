@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 
 from worker.analysis_job import AnalysisJobContractError, ArtifactRef
-from worker.postgres_analysis_store import PostgresAnalysisStore
+from worker.postgres_analysis_store import PostgresAnalysisStore, _vectors_json
 
 
 @dataclass
@@ -69,13 +69,24 @@ def _artifacts(run_id: str) -> tuple[ArtifactRef, ArtifactRef, dict[str, Any]]:
         "processing_metadata": {},
     }
     common = ArtifactRef(
-        "request-temp", f"{run_id}/common/a.json", "a" * 64,
-        "common_ir", "application/json", 10, "common_ir_v1", run_id,
+        "request-temp",
+        f"{run_id}/common/a.json",
+        "a" * 64,
+        "common_ir",
+        "application/json",
+        10,
+        "common_ir_v1",
+        run_id,
     )
     structured = ArtifactRef(
-        "request-temp", f"{run_id}/profile/b.json", "b" * 64,
-        "structured_profile", "application/json", 20,
-        "pre_review_request_profile/v0.1", f"request:{run_id}",
+        "request-temp",
+        f"{run_id}/profile/b.json",
+        "b" * 64,
+        "structured_profile",
+        "application/json",
+        20,
+        "pre_review_request_profile/v0.1",
+        f"request:{run_id}",
     )
     return common, structured, profile
 
@@ -84,7 +95,9 @@ def test_registration_is_fenced_and_materialises_once() -> None:
     run_id, processing_id = str(uuid4()), str(uuid4())
     cursor = FakeCursor(run_id, processing_id)
     connection = FakeConnection(cursor)
-    store = PostgresAnalysisStore("postgresql://private", connect=lambda *_a, **_k: connection)
+    store = PostgresAnalysisStore(
+        "postgresql://private", connect=lambda *_a, **_k: connection
+    )
     common, structured, profile = _artifacts(run_id)
 
     store.register_request_profile(
@@ -100,8 +113,12 @@ def test_registration_is_fenced_and_materialises_once() -> None:
     assert connection.committed
     queries = [query for query, _params in cursor.calls]
     assert "lease_expires_at >" in queries[0]
-    assert sum("workspace.ingest_request_profile_core" in query for query in queries) == 1
-    assert sum("INSERT INTO workspace.artifact_lineage" in query for query in queries) == 2
+    assert (
+        sum("workspace.ingest_request_profile_core" in query for query in queries) == 1
+    )
+    assert (
+        sum("INSERT INTO workspace.artifact_lineage" in query for query in queries) == 2
+    )
 
 
 def test_retry_accepts_only_the_exact_committed_profile_hash_and_skips_ingest() -> None:
@@ -118,7 +135,9 @@ def test_retry_accepts_only_the_exact_committed_profile_hash_and_skips_ingest() 
         },
     )
     connection = FakeConnection(cursor)
-    store = PostgresAnalysisStore("postgresql://private", connect=lambda *_a, **_k: connection)
+    store = PostgresAnalysisStore(
+        "postgresql://private", connect=lambda *_a, **_k: connection
+    )
 
     store.register_request_profile(
         analysis_run_id=run_id,
@@ -132,7 +151,8 @@ def test_retry_accepts_only_the_exact_committed_profile_hash_and_skips_ingest() 
 
     assert connection.committed
     assert not any(
-        "workspace.ingest_request_profile_core" in query for query, _params in cursor.calls
+        "workspace.ingest_request_profile_core" in query
+        for query, _params in cursor.calls
     )
 
     cursor = FakeCursor(
@@ -159,3 +179,12 @@ def test_retry_accepts_only_the_exact_committed_profile_hash_and_skips_ingest() 
             structured_profile=structured,
             profile=profile,
         )
+
+
+def test_partial_retrieval_vectors_are_sparse_and_never_zero_filled() -> None:
+    assert _vectors_json({"purpose": [1.0, 0.0]}) == {"purpose": [1.0, 0.0]}
+
+    with pytest.raises(AnalysisJobContractError, match="non-zero"):
+        _vectors_json({"purpose": [0.0, 0.0]})
+    with pytest.raises(AnalysisJobContractError, match="one to three"):
+        _vectors_json({})

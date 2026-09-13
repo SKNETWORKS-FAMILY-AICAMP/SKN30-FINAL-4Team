@@ -8,15 +8,14 @@ token-weighted back into one vector per retrieval axis.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import lru_cache
 import hashlib
 import math
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
-
 
 ALLOWED_STATUSES = frozenset({"identified", "partial", "partially_identified"})
 PURPOSE_FIELDS = ("purpose_goal",)
@@ -82,9 +81,11 @@ def _iter_facts(profile: Mapping[str, Any]) -> Iterable[Mapping[str, Any]]:
             name = _clean(component.get("name_raw"))
             if name:
                 source = component.get("value_source")
-                source = source if isinstance(source, Mapping) else {
-                    "source_block_id": component.get("name_source_block_id")
-                }
+                source = (
+                    source
+                    if isinstance(source, Mapping)
+                    else {"source_block_id": component.get("name_source_block_id")}
+                )
                 yield {
                     "field_name": "support_components",
                     "value_raw": name,
@@ -158,7 +159,9 @@ def _encoding(model: str):
     try:
         import tiktoken
     except ImportError as error:  # pragma: no cover - deployment guard
-        raise RuntimeError("tiktoken is required for retrieval input assembly") from error
+        raise RuntimeError(
+            "tiktoken is required for retrieval input assembly"
+        ) from error
     try:
         return tiktoken.encoding_for_model(model)
     except KeyError:
@@ -209,9 +212,17 @@ def _chunks(text: str, *, model: str, limit: int) -> tuple[EmbeddingChunk, ...]:
     return tuple(EmbeddingChunk(item, _tokens(item, model)) for item in output)
 
 
-def assemble_inputs(
+def assemble_available_inputs(
     profile: Mapping[str, Any], *, model: str, max_input_tokens: int
 ) -> dict[str, EmbeddingInput]:
+    """Assemble just the grounded retrieval axes that are present.
+
+    Retrieval v0.2 deliberately distinguishes a missing request axis from a
+    zero vector.  A zero vector both fabricates an input and makes cosine
+    ranking undefined, so callers receive no key at all for an absent axis.
+    The result can therefore contain zero through three entries.
+    """
+
     if not 1 <= max_input_tokens <= 8192:
         raise ValueError("max_input_tokens must be between 1 and 8192")
     grouped = _group(profile)
@@ -222,9 +233,6 @@ def assemble_inputs(
             grouped, SUPPORT_FIELDS, headers=True, deduplicate_values=True
         ),
     }
-    missing = [scope for scope, value in texts.items() if not value]
-    if missing:
-        raise ValueError(f"embedding scopes are empty: {', '.join(missing)}")
     return {
         scope: EmbeddingInput(
             scope=scope,
@@ -233,7 +241,28 @@ def assemble_inputs(
             chunks=_chunks(text, model=model, limit=max_input_tokens),
         )
         for scope, text in texts.items()
+        if text
     }
+
+
+def assemble_inputs(
+    profile: Mapping[str, Any], *, model: str, max_input_tokens: int
+) -> dict[str, EmbeddingInput]:
+    """Return all three retrieval inputs for legacy callers.
+
+    New worker orchestration uses :func:`assemble_available_inputs`; retaining
+    this strict adapter avoids silently widening old bulk-embedding callers.
+    """
+
+    inputs = assemble_available_inputs(
+        profile, model=model, max_input_tokens=max_input_tokens
+    )
+    missing = [
+        scope for scope in ("purpose", "target", "support") if scope not in inputs
+    ]
+    if missing:
+        raise ValueError(f"embedding scopes are empty: {', '.join(missing)}")
+    return inputs
 
 
 def pool(vectors: Sequence[Sequence[float]], weights: Sequence[int]) -> list[float]:

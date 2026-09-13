@@ -145,26 +145,15 @@ def test_core_engine_runs_all_ml_models_and_exposes_only_public_fields(
     monkeypatch.setattr(
         analysis_job,
         "build_common_profile",
-        lambda profile, *_args, **_kwargs: SimCommonProfile(
-            source_profile_id=profile["profile_id"],
-            schema_version=profile["schema_version"],
-            common_ir_document_id="ir:ml-test",
-            purpose={},
-            target={},
-            content={},
-            delivery={},
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("SIM must not be structured without retrieved candidates")
         ),
     )
     monkeypatch.setattr(
         analysis_job,
         "compare_candidates",
-        lambda request_common, *_args, **_kwargs: SimComparisonResult(
-            request_profile_id=request_common.source_profile_id,
-            candidates=[],
-            model_profile="sim",
-            ruleset_version="rules",
-            prompt_version="prompt",
-            scoring_version="score",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("SIM must not compare without retrieved candidates")
         ),
     )
 

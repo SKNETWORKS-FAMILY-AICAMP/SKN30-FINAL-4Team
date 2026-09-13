@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from dataclasses import dataclass, field
 from hashlib import sha256
-import json
 from pathlib import Path
-import subprocess
 from typing import Any
 from uuid import uuid4
 
 import httpx
 import pytest
-
 from worker.analysis_job import (
     AnalysisJobContractError,
     AnalysisJobHandler,
@@ -23,7 +22,7 @@ from worker.analysis_job import (
     ExistingCandidate,
     ProducedRequestProfile,
 )
-from worker.contracts.cpl_result import CplItem, CplResult, CplFieldCode
+from worker.contracts.cpl_result import CplFieldCode, CplItem, CplResult
 from worker.contracts.fit_result import (
     FitRelationId,
     FitRelationResult,
@@ -120,8 +119,12 @@ class FakeStore:
     cached: CachedRequestProfile | None = None
     registrations: int = 0
     match_calls: int = 0
+    config_calls: int = 0
+    matched_vectors: list[dict[str, list[float]]] = field(default_factory=list)
 
-    def cached_request_profile(self, *, analysis_run_id: str) -> CachedRequestProfile | None:
+    def cached_request_profile(
+        self, *, analysis_run_id: str
+    ) -> CachedRequestProfile | None:
         return self.cached
 
     def register_request_profile(self, **values: Any) -> None:
@@ -134,6 +137,7 @@ class FakeStore:
         )
 
     def active_embedding_configuration(self) -> EmbeddingConfiguration:
+        self.config_calls += 1
         return EmbeddingConfiguration(
             configuration_id=str(uuid4()),
             provider="openai",
@@ -145,19 +149,30 @@ class FakeStore:
 
     def match_existing_profiles(self, **values: Any) -> list[ExistingCandidate]:
         self.match_calls += 1
-        assert len(values["purpose"]) == len(values["target"]) == len(values["support"]) == 2
+        assert set(values) == {"configuration_id", "vectors", "limit"}
+        assert 1 <= len(values["vectors"]) <= 3
+        assert all(len(vector) == 2 for vector in values["vectors"].values())
+        self.matched_vectors.append(dict(values["vectors"]))
         return [self.candidate]
 
 
 class FakeProducer:
     def __init__(self) -> None:
         self.calls = 0
+        self.available_axes = {"purpose", "target", "support"}
 
     def produce(self, **values: Any) -> ProducedRequestProfile:
         self.calls += 1
         run_id = values["analysis_run_id"]
         source_sha256 = sha256(values["source_path"].read_bytes()).hexdigest()
         profile = _profile(run_id, source_sha256)
+        comparison = profile["comparison_profile"]
+        if "purpose" not in self.available_axes:
+            comparison.pop("purpose_goal")
+        if "target" not in self.available_axes:
+            comparison.pop("support_target")
+        if "support" not in self.available_axes:
+            comparison.pop("support_activities")
         common = {
             "schema_version": "common_ir_v1",
             "document": {
@@ -193,16 +208,34 @@ class FakeEmbedding:
 class FakeEngine:
     def __init__(self) -> None:
         self.calls = 0
+        self.last_values: dict[str, Any] | None = None
 
     def build_payload(self, **values: Any) -> dict[str, Any]:
         self.calls += 1
+        self.last_values = values
         assert values["profile"]["schema_version"] == "pre_review_request_profile/v0.1"
         assert values["common_ir"]["schema_version"] == "common_ir_v1"
-        assert values["candidates"][0].candidate.source_profile_id == "hwp:PBLN_TEST"
-        return {"program_name": "테스트 요청 사업", "axes": [], "candidates": [], "evidences": []}
+        if values["candidates"]:
+            assert (
+                values["candidates"][0].candidate.source_profile_id == "hwp:PBLN_TEST"
+            )
+        return {
+            "program_name": "테스트 요청 사업",
+            "axes": [],
+            "candidates": [],
+            "evidences": [],
+        }
 
 
-def _fixture() -> tuple[AnalysisJobHandler, FakeStorage, FakeStore, FakeProducer, FakeEmbedding, FakeEngine, ClaimedJob]:
+def _fixture() -> tuple[
+    AnalysisJobHandler,
+    FakeStorage,
+    FakeStore,
+    FakeProducer,
+    FakeEmbedding,
+    FakeEngine,
+    ClaimedJob,
+]:
     run_id = str(uuid4())
     processing_id = str(uuid4())
     source = b"fake-hwpx-content"
@@ -281,8 +314,14 @@ def test_handler_offline_e2e_and_retry_reuses_committed_profile() -> None:
     retry_gets = storage.gets[first_get_count:]
     assert ("request-temp", job.payload["source_object_key"]) not in retry_gets
     assert store.cached is not None
-    assert (store.cached.common_ir.bucket, store.cached.common_ir.object_key) in retry_gets
-    assert (store.cached.structured_profile.bucket, store.cached.structured_profile.object_key) in retry_gets
+    assert (
+        store.cached.common_ir.bucket,
+        store.cached.common_ir.object_key,
+    ) in retry_gets
+    assert (
+        store.cached.structured_profile.bucket,
+        store.cached.structured_profile.object_key,
+    ) in retry_gets
 
 
 def test_old_embedding_assembly_version_fails_before_embedding() -> None:
@@ -315,6 +354,63 @@ def test_empty_existing_match_is_retrieval_readiness_failure() -> None:
     assert engine.calls == 0
 
 
+@pytest.mark.parametrize(
+    "available_axes",
+    (
+        {"purpose"},
+        {"purpose", "target"},
+        {"purpose", "target", "support"},
+    ),
+)
+def test_partial_axis_retrieval_embeds_only_grounded_request_axes(
+    available_axes: set[str],
+) -> None:
+    handler, _storage, store, producer, embedding, engine, job = _fixture()
+    producer.available_axes = available_axes
+
+    handler.handle(job)
+
+    assert store.config_calls == 1
+    assert store.match_calls == 1
+    assert set(store.matched_vectors[0]) == available_axes
+    assert embedding.calls == len(available_axes)
+    assert engine.last_values is not None
+    decision = engine.last_values["retrieval"]
+    assert decision.status == "completed"
+    assert decision.reason_code is None
+    assert decision.available_axes == tuple(
+        axis for axis in ("purpose", "target", "support") if axis in available_axes
+    )
+
+
+def test_zero_axis_retrieval_skips_config_provider_and_kb_but_runs_analysis() -> None:
+    handler, _storage, store, producer, embedding, engine, job = _fixture()
+    producer.available_axes = set()
+
+    handler.handle(job)
+
+    assert store.config_calls == store.match_calls == embedding.calls == 0
+    assert engine.calls == 1
+    assert engine.last_values is not None
+    decision = engine.last_values["retrieval"]
+    assert decision.status == "skipped"
+    assert decision.reason_code == "RETRIEVAL_INPUT_MISSING"
+    assert engine.last_values["candidates"] == []
+
+
+def test_optional_empty_kb_materialises_a_completed_empty_sim_result() -> None:
+    handler, _storage, store, _producer, _embedding, engine, job = _fixture()
+    handler._existing_kb_required = False  # test the deployment setting branch
+    store.match_existing_profiles = lambda **_values: []  # type: ignore[method-assign]
+
+    handler.handle(job)
+
+    assert engine.last_values is not None
+    decision = engine.last_values["retrieval"]
+    assert decision.status == "completed"
+    assert decision.reason_code == "KB_EMPTY"
+
+
 def test_source_hash_mismatch_fails_before_pipeline_or_upload() -> None:
     handler, storage, store, producer, _embedding, _engine, job = _fixture()
     storage.objects[("request-temp", job.payload["source_object_key"])] = b"tampered"
@@ -327,7 +423,9 @@ def test_source_hash_mismatch_fails_before_pipeline_or_upload() -> None:
     assert storage.puts == []
 
 
-def test_failed_registration_keeps_content_addressed_objects_for_a_new_attempt() -> None:
+def test_failed_registration_keeps_content_addressed_objects_for_a_new_attempt() -> (
+    None
+):
     handler, storage, store, _producer, _embedding, _engine, job = _fixture()
 
     def reject_registration(**_values: Any) -> None:
@@ -411,12 +509,14 @@ def test_result_payload_uses_frontend_axis_and_status_vocabulary() -> None:
     assert payload["axes"][1]["axis_code"] == "FIT-1"
     result = payload["candidates"][0]
     assert result["profile_version_pk"] == "11111111-1111-1111-1111-111111111111"
-    assert result["status"] == "similar"
+    assert result["status"] == "partial"
     assert result["comparable_axes"] == ["purpose", "target", "support"]
     assert result["delivery_result"]["status"] == "insufficient"
 
 
-def test_freetype_preload_must_be_an_existing_absolute_file(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_freetype_preload_must_be_an_existing_absolute_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from worker.profiles import _subprocess_env
 
     monkeypatch.setenv("PREREVIEW_FREETYPE_LIB", "relative/libfreetype.so")
@@ -510,10 +610,17 @@ def test_storage_conflict_is_idempotent_only_when_existing_bytes_match() -> None
         content_type="application/json",
     )
     assert [request.method for request in requests] == ["POST", "GET"]
-    assert all(request.headers["authorization"] == "Bearer private-test-key" for request in requests)
+    assert all(
+        request.headers["authorization"] == "Bearer private-test-key"
+        for request in requests
+    )
 
     def poisoned(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(409) if request.method == "POST" else httpx.Response(200, content=b"other")
+        return (
+            httpx.Response(409)
+            if request.method == "POST"
+            else httpx.Response(200, content=b"other")
+        )
 
     storage = SupabaseWorkerStorage(
         supabase_url="http://supabase.local",

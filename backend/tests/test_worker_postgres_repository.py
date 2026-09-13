@@ -178,7 +178,7 @@ def test_fenced_transitions_forward_processing_run_token_and_safe_failure() -> N
     complete_query, complete_params = factory.connections[1].cursor_instance.calls[0]
     fail_query, fail_params = factory.connections[2].cursor_instance.calls[0]
     assert "workspace.heartbeat_analysis_run" in heartbeat_query
-    assert "workspace.persist_analysis_result_core" in complete_query
+    assert "workspace.persist_analysis_result_core_v2" in complete_query
     assert "workspace.fail_analysis_run" in fail_query
     assert heartbeat_params[:2] == complete_params[:2] == fail_params[:2] == (
         run_id,

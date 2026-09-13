@@ -139,8 +139,8 @@ def test_the_same_nodes_answer_differently_for_the_implementation_plan() -> None
     assert SERVER_DERIVED_HIERARCHY_STATE in new_unit.reason_codes
 
 
-def test_shared_cpl_03_and_05_snapshots_make_one_public_db_evidence_row() -> None:
-    """CPL-03/CPL-05의 같은 source는 항목마다 중복 저장하지 않는다."""
+def test_shared_cpl_03_and_05_snapshot_is_repeated_per_selected_judgement() -> None:
+    """v0.2 snapshots a selected source once for each logical CPL judgement."""
 
     node = {
         **_node("p1", "detail_program", "기술혁신 지원사업"),
@@ -166,11 +166,14 @@ def test_shared_cpl_03_and_05_snapshots_make_one_public_db_evidence_row() -> Non
 
     rows = _cpl_evidence_rows(profile)
 
-    # 각각은 CPL-03/CPL-05에 두 번 나타나지만, persistence로 가는 snapshot은
-    # source fact 하나당 한 행이다. 서로 다른 source/좌표인 둘은 보존한다.
-    assert sum(row["candidate_pack_block_id"] == "pack:node" for row in rows) == 1
-    assert sum(row["candidate_pack_block_id"] == "pack:component" for row in rows) == 1
+    # The same source is selected by CPL-03 and CPL-05.  The v0.2 materialiser
+    # validates evidence in its logical-axis context, so PoC snapshots are
+    # intentionally duplicated rather than sharing an ambiguous row.
+    assert sum(row["candidate_pack_block_id"] == "pack:node" for row in rows) == 2
+    assert sum(row["candidate_pack_block_id"] == "pack:component" for row in rows) == 2
     assert [(row["candidate_pack_block_id"], row["raw_value"]) for row in rows] == [
+        ("pack:node", "기술혁신 지원사업"),
+        ("pack:component", "시제품 제작 지원"),
         ("pack:node", "기술혁신 지원사업"),
         ("pack:component", "시제품 제작 지원"),
     ]

@@ -33,12 +33,14 @@ def _node(
             "start_char": 0,
             "end_char": len(name),
         },
-        "evidence": [{
-            "source_block_id": f"block:{node_id}",
-            "common_ir_document_id": "doc:fit4",
-            "common_ir_block_id": f"block:{node_id}",
-            "common_ir_occurrence_ids": [f"occ:{node_id}"],
-        }],
+        "evidence": [
+            {
+                "source_block_id": f"block:{node_id}",
+                "common_ir_document_id": "doc:fit4",
+                "common_ir_block_id": f"block:{node_id}",
+                "common_ir_occurrence_ids": [f"occ:{node_id}"],
+            }
+        ],
     }
 
 
@@ -46,36 +48,46 @@ def _profile(*, parent: str | None = "pn1") -> dict[str, Any]:
     return {
         "profile_id": "request:fit4",
         "processing_metadata": {"common_ir_document_id": "doc:fit4"},
-        "program_hierarchy": {"nodes": [
-            _node("pn1", "detail_program", "미래자동차산업 전환 지원사업"),
-            _node("pn2", "sub_program", "친환경차 부품 양산전환 지원", parent),
-        ]},
+        "program_hierarchy": {
+            "nodes": [
+                _node("pn1", "detail_program", "미래자동차산업 전환 지원사업"),
+                _node("pn2", "sub_program", "친환경차 부품 양산전환 지원", parent),
+            ]
+        },
         "comparison_profile": {
-            "support_target": [{
-                "fact_id": "fact:child-target",
-                "value_raw": "자동차부품 제조 중소기업",
-                "program_node_id": "pn2",
-                "status": "identified",
-            }],
-            "total_budget": [{
-                "fact_id": "fact:child-budget",
-                "value_raw": "예산 전용 근거",
-                "program_node_id": "pn2",
-                "status": "identified",
-            }],
+            "support_target": [
+                {
+                    "fact_id": "fact:child-target",
+                    "value_raw": "자동차부품 제조 중소기업",
+                    "program_node_id": "pn2",
+                    "status": "identified",
+                }
+            ],
+            "total_budget": [
+                {
+                    "fact_id": "fact:child-budget",
+                    "value_raw": "예산 전용 근거",
+                    "program_node_id": "pn2",
+                    "status": "identified",
+                }
+            ],
         },
         "request_context": {
-            "legal_basis": [{
-                "fact_id": "fact:child-legal",
-                "value_raw": "법적근거 전용 근거",
-                "program_node_id": "pn2",
-                "status": "identified",
-            }],
+            "legal_basis": [
+                {
+                    "fact_id": "fact:child-legal",
+                    "value_raw": "법적근거 전용 근거",
+                    "program_node_id": "pn2",
+                    "status": "identified",
+                }
+            ],
         },
-        "field_states": [{
-            "field_name": "support_target",
-            "status": "identified",
-        }],
+        "field_states": [
+            {
+                "field_name": "support_target",
+                "status": "identified",
+            }
+        ],
     }
 
 
@@ -97,19 +109,25 @@ class _HierarchyLLM:
         self.payloads.append(payload)
         assert len(payload["relations"]) == 1
         relation = payload["relations"][0]
-        return response_schema.model_validate({
-            "relations": [{
-                "relation_id": relation["relation_id"],
-                "status": self.status,
-                "reason_code": None,
-                "left_fact_ids": [row["fact_id"] for row in relation["left"]],
-                "right_fact_ids": [row["fact_id"] for row in relation["right"]],
-            }],
-        })
+        return response_schema.model_validate(
+            {
+                "relations": [
+                    {
+                        "relation_id": relation["relation_id"],
+                        "status": self.status,
+                        "reason_code": None,
+                        "left_fact_ids": [row["fact_id"] for row in relation["left"]],
+                        "right_fact_ids": [row["fact_id"] for row in relation["right"]],
+                    }
+                ],
+            }
+        )
 
 
 def _fit4(result):
-    return next(row for row in result.relations if row.relation_id is FitRelationId.FIT_4)
+    return next(
+        row for row in result.relations if row.relation_id is FitRelationId.FIT_4
+    )
 
 
 def test_explicit_adjacent_parent_child_is_compared_with_grounded_names() -> None:
@@ -126,10 +144,14 @@ def test_explicit_adjacent_parent_child_is_compared_with_grounded_names() -> Non
     assert relation["left"][0]["value_raw"] == "미래자동차산업 전환 지원사업"
     assert relation["right"][0]["value_raw"] == "친환경차 부품 양산전환 지원"
     assert any(row["fact_id"] == "fact:child-target" for row in relation["right"])
-    assert all(row["fact_id"] not in {"fact:child-budget", "fact:child-legal"}
-               for row in relation["right"])
-    assert all(row["value_raw"] not in {"예산 전용 근거", "법적근거 전용 근거"}
-               for row in relation["right"])
+    assert all(
+        row["fact_id"] not in {"fact:child-budget", "fact:child-legal"}
+        for row in relation["right"]
+    )
+    assert all(
+        row["value_raw"] not in {"예산 전용 근거", "법적근거 전용 근거"}
+        for row in relation["right"]
+    )
 
 
 def test_explicit_parent_edge_survives_reversed_levels() -> None:
@@ -156,6 +178,18 @@ def test_missing_parent_keeps_fit4_insufficient_without_guessing_from_order() ->
 
     assert fit4.status is FitStatus.INSUFFICIENT
     assert fit4.reason_code == COMPARISON_EVIDENCE_MISSING
+    assert not llm.payloads
+
+
+def test_absent_hierarchy_is_fit4_not_applicable_not_insufficient() -> None:
+    profile = _profile()
+    profile["program_hierarchy"] = {"nodes": []}
+    llm = _HierarchyLLM()
+
+    fit4 = _fit4(analyze_fit(build_cpl_result(profile), llm, model_profile="test"))
+
+    assert fit4.status is FitStatus.NOT_APPLICABLE
+    assert fit4.reason_code is None
     assert not llm.payloads
 
 

@@ -20,10 +20,10 @@ from enum import StrEnum
 
 from ..quantities import QuantitySpan
 from .cpl_result import (
-    CplAxisCode,
-    CplEvidence,
     PURPOSE_AXIS_CODES,
     PURPOSE_AXIS_UNRESOLVED,
+    CplAxisCode,
+    CplEvidence,
     PurposeAxisAssignment,
     PurposeAxisClassification,
 )
@@ -35,34 +35,34 @@ from .profile_snapshot import (
 )
 
 __all__ = [
-    "FitRelationId",
-    "FitStatus",
-    "CplEvidence",
-    "StageDiagnostic",
-    "CplAxisCode",
-    "PURPOSE_AXIS_CODES",
-    "FIT_NOT_APPLICABLE",
-    "FIT_DISPLAY_STATUSES",
-    "fit_axis_code",
     "COMPARISON_EVIDENCE_MISSING",
     "COMPARISON_VALUE_INVALID",
     "EVIDENCE_REF_UNRESOLVED",
+    "FIT_DISPLAY_STATUSES",
+    "FIT_NOT_APPLICABLE",
+    "FIT_REASON_CODES",
     "HIERARCHY_COMPARISON_NOT_AVAILABLE",
     "LLM_INVALID_RESPONSE",
     "LLM_TIMEOUT",
     "LLM_UNAVAILABLE",
     "NO_CONDITIONS_SPECIFIED",
     "NUMERIC_MISMATCH",
+    "PURPOSE_AXIS_CODES",
     "PURPOSE_AXIS_UNRESOLVED",
     "SELF_COMPARISON",
     "SINGLE_SIDED_NO_CONFLICT",
-    "FIT_REASON_CODES",
+    "CplAxisCode",
+    "CplEvidence",
     "FitEvidenceRef",
-    "FitSide",
+    "FitRelationId",
     "FitRelationResult",
+    "FitResult",
+    "FitSide",
+    "FitStatus",
     "PurposeAxisAssignment",
     "PurposeAxisClassification",
-    "FitResult",
+    "StageDiagnostic",
+    "fit_axis_code",
 ]
 
 
@@ -85,6 +85,7 @@ class FitStatus(StrEnum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
     CONFLICT = "CONFLICT"
     INSUFFICIENT = "INSUFFICIENT"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
 # 축 어휘 정의는 cpl_result 로 옮겼다. 축을 확정하는 쪽이 어휘도 갖는다.
@@ -92,16 +93,11 @@ class FitStatus(StrEnum):
 
 # ------------------------------------------------------------- 표시 어휘
 
-# 프론트 계약은 FIT 상태를 다섯 개로 받는다. ``app.schemas.fit.FitStatus`` 에는
-# 넷뿐이고 그 enum 은 옛 FastAPI 표면이 함께 쓰고 있어 건드리지 않는다.
-# 다섯째 값은 출력 경계에서만 존재한다.
-#
-# 뜻은 "비교축 자체가 이 문서에 적용되지 않음" 이다. 근거를 못 구한
-# ``INSUFFICIENT`` 와 다르다. FIT-4 는 명시된 parent-child edge 를 대상으로
-# 느슨한 알파 이상징후 탐지를 수행하며, 계층이 없을 때는 일반적인
-# ``COMPARISON_EVIDENCE_MISSING`` 으로 남긴다. 이 값은 기존 표시 계약·저장
-# 결과의 호환을 위해 어휘로만 유지한다.
-FIT_NOT_APPLICABLE = "NOT_APPLICABLE"
+# ``NOT_APPLICABLE`` means the FIT-4 hierarchy itself does not exist.  It is
+# deliberately a real worker enum rather than an output-only alias: a broken
+# or evidence-poor hierarchy still has a comparison subject and is therefore
+# ``INSUFFICIENT``.
+FIT_NOT_APPLICABLE = FitStatus.NOT_APPLICABLE.value
 
 FIT_DISPLAY_STATUSES = frozenset(
     {status.value for status in FitStatus} | {FIT_NOT_APPLICABLE}

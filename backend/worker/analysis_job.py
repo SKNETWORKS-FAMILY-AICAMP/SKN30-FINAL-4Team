@@ -9,21 +9,21 @@ E2E test and in the trusted worker process.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from dataclasses import dataclass, replace
-from hashlib import sha256
 import json
 import math
-from pathlib import Path
 import tempfile
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
+from hashlib import sha256
+from pathlib import Path
 from typing import Any, Protocol
 
 from .contracts.cpl_result import CplResult
 from .contracts.fit_result import FitResult
 from .contracts.ml_result import MlModelId
 from .contracts.profile_snapshot import CommonIrArtifact
-from .contracts.sim_result import SimComparisonResult, SimCommonProfile
+from .contracts.sim_result import SimCommonProfile, SimComparisonResult
 from .cpl import analyze_cpl
 from .fit import analyze_fit
 from .ml_reference import MlModel, run_ml_reference
@@ -37,11 +37,10 @@ from .profiles import (
     structure_request_profile,
 )
 from .result_payload import build_result_payload
-from .retrieval_inputs import assemble_inputs, pool
+from .retrieval_inputs import assemble_available_inputs, pool
 from .runtime import ClaimedJob
 from .sim import compare_candidates
 from .sim_inputs import build_common_profile
-
 
 SOURCE_MAX_BYTES = 50 * 1024 * 1024
 DERIVED_MAX_BYTES = 200 * 1024 * 1024
@@ -61,7 +60,7 @@ def _notify_stage(
         return
     try:
         callback(stage, status, detail)
-    except Exception:
+    except Exception:  # noqa: BLE001 - progress reporting must never abort work
         # Progress reporting must never change the worker result.
         return
 
@@ -137,17 +136,56 @@ class ExistingCandidate:
     source_profile_id: str
     notice_id: str
     average_similarity: float
-    purpose_similarity: float
-    target_similarity: float
-    support_similarity: float
+    purpose_similarity: float | None
+    target_similarity: float | None
+    support_similarity: float | None
     profile_artifact: ArtifactRef
     title: str | None = None
+    # This is an analysis-time snapshot supplied by retrieval.  It must not be
+    # reconstructed from a later live KB row when the result is read.
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
 class ExistingProfileDocument:
     candidate: ExistingCandidate
     profile: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalDecision:
+    """Public SIM section state determined before candidate comparison."""
+
+    status: str
+    reason_code: str | None
+    summary: str
+    available_axes: tuple[str, ...] = ()
+
+    @classmethod
+    def input_missing(cls) -> RetrievalDecision:
+        return cls(
+            status="skipped",
+            reason_code="RETRIEVAL_INPUT_MISSING",
+            summary="유사 공고 검색에 사용할 요청 정보가 부족합니다.",
+        )
+
+    @classmethod
+    def kb_empty(cls, axes: Sequence[str]) -> RetrievalDecision:
+        return cls(
+            status="completed",
+            reason_code="KB_EMPTY",
+            summary="비교 가능한 기존 공고가 아직 없습니다.",
+            available_axes=tuple(axes),
+        )
+
+    @classmethod
+    def completed(cls, axes: Sequence[str]) -> RetrievalDecision:
+        return cls(
+            status="completed",
+            reason_code=None,
+            summary="유사 공고 검색을 완료했습니다.",
+            available_axes=tuple(axes),
+        )
 
 
 class WorkerObjectStorage(Protocol):
@@ -166,7 +204,9 @@ class WorkerObjectStorage(Protocol):
 
 
 class AnalysisStore(Protocol):
-    def cached_request_profile(self, *, analysis_run_id: str) -> CachedRequestProfile | None: ...
+    def cached_request_profile(
+        self, *, analysis_run_id: str
+    ) -> CachedRequestProfile | None: ...
 
     def register_request_profile(
         self,
@@ -186,9 +226,7 @@ class AnalysisStore(Protocol):
         self,
         *,
         configuration_id: str,
-        purpose: Sequence[float],
-        target: Sequence[float],
-        support: Sequence[float],
+        vectors: Mapping[str, Sequence[float]],
         limit: int,
     ) -> list[ExistingCandidate]: ...
 
@@ -208,11 +246,13 @@ class AnalysisEngine(Protocol):
     def build_payload(
         self,
         *,
+        analysis_run_id: str | None = None,
         profile: Mapping[str, Any],
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
         candidate_pack: Any = None,
         quantity_hold_reason: str | None = None,
+        retrieval: RetrievalDecision | None = None,
     ) -> Mapping[str, Any]: ...
 
 
@@ -293,11 +333,7 @@ class VendoredRequestProfileProducer:
                         "structured_profile", list(snapshot.diagnostics)
                     )
                 reasons = sorted(
-                    {
-                        row.reason_code
-                        for row in snapshot.diagnostics
-                        if row.reason_code
-                    }
+                    {row.reason_code for row in snapshot.diagnostics if row.reason_code}
                 )
                 suffix = f" ({','.join(reasons)})" if reasons else ""
                 raise AnalysisJobContractError(
@@ -310,7 +346,9 @@ class VendoredRequestProfileProducer:
             profile_content=_json_bytes(snapshot.profile),
             common_ir_logical_id=common.common_ir_document_id,
             profile_logical_id=profile_id,
-            common_ir_schema=str(common.document.get("schema_version") or "common_ir_v1"),
+            common_ir_schema=str(
+                common.document.get("schema_version") or "common_ir_v1"
+            ),
             profile_schema=str(snapshot.profile.get("schema_version") or ""),
             candidate_pack=pack,
         )
@@ -366,6 +404,11 @@ def _profile_title(profile: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _clean_profile_id(profile: Mapping[str, Any]) -> str | None:
+    value = profile.get("profile_id")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 # CPL 이 만든 진단을 밖으로 흘려보내는 자리. 공개 응답에는 싣지 않는다 —
 # 프론트 계약을 늘리지 않으면서 로컬 기록기가 받아 적을 수 있게만 한다.
 DiagnosticsSink = Callable[[str, Sequence[Any]], None]
@@ -407,11 +450,13 @@ class CoreAnalysisEngine:
     def build_payload(
         self,
         *,
+        analysis_run_id: str | None = None,
         profile: Mapping[str, Any],
         common_ir: Mapping[str, Any],
         candidates: Sequence[ExistingProfileDocument],
         candidate_pack: Any = None,
         quantity_hold_reason: str | None = None,
+        retrieval: RetrievalDecision | None = None,
     ) -> Mapping[str, Any]:
         request = dict(profile)
         with _stage(self._stage_callback, "cpl"):
@@ -434,54 +479,72 @@ class CoreAnalysisEngine:
                 model_profile=self._fit_model_profile,
                 max_repairs=self._max_repairs,
             )
-        with _stage(self._stage_callback, "sim"):
-            request_common = build_common_profile(
-                request, self._llm, model_profile=self._sim_model_profile
-            )
-            candidate_commons: list[SimCommonProfile] = []
-            sim_profiles: dict[str, SimCommonProfile] = {
-                request_common.source_profile_id or "": request_common
-            }
-            titles: dict[str, str | None] = {}
-            similarities: dict[str, float] = {}
-            profile_version_ids: dict[str, str] = {}
-            for document in candidates:
-                candidate_common = build_common_profile(
-                    dict(document.profile),
+        similarities: dict[str, float] = {}
+        profile_version_ids: dict[str, str] = {}
+        sim_profiles: dict[str, SimCommonProfile] = {}
+        # With no retrieval input/candidate, SIM is a completed/skipped
+        # section decision rather than an LLM job.  In particular the v0.2
+        # zero-axis branch must not call SIM structuring/provider code before
+        # CPL/FIT/ML can materialise.
+        if candidates:
+            with _stage(self._stage_callback, "sim"):
+                request_common = build_common_profile(
+                    request, self._llm, model_profile=self._sim_model_profile
+                )
+                candidate_commons: list[SimCommonProfile] = []
+                sim_profiles = {request_common.source_profile_id or "": request_common}
+                titles: dict[str, str | None] = {}
+                for document in candidates:
+                    candidate_common = build_common_profile(
+                        dict(document.profile),
+                        self._llm,
+                        model_profile=self._sim_model_profile,
+                    )
+                    if not candidate_common.source_profile_id:
+                        raise AnalysisJobContractError(
+                            "existing profile has no source_profile_id"
+                        )
+                    if (
+                        candidate_common.source_profile_id
+                        != document.candidate.source_profile_id
+                    ):
+                        raise AnalysisJobContractError(
+                            "existing profile identity does not match its DB lineage"
+                        )
+                    candidate_commons.append(candidate_common)
+                    sim_profiles[candidate_common.source_profile_id] = candidate_common
+                    titles[candidate_common.source_profile_id] = (
+                        document.candidate.title
+                    )
+                    similarities[candidate_common.source_profile_id] = (
+                        document.candidate.average_similarity
+                    )
+                    profile_version_ids[candidate_common.source_profile_id] = (
+                        document.candidate.profile_version_id
+                    )
+
+                sim: SimComparisonResult = compare_candidates(
+                    request_common,
+                    candidate_commons,
                     self._llm,
                     model_profile=self._sim_model_profile,
+                    max_repairs=self._max_repairs,
                 )
-                if not candidate_common.source_profile_id:
-                    raise AnalysisJobContractError(
-                        "existing profile has no source_profile_id"
-                    )
-                if candidate_common.source_profile_id != document.candidate.source_profile_id:
-                    raise AnalysisJobContractError(
-                        "existing profile identity does not match its DB lineage"
-                    )
-                candidate_commons.append(candidate_common)
-                sim_profiles[candidate_common.source_profile_id] = candidate_common
-                titles[candidate_common.source_profile_id] = document.candidate.title
-                similarities[candidate_common.source_profile_id] = (
-                    document.candidate.average_similarity
+                sim = replace(
+                    sim,
+                    candidates=[
+                        replace(row, title=titles.get(row.candidate_profile_id or ""))
+                        for row in sim.candidates
+                    ],
                 )
-                profile_version_ids[candidate_common.source_profile_id] = (
-                    document.candidate.profile_version_id
-                )
-
-            sim: SimComparisonResult = compare_candidates(
-                request_common,
-                candidate_commons,
-                self._llm,
+        else:
+            sim = SimComparisonResult(
+                request_profile_id=_clean_profile_id(request),
+                candidates=[],
                 model_profile=self._sim_model_profile,
-                max_repairs=self._max_repairs,
-            )
-            sim = replace(
-                sim,
-                candidates=[
-                    replace(row, title=titles.get(row.candidate_profile_id or ""))
-                    for row in sim.candidates
-                ],
+                ruleset_version="sim-not-run/v0.2",
+                prompt_version="sim-not-run/v0.2",
+                scoring_version="sim-not-run/v0.2",
             )
         with _stage(self._stage_callback, "ml"):
             ml_result = run_ml_reference(
@@ -492,6 +555,7 @@ class CoreAnalysisEngine:
                 title=_profile_title(request),
             )
         return build_result_payload(
+            analysis_run_id=analysis_run_id,
             profile=request,
             cpl=cpl,
             fit=fit,
@@ -500,6 +564,11 @@ class CoreAnalysisEngine:
             retrieval_similarities=similarities,
             profile_version_ids=profile_version_ids,
             ml_result=ml_result,
+            retrieval=retrieval,
+            candidate_metadata={
+                document.candidate.source_profile_id: document.candidate.metadata
+                for document in candidates
+            },
         )
 
 
@@ -516,10 +585,13 @@ class AnalysisJobHandler:
         analysis_engine: AnalysisEngine,
         top_k: int = 5,
         request_bucket: str = "request-temp",
+        existing_kb_required: bool = True,
         stage_callback: StageCallback | None = None,
     ) -> None:
         if not 1 <= top_k <= 100:
             raise ValueError("top_k must be between 1 and 100")
+        if not isinstance(existing_kb_required, bool):
+            raise TypeError("existing_kb_required must be boolean")
         self._storage = storage
         self._store = store
         self._producer = producer
@@ -527,6 +599,7 @@ class AnalysisJobHandler:
         self._engine = analysis_engine
         self._top_k = top_k
         self._request_bucket = request_bucket
+        self._existing_kb_required = existing_kb_required
         self._stage_callback = None
         self.set_stage_callback(stage_callback)
 
@@ -592,52 +665,71 @@ class AnalysisJobHandler:
             source_sha256=expected_sha,
         )
 
-        configuration = self._store.active_embedding_configuration()
-        vectors = self._embed(profile, configuration)
-        matches = self._store.match_existing_profiles(
-            configuration_id=configuration.configuration_id,
-            purpose=vectors["purpose"],
-            target=vectors["target"],
-            support=vectors["support"],
-            limit=self._top_k,
-        )
-        # The KB is expected to have at least one fully indexed Existing
-        # Profile.  Returning a normal analysis with no candidates would hide
-        # an unseeded/staged/misactivated retrieval configuration as “no
-        # similar notice”.  Treat it as retryable operational misconfiguration
-        # instead, so the run cannot publish a misleading final result.
-        if not matches:
-            raise AnalysisJobUnavailable(
-                "Existing KB retrieval returned no candidates; embeddings are not ready"
+        # A missing request axis is not a zero vector.  In particular, zero
+        # usable axes must still materialise CPL/FIT/ML and must never touch
+        # embedding configuration/provider/KB retrieval.
+        available_inputs = self._available_retrieval_inputs(profile)
+        if not available_inputs:
+            matches: list[ExistingCandidate] = []
+            candidates: list[ExistingProfileDocument] = []
+            retrieval = RetrievalDecision.input_missing()
+        else:
+            configuration = self._store.active_embedding_configuration()
+            vectors = self._embed(profile, tuple(available_inputs), configuration)
+            matches = self._store.match_existing_profiles(
+                configuration_id=configuration.configuration_id,
+                vectors=vectors,
+                limit=self._top_k,
             )
-        candidates = [
-            ExistingProfileDocument(
-                candidate=match,
-                profile=self._load_json_artifact(match.profile_artifact),
+            if not matches and self._existing_kb_required:
+                # A required KB returning no exact configured match is an
+                # operational readiness failure, not an empty user result.
+                raise AnalysisJobUnavailable(
+                    "Existing KB retrieval returned no candidates; embeddings are not ready"
+                )
+            retrieval = (
+                RetrievalDecision.completed(tuple(vectors))
+                if matches
+                else RetrievalDecision.kb_empty(tuple(vectors))
             )
-            for match in matches
-        ]
+            candidates = [
+                ExistingProfileDocument(
+                    candidate=match,
+                    profile=self._load_json_artifact(match.profile_artifact),
+                )
+                for match in matches
+            ]
         result = self._engine.build_payload(
+            analysis_run_id=run_id,
             profile=profile,
             common_ir=common_ir,
             candidates=candidates,
             candidate_pack=candidate_pack,
             quantity_hold_reason=quantity_hold_reason,
+            retrieval=retrieval,
         )
         if not isinstance(result, Mapping):
-            raise AnalysisJobContractError("analysis engine returned a non-object result")
+            raise AnalysisJobContractError(
+                "analysis engine returned a non-object result"
+            )
         return dict(result)
 
     def _source_claim(self, job: ClaimedJob) -> tuple[str, str, str, str]:
         bucket = job.payload.get("source_bucket")
         key = job.payload.get("source_object_key")
         digest = job.payload.get("source_content_sha256")
-        if not all(isinstance(value, str) and value.strip() for value in (bucket, key, digest)):
+        if not all(
+            isinstance(value, str) and value.strip() for value in (bucket, key, digest)
+        ):
             raise AnalysisJobContractError("claim has incomplete source coordinates")
-        assert isinstance(bucket, str) and isinstance(key, str) and isinstance(digest, str)
+        assert (
+            isinstance(bucket, str) and isinstance(key, str) and isinstance(digest, str)
+        )
         if bucket != self._request_bucket:
             raise AnalysisJobContractError("claim source bucket is not allowed")
-        if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+        if len(digest) != 64 or any(
+            char not in "0123456789abcdefABCDEF" for char in digest
+        ):
             raise AnalysisJobContractError("claim source SHA-256 is invalid")
         suffix = Path(key).suffix.lower().removeprefix(".")
         if suffix not in {"hwp", "hwpx"}:
@@ -654,14 +746,24 @@ class AnalysisJobHandler:
         produced: ProducedRequestProfile,
     ) -> tuple[Mapping[str, Any], Mapping[str, Any], Any]:
         if produced.profile_schema != REQUEST_PROFILE_SCHEMA:
-            raise AnalysisJobContractError("request profile schema is not supported by the DB")
+            raise AnalysisJobContractError(
+                "request profile schema is not supported by the DB"
+            )
         common_ref = _derived_ref(
-            run_id, "common_ir", produced.common_ir_content,
-            "application/json", produced.common_ir_schema, produced.common_ir_logical_id,
+            run_id,
+            "common_ir",
+            produced.common_ir_content,
+            "application/json",
+            produced.common_ir_schema,
+            produced.common_ir_logical_id,
         )
         profile_ref = _derived_ref(
-            run_id, "structured_profile", produced.profile_content,
-            "application/json", produced.profile_schema, produced.profile_logical_id,
+            run_id,
+            "structured_profile",
+            produced.profile_content,
+            "application/json",
+            produced.profile_schema,
+            produced.profile_logical_id,
         )
         for artifact, content in (
             (common_ref, produced.common_ir_content),
@@ -700,13 +802,32 @@ class AnalysisJobHandler:
         try:
             value = json.loads(content)
         except (UnicodeDecodeError, json.JSONDecodeError):
-            raise AnalysisJobContractError("persisted JSON artifact is invalid") from None
+            raise AnalysisJobContractError(
+                "persisted JSON artifact is invalid"
+            ) from None
         if not isinstance(value, dict):
             raise AnalysisJobContractError("persisted JSON artifact is not an object")
         return value
 
+    def _available_retrieval_inputs(
+        self, profile: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Return the 0/1/2/3 grounded embedding inputs without placeholders."""
+
+        return assemble_available_inputs(
+            profile,
+            # Input chunking is a deterministic local operation; model and
+            # token limit are validated alongside the active configuration in
+            # ``_embed`` before an external embedding call can happen.
+            model="text-embedding-3-small",
+            max_input_tokens=8192,
+        )
+
     def _embed(
-        self, profile: Mapping[str, Any], configuration: EmbeddingConfiguration
+        self,
+        profile: Mapping[str, Any],
+        scopes: Sequence[str],
+        configuration: EmbeddingConfiguration,
     ) -> dict[str, list[float]]:
         if configuration.provider != "openai":
             raise AnalysisJobContractError("active embedding provider is unsupported")
@@ -714,35 +835,58 @@ class AnalysisJobHandler:
             raise AnalysisJobContractError(
                 "active embedding assembly version is unsupported"
             )
-        inputs = assemble_inputs(
+        if not scopes:
+            return {}
+        # Reassemble with the active configuration so tokenizer/model limits
+        # and chunk boundaries are exact.  ``scopes`` was determined before
+        # reading the configuration solely to implement the zero-axis branch.
+        inputs = assemble_available_inputs(
             profile,
             model=configuration.model_id,
             max_input_tokens=configuration.max_input_tokens,
         )
         output: dict[str, list[float]] = {}
         for scope in ("purpose", "target", "support"):
-            item = inputs[scope]
-            batch = asyncio.run(self._embedding.embed([chunk.text for chunk in item.chunks]))
+            if scope not in scopes:
+                continue
+            item = inputs.get(scope)
+            if item is None:
+                raise AnalysisJobContractError(
+                    "retrieval axis disappeared during active configuration assembly"
+                )
+            batch = asyncio.run(
+                self._embedding.embed([chunk.text for chunk in item.chunks])
+            )
             if batch.model_name != configuration.model_id:
-                raise AnalysisJobContractError("embedding response model does not match DB configuration")
+                raise AnalysisJobContractError(
+                    "embedding response model does not match DB configuration"
+                )
             vector = pool(batch.vectors, [chunk.token_count for chunk in item.chunks])
             if len(vector) != configuration.dimensions or any(
                 not math.isfinite(value) for value in vector
             ):
-                raise AnalysisJobContractError("embedding dimension does not match DB configuration")
+                raise AnalysisJobContractError(
+                    "embedding dimension does not match DB configuration"
+                )
             output[scope] = vector
         return output
 
 
 def _json_bytes(value: Mapping[str, Any]) -> bytes:
     return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
 
 
 def _verify_content(content: bytes, expected: str, label: str) -> None:
     if sha256(content).hexdigest() != expected.lower():
-        raise AnalysisJobContractError(f"{label} content hash does not match its lineage")
+        raise AnalysisJobContractError(
+            f"{label} content hash does not match its lineage"
+        )
 
 
 def _derived_ref(
@@ -795,7 +939,7 @@ def _resumed_candidate_pack(
         )
     try:
         pack = build_pack(common_ir)
-    except Exception:
+    except Exception:  # noqa: BLE001 - cached profile recovery is best-effort
         return None, "저장된 Common IR 로 CandidatePack 을 만들지 못했다"
     if (pack.generator, pack.generator_version) != (generator, version):
         return None, (
@@ -828,10 +972,14 @@ def _validate_profile_lineage(
         raise AnalysisJobContractError("request profile schema is unsupported")
     expected_id = f"request:{run_id}"
     if profile.get("profile_id") != expected_id:
-        raise AnalysisJobContractError("request profile identity does not match its analysis run")
+        raise AnalysisJobContractError(
+            "request profile identity does not match its analysis run"
+        )
     metadata = profile.get("processing_metadata")
     metadata = metadata if isinstance(metadata, Mapping) else {}
     if metadata.get("common_ir_document_id") != document_id:
-        raise AnalysisJobContractError("request profile Common IR identity is inconsistent")
+        raise AnalysisJobContractError(
+            "request profile Common IR identity is inconsistent"
+        )
     if metadata.get("common_ir_source_sha256") != source_sha256:
         raise AnalysisJobContractError("request profile source hash is inconsistent")

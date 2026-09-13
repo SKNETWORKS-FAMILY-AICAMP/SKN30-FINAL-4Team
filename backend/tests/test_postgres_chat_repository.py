@@ -3,12 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Self
 from unittest.mock import ANY
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
-
 from worker.postgres_chat_repository import (
     ChatWorkerDatabaseUnavailable,
     ChatWorkerQueueContractError,
@@ -22,7 +21,7 @@ class FakeCursor:
     rows: list[Mapping[str, Any] | None]
     calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
-    def __enter__(self) -> "FakeCursor":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
@@ -43,7 +42,7 @@ class FakeConnection:
     def __post_init__(self) -> None:
         self.cursor_instance = FakeCursor(self.rows)
 
-    def __enter__(self) -> "FakeConnection":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
@@ -107,7 +106,7 @@ def _claim_row() -> dict[str, object]:
     }
 
 
-def test_claim_maps_migration_27_payload_for_storage_free_handler() -> None:
+def test_claim_maps_v02_payload_for_storage_free_handler() -> None:
     row = _claim_row()
     repository, factory = _repository([row])
 
@@ -126,7 +125,7 @@ def test_claim_maps_migration_27_payload_for_storage_free_handler() -> None:
         )
     ]
     query, params = factory.connections[0].cursor_instance.calls[0]
-    assert "workspace.claim_next_conversation_message" in query
+    assert "workspace.claim_next_conversation_message_v2" in query
     assert params == ("chat-worker-a", 120)
 
 
@@ -152,7 +151,8 @@ def test_complete_passes_only_content_and_uuid_evidence_references() -> None:
             ],
         },
     )
-    _query, params = factory.connections[0].cursor_instance.calls[0]
+    query, params = factory.connections[0].cursor_instance.calls[0]
+    assert "workspace.complete_conversation_message_v2" in query
     assert params[:2] == (message_id, processing_id)
     assert params[2] == "확인된 결과입니다."
     assert params[3] == [evidence_id]
@@ -183,8 +183,8 @@ def test_fenced_transitions_and_failure_redact_internal_error() -> None:
     )
     heartbeat_query, heartbeat_params = factory.connections[0].cursor_instance.calls[0]
     fail_query, fail_params = factory.connections[1].cursor_instance.calls[0]
-    assert "heartbeat_conversation_message" in heartbeat_query
-    assert "fail_conversation_message" in fail_query
+    assert "heartbeat_conversation_message_v2" in heartbeat_query
+    assert "fail_conversation_message_v2" in fail_query
     assert heartbeat_params[:2] == fail_params[:2] == (message_id, processing_id)
     assert fail_params[2:4] == (
         "CHAT_LLM_FAILED",

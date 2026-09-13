@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
 import math
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 from uuid import UUID
 
@@ -19,7 +19,6 @@ from .analysis_job import (
     EmbeddingConfiguration,
     ExistingCandidate,
 )
-
 
 _CACHE_SQL = """
 SELECT
@@ -140,12 +139,10 @@ WHERE is_active
 _MATCH_SQL = """
 WITH matched AS (
     SELECT *
-    FROM retrieval.match_existing_profiles_three_axis(
-        %s::extensions.vector(1536),
-        %s::extensions.vector(1536),
-        %s::extensions.vector(1536),
-        %s,
-        %s::uuid
+    FROM retrieval.match_existing_profiles_partial_axes(
+        %s::uuid,
+        %s::jsonb,
+        %s
     )
 )
 SELECT
@@ -156,7 +153,8 @@ SELECT
     matched.support_similarity,
     source_profile.source_profile_id,
     notice.notice_id,
-    NULLIF(notice.portal_metadata ->> 'title', '') AS title,
+    NULLIF(matched.portal_metadata ->> 'title', '') AS title,
+    matched.portal_metadata,
     artifact.storage_bucket,
     artifact.storage_object_key,
     artifact.content_sha256,
@@ -193,15 +191,15 @@ class PostgresAnalysisStore:
     def __repr__(self) -> str:
         return f"PostgresAnalysisStore(connect_timeout_seconds={self._timeout})"
 
-    def cached_request_profile(self, *, analysis_run_id: str) -> CachedRequestProfile | None:
+    def cached_request_profile(
+        self, *, analysis_run_id: str
+    ) -> CachedRequestProfile | None:
         row = self._read_one(_CACHE_SQL, (analysis_run_id,))
         if row is None:
             return None
         return CachedRequestProfile(
             common_ir=_artifact_from_row(row, "common", "common_ir"),
-            structured_profile=_artifact_from_row(
-                row, "profile", "structured_profile"
-            ),
+            structured_profile=_artifact_from_row(row, "profile", "structured_profile"),
         )
 
     def register_request_profile(
@@ -216,71 +214,71 @@ class PostgresAnalysisStore:
         profile: Mapping[str, Any],
     ) -> None:
         try:
-            with self._connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(_FENCE_SQL, (analysis_run_id, processing_run_id))
-                    if cursor.fetchone() is None:
-                        raise AnalysisJobContractError(
-                            "processing lease was lost before profile registration"
-                        )
-                    cursor.execute(
-                        _SOURCE_SQL,
-                        (analysis_run_id, source_bucket, source_object_key),
+            with self._connection() as connection, connection.cursor() as cursor:
+                cursor.execute(_FENCE_SQL, (analysis_run_id, processing_run_id))
+                if cursor.fetchone() is None:
+                    raise AnalysisJobContractError(
+                        "processing lease was lost before profile registration"
                     )
-                    source = cursor.fetchone()
-                    if source is None:
-                        raise AnalysisJobContractError(
-                            "claimed source artifact is not registered"
-                        )
-                    common_pk = self._insert_artifact(
-                        cursor, analysis_run_id, processing_run_id, common_ir
+                cursor.execute(
+                    _SOURCE_SQL,
+                    (analysis_run_id, source_bucket, source_object_key),
+                )
+                source = cursor.fetchone()
+                if source is None:
+                    raise AnalysisJobContractError(
+                        "claimed source artifact is not registered"
                     )
-                    profile_pk = self._insert_artifact(
-                        cursor, analysis_run_id, processing_run_id, structured_profile
-                    )
-                    cursor.execute(_LINEAGE_SQL, (source["artifact_pk"], common_pk))
-                    cursor.execute(_LINEAGE_SQL, (common_pk, profile_pk))
+                common_pk = self._insert_artifact(
+                    cursor, analysis_run_id, processing_run_id, common_ir
+                )
+                profile_pk = self._insert_artifact(
+                    cursor, analysis_run_id, processing_run_id, structured_profile
+                )
+                cursor.execute(_LINEAGE_SQL, (source["artifact_pk"], common_pk))
+                cursor.execute(_LINEAGE_SQL, (common_pk, profile_pk))
 
-                    cursor.execute(_EXISTING_PROFILE_SQL, (analysis_run_id,))
-                    existing = cursor.fetchone()
-                    if existing is not None:
-                        if (
-                            existing["profile_id"] != profile.get("profile_id")
-                            or existing["schema_version"] != profile.get("schema_version")
-                            or existing["structured_sha256"]
-                            != structured_profile.content_sha256
-                        ):
-                            raise AnalysisJobContractError(
-                                "retry produced a different request profile artifact"
-                            )
-                        return
-
-                    cursor.execute(
-                        _INGEST_SQL,
-                        (analysis_run_id, Jsonb(dict(profile))),
-                    )
-                    ingested = cursor.fetchone()
-                    if ingested is None or ingested.get("request_profile_pk") is None:
+                cursor.execute(_EXISTING_PROFILE_SQL, (analysis_run_id,))
+                existing = cursor.fetchone()
+                if existing is not None:
+                    if (
+                        existing["profile_id"] != profile.get("profile_id")
+                        or existing["schema_version"] != profile.get("schema_version")
+                        or existing["structured_sha256"]
+                        != structured_profile.content_sha256
+                    ):
                         raise AnalysisJobContractError(
-                            "request profile materialisation returned no identity"
+                            "retry produced a different request profile artifact"
                         )
-                    metadata = profile.get("processing_metadata")
-                    metadata = metadata if isinstance(metadata, Mapping) else {}
-                    candidate = metadata.get("candidate_pack")
-                    candidate = candidate if isinstance(candidate, Mapping) else {}
-                    cursor.execute(
-                        _LINK_PROFILE_SQL,
-                        (
-                            profile_pk,
-                            processing_run_id,
-                            metadata.get("common_ir_document_id"),
-                            candidate.get("candidate_pack_id") or candidate.get("id"),
-                            candidate.get("candidate_pack_generator") or candidate.get("generator"),
-                            candidate.get("candidate_pack_generator_version")
-                            or candidate.get("generator_version"),
-                            ingested["request_profile_pk"],
-                        ),
+                    return
+
+                cursor.execute(
+                    _INGEST_SQL,
+                    (analysis_run_id, Jsonb(dict(profile))),
+                )
+                ingested = cursor.fetchone()
+                if ingested is None or ingested.get("request_profile_pk") is None:
+                    raise AnalysisJobContractError(
+                        "request profile materialisation returned no identity"
                     )
+                metadata = profile.get("processing_metadata")
+                metadata = metadata if isinstance(metadata, Mapping) else {}
+                candidate = metadata.get("candidate_pack")
+                candidate = candidate if isinstance(candidate, Mapping) else {}
+                cursor.execute(
+                    _LINK_PROFILE_SQL,
+                    (
+                        profile_pk,
+                        processing_run_id,
+                        metadata.get("common_ir_document_id"),
+                        candidate.get("candidate_pack_id") or candidate.get("id"),
+                        candidate.get("candidate_pack_generator")
+                        or candidate.get("generator"),
+                        candidate.get("candidate_pack_generator_version")
+                        or candidate.get("generator_version"),
+                        ingested["request_profile_pk"],
+                    ),
+                )
         except AnalysisJobContractError:
             raise
         except (psycopg.Error, OSError):
@@ -306,19 +304,16 @@ class PostgresAnalysisStore:
         self,
         *,
         configuration_id: str,
-        purpose: Sequence[float],
-        target: Sequence[float],
-        support: Sequence[float],
+        vectors: Mapping[str, Sequence[float]],
         limit: int,
     ) -> list[ExistingCandidate]:
+        vector_payload = _vectors_json(vectors)
         rows = self._read_all(
             _MATCH_SQL,
             (
-                _vector_literal(purpose),
-                _vector_literal(target),
-                _vector_literal(support),
-                limit,
                 configuration_id,
+                Jsonb(vector_payload),
+                limit,
             ),
         )
         return [
@@ -327,10 +322,11 @@ class PostgresAnalysisStore:
                 source_profile_id=str(row["source_profile_id"]),
                 notice_id=str(row["notice_id"]),
                 average_similarity=_score(row["average_cosine_similarity"]),
-                purpose_similarity=_score(row["purpose_similarity"]),
-                target_similarity=_score(row["target_similarity"]),
-                support_similarity=_score(row["support_similarity"]),
+                purpose_similarity=_optional_score(row.get("purpose_similarity")),
+                target_similarity=_optional_score(row.get("target_similarity")),
+                support_similarity=_optional_score(row.get("support_similarity")),
                 title=row.get("title"),
+                metadata=_metadata(row.get("portal_metadata")),
                 profile_artifact=ArtifactRef(
                     bucket=str(row["storage_bucket"]),
                     object_key=str(row["storage_object_key"]),
@@ -370,9 +366,7 @@ class PostgresAnalysisStore:
         inserted = cursor.fetchone()
         if inserted is not None:
             return inserted["artifact_pk"]
-        cursor.execute(
-            _EXISTING_ARTIFACT_SQL, (artifact.bucket, artifact.object_key)
-        )
+        cursor.execute(_EXISTING_ARTIFACT_SQL, (artifact.bucket, artifact.object_key))
         existing = cursor.fetchone()
         if existing is None or any(
             (
@@ -408,10 +402,9 @@ class PostgresAnalysisStore:
         self, query: str, params: tuple[object, ...]
     ) -> list[Mapping[str, Any]]:
         try:
-            with self._connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(query, params)
-                    return list(cursor.fetchall())
+            with self._connection() as connection, connection.cursor() as cursor:
+                cursor.execute(query, params)
+                return list(cursor.fetchall())
         except (psycopg.Error, OSError):
             raise AnalysisJobUnavailable("analysis database is unavailable") from None
 
@@ -434,13 +427,26 @@ def _artifact_from_row(
     )
 
 
-def _vector_literal(values: Sequence[float]) -> str:
-    if len(values) != 1536:
-        raise AnalysisJobContractError("retrieval vector must have 1536 dimensions")
-    converted = [float(value) for value in values]
-    if any(not math.isfinite(value) for value in converted):
-        raise AnalysisJobContractError("retrieval vector must be finite")
-    return "[" + ",".join(format(value, ".17g") for value in converted) + "]"
+def _vectors_json(vectors: Mapping[str, Sequence[float]]) -> dict[str, list[float]]:
+    """Validate the v0.2 sparse-axis request without manufacturing zeroes."""
+
+    allowed = {"purpose", "target", "support"}
+    if not vectors or set(vectors) - allowed:
+        raise AnalysisJobContractError(
+            "retrieval vectors must contain one to three known axes"
+        )
+    output: dict[str, list[float]] = {}
+    for axis in ("purpose", "target", "support"):
+        if axis not in vectors:
+            continue
+        converted = [float(value) for value in vectors[axis]]
+        norm = math.sqrt(sum(value * value for value in converted))
+        if not converted or not math.isfinite(norm) or norm == 0:
+            raise AnalysisJobContractError(
+                "retrieval vector must be finite and non-zero"
+            )
+        output[axis] = converted
+    return output
 
 
 def _score(value: object) -> float:
@@ -448,3 +454,11 @@ def _score(value: object) -> float:
     if not math.isfinite(score):
         raise AnalysisJobContractError("retrieval score must be finite")
     return score
+
+
+def _optional_score(value: object) -> float | None:
+    return None if value is None else _score(value)
+
+
+def _metadata(value: object) -> Mapping[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}

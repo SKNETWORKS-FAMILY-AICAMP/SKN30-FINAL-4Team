@@ -7,21 +7,19 @@ FastAPI, browser credentials, Redis/RQ, and Edge Function callback concerns.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
 import logging
 import math
 import os
-from pathlib import Path
 import shutil
 import socket
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
 from uuid import uuid4
 
 from dotenv import load_dotenv
 
-from worker.adapters.openai_embedding_client import OpenAIEmbeddingClient
-from worker.adapters.openai_llm_client import OpenAILLMClient
 from worker.adapters.ml_subprocess import (
     Model1SubprocessMlModel,
     Model2SubprocessMlModel,
@@ -30,15 +28,25 @@ from worker.adapters.ml_subprocess import (
     model2_command,
     model3_command,
 )
+from worker.adapters.openai_embedding_client import OpenAIEmbeddingClient
+from worker.adapters.openai_llm_client import OpenAILLMClient
 from worker.analysis_job import (
     AnalysisJobHandler,
     CoreAnalysisEngine,
     VendoredRequestProfileProducer,
 )
 from worker.config import MissingConfigError, OpenAIConfig
+from worker.contracts.ml_result import MlModelId
 from worker.cpl_prompt import check_prompts_ready
+from worker.ml_reference import (
+    MlModel,
+    missing_artifact_model,
+    missing_runtime_model,
+)
+from worker.ml_runtime_preflight import MlRuntimePreflightError, verify_ml_runtime
 from worker.postgres_analysis_store import PostgresAnalysisStore
 from worker.postgres_repository import PostgresJobRepository
+from worker.profiles import DEFAULT_PARSE_TIMEOUT_SECONDS
 from worker.runtime import (
     DEFAULT_HEARTBEAT_SECONDS,
     DEFAULT_IDLE_POLL_SECONDS,
@@ -47,16 +55,7 @@ from worker.runtime import (
     JobRepository,
     WorkerRuntime,
 )
-from worker.profiles import DEFAULT_PARSE_TIMEOUT_SECONDS
 from worker.supabase_storage import SupabaseWorkerStorage
-from worker.contracts.ml_result import MlModelId
-from worker.ml_reference import (
-    MlModel,
-    missing_artifact_model,
-    missing_runtime_model,
-)
-from worker.ml_runtime_preflight import MlRuntimePreflightError, verify_ml_runtime
-
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_ML_ROOT = Path(__file__).resolve().parents[2] / "ml"
@@ -99,9 +98,10 @@ class WorkerSettings:
     model1_serving_dir: Path | None = None
     ml_python_executable: str | None = None
     ml_timeout_seconds: float = DEFAULT_ML_TIMEOUT_SECONDS
+    existing_kb_required: bool = True
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> "WorkerSettings":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> WorkerSettings:
         values = os.environ if env is None else env
         database_url = _first_required(values, "DATABASE_URL", "SUPABASE_DB_URL")
         service_role_key = _first_required(
@@ -129,7 +129,9 @@ class WorkerSettings:
             raise WorkerConfigurationError("PREREVIEW_WORKER_TOP_K must be at most 100")
         ml_root = _optional_path(values, "PREREVIEW_ML_ROOT") or DEFAULT_ML_ROOT
         model1_serving_dir = _optional_path(values, "PREREVIEW_MODEL1_SERVING_DIR")
-        ml_python_executable = _optional_string(values, "PREREVIEW_ML_PYTHON_EXECUTABLE")
+        ml_python_executable = _optional_string(
+            values, "PREREVIEW_ML_PYTHON_EXECUTABLE"
+        )
         return cls(
             database_url=database_url,
             supabase_url=_required(values, "SUPABASE_URL").rstrip("/"),
@@ -161,6 +163,9 @@ class WorkerSettings:
                 "PREREVIEW_ML_TIMEOUT_SECONDS",
                 DEFAULT_ML_TIMEOUT_SECONDS,
             ),
+            existing_kb_required=_boolean(
+                values, "PREREVIEW_EXISTING_KB_REQUIRED", default=True
+            ),
         )
 
 
@@ -176,7 +181,9 @@ class WorkerComposition:
 def _required(env: Mapping[str, str], name: str) -> str:
     value = env.get(name, "").strip()
     if not value:
-        raise WorkerConfigurationError(f"required environment variable is not set: {name}")
+        raise WorkerConfigurationError(
+            f"required environment variable is not set: {name}"
+        )
     return value
 
 
@@ -197,7 +204,9 @@ def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError:
-        raise WorkerConfigurationError(f"environment variable must be an integer: {name}") from None
+        raise WorkerConfigurationError(
+            f"environment variable must be an integer: {name}"
+        ) from None
     if value <= 0:
         raise WorkerConfigurationError(f"environment variable must be positive: {name}")
     return value
@@ -210,9 +219,13 @@ def _positive_float(env: Mapping[str, str], name: str, default: float) -> float:
     try:
         value = float(raw)
     except ValueError:
-        raise WorkerConfigurationError(f"environment variable must be a number: {name}") from None
+        raise WorkerConfigurationError(
+            f"environment variable must be a number: {name}"
+        ) from None
     if not math.isfinite(value) or value <= 0:
-        raise WorkerConfigurationError(f"environment variable must be finite and positive: {name}")
+        raise WorkerConfigurationError(
+            f"environment variable must be finite and positive: {name}"
+        )
     return value
 
 
@@ -224,6 +237,19 @@ def _optional_string(env: Mapping[str, str], name: str) -> str | None:
 def _optional_path(env: Mapping[str, str], name: str) -> Path | None:
     value = _optional_string(env, name)
     return None if value is None else Path(value).expanduser()
+
+
+def _boolean(env: Mapping[str, str], name: str, *, default: bool) -> bool:
+    raw = env.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in _TRUE_ENV_VALUES:
+        return True
+    if raw in _FALSE_ENV_VALUES:
+        return False
+    raise WorkerConfigurationError(
+        f"{name} must be one of 1,true,yes,on,0,false,no,off"
+    )
 
 
 def _first_missing(paths: tuple[Path, ...]) -> Path | None:
@@ -322,7 +348,10 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
             model2_root / "masking.py",
             model2_root / "cohort_reference.parquet",
             settings.ml_root / "serving" / "shared" / "preconsultation_adapter.py",
-            settings.ml_root / "models" / "model2_canonical" / "model2_p3_bundle.joblib",
+            settings.ml_root
+            / "models"
+            / "model2_canonical"
+            / "model2_p3_bundle.joblib",
         )
     )
     if model2_missing is not None:
@@ -405,6 +434,7 @@ def build_worker() -> WorkerComposition:
             ml_models=_build_ml_models(settings),
         ),
         top_k=settings.top_k,
+        existing_kb_required=settings.existing_kb_required,
     )
     return WorkerComposition(
         repository=PostgresJobRepository(
@@ -464,8 +494,7 @@ def _strict_ml_runtime_preflight_enabled(raw_value: str | None) -> bool:
     if normalized in _FALSE_ENV_VALUES:
         return False
     raise WorkerConfigurationError(
-        f"{STRICT_ML_RUNTIME_PREFLIGHT_ENV} must be one of "
-        "1,true,yes,on,0,false,no,off"
+        f"{STRICT_ML_RUNTIME_PREFLIGHT_ENV} must be one of 1,true,yes,on,0,false,no,off"
     )
 
 

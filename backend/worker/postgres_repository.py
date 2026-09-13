@@ -51,7 +51,7 @@ SELECT workspace.heartbeat_analysis_run(%s, %s, %s) AS is_live
 """
 
 _PERSIST_RESULT_SQL = """
-SELECT workspace.persist_analysis_result_core(%s, %s, %s) AS analysis_case_pk
+SELECT workspace.persist_analysis_result_core_v2(%s, %s, %s) AS analysis_case_pk
 """
 
 _FAIL_SQL = """

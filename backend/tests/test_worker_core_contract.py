@@ -185,7 +185,14 @@ def test_empty_profile_is_deterministically_gated_through_cpl_fit_and_sim() -> N
 
     fit = analyze_fit(cpl, no_llm, model_profile="default")
     assert len(fit.relations) == 7
-    assert all(relation.status is FitStatus.INSUFFICIENT for relation in fit.relations)
+    assert all(
+        relation.status is (
+            FitStatus.NOT_APPLICABLE
+            if relation.relation_id.value == "FIT-4"
+            else FitStatus.INSUFFICIENT
+        )
+        for relation in fit.relations
+    )
 
     request_common = build_common_profile(request, no_llm, model_profile="default")
     candidate_common = build_common_profile(candidate, no_llm, model_profile="default")

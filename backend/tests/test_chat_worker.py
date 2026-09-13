@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel
-
 from worker.chat import (
     ChatAnswer,
     ChatIntent,
@@ -138,12 +137,14 @@ def test_handler_builds_current_ml_context_and_adds_grounding_warnings() -> None
     assert "invalid_reference" in " ".join(result["warnings"])
     sent = json.loads(llm.calls[0]["messages"][1].content)  # type: ignore[index]
     assert isinstance(sent, dict)
-    assert sent["result"]["ml"] == {"model_2": {  # type: ignore[index]
-        "status": "OK",
-        "predicted_amount_won": 599920000,
-        "message": "예측 지원금액입니다.",
-        "reason_code": None,
-    }}
+    assert sent["result"]["ml"] == {
+        "model_2": {  # type: ignore[index]
+            "status": "OK",
+            "predicted_amount_won": 599920000,
+            "message": "예측 지원금액입니다.",
+            "reason_code": None,
+        }
+    }
     assert "confidence" not in str(sent)
 
 
@@ -159,7 +160,9 @@ def test_model3_empty_cause_axes_warns_on_causal_claim() -> None:
     result = ResultGroundedChatHandler(llm).handle(
         _job(question="이례성의 원인은 뭐야?", report=_report())
     )
-    assert any(item.startswith("unsupported_causal_claim") for item in result["warnings"])
+    assert any(
+        item.startswith("unsupported_causal_claim") for item in result["warnings"]
+    )
 
 
 def test_context_has_evidence_and_previous_conversation_shape() -> None:
@@ -181,3 +184,78 @@ def test_document_context_is_cpl_and_evidence_focused() -> None:
     )
     assert context["result"].keys() == {"case", "cpl", "evidence"}
     assert context["result"]["evidence"][0]["evidence_id"] == "e-1"
+
+
+def test_chat_context_uses_typed_public_allowlist_not_raw_result_detail() -> None:
+    report = {
+        "case": {"program_name": "공개 사업", "internal_run_token": "private-run"},
+        "cpl": {
+            "items": [
+                {
+                    "code": "CPL-01",
+                    "status": "confirmed",
+                    "summary": "확인됨",
+                    "detail": {
+                        "reason": "공개 설명",
+                        "values": [
+                            {
+                                "label": "대상",
+                                "value": "중소기업",
+                                "evidence_ids": ["e-1"],
+                                "fact_id": "fact:secret",
+                            }
+                        ],
+                        "evidence_ids": ["e-1"],
+                        "diagnostics": [{"message": "private diagnostic"}],
+                        "raw_fact_ids": ["fact:secret"],
+                    },
+                }
+            ]
+        },
+        "fit": {
+            "items": [
+                {
+                    "code": "FIT-1",
+                    "status": "FIT",
+                    "summary": "연결됨",
+                    "detail": {
+                        "comparison_performed": True,
+                        "left": {"value_summary": "A", "fact_id": "fact:left"},
+                        "right": {"value_summary": "B"},
+                        "evidence_ids": ["e-1"],
+                        "raw": {"diagnostics": "private"},
+                    },
+                }
+            ]
+        },
+        "sim": {
+            "status": "completed",
+            "summary": "완료",
+            "internal_score": 0.99,
+            "candidates": [
+                {
+                    "sim_candidate_id": "candidate-1",
+                    "rank": 1,
+                    "title": "공개 후보",
+                    "priority_score": 0.9,
+                }
+            ],
+        },
+        "evidences": [
+            {
+                "evidence_id": "e-1",
+                "excerpt": "공개 원문",
+                "source_identity": "fact:secret",
+                "common_ir_occurrence_ids": ["secret"],
+            }
+        ],
+        "internal": {"diagnostics": "private diagnostic"},
+    }
+
+    context = build_chat_context(report, "지원 대상 알려줘", intent=ChatIntent.DOCUMENT)
+    rendered = json.dumps(context, ensure_ascii=False)
+
+    assert "fact:secret" not in rendered
+    assert "private diagnostic" not in rendered
+    assert "internal_score" not in rendered
+    assert "공개 원문" in rendered

@@ -30,7 +30,7 @@ worker는 다음 trusted PostgreSQL function을 사용한다.
 |---|---|---|
 | claim | `workspace.claim_next_analysis_run(worker_id, lease_seconds)` | `FOR UPDATE SKIP LOCKED`로 queued/stale run 하나를 점유하고 `processing_run_pk`를 받음 |
 | heartbeat | `workspace.heartbeat_analysis_run(run_pk, processing_run_pk, lease_seconds)` | live lease 연장 |
-| 성공 | `workspace.persist_analysis_result_core(run_pk, processing_run_pk, result_json)` | fence 확인과 결과/terminal 상태를 한 transaction으로 반영 |
+| 성공 | `workspace.persist_analysis_result_core_v2(run_pk, processing_run_pk, result_json)` | fence 확인, migration 26 ML writer, raw/public result와 terminal 상태를 한 transaction으로 반영 |
 | 실패 | `workspace.fail_analysis_run(run_pk, processing_run_pk, error_code, error_message)` | 첫 시도는 재queue, 두 번째는 terminal failed |
 
 기본 heartbeat는 30초, lease는 120초, 최대 시도 횟수는 두 번이다. `processing_run_pk`는
@@ -57,20 +57,29 @@ source (FastAPI)
 projection은 `workspace.ingest_request_profile_core()`로 materialise한다. worker가 이 단계
 전에 실패하면 `fail_analysis_run`만 호출하고 partial result를 `result.*`에 쓰지 않는다.
 
-## `persist_analysis_result_core` payload
+## `persist_analysis_result_core_v2` payload
 
 완료 함수는 다음 top-level object를 받는다. JSON은 NaN/Infinity/bytes 같은 비-JSON 값을
 포함하면 안 된다.
 
 ```json
 {
+  "contract_version": "analysis_result/v0.2",
   "program_name": "요청 사업명",
+  "sim": {"status": "completed", "reason_code": null, "summary": "유사 공고 검색을 완료했습니다."},
   "axes": [{
     "axis_type": "CPL",
     "axis_code": "CPL-01",
     "status": "confirmed",
     "summary_text": "요약",
-    "result_data": {}
+    "result_data": {"raw_fact_id": "internal only"},
+    "public_detail": {
+      "reason_code": null,
+      "reason": "원문에서 확인했습니다.",
+      "values": [{"label": "지원 대상", "value": "부산 소재 중소기업", "evidence_ids": ["uuid"]}],
+      "source_fields": ["support_target"],
+      "evidence_ids": ["uuid"]
+    }
   }],
   "candidates": [{
     "source_profile_id": "bizinfo:PBLN_...:hwp",
@@ -81,13 +90,20 @@ projection은 `workspace.ingest_request_profile_core()`로 materialise한다. wo
     "status": "similar",
     "summary_text": "요약",
     "comparable_axes": ["purpose", "target", "support"],
-    "purpose_result": {}, "target_result": {},
-    "support_result": {}, "delivery_result": {}
+    "metadata": {"title": "분석 시점 공고명", "support_field": null, "apply_period": "2026-09-01 ~ 2026-09-30", "ministry": null, "executing_agency": null, "registered_at": null, "notice_status": null, "source_url": null},
+    "purpose_result": {"raw_fact_ids": ["internal only"]}, "target_result": {},
+    "support_result": {}, "delivery_result": {},
+    "public_axes": {
+      "purpose": {"code": "SIM-1", "status": "similar", "summary": "공통점이 확인되었습니다.", "reason_code": null, "reason": "공통점이 확인되었습니다.", "common_points": [], "differences": [], "request_evidence_ids": ["uuid"], "existing_evidence_ids": ["uuid"]},
+      "target": {}, "support": {}, "delivery": {}
+    }
   }],
   "evidences": [{
-    "axis_type": "CPL", "side": "REQUEST", "field_name": "purpose_goal",
-    "candidate_source_profile_id": "EXISTING 근거일 때 같은 결과 후보의 선택 값",
-    "raw_value": "근거 원문", "context_excerpt": "선택 문맥",
+    "evidence_id": "worker UUIDv5",
+    "logical_code": "CPL-01", "axis_type": "CPL", "sim_axis": null,
+    "role": "VALUE", "side": "REQUEST", "field_name": "purpose_goal",
+    "candidate_source_profile_id": null, "raw_value": "근거 원문",
+    "source_identity": "internal source/fact identity",
     "source_sha256": "64자리 SHA-256 또는 생략",
     "candidate_pack_block_id": "선택 값",
     "common_ir_document_id": "선택 값", "common_ir_block_id": "선택 값",
@@ -98,15 +114,18 @@ projection은 `workspace.ingest_request_profile_core()`로 materialise한다. wo
 
 필수 규칙:
 
-- `axes[*].axis_type`: `CPL`, `FIT`, `BEN`, `DIF` 중 하나이며 `axis_code`/`status`는 비어 있지 않음
+- top-level `contract_version`은 정확히 `analysis_result/v0.2`이며 `ml`은 migration 26 호환을 위해 기존 형태로 함께 보낸다.
+- `axes[*].axis_type`: `CPL` 또는 `FIT`이며 `axis_code`/`status`는 비어 있지 않음. `result_data`는 raw audit 전용이고 `public_detail`만 Browser/chat projection에 쓴다.
+- CPL public detail은 `reason_code`, `reason`, typed `values`, `source_fields`, `evidence_ids`만 가진다. FIT public detail은 `comparison_performed`, 양쪽 요약/evidence IDs만 가진다. FIT-4 계층 자체가 없으면 `NOT_APPLICABLE`; 계층 비교 대상은 있으나 근거가 부족하면 `INSUFFICIENT`다.
 - `candidates[*].source_profile_id`: Existing Profile의 논리 ID
 - `candidates[*].profile_version_pk`: retrieval/LLM 비교에 실제 사용한 정확한 version UUID.
   DB는 이 UUID와 `source_profile_id`가 같은 lineage인지 확인하며 저장 시점의 current
   version으로 바꾸지 않음
 - `candidates[*].rank`: 1 이상
-- evidence `side`: `REQUEST` 또는 `EXISTING` (생략 시 `REQUEST`)
-- `candidate_source_profile_id`를 보낼 때는 같은 payload의 candidate 중 하나여야 하며,
-  candidate 상세 조회용 `sim_candidate_pk`와 Existing Profile version에 fail-closed로 연결됨
+- evidence는 worker가 UUIDv5로 선발급한다. namespace input은 analysis run, logical code, role/side, source identity와 원문 좌표를 포함한다. duplicate/dangling/cross-case/context mismatch는 DB가 거부한다.
+- CPL은 `VALUE/REQUEST`, FIT은 `LEFT|RIGHT/REQUEST`, SIM은 `LEFT/REQUEST`와 `RIGHT/EXISTING`만 쓴다. SIM evidence는 candidate와 `sim_axis`에 연결되며 전체 결과 evidence 목록에 섞이지 않는다.
+- `similarity_score`, `priority_score`, raw fact IDs, diagnostics, source identity와 내부 좌표는 raw 저장만 하며 public RPC/chat context에서 절대 반환하지 않는다.
+- retrieval은 0/1/2/3 available axes를 보낸다. 0축은 `sim.status=skipped`, `RETRIEVAL_INPUT_MISSING`으로 CPL/FIT/ML만 저장한다. 1~3축은 zero vector 없이 `|A|` 평균으로 retrieval하며 optional KB empty는 `KB_EMPTY` completed다.
 
 성공 함수는 `analysis_case_pk` UUID를 반환하며 아래를 **한 transaction**으로 만든다.
 
@@ -123,7 +142,7 @@ cross-reference가 필요하면 이 함수/계약을 확장한 migration을 먼�
 ## 금지·레거시 경계
 
 - migration 18의 `api.ingest_comparison_result_core`는 fenced하지 않으므로 새 worker가 사용하지 않는다.
-- 퇴역한 `worker/jobs.py`·`worker/queue.py`·`worker/dispatcher.py`·`worker/persistence.py` 경로는 제거됐다. 현재 운영 진입점은 `worker.main`과 `worker.chat_main`이고, 저장은 이 문서의 `workspace.persist_analysis_result_core` 계약을 기준으로 한다. 옛 `sims.*` SQL은 git 이력에만 남는다.
+- 퇴역한 `worker/jobs.py`·`worker/queue.py`·`worker/dispatcher.py`·`worker/persistence.py` 경로는 제거됐다. 현재 운영 진입점은 `worker.main`과 `worker.chat_main`이고, 저장은 이 문서의 `workspace.persist_analysis_result_core_v2` 계약을 기준으로 한다. 옛 `sims.*` SQL은 git 이력에만 남는다.
 - Edge Function signed URL/HTTP dispatch/callback 계약은 레거시 참고용이다.
 - request 임베딩은 worker 메모리에서 생성·폐기한다. Existing 임베딩만 `retrieval.existing_profile_embedding`에 영속화한다.
 
@@ -137,9 +156,11 @@ FastAPI는 Cookie 사용자의 소유권을 확인한 뒤 `api` views/RPC로 결
 
 채팅은 analysis-result 완료 transaction에 섞지 않는 **별도** job type이다. FastAPI의
 `POST /api/v1/analysis-cases/{case_id}/messages`, `GET .../messages`, retry route가
-assistant row를 만들거나 조회하고, migration 27의
-`workspace.claim_next_conversation_message()`와 lease/fencing transition을 chat worker가
-사용한다. 완료 시에는 결과 근거에 연결된 `result.conversation_reference`만 저장한다.
+assistant row를 만들거나 조회하고, migration 36의
+`workspace.claim_next_conversation_message_v2()`와 v2 lease/fencing transition을 chat
+worker가 사용한다. 이 claim은 Browser 결과와 같은 public projection의 evidence
+allow-list를 제공하며 raw `result_data`, fact id, diagnostics, ranking score를 chat prompt에
+넣지 않는다. 완료 시에는 결과 근거에 연결된 `result.conversation_reference`만 저장한다.
 구현 경계는 `app/api/v1/conversations.py`, `worker/chat_main.py`,
 `worker/postgres_chat_repository.py`, `worker/chat/handler.py`다.
 

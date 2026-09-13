@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Protocol
+from typing import Any, Protocol, Self
 from uuid import UUID
 
 import psycopg
@@ -18,9 +18,9 @@ from psycopg.rows import dict_row
 from worker.runtime import ClaimedJob, JobFailure, JobKey, JobResult, ProcessingRunPK
 
 __all__ = [
-    "PostgresChatJobRepository",
     "ChatWorkerDatabaseUnavailable",
     "ChatWorkerQueueContractError",
+    "PostgresChatJobRepository",
 ]
 
 
@@ -38,19 +38,19 @@ SELECT
     attempt_count,
     lease_expires_at,
     heartbeat_interval_seconds
-FROM workspace.claim_next_conversation_message(%s, %s)
+FROM workspace.claim_next_conversation_message_v2(%s, %s)
 """
 
 _HEARTBEAT_SQL = """
-SELECT workspace.heartbeat_conversation_message(%s, %s, %s) AS is_live
+SELECT workspace.heartbeat_conversation_message_v2(%s, %s, %s) AS is_live
 """
 
 _COMPLETE_SQL = """
-SELECT workspace.complete_conversation_message(%s, %s, %s, %s::uuid[]) AS is_completed
+SELECT workspace.complete_conversation_message_v2(%s, %s, %s, %s::uuid[]) AS is_completed
 """
 
 _FAIL_SQL = """
-SELECT workspace.fail_conversation_message(%s, %s, %s, %s, %s) AS is_failed
+SELECT workspace.fail_conversation_message_v2(%s, %s, %s, %s, %s) AS is_failed
 """
 
 
@@ -59,11 +59,11 @@ class ChatWorkerDatabaseUnavailable(RuntimeError):
 
 
 class ChatWorkerQueueContractError(RuntimeError):
-    """Migration 27 returned an unsafe or incomplete queue value."""
+    """The v2 chat queue RPC returned an unsafe or incomplete value."""
 
 
 class _Cursor(Protocol):
-    def __enter__(self) -> "_Cursor": ...
+    def __enter__(self) -> Self: ...
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None: ...
 
@@ -73,7 +73,7 @@ class _Cursor(Protocol):
 
 
 class _Connection(Protocol):
-    def __enter__(self) -> "_Connection": ...
+    def __enter__(self) -> Self: ...
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None: ...
 
@@ -129,16 +129,16 @@ def _bool_result(row: Mapping[str, Any] | None, key: str) -> bool:
 def _redact_internal_error(value: str) -> str:
     collapsed = _WHITESPACE.sub(" ", value).strip()
     collapsed = _URL_CREDENTIALS.sub(r"\g<scheme>://[redacted]@", collapsed)
-    collapsed = _SECRET_ASSIGNMENT.sub(
-        r"\g<name>\g<separator>[redacted]", collapsed
-    )
+    collapsed = _SECRET_ASSIGNMENT.sub(r"\g<name>\g<separator>[redacted]", collapsed)
     return collapsed[:_MAX_INTERNAL_ERROR_CHARS]
 
 
 def _internal_failure(failure: JobFailure) -> str:
     kind = re.sub(r"[^A-Za-z0-9_.-]", "_", failure.kind).strip("_")[:80]
     message = _redact_internal_error(failure.message)
-    return f"{kind or 'WorkerFailure'}: {message}" if message else kind or "WorkerFailure"
+    return (
+        f"{kind or 'WorkerFailure'}: {message}" if message else kind or "WorkerFailure"
+    )
 
 
 def _evidence_ids(result: JobResult) -> list[UUID]:
@@ -185,7 +185,12 @@ def _content(result: JobResult) -> str:
 
 
 class PostgresChatJobRepository:
-    """Migration-27-backed implementation of ``worker.runtime.JobRepository``."""
+    """v0.2-backed implementation of ``worker.runtime.JobRepository``.
+
+    Migration 36's functions build chat context from the same v2 public
+    result projection used by Browser reads.  The worker only receives that
+    allowlisted projection plus a private raw context held by the database.
+    """
 
     def __init__(
         self,
@@ -224,7 +229,9 @@ class PostgresChatJobRepository:
                 "The chat worker queue returned an invalid attempt count"
             )
         heartbeat_interval = _required(row, "heartbeat_interval_seconds")
-        if not isinstance(heartbeat_interval, int) or isinstance(heartbeat_interval, bool):
+        if not isinstance(heartbeat_interval, int) or isinstance(
+            heartbeat_interval, bool
+        ):
             raise ChatWorkerQueueContractError(
                 "The chat worker queue returned an invalid heartbeat interval"
             )
@@ -237,7 +244,9 @@ class PostgresChatJobRepository:
             )
 
         return ClaimedJob(
-            job_pk=_uuid(_required(row, "assistant_message_id"), field="assistant message id"),
+            job_pk=_uuid(
+                _required(row, "assistant_message_id"), field="assistant message id"
+            ),
             processing_run_pk=_uuid(
                 _required(row, "processing_run_pk"), field="processing run id"
             ),
@@ -272,7 +281,11 @@ class PostgresChatJobRepository:
         del worker_id
         row = self._fetchone(
             _HEARTBEAT_SQL,
-            (_uuid(job_pk, field="assistant message id"), _uuid(processing_run_pk, field="processing run id"), lease_seconds),
+            (
+                _uuid(job_pk, field="assistant message id"),
+                _uuid(processing_run_pk, field="processing run id"),
+                lease_seconds,
+            ),
         )
         return _bool_result(row, "is_live")
 
@@ -321,14 +334,16 @@ class PostgresChatJobRepository:
         self, query: str, params: tuple[object, ...]
     ) -> Mapping[str, Any] | None:
         try:
-            with self._connect(
-                self._database_url,
-                connect_timeout=self._connect_timeout_seconds,
-                row_factory=dict_row,
-            ) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(query, params)
-                    return cursor.fetchone()
+            with (
+                self._connect(
+                    self._database_url,
+                    connect_timeout=self._connect_timeout_seconds,
+                    row_factory=dict_row,
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(query, params)
+                return cursor.fetchone()
         except (psycopg.Error, OSError, ConnectionError, TimeoutError):
             raise ChatWorkerDatabaseUnavailable(
                 "Chat worker database is unavailable"
