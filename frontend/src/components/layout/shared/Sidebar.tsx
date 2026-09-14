@@ -3,20 +3,22 @@ import HistoryList from '../../../features/history/HistoryList'
 import UserSection from './UserSection'
 
 interface SidebarProps {
+    displayName: string
+    expireTime: number
     onNewAnalysis: () => void
     onHistoryClick: (id: string) => void
     onLogout: () => void
     onRefreshSession: () => void
-    expireTime: number
     onImminent: (minutes: number) => void
 }
 
 export default function Sidebar({
+    displayName,
+    expireTime,
     onNewAnalysis,
     onHistoryClick,
     onLogout,
     onRefreshSession,
-    expireTime,
     onImminent
 }: SidebarProps) {
     return (
@@ -37,6 +39,7 @@ export default function Sidebar({
             <HistoryList onHistoryClick={onHistoryClick} />
 
             <UserSection
+                displayName={displayName}
                 onLogout={onLogout}
                 onRefreshSession={onRefreshSession}
                 expireTime={expireTime}

@@ -5,6 +5,7 @@ import AlertModal from '../../components/common/AlertModal'
 
 interface AppLayoutViewProps {
     selectedHistoryId: string | null
+    displayName: string
     expireTime: number
     showImminentAlert: boolean
     remainingMinutes: number
@@ -19,6 +20,7 @@ interface AppLayoutViewProps {
 
 export default function AppLayoutView({
     selectedHistoryId,
+    displayName,
     expireTime,
     showImminentAlert,
     remainingMinutes,
@@ -33,11 +35,12 @@ export default function AppLayoutView({
     return (
         <div className="min-h-screen flex bg-background text-on-background overflow-hidden relative">
             <Sidebar
+                displayName={displayName}
+                expireTime={expireTime}
                 onNewAnalysis={onNewAnalysis}
                 onHistoryClick={onHistoryClick}
                 onLogout={onLogout}
                 onRefreshSession={onRefreshSession}
-                expireTime={expireTime}
                 onImminent={onImminent}
             />
 

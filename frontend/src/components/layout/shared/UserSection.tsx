@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 
 interface UserSectionProps {
+    displayName: string
     onLogout: () => void
     onRefreshSession: () => void
     expireTime: number
@@ -9,6 +10,7 @@ interface UserSectionProps {
 }
 
 export default function UserSection({
+    displayName,
     onLogout,
     onRefreshSession,
     expireTime,
@@ -55,7 +57,7 @@ export default function UserSection({
                 </div>
                 <div className="flex flex-col min-w-0">
                     <Link to="/mypage" className="font-title-sm text-[15px] font-semibold text-on-surface truncate no-underline hover:text-primary transition-colors">
-                        분석가
+                        {displayName}
                     </Link>
                 </div>
             </div>

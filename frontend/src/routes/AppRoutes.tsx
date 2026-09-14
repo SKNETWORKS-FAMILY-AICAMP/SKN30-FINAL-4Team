@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import ProtectedRoute from './ProtectedRoute'
 import { authService } from '../services/authService'
 
 // Layouts
@@ -18,11 +17,16 @@ import MyPage from '../pages/MyPage'
 
 export default function AppRoutes() {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+    const [displayName, setDisplayName] = useState<string>('')
 
     useEffect(() => {
         authService.getCurrentUser()
             .then((res) => {
-                setIsAuthenticated(!!res?.user)
+                setIsAuthenticated(!!res?.user.id)
+                
+                if (res?.user?.display_name) {
+                    setDisplayName(res.user.display_name)
+                }
             })
             .catch(() => {
                 setIsAuthenticated(false)
@@ -37,11 +41,9 @@ export default function AppRoutes() {
         <Routes>
             {isAuthenticated ? (
                 // --- 로그인 상태 ---
-                <Route element={<ProtectedRoute />}>
-                    <Route element={<AppLayout />}>
-                        <Route path="/" element={<MainPage />} />
-                        <Route path="/mypage" element={<MyPage />} />
-                    </Route>
+                <Route element={<AppLayout displayName={displayName} />}>
+                    <Route path="/" element={<MainPage />} />
+                    <Route path="/mypage" element={<MyPage />} />
                 </Route>
             ) : (
                 // --- 미로그인 상태 ---

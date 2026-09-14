@@ -59,6 +59,8 @@ secrets/
 **/node_modules/
 **/dist/
 **/dist-ssr/
+**/mock/
+**/temp/
 **/.vite/
 **/.npm/
 **/*.local

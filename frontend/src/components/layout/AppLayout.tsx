@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { authService } from '../../services/authService'
 import AppLayoutView from './AppLayoutView'
 
-export default function AppLayout() {
+interface AppLayoutProps {
+    displayName: string
+}
+
+export default function AppLayout({ displayName }: AppLayoutProps) {
     const navigate = useNavigate()
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
 
@@ -66,6 +70,7 @@ export default function AppLayout() {
     return (
         <AppLayoutView
             selectedHistoryId={selectedHistoryId}
+            displayName={displayName}
             expireTime={expireTime}
             showImminentAlert={showImminentAlert}
             remainingMinutes={remainingMinutes}
