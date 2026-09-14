@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_render_manifest_v1.schema.json",
+  "title": "Pre-review PDF render manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_pdf_relative_path",
+    "source_pdf_sha256",
+    "source_pdf_size_bytes",
+    "page_count",
+    "renderer",
+    "renderer_version",
+    "renderer_config_sha256",
+    "pages"
+  ],
+  "properties": {
+    "schema_version": { "const": "pdf_render_manifest/v1" },
+    "source_pdf_relative_path": { "$ref": "#/$defs/relativePdfPath" },
+    "source_pdf_sha256": { "$ref": "#/$defs/sha256" },
+    "source_pdf_size_bytes": { "type": "integer", "minimum": 1 },
+    "page_count": { "type": "integer", "minimum": 1 },
+    "renderer": { "type": "string", "minLength": 1 },
+    "renderer_version": { "type": "string", "minLength": 1 },
+    "renderer_config_sha256": { "$ref": "#/$defs/sha256" },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/renderedPage" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relativePdfPath": {
+      "type": "string",
+      "minLength": 5,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.[pP][dD][fF]$"
+    },
+    "relativePngPath": {
+      "type": "string",
+      "minLength": 5,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+\\.[pP][nN][gG]$"
+    },
+    "renderedPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page",
+        "image_relative_path",
+        "image_mime_type",
+        "image_sha256",
+        "image_size_bytes",
+        "coordinate_manifest",
+        "coordinate_manifest_sha256"
+      ],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "image_relative_path": { "$ref": "#/$defs/relativePngPath" },
+        "image_mime_type": { "const": "image/png" },
+        "image_sha256": { "$ref": "#/$defs/sha256" },
+        "image_size_bytes": { "type": "integer", "minimum": 1 },
+        "coordinate_manifest": { "$ref": "https://schemas.pre-review.invalid/pdf_coordinate_manifest_v1.schema.json" },
+        "coordinate_manifest_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

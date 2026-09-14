@@ -32,6 +32,6 @@ include = ["app*", "worker*"]
 common-ir-pipeline = { path = "vendor/common_ir_pipeline" }
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
+testpaths = ["tests", "vendor/common_ir_pipeline/tests"]
+pythonpath = [".", "vendor/common_ir_pipeline/src"]
 addopts = "-q"

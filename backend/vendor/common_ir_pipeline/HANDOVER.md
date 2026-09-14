@@ -25,6 +25,8 @@ src/common_ir_pipeline/
   adapters/pdf_native.py    native PDF, optionally enriched by archived layout sidecars -> Common IR
   adapters/markdown_fixture.py
                             test-fixture Markdown -> Common IR
+  pdf_fusion/              coordinate/render manifests and immutable byte binding
+  pdf_fusion/schemas/      cross-language JSON Schemas for those manifests
   run_rhwp_e2e.py           original HWP/HWPX -> rhwp -> Common IR runner
 tests/                      small portable regression tests
 fixtures/                   tiny Markdown example and manifest shape
@@ -76,6 +78,24 @@ Pass the sidecar to `common-ir-pdf-native --ocr-layout-diagnostic ...` only to
 retain its SHA-bound geometry as blank `layout_candidate` blocks with
 `layout_region` occurrences. CandidatePack/semantic consumers must exclude
 these blank blocks; they are for an explicit later layout gate or visual review.
+
+The `common_ir_pipeline.pdf_fusion` module does not execute OCR or render a PDF. It
+validates the source PDF and already-rendered PNG bytes, page count, page
+rotation/UserUnit/scale, affine coordinate transforms and sidecar hashes. Its
+initial renderer contract accepts only non-interlaced 8-bit RGB/RGBA PNGs and
+boundedly validates concatenated IDAT/DEFLATE output and scanline filter bytes.
+An
+actual renderer integration must derive page metadata from its pinned PDF
+engine; arbitrary caller-supplied page metadata is not an authority.
+
+Its JSON Schemas are structural only. The Python semantic validator is the
+authority for byte/hash/path/geometry invariants. The render schema uses the
+coordinate schema's absolute `$id` in its `$ref`; register that resource under
+that `$id` when validating externally. `/Rotate` is clockwise and must be
+normalized modulo 360 before manifest construction. Validation is for trusted
+single-owner artifact roots only: a production consumer uploads the same
+verified FD/bytes or an immutable content-addressed object. Reopening paths in
+multi-tenant storage is NO-GO pending a dirfd/openat2 boundary.
 
 ## Supported inputs
 

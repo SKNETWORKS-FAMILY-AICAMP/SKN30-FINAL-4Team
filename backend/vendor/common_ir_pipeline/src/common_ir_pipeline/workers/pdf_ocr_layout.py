@@ -1,4 +1,4 @@
-"""Run optional CPU OCR only to create a textless PDF layout sidecar.
+"""Run optional EC2/local CPU OCR only to create a textless PDF layout sidecar.
 
 This worker is intentionally *not* a Common IR adapter.  OCR recognition is
 used to locate rendered text regions and measure page-level work, but the
@@ -9,6 +9,8 @@ an exact span, or a Structured Profile ``value_raw``.
 The sidecar is useful for selecting pages/regions for visual inspection or a
 separate, explicitly audited table/diagram layout pipeline.  It does not
 infer table cells, row/column relations, diagram edges, or business facts.
+This legacy diagnostic CLI is for EC2/local rendering only and is forbidden as
+a RunPod fusion worker.
 """
 from __future__ import annotations
 

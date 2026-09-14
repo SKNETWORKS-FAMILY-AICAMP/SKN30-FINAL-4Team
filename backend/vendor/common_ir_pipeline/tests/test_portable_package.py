@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +24,28 @@ from common_ir_pipeline.workers.pdf_ocr_layout import build_sidecar, geometry_re
 
 
 class PortablePackageTests(unittest.TestCase):
+    def test_wheel_contains_pdf_fusion_json_schemas(self) -> None:
+        """Package-data config is exercised from a real wheel, not source tree."""
+        if os.environ.get("COMMON_IR_VERIFY_WHEEL") != "1":
+            self.skipTest("set COMMON_IR_VERIFY_WHEEL=1 in a build-capable CI job")
+        package_root = Path(__file__).resolve().parents[1]
+        uv = shutil.which("uv")
+        if uv is None:
+            self.skipTest("uv is required for the reproducible wheel-content check")
+        with tempfile.TemporaryDirectory() as directory:
+            wheel_dir = Path(directory) / "wheel"
+            completed = subprocess.run(
+                [uv, "build", "--wheel", "--out-dir", str(wheel_dir)], cwd=package_root,
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            wheels = list(wheel_dir.glob("common_ir_pipeline-*.whl"))
+            self.assertEqual(len(wheels), 1)
+            with zipfile.ZipFile(wheels[0]) as wheel:
+                names = set(wheel.namelist())
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_coordinate_manifest_v1.schema.json", names)
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_render_manifest_v1.schema.json", names)
+
     def test_document_shell_has_required_lineage(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source.txt"

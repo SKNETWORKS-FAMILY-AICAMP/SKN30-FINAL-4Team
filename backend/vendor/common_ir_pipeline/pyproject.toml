@@ -33,3 +33,6 @@ common-ir-pdf-ocr-layout = "common_ir_pipeline.workers.pdf_ocr_layout:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"common_ir_pipeline.pdf_fusion" = ["schemas/*.json"]

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_fusion_corpus_baseline_v1.schema.json",
+  "title": "Pre-review PDF fusion corpus baseline v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "corpus_id", "counts", "all_runs", "pdf_subset"],
+  "properties": {
+    "schema_version": { "const": "pdf_fusion_corpus_baseline/v1" },
+    "corpus_id": { "type": "string", "minLength": 1 },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all_runs", "pdf_runs", "extensions", "artifacts"],
+      "properties": {
+        "all_runs": { "type": "integer", "minimum": 1 },
+        "pdf_runs": { "type": "integer", "minimum": 0 },
+        "extensions": {
+          "type": "object",
+          "propertyNames": { "enum": ["pdf", "hwp", "hwpx"] },
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["common_ir", "structured_profile", "candidate_pack"],
+          "properties": {
+            "common_ir": { "type": "integer", "minimum": 1 },
+            "structured_profile": { "type": "integer", "minimum": 1 },
+            "candidate_pack": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "all_runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/run" }
+    },
+    "pdf_subset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logical_ids_sha256", "runs"],
+      "properties": {
+        "logical_ids_sha256": { "$ref": "#/$defs/sha256" },
+        "runs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/run" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "extension", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "extension": { "enum": ["pdf", "hwp", "hwpx"] },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "counts"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "counts": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logical_id", "source", "artifact_count", "artifacts"],
+      "properties": {
+        "logical_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$"
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "artifact_count": { "const": 3 },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["common_ir", "structured_profile", "candidate_pack"],
+          "properties": {
+            "common_ir": { "$ref": "#/$defs/artifact" },
+            "structured_profile": { "$ref": "#/$defs/artifact" },
+            "candidate_pack": { "$ref": "#/$defs/artifact" }
+          }
+        }
+      }
+    }
+  }
+}

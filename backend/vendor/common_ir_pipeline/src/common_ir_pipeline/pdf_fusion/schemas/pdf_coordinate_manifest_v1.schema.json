@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_coordinate_manifest_v1.schema.json",
+  "title": "Pre-review PDF coordinate manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "page",
+    "page_count",
+    "media_box",
+    "crop_box",
+    "rotation",
+    "user_unit",
+    "canonical_width_pt",
+    "canonical_height_pt",
+    "render_scale_px_per_point",
+    "rendered_width_px",
+    "rendered_height_px",
+    "pdf_origin",
+    "pdf_x_axis",
+    "pdf_y_axis",
+    "pixel_origin",
+    "pixel_x_axis",
+    "pixel_y_axis",
+    "user_to_pixel",
+    "pixel_to_user",
+    "renderer",
+    "renderer_version",
+    "renderer_config_sha256",
+    "page_image_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "pdf_coordinate_manifest/v1" },
+    "source_sha256": { "$ref": "#/$defs/sha256" },
+    "page": { "type": "integer", "minimum": 1 },
+    "page_count": { "type": "integer", "minimum": 1 },
+    "media_box": { "$ref": "#/$defs/bbox" },
+    "crop_box": { "$ref": "#/$defs/bbox" },
+    "rotation": { "enum": [0, 90, 180, 270] },
+    "user_unit": { "type": "number", "exclusiveMinimum": 0 },
+    "canonical_width_pt": { "type": "number", "exclusiveMinimum": 0 },
+    "canonical_height_pt": { "type": "number", "exclusiveMinimum": 0 },
+    "render_scale_px_per_point": { "type": "number", "exclusiveMinimum": 0 },
+    "rendered_width_px": { "type": "integer", "minimum": 1 },
+    "rendered_height_px": { "type": "integer", "minimum": 1 },
+    "pdf_origin": { "const": "bottom_left" },
+    "pdf_x_axis": { "const": "right" },
+    "pdf_y_axis": { "const": "up" },
+    "pixel_origin": { "enum": ["top_left", "bottom_left"] },
+    "pixel_x_axis": { "const": "right" },
+    "pixel_y_axis": { "enum": ["down", "up"] },
+    "user_to_pixel": { "$ref": "#/$defs/affine" },
+    "pixel_to_user": { "$ref": "#/$defs/affine" },
+    "renderer": { "type": "string", "minLength": 1 },
+    "renderer_version": { "type": "string", "minLength": 1 },
+    "renderer_config_sha256": { "$ref": "#/$defs/sha256" },
+    "page_image_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bbox": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "affine": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 6,
+      "maxItems": 6
+    }
+  }
+}

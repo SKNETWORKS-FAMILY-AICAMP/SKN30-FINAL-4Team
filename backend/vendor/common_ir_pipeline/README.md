@@ -66,3 +66,57 @@ creates no cells or relations. CandidatePack consumers must exclude blank
 `layout_candidate` blocks. Native PDF text remains the only semantic text
 source; scan/image-only PDFs remain excluded even if this worker detects many
 regions.
+
+`common-ir-pdf-ocr-layout` is a legacy EC2/local-renderer diagnostic CLI. It
+is forbidden as a RunPod fusion worker; it remains present for local evidence
+collection only.
+
+## PDF fusion artifact boundary
+
+`common_ir_pipeline.pdf_fusion` contains dependency-free, fail-closed contracts
+used before any later ODL/Surya alignment:
+
+- `pdf_coordinate_manifest/v1`: page box, rotation, UserUnit, render scale,
+  affine/inverse, source hash and page-image hash
+- `pdf_render_manifest/v1`: one complete PDF, all contiguous rendered PNGs,
+  their byte hashes/sizes/dimensions and coordinate manifests
+
+The package ships Draft 2020-12 JSON Schemas under `pdf_fusion/schemas/`.
+They are structural/interoperability checks only; the Python semantic
+validators are authoritative for hashes, page continuity, transform binding,
+and filesystem bytes. Consumers resolving the render schema's coordinate
+`$ref` must register the coordinate schema by its absolute `$id`
+(as the package tests do), rather than treating a schema filename as a global
+registry key.
+`assemble_render_manifest` hashes actual local PDF/PNG files and
+`validate_render_manifest_files` repeats byte, PNG-dimension, and bounded
+IDAT/scanline verification
+before a consumer may send images to a remote worker. These primitives do not
+render a PDF and do not promote OCR/ODL text into Common IR.
+
+The initial renderer contract intentionally accepts only non-interlaced 8-bit
+RGB/RGBA PNGs. PNG inputs have conservative compressed-byte, dimension, total
+pixel, and expected-decompressed-scanline caps; the validator boundedly checks
+the concatenated IDAT zlib stream and each PNG filter byte without retaining
+decoded pixels. These values must be recalibrated from trusted renderer-corpus
+p99 measurements before production rollout. Validation assumes a trusted,
+single-owner artifact root. It does not make later pathname reopening safe:
+production must upload the exact verified FD/bytes or an immutable
+content-addressed object. Multi-tenant reopening is NO-GO until a dirfd/openat2
+boundary is implemented.
+
+PDF `/Rotate` is clockwise; producers must normalize it modulo 360 to
+`0/90/180/270` before constructing a coordinate manifest. `/UserUnit` is part
+of canonical point dimensions and render-scale calculation.
+
+Release packaging must also exercise the real wheel-content gate; the normal
+source-tree test run intentionally skips this build-only check:
+
+```bash
+COMMON_IR_VERIFY_WHEEL=1 UV_CACHE_DIR=/tmp/common-ir-uv-cache \
+  python -m unittest \
+  tests.test_portable_package.PortablePackageTests.test_wheel_contains_pdf_fusion_json_schemas -v
+```
+
+This command requires `uv` on `PATH` and verifies that both PDF fusion JSON
+Schemas are present in the built wheel.
