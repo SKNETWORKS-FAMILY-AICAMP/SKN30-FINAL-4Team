@@ -6,18 +6,26 @@ from typing import Any
 
 from worker import analysis_job
 from worker.contracts.fit_result import FitResult, PurposeAxisClassification
+from worker.contracts.ml_result import (
+    MODEL_EXECUTION_FAILED,
+    MlModelId,
+    MlModelResult,
+    MlReferenceResult,
+)
 from worker.ml_reference import (
     MODEL_3_ALLOWED_LEVELS,
     MODEL_3_LEVEL_SENTENCES,
     MODEL_3_TYPICAL_LEVEL,
     FakeMlModel,
+    MlModelInput,
     _estimate_phrase,
+    _run_one,
     _validate_reference,
     build_ml_inputs,
     resolve_authoritative_request_limit,
 )
-from worker.contracts.ml_result import MlModelId
 from worker.contracts.sim_result import SimCommonProfile, SimComparisonResult
+from worker.result_payload import _public_ml_payload
 
 
 class _NoCallLLM:
@@ -332,3 +340,95 @@ def test_model2_profile_limit_preserves_company_project_and_team_scope() -> None
             f"사전협의안에 명시된 {label} 지원 한도는 500만원입니다. "
             "조건이 비슷한 과거 사업들의 지원 단위당 예측 금액은 약 400만원입니다."
         )
+
+
+class _SequencedMlModel:
+    artifact_version = "test-model-3"
+
+    def __init__(self, failures: int, output: dict[str, Any]) -> None:
+        self.failures = failures
+        self.output = output
+        self.calls: list[dict[str, Any]] = []
+
+    def predict(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(dict(inputs))
+        if len(self.calls) <= self.failures:
+            raise RuntimeError("temporary model 3 failure")
+        return dict(self.output)
+
+
+def _model_3_input() -> MlModelInput:
+    return MlModelInput(
+        model_id=MlModelId.MODEL_3_ANOMALY,
+        payload={"evidence_text": "사업기간 1년, 지원비율 50%"},
+        sources=["common_ir:evidence_text"],
+    )
+
+
+def test_model3_execution_failure_is_retried_once_and_can_recover() -> None:
+    model = _SequencedMlModel(
+        failures=1,
+        output={"level": "확인 필요", "cause_axes": ["지원비율"]},
+    )
+    diagnostics = []
+
+    result = _run_one(
+        MlModelId.MODEL_3_ANOMALY,
+        model,
+        _model_3_input(),
+        diagnostics,
+    )
+
+    assert len(model.calls) == 2
+    assert result.status == "OK"
+    assert result.reference_text is not None
+    assert diagnostics == []
+
+
+def test_model3_exhausted_failure_keeps_internal_reason_but_hides_message() -> None:
+    model = _SequencedMlModel(
+        failures=2,
+        output={"level": "확인 필요", "cause_axes": ["지원비율"]},
+    )
+    diagnostics = []
+
+    model_3 = _run_one(
+        MlModelId.MODEL_3_ANOMALY,
+        model,
+        _model_3_input(),
+        diagnostics,
+    )
+    payload = _public_ml_payload(
+        MlReferenceResult(
+            results=[
+                MlModelResult(
+                    model_id=MlModelId.MODEL_1_SUPPORT_TYPE,
+                    status="OK",
+                    reason_code=None,
+                    reference_text="지원유형 참고 분류",
+                ),
+                MlModelResult(
+                    model_id=MlModelId.MODEL_2_AMOUNT,
+                    status="OK",
+                    reason_code=None,
+                    reference_text="예측 지원액 참고",
+                ),
+                model_3,
+            ]
+        )
+    )
+
+    assert len(model.calls) == 2
+    assert model_3.status == "FAILED"
+    assert model_3.reason_code == MODEL_EXECUTION_FAILED
+    assert len(diagnostics) == 1
+    assert "attempts=2" in diagnostics[0].message
+    assert payload["model_1"]["message"] == "지원유형 참고 분류"
+    assert payload["model_2"]["message"] == "예측 지원액 참고"
+    assert payload["model_3"] == {
+        "status": "FAILED",
+        "message": None,
+        "reason_code": MODEL_EXECUTION_FAILED,
+        "anomaly_level": None,
+        "cause_axes": [],
+    }
