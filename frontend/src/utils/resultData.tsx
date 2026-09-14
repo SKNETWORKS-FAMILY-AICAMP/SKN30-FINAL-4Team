@@ -37,7 +37,6 @@ export const getFitLabel = (code: string): string => {
 // CPL 상태 배지 헬퍼
 export const getCplBadge = (status: string) => {
     switch (status) {
-        case 'PRESENT':
         case 'confirmed':
             return (
                 <div className="flex-none w-1/3 h-full flex justify-center items-center gap-xs bg-[#E6F4EA] rounded-r-xs font-medium text-[13px] text-[#166534]">
@@ -45,14 +44,14 @@ export const getCplBadge = (status: string) => {
                     확인됨
                 </div>
             )
-        case 'NEEDS_CONFIRMATION':
+        case 'needs_confirmation':
             return (
                 <div className="flex-none w-1/3 h-full flex justify-center items-center gap-xs bg-[#FEF7E0] rounded-r-xs font-medium text-[13px] text-[#854D0E]">
                     <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>pending</span>
                     확인필요
                 </div>
             )
-        case 'MISSING':
+        case 'no_content':
             return (
                 <div className="flex-none w-1/3 h-full flex justify-center items-center gap-xs bg-error-container rounded-r-xs font-medium text-[13px] text-error">
                     <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>error</span>
@@ -73,14 +72,14 @@ export const getCplBadge = (status: string) => {
 export const getFitBadge = (status: string) => {
     switch (status) {
         case 'FIT':
-        case 'CONFIRMED':
-            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#E6F4EA] text-[#166534]">연결 확인</span>
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#E6F4EA] text-[#166534]">적합</span>
         case 'INSUFFICIENT':
-            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#F1F3F4] text-[#5F6368]">비교 정보 부족</span>
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-secondary-container text-on-secondary-container">근거 부족</span>
         case 'CONFLICT':
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-error-container text-error">충돌</span>
         case 'NEEDS_REVIEW':
-            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-error-container text-error">충돌 확인</span>
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#FEF7E0] text-[#B06000]">검토 필요</span>
         default:
-            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#FEF7E0] text-[#B06000]">추가 검토 필요</span>
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#F1F3F4] text-gray-700">해당 없음</span>
     }
 }
