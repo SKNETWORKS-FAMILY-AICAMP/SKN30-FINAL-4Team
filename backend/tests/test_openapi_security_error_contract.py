@@ -157,6 +157,55 @@ def test_openapi_exposes_required_chat_idempotency_header() -> None:
         assert idempotency["required"] is True
 
 
+def test_openapi_explains_auth_analysis_and_conversation_frontend_contracts() -> None:
+    schema = create_app().openapi()
+    schemas = schema["components"]["schemas"]
+
+    assert "credentials: 'include'" in schema["info"]["description"]
+    display_name = schemas["AuthUserResponse"]["properties"]["display_name"]
+    assert "user_metadata.display_name" in display_name["description"]
+    assert display_name["examples"] == ["홍길동"]
+
+    run = schemas["AnalysisRunView"]["properties"]
+    assert "succeeded" in run["analysis_case_id"]["description"]
+    assert "failed" in run["error_code"]["description"]
+
+    create_chat = _operation(
+        schema, "/api/v1/analysis-cases/{analysis_case_id}/messages", "post"
+    )
+    list_chat = _operation(
+        schema, "/api/v1/analysis-cases/{analysis_case_id}/messages", "get"
+    )
+    retry_chat = _operation(
+        schema,
+        "/api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry",
+        "post",
+    )
+    assert "세션을 닫더라도" in create_chat["description"]
+    assert "closed/expired" in list_chat["description"]
+    assert "조회만 가능" in retry_chat["description"]
+    assert "generating 상태이면 null" in schemas["ConversationMessageResponse"][
+        "properties"
+    ]["content"]["description"]
+    assert set(schemas["ConversationMessageEnvelope"]["required"]) == {
+        "items",
+        "next_cursor",
+    }
+    assert set(schemas["AnalysisRunView"]["required"]) == {
+        "analysis_run_id",
+        "status",
+        "analysis_case_id",
+        "error_code",
+        "error_message",
+    }
+
+    # 409 is shared by analysis lifecycle, chat state and idempotency errors.
+    # Swagger must not describe every occurrence as an active analysis run.
+    assert create_chat["responses"]["409"]["description"] == (
+        "The request conflicts with the current resource or idempotency state."
+    )
+
+
 def test_cors_no_longer_allows_the_unused_csrf_token_header() -> None:
     from starlette.middleware.cors import CORSMiddleware
 

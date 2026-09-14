@@ -32,8 +32,17 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 class CredentialsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str = Field(min_length=3, max_length=254)
-    password: SecretStr = Field(min_length=1, max_length=1024)
+    email: str = Field(
+        min_length=3,
+        max_length=254,
+        description="로그인에 사용할 이메일 주소",
+        examples=["user@example.com"],
+    )
+    password: SecretStr = Field(
+        min_length=1,
+        max_length=1024,
+        description="로그인 비밀번호. 응답이나 로그에 포함되지 않는다.",
+    )
 
     @field_validator("email")
     @classmethod
@@ -47,7 +56,12 @@ class CredentialsRequest(BaseModel):
 class PasswordResetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email: str = Field(min_length=3, max_length=254)
+    email: str = Field(
+        min_length=3,
+        max_length=254,
+        description="비밀번호 재설정 안내를 받을 이메일 주소",
+        examples=["user@example.com"],
+    )
 
     @field_validator("email")
     @classmethod
@@ -58,7 +72,11 @@ class PasswordResetRequest(BaseModel):
 class UpdatePasswordRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    password: SecretStr = Field(min_length=8, max_length=1024)
+    password: SecretStr = Field(
+        min_length=8,
+        max_length=1024,
+        description="변경할 새 비밀번호. 응답이나 로그에 포함되지 않는다.",
+    )
 
 
 class SignUpRequest(BaseModel):
@@ -71,9 +89,23 @@ class SignUpRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    email: str = Field(min_length=3, max_length=254)
-    password: SecretStr = Field(min_length=1, max_length=1024)
-    display_name: str = Field(min_length=1, max_length=100)
+    email: str = Field(
+        min_length=3,
+        max_length=254,
+        description="가입할 이메일 주소",
+        examples=["user@example.com"],
+    )
+    password: SecretStr = Field(
+        min_length=1,
+        max_length=1024,
+        description="가입에 사용할 비밀번호. 응답이나 로그에 포함되지 않는다.",
+    )
+    display_name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="화면에 표시할 사용자 이름. Supabase user_metadata에 저장한다.",
+        examples=["홍길동"],
+    )
 
     @field_validator("email")
     @classmethod
@@ -91,29 +123,42 @@ class AuthUserResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str
-    email: str
-    display_name: str
+    id: str = Field(description="Supabase Auth 사용자 UUID")
+    email: str = Field(description="로그인 이메일", examples=["user@example.com"])
+    display_name: str = Field(
+        description=(
+            "화면 표시 이름. Supabase user_metadata.display_name을 사용하고, 기존 "
+            "사용자에게 값이 없으면 이메일 @ 앞부분을 반환한다."
+        ),
+        examples=["홍길동"],
+    )
 
 
 class AuthUserEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    user: AuthUserResponse
+    user: AuthUserResponse = Field(description="인증된 사용자 공개 정보")
 
 
 class SignUpResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    email_confirmation_required: bool
+    email_confirmation_required: bool = Field(
+        description="true이면 이메일 확인 후 별도로 로그인해야 한다."
+    )
     # The provider can require confirmation and omit a session/user payload.
-    user: AuthUserResponse | None = None
+    user: AuthUserResponse | None = Field(
+        default=None,
+        description="가입된 사용자. 이메일 확인 정책에 따라 null일 수 있다.",
+    )
 
 
 class PasswordResetResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    message: str
+    message: str = Field(
+        description="계정 존재 여부를 드러내지 않는 고정 비밀번호 재설정 안내 문구"
+    )
 
 
 def _public_user(payload: object) -> dict[str, str] | None:
@@ -203,6 +248,11 @@ TrustedOriginDep = Annotated[None, Depends(trusted_origin)]
 @router.post(
     "/sign-in",
     response_model=AuthUserEnvelope,
+    summary="로그인",
+    description=(
+        "Supabase Auth로 이메일과 비밀번호를 검증하고 HttpOnly 세션 Cookie 두 개를 "
+        "설정한다. 응답의 user.display_name을 화면 사용자 이름으로 사용한다."
+    ),
     responses=error_responses(401, 403, 422, 429, 500, 502, 503),
 )
 async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
@@ -230,6 +280,11 @@ async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDe
     "/sign-up",
     response_model=SignUpResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="회원가입",
+    description=(
+        "display_name을 Supabase user_metadata에 함께 저장한다. 이메일 확인 정책이 "
+        "켜져 있으면 user가 null이고 email_confirmation_required가 true일 수 있다."
+    ),
     responses=error_responses(400, 403, 422, 429, 500, 502, 503),
 )
 async def sign_up(request: Request, body: SignUpRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
@@ -263,6 +318,8 @@ async def sign_up(request: Request, body: SignUpRequest, _: TrustedOriginDep, su
 @router.post(
     "/refresh",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="로그인 세션 갱신",
+    description="refresh HttpOnly Cookie로 Supabase 세션을 갱신하고 Cookie를 다시 설정한다.",
     dependencies=[Security(refresh_cookie_scheme)],
     responses=error_responses(401, 403, 422, 429, 500, 502, 503),
 )
@@ -303,6 +360,8 @@ async def refresh(request: Request, _: TrustedOriginDep, supabase: SupabaseClien
 @router.post(
     "/sign-out",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="로그아웃",
+    description="Supabase 세션 종료를 요청하고 브라우저의 인증 Cookie를 삭제한다.",
     # Sign-out is intentionally idempotent when the cookie is already absent,
     # so do not declare it as a required security scheme.
     responses=error_responses(403, 422, 500, 503),
@@ -341,6 +400,7 @@ async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClie
 @router.post(
     "/password-reset",
     response_model=PasswordResetResponse,
+    summary="비밀번호 재설정 메일 요청",
     responses=error_responses(403, 422, 429, 500, 503),
 )
 async def password_reset(request: Request, body: PasswordResetRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> PasswordResetResponse:
@@ -364,6 +424,7 @@ async def password_reset(request: Request, body: PasswordResetRequest, _: Truste
 @router.post(
     "/update-password",
     status_code=status.HTTP_204_NO_CONTENT,
+    summary="로그인 사용자의 비밀번호 변경",
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 422, 429, 500, 502, 503),
 )
@@ -390,6 +451,11 @@ async def update_password(request: Request, body: UpdatePasswordRequest, _: Trus
 @router.get(
     "/me",
     response_model=AuthUserEnvelope,
+    summary="현재 로그인 사용자 조회",
+    description=(
+        "HttpOnly access Cookie를 검증하고 id, email, display_name을 반환한다. "
+        "프론트는 사용자 이름을 별도 DB에서 조회하지 않는다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 429, 500, 502, 503),
 )

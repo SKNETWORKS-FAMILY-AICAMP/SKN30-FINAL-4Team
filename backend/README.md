@@ -3,6 +3,11 @@
 현재 런타임의 공개 경계는 FastAPI다. 브라우저는 FastAPI만 호출하며, Supabase의
 Auth·PostgreSQL/pgvector·private Storage는 서버 내부 인프라로 사용한다.
 
+이 README의 endpoint 목록은 구성 개요일 뿐 프론트 계약 원본이 아니다. 프론트 구현은
+[프론트엔드 FastAPI API 명세서](fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md)를 유일한
+사람용 계약으로 사용하고, exact route·schema·enum·nullability는 배포 API의 `/docs` 또는
+`/openapi.json`에서 확인한다.
+
 ```text
 Frontend (HttpOnly Cookie)
   → FastAPI /api/v1
@@ -17,7 +22,7 @@ Frontend (HttpOnly Cookie)
   `GET /api/v1/analysis-runs/{id}`도 사용할 수 있다. SSE/WebSocket은 현재 구현 범위가 아니다.
 - worker는 신뢰된 서버 프로세스이며 PostgreSQL과 private Storage에만 내부 자격증명으로 접근한다. 브라우저 Cookie·사용자 token은 worker에 전달하지 않는다.
 
-## 현재 API
+## 현재 API 개요
 
 - `POST /api/v1/auth/sign-in`, `sign-up`, `refresh`, `sign-out`, `password-reset`, `update-password`
 - `GET /api/v1/auth/me`
@@ -30,7 +35,7 @@ Frontend (HttpOnly Cookie)
 - `POST /api/v1/analysis-sessions/{analysis_session_id}/close` — 해당 소유자의 특정 session만 idempotent하게 종료
 - `GET /api/v1/analysis-history` — page size 5의 signed snapshot cursor 이력
 - `POST /api/v1/analysis-cases/{analysis_case_id}/messages` — 필수 UUID v4 `Idempotency-Key`로 assistant turn 생성
-- `GET /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}` — 생성 중/완료 assistant turn polling
+- `GET /api/v1/analysis-cases/{analysis_case_id}/messages/{message_id}` — 생성 중/완료 assistant turn polling
 - `GET /api/v1/analysis-cases/{analysis_case_id}/messages` — signed cursor 대화 이력
 - `POST /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry` — 필수 UUID v4 `Idempotency-Key` 재시도
 
