@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -18,9 +18,13 @@ from worker.analysis_job import (
     AnalysisJobUnavailable,
     ArtifactRef,
     CachedRequestProfile,
+    CoreAnalysisEngine,
     EmbeddingConfiguration,
     ExistingCandidate,
     ProducedRequestProfile,
+    ExistingProfileDocument,
+    RetrievalDecision,
+    VendoredRequestProfileProducer,
 )
 from worker.contracts.cpl_result import CplFieldCode, CplItem, CplResult
 from worker.contracts.fit_result import (
@@ -44,6 +48,9 @@ from worker.ports.embedding import EmbeddingBatch
 from worker.result_payload import build_result_payload
 from worker.runtime import ClaimedJob
 from worker.supabase_storage import SupabaseWorkerStorage
+from worker.ports.llm import LLMInvalidResponseError, LLMTimeoutError, LLMUnavailableError
+from worker.contracts.profile_snapshot import CommonIrArtifact
+from worker import analysis_job as analysis_job_module
 
 
 def _json(value: dict[str, Any]) -> bytes:
@@ -120,6 +127,7 @@ class FakeStore:
     registrations: int = 0
     match_calls: int = 0
     config_calls: int = 0
+    embedding_provenance: list[dict[str, object]] = field(default_factory=list)
     matched_vectors: list[dict[str, list[float]]] = field(default_factory=list)
 
     def cached_request_profile(
@@ -146,6 +154,9 @@ class FakeStore:
             max_input_tokens=8192,
             assembly_version="approved-facts-components-role-aware-v2",
         )
+
+    def record_embedding_configuration(self, **values: Any) -> None:
+        self.embedding_provenance.append(dict(values))
 
     def match_existing_profiles(self, **values: Any) -> list[ExistingCandidate]:
         self.match_calls += 1
@@ -225,6 +236,139 @@ class FakeEngine:
             "candidates": [],
             "evidences": [],
         }
+
+
+class CoreEngineLLM:
+    """Return only the structured rows needed by the real CoreAnalysisEngine."""
+
+    def __init__(self, *, fail_task: str | None = None, failure: Exception | None = None):
+        self.fail_task = fail_task
+        self.failure = failure
+        self.tasks: list[str] = []
+        self.payloads: list[dict[str, Any]] = []
+
+    async def generate_structured(self, **values: Any) -> Any:
+        task_name = values["task_name"]
+        self.tasks.append(task_name)
+        payload = json.loads(values["messages"][-1].content)
+        self.payloads.append(payload)
+        if task_name == self.fail_task:
+            assert self.failure is not None
+            raise self.failure
+        schema = values["response_schema"]
+        if task_name == "sim_common_key_classification":
+            return schema.model_validate(
+                {
+                    "assignments": [
+                        {
+                            "fact_id": row["fact_id"],
+                            "common_key": row["allowed_common_keys"][0],
+                            "quoted_text": row["value_raw"],
+                        }
+                        for row in payload["facts"]
+                    ]
+                }
+            )
+        if task_name == "sim_axis_comparison":
+            return schema.model_validate(
+                {
+                    "axes": [
+                        {
+                            "axis": row["axis"],
+                            "status": "SIMILAR",
+                            "request_fact_ids": [
+                                entry["fact_id"] for entry in row["request"]
+                            ],
+                            "candidate_fact_ids": [
+                                entry["fact_id"] for entry in row["candidate"]
+                            ],
+                        }
+                        for row in payload["axes"]
+                    ]
+                }
+            )
+        if task_name == "cpl_purpose_axis_classification":
+            return schema.model_validate(
+                {
+                    "assignments": [
+                        {
+                            "evidence_ref": row["evidence_ref"],
+                            "axis_code": "PURPOSE_TARGET_CONDITION",
+                            "quoted_text": row["raw_text"],
+                        }
+                        for row in payload["purpose_regions"]
+                    ]
+                }
+            )
+        if task_name == "fit_relation_comparison":
+            return schema.model_validate(
+                {
+                    "relations": [
+                        {
+                            "relation_id": row["relation_id"],
+                            "status": "INSUFFICIENT",
+                            "reason_code": "COMPARISON_EVIDENCE_MISSING",
+                        }
+                        for row in payload["relations"]
+                    ]
+                }
+            )
+        raise AssertionError(f"unexpected LLM task: {task_name}")
+
+
+_CORE_PURPOSE_TEXT = "○ (사업목적) 부산 관내 제조 중소기업의 기술경쟁력을 강화"
+
+
+def _core_ir() -> dict[str, Any]:
+    return {
+        "document": {"document_id": "hwpx:core"},
+        "blocks": [
+            {
+                "block_id": "hwpx:purpose",
+                "occurrences": [
+                    {"occurrence_id": "occ:purpose", "text": _CORE_PURPOSE_TEXT}
+                ],
+            }
+        ],
+    }
+
+
+def _core_profile(profile_id: str = "request:core") -> dict[str, Any]:
+    evidence = [
+        {
+            "source_block_id": "hwpx:purpose",
+            "common_ir_document_id": "hwpx:core",
+            "common_ir_block_id": "hwpx:purpose",
+            "common_ir_occurrence_ids": ["occ:purpose"],
+        }
+    ]
+
+    def fact(fact_id: str, value: str, facts_evidence: list[dict[str, Any]]):
+        return {
+            "fact_id": fact_id,
+            "value_raw": value,
+            "status": "identified",
+            "evidence": facts_evidence,
+        }
+
+    return {
+        "schema_version": "pre_review_request_profile/v0.1",
+        "profile_id": profile_id,
+        "processing_metadata": {"common_ir_document_id": "hwpx:core"},
+        "comparison_profile": {
+            "purpose_goal": [fact("fact:purpose", _CORE_PURPOSE_TEXT, evidence)],
+            "support_target": [
+                fact("fact:target", "부산 소재 중소기업", [])
+            ],
+            "support_activities": [fact("fact:content", "기술 컨설팅", [])],
+        },
+        "request_context": {},
+        "support_components": [],
+        "field_states": [
+            {"field_name": name, "status": "identified"}
+            for name in ("purpose_goal", "support_target", "support_activities")
+        ],
+    }
 
 
 def _fixture() -> tuple[
@@ -309,6 +453,8 @@ def test_handler_offline_e2e_and_retry_reuses_committed_profile() -> None:
     assert store.match_calls == 2
     assert embedding.calls == 6
     assert engine.calls == 2
+    assert len(store.embedding_provenance) == 2
+    assert all(item["configuration"] is not None for item in store.embedding_provenance)
     # Retry reads the two committed derived artifacts and candidate profile,
     # but does not fetch or parse the source again.
     retry_gets = storage.gets[first_get_count:]
@@ -341,6 +487,12 @@ def test_old_embedding_assembly_version_fails_before_embedding() -> None:
 
     assert embedding.calls == 0
     assert store.match_calls == 0
+    assert len(store.embedding_provenance) == 1
+    assert store.embedding_provenance[0]["analysis_run_id"] == str(job.job_pk)
+    assert store.embedding_provenance[0]["processing_run_id"] == str(
+        job.processing_run_pk
+    )
+    assert store.embedding_provenance[0]["configuration"] is not None
 
 
 def test_empty_existing_match_is_retrieval_readiness_failure() -> None:
@@ -352,6 +504,8 @@ def test_empty_existing_match_is_retrieval_readiness_failure() -> None:
         handler.handle(job)
 
     assert engine.calls == 0
+    assert len(store.embedding_provenance) == 1
+    assert store.embedding_provenance[0]["configuration"] is not None
 
 
 @pytest.mark.parametrize(
@@ -383,6 +537,274 @@ def test_partial_axis_retrieval_embeds_only_grounded_request_axes(
     )
 
 
+def test_partial_retrieval_reaches_public_payload_with_missing_sim_axes_without_llm(
+) -> None:
+    """The real engine must preserve retrieval's missing-axis fence to output."""
+
+    handler, storage, store, producer, _embedding, _engine, job = _fixture()
+    producer.available_axes = {"purpose"}
+    existing_ref = store.candidate.profile_artifact
+    existing = {
+        "schema_version": "existing_program_profile/v0.2",
+        "source_profile_id": store.candidate.source_profile_id,
+        "notice_id": store.candidate.notice_id,
+        "comparison_profile": {
+            "purpose_goal": [
+                {
+                    "fact_id": "candidate:purpose",
+                    "value_raw": "지역 기업의 성장 지원",
+                    "status": "identified",
+                }
+            ],
+            "support_target": [
+                {
+                    "fact_id": "candidate:target",
+                    "value_raw": "지역 중소기업",
+                    "status": "identified",
+                }
+            ],
+            "support_activities": [
+                {
+                    "fact_id": "candidate:content",
+                    "value_raw": "기술 컨설팅",
+                    "status": "identified",
+                }
+            ],
+        },
+        "field_states": [],
+    }
+    existing_bytes = _json(existing)
+    storage.objects[(existing_ref.bucket, existing_ref.object_key)] = existing_bytes
+    store.candidate = replace(
+        store.candidate,
+        profile_artifact=replace(
+            existing_ref,
+            content_sha256=sha256(existing_bytes).hexdigest(),
+            size_bytes=len(existing_bytes),
+        ),
+    )
+    llm = CoreEngineLLM()
+    handler._engine = CoreAnalysisEngine(
+        llm,
+        cpl_model_profile="cpl",
+        fit_model_profile="fit",
+        sim_model_profile="sim",
+    )
+
+    payload = handler.handle(job)
+
+    candidate = payload["candidates"][0]
+    assert candidate["public_axes"]["purpose"]["status"] == "similar"
+    for axis in ("target", "support"):
+        assert candidate["public_axes"][axis]["status"] == "insufficient"
+        assert candidate["public_axes"][axis]["reason_code"] == "REQUEST_AXIS_MISSING"
+
+    comparisons = [
+        row
+        for task, row in zip(llm.tasks, llm.payloads, strict=True)
+        if task == "sim_axis_comparison"
+    ]
+    assert len(comparisons) == 1
+    assert [row["axis"] for row in comparisons[0]["axes"]] == ["purpose"]
+
+
+def _request_common_ir(source_sha256: str) -> CommonIrArtifact:
+    text = f"☑ 세부사업 신설\n{_CORE_PURPOSE_TEXT}"
+    document = {
+        "schema_version": "common_ir_v1",
+        "document": {
+            "document_id": "hwpx:producer",
+            "source_kind": "hwpx",
+            "artifact_role": "production",
+            "page_count": 1,
+            "raw_artifact_ids": [],
+            "provenance": {"source_sha256": source_sha256},
+        },
+        "blocks": [
+            {
+                "block_id": "hwpx:producer-block",
+                "kind": "paragraph",
+                "reading_order": 0,
+                "text": text,
+                "boundary_markers": [],
+                "page": None,
+                "section_path": "section[0]/para[0]",
+                "source_block_label": "paragraph",
+                "structure_status": "explicit",
+                "text_occurrence_ids": ["occ:producer"],
+                "provenance": {},
+                "occurrences": [
+                    {
+                        "occurrence_id": "occ:producer",
+                        "text": text,
+                        "role": None,
+                        "provenance": {},
+                    }
+                ],
+            }
+        ],
+        "relations": [],
+        "conflicts": [],
+    }
+    return CommonIrArtifact(
+        run_dir="",
+        notice_id="producer",
+        source_kind="hwpx",
+        source_path="",
+        source_sha256=source_sha256,
+        common_ir_path="",
+        common_ir_document_id="hwpx:producer",
+        manifest={},
+        block_count=1,
+        document=document,
+    )
+
+
+class _FailingLLM:
+    def __init__(self, failure: Exception) -> None:
+        self.failure = failure
+
+    async def generate_structured(self, **_values: Any) -> Any:
+        raise self.failure
+
+
+@pytest.mark.parametrize(
+    "failure", [LLMTimeoutError("timeout"), LLMUnavailableError("unavailable")]
+)
+def test_request_profile_transport_failure_is_job_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: Exception
+) -> None:
+    source = b"request source"
+    source_sha256 = sha256(source).hexdigest()
+    common = _request_common_ir(source_sha256)
+    monkeypatch.setattr(
+        analysis_job_module, "parse_to_common_ir", lambda **_values: common
+    )
+    producer = VendoredRequestProfileProducer(
+        _FailingLLM(failure), model_profile="request_profile", model_id="test"
+    )
+
+    with pytest.raises(AnalysisJobUnavailable, match="request profile structuring"):
+        producer.produce(
+            source_path=tmp_path / "request.hwpx",
+            source_kind="hwpx",
+            analysis_run_id="run-producer",
+            run_dir=tmp_path / "pipeline",
+        )
+
+
+def _core_candidate() -> ExistingProfileDocument:
+    artifact = ArtifactRef(
+        bucket="existing-kb",
+        object_key="core.json",
+        content_sha256="0" * 64,
+        artifact_type="structured_profile",
+        mime_type="application/json",
+        size_bytes=0,
+    )
+    candidate = ExistingCandidate(
+        profile_version_id="version:core",
+        source_profile_id="hwp:core-candidate",
+        notice_id="bizinfo:core-candidate",
+        average_similarity=0.9,
+        purpose_similarity=0.9,
+        target_similarity=0.9,
+        support_similarity=0.9,
+        profile_artifact=artifact,
+    )
+    return ExistingProfileDocument(
+        candidate=candidate,
+        profile=_core_profile("hwp:core-candidate"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("failure_task", "stage", "with_candidate"),
+    [
+        ("fit_relation_comparison", "FIT", False),
+        ("sim_axis_comparison", "SIM comparison", True),
+    ],
+)
+def test_engine_transport_failure_is_job_unavailable_at_stage_boundary(
+    failure_task: str,
+    stage: str,
+    with_candidate: bool,
+) -> None:
+    llm = CoreEngineLLM(
+        fail_task=failure_task, failure=LLMUnavailableError("provider down")
+    )
+    engine = CoreAnalysisEngine(
+        llm,
+        cpl_model_profile="cpl",
+        fit_model_profile="fit",
+        sim_model_profile="sim",
+    )
+    candidates = [_core_candidate()] if with_candidate else []
+    retrieval = (
+        RetrievalDecision.completed(("purpose", "target", "support"))
+        if with_candidate
+        else None
+    )
+
+    with pytest.raises(AnalysisJobUnavailable, match=f"during {stage}"):
+        engine.build_payload(
+            profile=_core_profile(),
+            common_ir=_core_ir(),
+            candidates=candidates,
+            retrieval=retrieval,
+        )
+
+
+@pytest.mark.parametrize(
+    ("failure_task", "with_candidate"),
+    [("fit_relation_comparison", False), ("sim_axis_comparison", True)],
+)
+def test_invalid_llm_response_stays_axis_local_at_engine_boundary(
+    failure_task: str, with_candidate: bool
+) -> None:
+    llm = CoreEngineLLM(
+        fail_task=failure_task,
+        failure=LLMInvalidResponseError("malformed response"),
+    )
+    engine = CoreAnalysisEngine(
+        llm,
+        cpl_model_profile="cpl",
+        fit_model_profile="fit",
+        sim_model_profile="sim",
+    )
+    candidates = [_core_candidate()] if with_candidate else []
+    retrieval = (
+        RetrievalDecision.completed(("purpose", "target", "support"))
+        if with_candidate
+        else None
+    )
+
+    payload = engine.build_payload(
+        profile=_core_profile(),
+        common_ir=_core_ir(),
+        candidates=candidates,
+        retrieval=retrieval,
+    )
+
+    assert payload["axes"]
+    if not with_candidate:
+        assert payload.get("candidates", []) == []
+    else:
+        assert payload["candidates"]
+    if with_candidate:
+        assert all(
+            row["reason_code"] == "LLM_INVALID_RESPONSE"
+            for name, row in payload["candidates"][0]["public_axes"].items()
+            if name in {"purpose", "target", "support"}
+        )
+    else:
+        assert any(
+            row["axis_type"] == "FIT"
+            and row["result_data"]["reason_code"] == "LLM_INVALID_RESPONSE"
+            for row in payload["axes"]
+        )
+
+
 def test_zero_axis_retrieval_skips_config_provider_and_kb_but_runs_analysis() -> None:
     handler, _storage, store, producer, embedding, engine, job = _fixture()
     producer.available_axes = set()
@@ -390,6 +812,13 @@ def test_zero_axis_retrieval_skips_config_provider_and_kb_but_runs_analysis() ->
     handler.handle(job)
 
     assert store.config_calls == store.match_calls == embedding.calls == 0
+    assert store.embedding_provenance == [
+        {
+            "analysis_run_id": str(job.job_pk),
+            "processing_run_id": str(job.processing_run_pk),
+            "configuration": None,
+        }
+    ]
     assert engine.calls == 1
     assert engine.last_values is not None
     decision = engine.last_values["retrieval"]

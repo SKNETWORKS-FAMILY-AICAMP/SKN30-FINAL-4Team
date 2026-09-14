@@ -88,7 +88,7 @@ def test_worker_settings_read_external_ml_boundaries() -> None:
                 "DATABASE_URL": "postgresql://worker@db/postgres",
                 "SUPABASE_URL": "http://supabase:8000",
                 "SUPABASE_SERVICE_ROLE_KEY": "role",
-                "PREREVIEW_WORKER_TOP_K": "101",
+                "PREREVIEW_WORKER_TOP_K": "6",
             },
             "TOP_K",
         ),
@@ -114,13 +114,13 @@ def test_build_worker_connects_only_trusted_server_adapters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _environment(monkeypatch)
-    monkeypatch.setenv("PREREVIEW_WORKER_TOP_K", "7")
+    monkeypatch.setenv("PREREVIEW_WORKER_TOP_K", "3")
 
     composition = build_worker()
 
     assert isinstance(composition.repository, PostgresJobRepository)
     assert isinstance(composition.handler, AnalysisJobHandler)
-    assert composition.settings.top_k == 7
+    assert composition.settings.top_k == 3
     assert composition.settings.heartbeat_seconds == 30.0
     assert composition.settings.lease_seconds == 120
     # Adapter debug representations are a useful operational boundary: they
@@ -138,7 +138,7 @@ def test_build_worker_uses_request_profile_override_without_changing_fit_or_sim(
     composition = build_worker()
 
     assert composition.handler._producer._model_id == "configured-terra"  # type: ignore[attr-defined]
-    assert composition.handler._producer._llm._model_profiles == {  # type: ignore[attr-defined]
+    assert composition.handler._producer._llm._delegate._model_profiles == {  # type: ignore[attr-defined]
         "request_profile": "configured-terra",
         "fit": "configured-llm",
         "sim": "configured-llm",
@@ -348,6 +348,20 @@ def test_compose_keeps_api_and_chat_on_the_lightweight_image() -> None:
     assert "context: ." in chat_worker_section
     assert "context: .." in worker_section
     assert "dockerfile: backend/Dockerfile.ml-worker" in worker_section
+
+
+def test_api_deployment_caps_total_body_and_asgi_concurrency() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    compose = (backend_root / "compose.yaml").read_text(encoding="utf-8")
+    api_section = compose.split("\n  api:\n", 1)[1].split("\n  worker:\n", 1)[0]
+    dockerfile = (backend_root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "PREREVIEW_HTTP_MAX_BODY_BYTES" in api_section
+    assert "PREREVIEW_UPLOAD_CONCURRENCY" in api_section
+    assert "PREREVIEW_GLOBAL_QUEUE_MAX" in api_section
+    assert "PREREVIEW_API_LIMIT_CONCURRENCY" in api_section
+    assert "--limit-concurrency" in api_section
+    assert "--limit-concurrency" in dockerfile
 
 
 def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() -> None:

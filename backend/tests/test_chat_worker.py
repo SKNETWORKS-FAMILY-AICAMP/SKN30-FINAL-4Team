@@ -135,6 +135,9 @@ def test_handler_builds_current_ml_context_and_adds_grounding_warnings() -> None
     assert result["intent"] == "MODEL_2"
     assert "internal_value_mentions" in " ".join(result["warnings"])
     assert "invalid_reference" in " ".join(result["warnings"])
+    assert result["references"] == [
+        {"section": "ml", "label": "model_2", "evidence_id": None}
+    ]
     sent = json.loads(llm.calls[0]["messages"][1].content)  # type: ignore[index]
     assert isinstance(sent, dict)
     assert sent["result"]["ml"] == {
@@ -146,6 +149,27 @@ def test_handler_builds_current_ml_context_and_adds_grounding_warnings() -> None
         }
     }
     assert "confidence" not in str(sent)
+
+
+def test_handler_drops_well_formed_but_unknown_evidence_reference() -> None:
+    unknown_id = str(uuid4())
+    llm = _FakeLLM(
+        ChatAnswer(
+            content="지원유형은 연구개발입니다.",
+            intent=ChatIntent.MODEL_1,
+            warnings=[],
+            references=[
+                ChatReference(section="ml", label="model_1", evidence_id=unknown_id)
+            ],
+        )
+    )
+
+    result = ResultGroundedChatHandler(llm).handle(
+        _job(question="지원유형 알려줘", report=_report())
+    )
+
+    assert result["references"] == []
+    assert any(item.startswith("invalid_reference") for item in result["warnings"])
 
 
 def test_model3_empty_cause_axes_warns_on_causal_claim() -> None:

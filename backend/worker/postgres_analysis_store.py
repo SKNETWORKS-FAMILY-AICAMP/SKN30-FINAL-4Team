@@ -136,6 +136,11 @@ FROM retrieval.embedding_configuration
 WHERE is_active
 """
 
+_RECORD_EMBEDDING_PROVENANCE_SQL = """
+SELECT workspace.record_analysis_embedding_provenance_v2(%s, %s, %s)
+    AS is_recorded
+"""
+
 _MATCH_SQL = """
 WITH matched AS (
     SELECT *
@@ -299,6 +304,33 @@ class PostgresAnalysisStore:
             max_input_tokens=int(row["max_input_tokens"]),
             assembly_version=str(row["assembly_version"]),
         )
+
+    def record_embedding_configuration(
+        self,
+        *,
+        analysis_run_id: str,
+        processing_run_id: str,
+        configuration: EmbeddingConfiguration | None,
+    ) -> None:
+        """Durably snapshot this attempt's exact retrieval selection.
+
+        A zero-axis analysis intentionally records a null configuration.  The
+        database function fences this write with the current processing run so
+        a stale worker cannot attach provenance to a newer attempt.
+        """
+
+        row = self._read_one(
+            _RECORD_EMBEDDING_PROVENANCE_SQL,
+            (
+                analysis_run_id,
+                processing_run_id,
+                configuration.configuration_id if configuration is not None else None,
+            ),
+        )
+        if row is None or row.get("is_recorded") is not True:
+            raise AnalysisJobUnavailable(
+                "analysis embedding provenance could not be recorded"
+            )
 
     def match_existing_profiles(
         self,

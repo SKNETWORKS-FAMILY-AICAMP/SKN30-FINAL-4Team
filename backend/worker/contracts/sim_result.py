@@ -47,6 +47,7 @@ __all__ = [
     "ALL_COMMON_KEYS",
     "CANDIDATE_EVIDENCE_MISSING",
     "REQUEST_EVIDENCE_MISSING",
+    "REQUEST_AXIS_MISSING",
     "STRUCTURING_INCOMPLETE",
     "UNMAPPED_SOURCE_FIELD",
     "DUPLICATE_SPAN_ASSIGNMENT",
@@ -165,6 +166,10 @@ assert len(ALL_COMMON_KEYS) == sum(len(keys) for keys in COMMON_KEYS.values()), 
 CANDIDATE_EVIDENCE_MISSING = "CANDIDATE_EVIDENCE_MISSING"
 # 요청서 쪽 근거가 없다.
 REQUEST_EVIDENCE_MISSING = "REQUEST_EVIDENCE_MISSING"
+# Retrieval determined that this approved request axis was absent before any
+# candidate comparison.  This is more precise than a generic empty common
+# profile and is part of the v0.2 public reason vocabulary.
+REQUEST_AXIS_MISSING = "REQUEST_AXIS_MISSING"
 # 원문은 있으나 상위 구조화가 끝나지 않아 근거 참조가 해소되지 않는다.
 STRUCTURING_INCOMPLETE = "STRUCTURING_INCOMPLETE"
 # 네 컨테이너 어디에도 매핑하지 않은 원본 필드. 표시하지 않을 뿐 버리지 않는다.
@@ -195,6 +200,7 @@ SIM_VERDICT_REASON_CODES = frozenset(
         NO_MEANING_OVERLAP,
         CANDIDATE_EVIDENCE_MISSING,
         REQUEST_EVIDENCE_MISSING,
+        REQUEST_AXIS_MISSING,
     }
 )
 

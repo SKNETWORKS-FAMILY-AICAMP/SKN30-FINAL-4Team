@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import re
+import shutil
+import zipfile
 
 import pytest
 
@@ -225,3 +227,40 @@ def test_model1_preparation_and_startup_integrity_contracts_stay_in_sync() -> No
         for member in PREPARE_MODULE.ARCHIVE_MODEL1_MEMBERS
     }
     assert set(preflight.MODEL1_LAYOUT) == archive_layout
+
+
+@pytest.mark.skipif(
+    not PREPARE_MODULE.DEFAULT_ARCHIVE.is_file(),
+    reason="verified serving.zip is not available on this checkout host",
+)
+def test_registered_model1_manifest_matches_verified_serving_archive(
+    tmp_path: Path,
+) -> None:
+    """Pin the real mounted-artifact plus checked-out-code release identity.
+
+    ``serving.zip`` is intentionally Git-external, so ordinary CI skips this
+    host-artifact regression.  A host that has the documented archive proves
+    both the archive digest and the manifest made from its exact allowlisted
+    Model 1 bytes and this checkout's Model 1 runtime code.
+    """
+
+    archive = PREPARE_MODULE.DEFAULT_ARCHIVE
+    assert PREPARE_MODULE.sha256_file(archive) == PREPARE_MODULE.EXPECTED_ARCHIVE_SHA256
+
+    model1 = tmp_path / "model1"
+    with zipfile.ZipFile(archive) as bundle:
+        for member_name in PREPARE_MODULE.ARCHIVE_MODEL1_MEMBERS:
+            member = bundle.getinfo(member_name)
+            assert not member.is_dir()
+            target = model1.joinpath(*Path(member_name).parts[1:])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with bundle.open(member) as source, target.open("xb") as destination:
+                shutil.copyfileobj(source, destination, length=1024 * 1024)
+
+    actual = preflight.model1_manifest_sha256(
+        model1_dir=model1,
+        ml_root=REPOSITORY_ROOT / "ml",
+        backend_root=BACKEND_ROOT,
+    )
+    assert actual == preflight.MODEL1_RUNTIME_MANIFEST_SHA256
+    assert actual == PREPARE_MODULE.EXPECTED_RUNTIME_MANIFEST_SHA256

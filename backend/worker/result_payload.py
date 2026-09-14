@@ -59,6 +59,7 @@ _SIM_AXIS_NAME = {
     SimAxis.CONTENT: "support",
     SimAxis.DELIVERY: "delivery",
 }
+_CORE_SIM_AXES = frozenset({SimAxis.PURPOSE, SimAxis.TARGET, SimAxis.CONTENT})
 _ML_MESSAGES = {
     "MODEL_ARTIFACT_MISSING": "모델 가중치를 사용할 수 없습니다.",
     "ML_RUNTIME_MISSING": "모델 실행 환경을 사용할 수 없습니다.",
@@ -245,7 +246,16 @@ class _EvidenceCollector:
             coordinates = "|".join(
                 (block or "", document or "", ir_block or "", ",".join(occurrences))
             )
-            seed = f"{self._analysis_run_id}\x1f{logical_code}\x1f{role}\x1f{side}\x1f{source_identity}\x1f{coordinates}"
+            # ``logical_code`` must remain the public axis code (for example
+            # SIM-1), because PostgreSQL validates every referenced snapshot
+            # against that exact axis.  A request-side fact can nevertheless
+            # be selected for more than one candidate, so the candidate
+            # context is a separate part of the deterministic UUID seed.
+            seed = (
+                f"{self._analysis_run_id}\x1f{logical_code}\x1f"
+                f"{candidate_source_profile_id or ''}\x1f{role}\x1f{side}\x1f"
+                f"{source_identity}\x1f{coordinates}"
+            )
             evidence_id = str(uuid5(EVIDENCE_NAMESPACE, seed))
             if evidence_id in self._seen:
                 continue
@@ -457,7 +467,6 @@ def _public_sim_axis(
     candidate: SimCommonProfile | None,
     collector: _EvidenceCollector,
     candidate_source_profile_id: str,
-    candidate_logical_code: str,
     request_source_sha256: str | None,
 ) -> dict[str, Any]:
     name = _SIM_AXIS_NAME[axis.axis]
@@ -467,18 +476,18 @@ def _public_sim_axis(
         _entry_by_fact_id(request, axis.axis) if request else {},
         axis.request_fact_ids if performed else (),
         collector=collector,
-        logical_code=f"{candidate_logical_code}:{name}",
+        logical_code=axis.axis_id,
         sim_axis=name,
         role="LEFT",
         side="REQUEST",
-        candidate_source_profile_id=None,
+        candidate_source_profile_id=candidate_source_profile_id,
         source_sha256=request_source_sha256,
     )
     existing_ids = _sim_selected(
         _entry_by_fact_id(candidate, axis.axis) if candidate else {},
         axis.candidate_fact_ids if performed else (),
         collector=collector,
-        logical_code=f"{candidate_logical_code}:{name}",
+        logical_code=axis.axis_id,
         sim_axis=name,
         role="RIGHT",
         side="EXISTING",
@@ -504,7 +513,7 @@ def _sim_summary(axes: Sequence[SimAxisResult]) -> str:
     statuses = {
         sim_display_status(axis.status)
         for axis in axes
-        if axis.axis in (SimAxis.PURPOSE, SimAxis.TARGET, SimAxis.CONTENT)
+        if axis.axis in _CORE_SIM_AXES
     }
     if "insufficient" in statuses:
         return "비교에 필요한 정보가 일부 부족합니다."
@@ -523,7 +532,7 @@ def _sim_candidate_status(axes: Sequence[SimAxisResult]) -> str:
     statuses = {
         sim_display_status(axis.status)
         for axis in axes
-        if axis.axis in (SimAxis.PURPOSE, SimAxis.TARGET, SimAxis.CONTENT)
+        if axis.axis in _CORE_SIM_AXES
     }
     for status in ("insufficient", "different", "partial", "similar"):
         if status in statuses:
@@ -543,7 +552,9 @@ def _candidate_metadata(
         "ministry": _clean_text(metadata.get("ministry")),
         "executing_agency": _clean_text(metadata.get("executing_agency")),
         "registered_at": _clean_text(metadata.get("registered_at")),
-        "notice_status": _clean_text(metadata.get("notice_status")),
+        "notice_status": _clean_text(
+            metadata.get("notice_status", metadata.get("source_state"))
+        ),
         "source_url": _clean_text(source_url),
     }
 
@@ -619,7 +630,6 @@ def build_result_payload(
                 f"retrieval profile version is missing for {source_profile_id}"
             )
         candidate_common = sim_profiles.get(source_profile_id)
-        logical_code = f"SIM:{source_profile_id}"
         raw_axes = {axis.axis: _sim_axis_raw(axis) for axis in candidate.axes}
         public_axes = {
             _SIM_AXIS_NAME[axis.axis]: _public_sim_axis(
@@ -628,7 +638,6 @@ def build_result_payload(
                 candidate=candidate_common,
                 collector=collector,
                 candidate_source_profile_id=source_profile_id,
-                candidate_logical_code=logical_code,
                 request_source_sha256=cpl.common_ir_source_sha256,
             )
             for axis in candidate.axes
@@ -636,7 +645,7 @@ def build_result_payload(
         comparable = [
             _SIM_AXIS_NAME[axis.axis]
             for axis in candidate.axes
-            if axis.status is not SimStatus.INSUFFICIENT
+            if axis.axis in _CORE_SIM_AXES and axis.status is not SimStatus.INSUFFICIENT
         ]
         candidates.append(
             {

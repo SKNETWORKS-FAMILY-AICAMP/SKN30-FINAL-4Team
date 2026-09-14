@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from worker.analysis_job import AnalysisJobContractError, ArtifactRef
+from worker.analysis_job import AnalysisJobContractError, ArtifactRef, EmbeddingConfiguration
 from worker.postgres_analysis_store import PostgresAnalysisStore, _vectors_json
 
 
@@ -29,7 +29,9 @@ class FakeCursor:
 
     def execute(self, query: str, params: tuple[Any, ...]) -> None:
         self.calls.append((query, params))
-        if "lease_expires_at >" in query:
+        if "record_analysis_embedding_provenance_v2" in query:
+            self.current = {"is_recorded": True}
+        elif "lease_expires_at >" in query:
             self.current = {"is_live": 1}
         elif "artifact_type = 'source'" in query:
             self.current = {"artifact_pk": uuid4()}
@@ -45,6 +47,10 @@ class FakeCursor:
     def fetchone(self) -> dict[str, Any] | None:
         value, self.current = self.current, None
         return value
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        value, self.current = self.current, None
+        return [] if value is None else [value]
 
 
 @dataclass
@@ -119,6 +125,34 @@ def test_registration_is_fenced_and_materialises_once() -> None:
     assert (
         sum("INSERT INTO workspace.artifact_lineage" in query for query in queries) == 2
     )
+
+
+def test_embedding_configuration_is_snapshotted_with_the_attempt_fence() -> None:
+    run_id, processing_id = str(uuid4()), str(uuid4())
+    cursor = FakeCursor(run_id, processing_id)
+    connection = FakeConnection(cursor)
+    store = PostgresAnalysisStore(
+        "postgresql://private", connect=lambda *_a, **_k: connection
+    )
+    configuration = EmbeddingConfiguration(
+        configuration_id=str(uuid4()),
+        provider="openai",
+        model_id="text-embedding-3-small",
+        dimensions=1536,
+        max_input_tokens=8192,
+        assembly_version="approved-facts-components-role-aware-v2",
+    )
+
+    store.record_embedding_configuration(
+        analysis_run_id=run_id,
+        processing_run_id=processing_id,
+        configuration=configuration,
+    )
+
+    query, params = cursor.calls[0]
+    assert "record_analysis_embedding_provenance_v2" in query
+    assert params == (run_id, processing_id, configuration.configuration_id)
+    assert connection.committed
 
 
 def test_retry_accepts_only_the_exact_committed_profile_hash_and_skips_ingest() -> None:

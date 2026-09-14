@@ -125,8 +125,8 @@ class WorkerSettings:
                 "PREREVIEW_WORKER_LEASE_SECONDS"
             )
         top_k = _positive_int(values, "PREREVIEW_WORKER_TOP_K", 5)
-        if top_k > 100:
-            raise WorkerConfigurationError("PREREVIEW_WORKER_TOP_K must be at most 100")
+        if top_k > 5:
+            raise WorkerConfigurationError("PREREVIEW_WORKER_TOP_K must be at most 5")
         ml_root = _optional_path(values, "PREREVIEW_ML_ROOT") or DEFAULT_ML_ROOT
         model1_serving_dir = _optional_path(values, "PREREVIEW_MODEL1_SERVING_DIR")
         ml_python_executable = _optional_string(

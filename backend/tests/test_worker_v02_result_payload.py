@@ -31,8 +31,10 @@ from worker.contracts.sim_result import (
     SimComparisonResult,
     SimReviewGrade,
     SimStatus,
+    REQUEST_AXIS_MISSING,
 )
 from worker.result_payload import RESULT_CONTRACT_VERSION, build_result_payload
+from worker.sim import compare_candidate
 
 
 def _evidence() -> CplEvidence:
@@ -65,7 +67,7 @@ def _profile(profile_id: str) -> SimCommonProfile:
     )
 
 
-def _payload() -> dict:
+def _payload(*, delivery_status: SimStatus = SimStatus.INSUFFICIENT) -> dict:
     request_id = "request:run-1"
     existing_id = "existing:notice-1"
     fact = CplFact(
@@ -142,8 +144,10 @@ def _payload() -> dict:
         SimAxisResult(
             SimAxis.DELIVERY,
             "SIM-4",
-            SimStatus.INSUFFICIENT,
-            "CANDIDATE_EVIDENCE_MISSING",
+            delivery_status,
+            "CANDIDATE_EVIDENCE_MISSING"
+            if delivery_status is SimStatus.INSUFFICIENT
+            else None,
         ),
     ]
     sim = SimComparisonResult(
@@ -178,6 +182,7 @@ def _payload() -> dict:
             existing_id: {
                 "title": "고정된 후보",
                 "apply_period": "2026-09-01 ~ 2026-09-30",
+                "source_state": "모집중",
             }
         },
     )
@@ -198,9 +203,42 @@ def test_v02_payload_is_deterministic_and_links_only_selected_evidence() -> None
     assert fit_detail["comparison_performed"] is True
     assert fit_detail["evidence_ids"]
     assert purpose["request_evidence_ids"] and purpose["existing_evidence_ids"]
+    sim_evidence = [row for row in first["evidences"] if row["axis_type"] == "SIM"]
+    assert {row["logical_code"] for row in sim_evidence} == {"SIM-1"}
+    assert {row["candidate_source_profile_id"] for row in sim_evidence} == {
+        "existing:notice-1"
+    }
     assert candidate["status"] == "partial"  # core axes, not review grade/delivery
     assert candidate["metadata"]["apply_period"] == "2026-09-01 ~ 2026-09-30"
+    assert candidate["metadata"]["notice_status"] == "모집중"
     assert candidate["public_axes"]["delivery"]["request_evidence_ids"] == []
+
+
+def test_v02_candidate_comparable_axes_exclude_delivery() -> None:
+    candidate = _payload(delivery_status=SimStatus.SIMILAR)["candidates"][0]
+
+    assert candidate["public_axes"]["delivery"]["status"] == "similar"
+    assert candidate["comparable_axes"] == ["purpose", "target", "support"]
+    assert candidate["status"] == "partial"
+
+
+def test_retrieval_missing_axes_are_not_sent_to_sim_and_keep_precise_reason() -> None:
+    class MustNotCall:
+        async def generate_structured(self, **_values: object) -> object:
+            raise AssertionError("missing retrieval axes must not call the LLM")
+
+    compared = compare_candidate(
+        _profile("request:partial"),
+        _profile("existing:partial"),
+        MustNotCall(),
+        model_profile="test",
+        available_request_axes=frozenset(),
+    )
+
+    for axis in (SimAxis.PURPOSE, SimAxis.TARGET, SimAxis.CONTENT):
+        result = compared.axis(axis)
+        assert result.status is SimStatus.INSUFFICIENT
+        assert result.reason_code == REQUEST_AXIS_MISSING
 
 
 def test_v02_public_details_contain_no_fact_ids_or_diagnostics() -> None:

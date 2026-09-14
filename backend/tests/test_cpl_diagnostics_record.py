@@ -17,8 +17,15 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from worker.analysis_job import CoreAnalysisEngine
+import pytest
+
+from worker.analysis_job import AnalysisJobUnavailable, CoreAnalysisEngine
 from worker.contracts.profile_snapshot import StageDiagnostic
+from worker.ports.llm import (
+    LLMInvalidResponseError,
+    LLMTimeoutError,
+    LLMUnavailableError,
+)
 
 
 _RUNNER = (
@@ -43,7 +50,9 @@ def _runner() -> Any:
 
 class _Dead:
     async def generate_structured(self, **_: Any) -> Any:
-        raise RuntimeError("이 테스트는 LLM 을 타지 않는다")
+        # Malformed model output is axis-local and therefore still produces
+        # diagnostics; transport outages are covered separately as job retry.
+        raise LLMInvalidResponseError("검증할 수 없는 응답")
 
 
 _REGION = "○ (사업목적) 부산 관내 제조 중소기업의 기술경쟁력을 강화"
@@ -111,6 +120,30 @@ def test_cpl_diagnostics_never_reach_the_public_payload() -> None:
         profile=_empty_purpose_profile(), common_ir=_ir(), candidates=[]
     )
     assert received
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [LLMTimeoutError("timeout"), LLMUnavailableError("unavailable")],
+)
+def test_engine_transport_failure_uses_job_retry_instead_of_success(
+    failure: Exception,
+) -> None:
+    class Unavailable:
+        async def generate_structured(self, **_: Any) -> Any:
+            raise failure
+
+    engine = CoreAnalysisEngine(
+        Unavailable(),
+        cpl_model_profile="cpl",
+        fit_model_profile="fit",
+        sim_model_profile="sim",
+    )
+
+    with pytest.raises(AnalysisJobUnavailable, match="during CPL"):
+        engine.build_payload(
+            profile=_empty_purpose_profile(), common_ir=_ir(), candidates=[]
+        )
 
 
 def test_the_recorder_writes_the_diagnostics_beside_the_stages(tmp_path: Path) -> None:

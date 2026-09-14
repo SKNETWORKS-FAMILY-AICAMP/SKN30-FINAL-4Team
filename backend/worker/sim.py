@@ -34,6 +34,7 @@ from .contracts.sim_result import (
     NO_MEANING_OVERLAP,
     PARTIAL_OVERLAP,
     REQUEST_EVIDENCE_MISSING,
+    REQUEST_AXIS_MISSING,
     SIM_AXIS_IDS,
     SIM_VERDICT_REASON_CODES,
     STRUCTURING_FAILED,
@@ -468,6 +469,7 @@ def compare_candidate(
     *,
     model_profile: str,
     max_repairs: int = 1,
+    available_request_axes: frozenset[SimAxis] | None = None,
 ) -> SimCandidateResult:
     """후보 하나의 4축 결과. 예외를 던지지 않는다."""
 
@@ -475,7 +477,13 @@ def compare_candidate(
     results: dict[SimAxis, SimAxisResult] = {}
     pending: dict[SimAxis, None] = {}
     for axis in SimAxis:
-        reason = _gate(axis, request_common, candidate_common)
+        reason = (
+            REQUEST_AXIS_MISSING
+            if available_request_axes is not None
+            and axis in _CORE_AXES
+            and axis not in available_request_axes
+            else _gate(axis, request_common, candidate_common)
+        )
         if reason is None:
             pending[axis] = None
             continue
@@ -530,6 +538,7 @@ def compare_candidates(
     *,
     model_profile: str,
     max_repairs: int = 1,
+    available_request_axes: frozenset[SimAxis] | None = None,
 ) -> SimComparisonResult:
     """후보 목록을 하나씩 비교한다. 후보 하나가 실패해도 나머지는 남는다.
 
@@ -546,6 +555,7 @@ def compare_candidates(
                 llm_client,
                 model_profile=model_profile,
                 max_repairs=max_repairs,
+                available_request_axes=available_request_axes,
             )
             for candidate in candidate_commons
         ],

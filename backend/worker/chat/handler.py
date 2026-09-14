@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from ..llm_call import generate
 from ..ports.llm import LLMClient
 from ..runtime import ClaimedJob
-from .context import build_chat_context
+from .context import build_chat_context, context_evidence_ids
 from .contracts import ChatAnswer, ChatIntent
 from .grounding import check_grounding, validate_references
 from .intent import classify_intent
@@ -102,11 +102,20 @@ class ResultGroundedChatHandler:
         warnings.extend(check_grounding(answer.content, context))
         warnings.extend(validate_references(answer, context))
         clean_warnings = list(dict.fromkeys(warnings))[:20]
+        allowed_evidence_ids = context_evidence_ids(context)
+        safe_references = [
+            reference
+            for reference in answer.references
+            if reference.evidence_id is None
+            or reference.evidence_id in allowed_evidence_ids
+        ]
         return {
             "content": answer.content,
             "intent": intent.value,
             "warnings": clean_warnings,
-            "references": [reference.model_dump(mode="json") for reference in answer.references],
+            "references": [
+                reference.model_dump(mode="json") for reference in safe_references
+            ],
         }
 
 

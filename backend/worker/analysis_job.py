@@ -23,12 +23,12 @@ from .contracts.cpl_result import CplResult
 from .contracts.fit_result import FitResult
 from .contracts.ml_result import MlModelId
 from .contracts.profile_snapshot import CommonIrArtifact
-from .contracts.sim_result import SimCommonProfile, SimComparisonResult
+from .contracts.sim_result import SimAxis, SimCommonProfile, SimComparisonResult
 from .cpl import analyze_cpl
 from .fit import analyze_fit
 from .ml_reference import MlModel, run_ml_reference
 from .ports.embedding import EmbeddingClient
-from .ports.llm import LLMClient
+from .ports.llm import LLMClient, LLMInvalidResponseError
 from .profiles import (
     DEFAULT_PARSE_TIMEOUT_SECONDS,
     build_pack,
@@ -84,6 +84,42 @@ class AnalysisJobContractError(RuntimeError):
 
 class AnalysisJobUnavailable(RuntimeError):
     """A worker dependency is temporarily unavailable."""
+
+
+class _TransportTrackingLLMClient:
+    """Preserve graceful axis salvage while fencing persisted success.
+
+    CPL/FIT/SIM intentionally keep already-grounded local results when one LLM
+    call fails.  At the job boundary, however, a provider transport failure
+    must consume the PostgreSQL queue retry budget instead of being persisted
+    as a successful analysis.  This wrapper records that distinction without
+    treating a schema-invalid model response as infrastructure downtime.
+    """
+
+    def __init__(self, delegate: LLMClient) -> None:
+        self._delegate = delegate
+        self._transport_failed = False
+
+    def reset(self) -> None:
+        self._transport_failed = False
+
+    async def generate_structured(self, **kwargs: Any) -> Any:
+        try:
+            return await self._delegate.generate_structured(**kwargs)
+        except LLMInvalidResponseError:
+            raise
+        except Exception:
+            # Production adapters expose timeout/unavailable as typed errors;
+            # the shared call boundary also classifies an unexpected provider
+            # exception as unavailable.  Do not retain the exception text.
+            self._transport_failed = True
+            raise
+
+    def require_available(self, stage: str) -> None:
+        if self._transport_failed:
+            raise AnalysisJobUnavailable(
+                f"LLM provider was unavailable during {stage}"
+            ) from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +258,14 @@ class AnalysisStore(Protocol):
 
     def active_embedding_configuration(self) -> EmbeddingConfiguration: ...
 
+    def record_embedding_configuration(
+        self,
+        *,
+        analysis_run_id: str,
+        processing_run_id: str,
+        configuration: EmbeddingConfiguration | None,
+    ) -> None: ...
+
     def match_existing_profiles(
         self,
         *,
@@ -270,7 +314,7 @@ class VendoredRequestProfileProducer:
         stage_callback: StageCallback | None = None,
         diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
-        self._llm = llm_client
+        self._llm = _TransportTrackingLLMClient(llm_client)
         self._model_profile = model_profile
         self._model_id = model_id
         self._max_repairs = max_repairs
@@ -294,6 +338,7 @@ class VendoredRequestProfileProducer:
         analysis_run_id: str,
         run_dir: Path,
     ) -> ProducedRequestProfile:
+        self._llm.reset()
         with _stage(self._stage_callback, "parse"):
             common = parse_to_common_ir(
                 input_path=source_path,
@@ -324,6 +369,7 @@ class VendoredRequestProfileProducer:
                 max_repairs=self._max_repairs,
                 common_ir=common,
             )
+            self._llm.require_available("request profile structuring")
             if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
                 # 예외 메시지에는 reason code 만 실린다. 어떤 검증이 왜 깨졌는지는
                 # ``snapshot.diagnostics`` 에만 있어서, 여기서 흘리면 실패한
@@ -429,7 +475,7 @@ class CoreAnalysisEngine:
         stage_callback: StageCallback | None = None,
         diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
-        self._llm = llm_client
+        self._llm = _TransportTrackingLLMClient(llm_client)
         # CPL 의 의미 축 분류가 쓸 단계 프로필 이름이다. 지금 배포는 네 이름을
         # 모두 같은 모델에 매핑하므로 별도 모델이 아니라 논리 라우팅이다.
         # 단계별 모델이 실제로 필요해지면 그때 환경변수를 더한다.
@@ -458,6 +504,7 @@ class CoreAnalysisEngine:
         quantity_hold_reason: str | None = None,
         retrieval: RetrievalDecision | None = None,
     ) -> Mapping[str, Any]:
+        self._llm.reset()
         request = dict(profile)
         with _stage(self._stage_callback, "cpl"):
             cpl: CplResult = analyze_cpl(
@@ -472,6 +519,7 @@ class CoreAnalysisEngine:
             # 재검 탈락 사유처럼 결과 payload 에 실리지 않는 기록이다. 어디에
             # 적을지는 받는 쪽이 정한다.
             self._diagnostics_sink("cpl", list(cpl.diagnostics))
+        self._llm.require_available("CPL")
         with _stage(self._stage_callback, "fit"):
             fit: FitResult = analyze_fit(
                 cpl,
@@ -479,6 +527,7 @@ class CoreAnalysisEngine:
                 model_profile=self._fit_model_profile,
                 max_repairs=self._max_repairs,
             )
+        self._llm.require_available("FIT")
         similarities: dict[str, float] = {}
         profile_version_ids: dict[str, str] = {}
         sim_profiles: dict[str, SimCommonProfile] = {}
@@ -491,6 +540,7 @@ class CoreAnalysisEngine:
                 request_common = build_common_profile(
                     request, self._llm, model_profile=self._sim_model_profile
                 )
+                self._llm.require_available("SIM request structuring")
                 candidate_commons: list[SimCommonProfile] = []
                 sim_profiles = {request_common.source_profile_id or "": request_common}
                 titles: dict[str, str | None] = {}
@@ -500,6 +550,7 @@ class CoreAnalysisEngine:
                         self._llm,
                         model_profile=self._sim_model_profile,
                     )
+                    self._llm.require_available("SIM candidate structuring")
                     if not candidate_common.source_profile_id:
                         raise AnalysisJobContractError(
                             "existing profile has no source_profile_id"
@@ -529,7 +580,20 @@ class CoreAnalysisEngine:
                     self._llm,
                     model_profile=self._sim_model_profile,
                     max_repairs=self._max_repairs,
+                    available_request_axes=(
+                        frozenset(
+                            {
+                                "purpose": SimAxis.PURPOSE,
+                                "target": SimAxis.TARGET,
+                                "support": SimAxis.CONTENT,
+                            }[axis]
+                            for axis in retrieval.available_axes
+                        )
+                        if retrieval is not None
+                        else None
+                    ),
                 )
+                self._llm.require_available("SIM comparison")
                 sim = replace(
                     sim,
                     candidates=[
@@ -588,8 +652,8 @@ class AnalysisJobHandler:
         existing_kb_required: bool = True,
         stage_callback: StageCallback | None = None,
     ) -> None:
-        if not 1 <= top_k <= 100:
-            raise ValueError("top_k must be between 1 and 100")
+        if not 1 <= top_k <= 5:
+            raise ValueError("top_k must be between 1 and 5")
         if not isinstance(existing_kb_required, bool):
             raise TypeError("existing_kb_required must be boolean")
         self._storage = storage
@@ -669,12 +733,29 @@ class AnalysisJobHandler:
         # usable axes must still materialise CPL/FIT/ML and must never touch
         # embedding configuration/provider/KB retrieval.
         available_inputs = self._available_retrieval_inputs(profile)
+        configuration: EmbeddingConfiguration | None = None
         if not available_inputs:
             matches: list[ExistingCandidate] = []
             candidates: list[ExistingProfileDocument] = []
             retrieval = RetrievalDecision.input_missing()
+            # Keep the no-selection decision in the attempt audit before the
+            # engine runs, just as a selected configuration is recorded
+            # before any embedding/retrieval operation can fail.
+            self._store.record_embedding_configuration(
+                analysis_run_id=run_id,
+                processing_run_id=processing_id,
+                configuration=None,
+            )
         else:
             configuration = self._store.active_embedding_configuration()
+            # Selection itself is reproducibility evidence.  It must survive
+            # failures from embedding, matching, or loading a candidate
+            # artifact so a retry attempt remains independently auditable.
+            self._store.record_embedding_configuration(
+                analysis_run_id=run_id,
+                processing_run_id=processing_id,
+                configuration=configuration,
+            )
             vectors = self._embed(profile, tuple(available_inputs), configuration)
             matches = self._store.match_existing_profiles(
                 configuration_id=configuration.configuration_id,

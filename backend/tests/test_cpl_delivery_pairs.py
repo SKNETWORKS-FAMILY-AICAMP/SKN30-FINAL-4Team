@@ -21,7 +21,7 @@ from worker.cpl_delivery import (
     DELIVERY_PAIR_AMBIGUOUS,
     build_delivery_pair_candidates,
 )
-from worker.result_payload import _evidence
+from worker.result_payload import _source_rows
 
 
 def _table(*cells: dict[str, Any]) -> dict[str, Any]:
@@ -309,13 +309,7 @@ def test_delivery_recheck_keeps_common_ir_grounding_without_claiming_pack_spans(
         )
         for fact in delivery.facts
     ] == [(None, "hwp:doc", "hwp:t1"), (None, "hwp:doc", "hwp:t1")]
-    persisted = _evidence(
-        delivery.facts[0].evidence,
-        axis_type="CPL",
-        side="REQUEST",
-        field_name="comparison_profile.delivery_relations",
-        raw_value=delivery.facts[0].value_raw,
-    )
+    persisted = _source_rows(delivery.facts[0].evidence)
     assert persisted[0]["candidate_pack_block_id"] is None
     assert persisted[0]["common_ir_occurrence_ids"] == ["occ:t:c0:p0"]
 
