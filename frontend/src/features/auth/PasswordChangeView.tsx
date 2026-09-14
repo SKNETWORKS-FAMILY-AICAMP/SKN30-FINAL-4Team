@@ -21,7 +21,7 @@ export default function PasswordResetUpdateView({
                 <div className="text-center">
                     <h1 className="font-display-lg text-display-lg text-on-surface mb-sm">새 비밀번호 설정</h1>
                     <p className="font-body-md text-body-md text-on-surface-variant">
-                        새로운 비밀번호를 입력해 주세요.<br />보안을 위해 영문, 숫자, 특수문자를 조합하여 8자 이상으로 설정해 주세요.
+                        새로운 비밀번호를 입력해 주세요.<br />보안을 위해 영문, 숫자를 조합하여 8자 이상으로 설정해 주세요
                     </p>
                 </div>
 
@@ -31,7 +31,7 @@ export default function PasswordResetUpdateView({
                         id="new-password"
                         type="password"
                         iconName="lock"
-                        placeholder="영문, 숫자, 특수문자 조합 8자 이상"
+                        placeholder="영문, 숫자 조합 8자 이상"
                         value={newPassword}
                         onChange={onNewPasswordChange}
                         layout="vertical"

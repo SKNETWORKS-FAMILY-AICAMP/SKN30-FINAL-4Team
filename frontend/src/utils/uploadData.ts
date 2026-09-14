@@ -13,7 +13,7 @@ export function getUploadStatusMessage(status: string) {
         case 'running':
             return {
                 title: 'AI가 문서를 분석하고 있습니다',
-                description: '내용을 정밀하게 검토하는 중입니다<br>완료되는 대로 결과를 보여드립니다',
+                description: '내용을 정밀하게 검토하는 중입니다<br>완료되는 대로 분석 결과를 확인하실 수 있습니다',
             }
         default:
             return {
@@ -27,7 +27,7 @@ export const UPLOAD_GUIDES = [
     {
         icon: 'description',
         title: '지원 형식 안내',
-        description: 'HWP, HWPX 포맷의 문서를 업로드하여 정확하고 빠른 사전검토를 진행하실 수 있습니다',
+        description: 'HWP, HWPX 포맷의 문서(최대 50MB)를 업로드하여 정확하고 빠른 사전검토를 진행하실 수 있습니다',
     },
     {
         icon: 'security',

@@ -51,10 +51,10 @@ export default function PasswordChangeView({
                     layout="horizontal"
                 >
                     <div className="flex items-start gap-sm pt-sm">
-                        <span className="material-symbols-outlined text-on-surface-variant text-[20px]">info</span>
+                        <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: '20px' }}>info</span>
                         <div className="flex flex-col gap-1">
-                            <span className="font-semibold text-body-sm text-on-surface-variant">보안 가이드</span>
-                            <span className="text-body-sm text-on-surface-variant">영문, 숫자, 특수문자 조합 8자리 이상으로 설정해 주세요.</span>
+                            <span className="font-semibold text-body-sm text-on-surface-variant leading-5">보안 가이드</span>
+                            <span className="text-body-sm text-on-surface-variant">영문, 숫자를 조합하여 8자 이상으로 설정해 주세요</span>
                         </div>
                     </div>
                 </InputField>
