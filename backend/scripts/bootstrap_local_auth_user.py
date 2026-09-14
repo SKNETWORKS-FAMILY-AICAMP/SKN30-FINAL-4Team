@@ -209,7 +209,7 @@ def _validate_account(values: Mapping[str, str]) -> tuple[str, str]:
         password_bytes = password.encode("utf-8")
     except UnicodeEncodeError:
         raise BootstrapError("development account password length is invalid") from None
-    if len(password) < 12 or len(password_bytes) > 72:
+    if len(password) < 8 or len(password_bytes) > 72:
         raise BootstrapError("development account password length is invalid")
     return email, password
 

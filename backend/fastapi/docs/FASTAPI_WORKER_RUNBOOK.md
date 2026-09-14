@@ -112,7 +112,7 @@ uv run python scripts/bootstrap_local_auth_user.py
 `.runtime/pre-review-dev-auth.env`다. 다른 로컬 경로가 필요할 때만
 `--supabase-dir PATH`, `--credentials PATH`를 사용한다. credential 파일에는
 `PREREVIEW_DEV_AUTH_EMAIL`, `PREREVIEW_DEV_AUTH_PASSWORD`를 넣고, 선택 역할
-`PREREVIEW_DEV_AUTH_ROLE`은 현재 `user`만 허용한다. password는 12자 이상이면서 UTF-8
+`PREREVIEW_DEV_AUTH_ROLE`은 현재 `user`만 허용한다. password는 8자 이상이면서 UTF-8
 인코딩 기준 72바이트 이하여야 한다. 스크립트는 생성/재사용 상태만
 출력하며 email·password·Supabase key·token은 출력하지 않는다.
 

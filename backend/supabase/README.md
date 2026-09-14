@@ -113,7 +113,7 @@ uv run python scripts/bootstrap_local_auth_user.py
 `PREREVIEW_DEV_AUTH_EMAIL`, `PREREVIEW_DEV_AUTH_PASSWORD`, 선택적으로
 `PREREVIEW_DEV_AUTH_ROLE=user`다. 다른 로컬 bundle/credential 경로는
 `--supabase-dir PATH`, `--credentials PATH`로 명시한다. 비밀값을 셸 인자, 로그, 문서,
-Git에 넣지 않는다. password는 12자 이상이면서 UTF-8 인코딩 기준 72바이트 이하여야 한다.
+Git에 넣지 않는다. password는 8자 이상이면서 UTF-8 인코딩 기준 72바이트 이하여야 한다.
 
 fresh `install_selfhosted_local.sh` 설치에는 관리 marker `.pre-review-supabase-version`이
 자동으로 있다. marker 도입 전에 수동으로 만든 현재 PC 같은 **과거 로컬 bundle에

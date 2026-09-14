@@ -612,6 +612,8 @@ def test_openapi_exposes_typed_auth_success_models_and_write_only_passwords() ->
     assert "display_name" not in credentials["properties"]
     assert sign_up["properties"]["display_name"]["maxLength"] == 100
     assert "display_name" in sign_up["required"]
+    assert sign_up["properties"]["password"]["minLength"] == 8
+    assert update_password["properties"]["password"]["minLength"] == 8
     for request_model in (credentials, sign_up, update_password):
         password = request_model["properties"]["password"]
         assert password["format"] == "password"

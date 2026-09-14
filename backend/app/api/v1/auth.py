@@ -96,7 +96,7 @@ class SignUpRequest(BaseModel):
         examples=["user@example.com"],
     )
     password: SecretStr = Field(
-        min_length=1,
+        min_length=8,
         max_length=1024,
         description="가입에 사용할 비밀번호. 응답이나 로그에 포함되지 않는다.",
     )

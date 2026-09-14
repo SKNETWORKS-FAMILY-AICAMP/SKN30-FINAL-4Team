@@ -192,13 +192,15 @@ def test_account_and_gateway_guards_are_fail_closed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("password", "accepted"),
     (
+        ("a" * 7, False),
+        ("a" * 8, True),
         ("a" * 72, True),
         ("a" * 73, False),
         ("가" * 23 + "abc", True),  # 69 + 3 UTF-8 bytes
         ("가" * 23 + "abcd", False),  # 69 + 4 UTF-8 bytes
     ),
 )
-def test_password_utf8_byte_boundary(password: str, accepted: bool) -> None:
+def test_password_length_boundaries(password: str, accepted: bool) -> None:
     values = {
         "PREREVIEW_DEV_AUTH_EMAIL": EMAIL,
         "PREREVIEW_DEV_AUTH_PASSWORD": password,
