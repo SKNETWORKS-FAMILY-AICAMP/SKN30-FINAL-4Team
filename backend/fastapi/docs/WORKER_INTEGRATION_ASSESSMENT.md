@@ -26,8 +26,8 @@ Browser
 
 | 영역 | 현재 구현 | 기준 파일 |
 |---|---|---|
-| FastAPI upload | HWP/HWPX MIME·magic·50 MiB 검사, `Idempotency-Key` 기반 `uploading` 예약, private Storage upload, source artifact+`queued` 원자 확정, stale cleanup 재시도 | `app/api/v1/analysis_runs.py`, `app/services/analysis_runs.py` |
-| queue | PostgreSQL `FOR UPDATE SKIP LOCKED`, 30초 heartbeat, 120초 lease, 최대 2 attempts | `supabase/migrations/21_analysis_worker_queue.sql`, `worker/postgres_repository.py` |
+| FastAPI upload | HWP/HWPX MIME·magic·50 MiB 검사, `PREREVIEW_HTTP_MAX_BODY_BYTES` 전체 multipart cap, `Idempotency-Key` 기반 `uploading` 예약, private Storage upload, source artifact+`queued` 원자 확정, stale cleanup 재시도 | `app/api/v1/analysis_runs.py`, `app/services/analysis_runs.py`, `app/middleware/request_body_limit.py` |
+| queue | PostgreSQL `FOR UPDATE SKIP LOCKED`, 30초 heartbeat, 120초 lease, 최대 2 attempts, migration 37 analysis/chat 공용 admission cap과 full 시 503 | `supabase/migrations/21_analysis_worker_queue.sql`, `supabase/migrations/37_v02_global_queue_admission.sql`, `worker/postgres_repository.py` |
 | worker runtime | 상주 polling, SIGTERM graceful stop, 별도 DB connection heartbeat, stale fence 차단 | `worker/runtime.py`, `worker/main.py` |
 | source/profile | private Storage download/hash 확인, Common IR·Request Profile upload, source → Common IR → Profile lineage와 request projection 등록 | `worker/analysis_job.py`, `worker/postgres_analysis_store.py`, `worker/supabase_storage.py` |
 | retrieval | OpenAI `text-embedding-3-small` 1,536 dimensions, request 3축 임시 embedding, Existing persistent vector 3축 match | `worker/retrieval_inputs.py`, `worker/postgres_analysis_store.py` |
@@ -89,7 +89,7 @@ malformed/timeout 문서 E2E는 아직 별도 범위다.
 ## 남은 운영·기능 작업
 
 - password recovery link를 HttpOnly Cookie 세션으로 교환하는 callback/PKCE
-- reverse proxy/ASGI의 multipart 전체 body·part 수 제한과 streaming upload
+- multipart part 수 제한과 streaming upload
 - `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사. 업로드 요청에 묶인
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리
 - Request assembler는 검증된 `support_scale` Raw Fact에서 결정적으로

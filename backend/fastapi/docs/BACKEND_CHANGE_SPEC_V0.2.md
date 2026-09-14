@@ -73,6 +73,10 @@ API에서는 90일 경과 결과를 즉시 숨긴다. 물리 삭제가 아직 �
 | transport 또는 upstream 5xx | 503 | 유지 |
 | malformed upstream payload | 502 | 유지 |
 
+`POST /auth/sign-out`은 예외적으로 provider transport/5xx가 발생해도 로컬 access/refresh
+Cookie를 삭제한 뒤 `503`을 반환한다. Provider 장애가 일시적인 `refresh`, `GET /auth/me`,
+또는 업무 API 요청은 기존 Cookie를 보존해 재시도할 수 있게 한다.
+
 - 위 규칙은 auth route와 공통 `PrincipalDep`에 동일하게 적용한다.
 - refresh cookie는 auth 경로로 scope를 좁히고 업무 API에는 전송하지 않는다.
 - 모든 상태 변경 route는 정확한 allow-list 기반 Origin 검사를 유지한다.
@@ -113,7 +117,9 @@ HTTP status와 domain code를 독립적으로 정한다. 모든 409를 하나의
 
 1. 동일 owner, Idempotency-Key, source identity의 정확한 replay인지 먼저 확인한다.
 2. 정확한 replay면 active session 여부와 관계없이 기존 run을 반환한다.
-3. 같은 key지만 owner/source가 다르면 `IDEMPOTENCY_KEY_CONFLICT`다.
+3. key namespace는 owner별이다. 같은 owner가 같은 key를 다른 source에
+   재사용한 경우에만 `IDEMPOTENCY_KEY_CONFLICT`다. 다른 owner의 우연한 UUID
+   충돌은 서로 보이지 않으며 독립 요청으로 처리한다.
 4. 새로운 key일 때만 active processing run과 active result session을 검사한다.
 5. active processing은 `ANALYSIS_RUN_ACTIVE`, active result는 `ACTIVE_RESULT_SESSION`이다.
 
@@ -368,10 +374,24 @@ GET /api/v1/analysis-cases/{case_id}/messages?cursor=<opaque>&limit=50
 - upload 제한은 FastAPI와 앞단 gateway에 동일하게 적용하고, 배포 명령에 concurrency limit을 둔다. streaming upload 전환은 후속이다.
 - 사용자별 동시 analysis/chat 생성 상한과 queue backpressure를 두어 직접 HTTP 호출로 작업·OpenAI 비용을 무제한 생성하지 못하게 한다.
 
+구현된 배포 상한은 `PREREVIEW_UPLOAD_MAX_BYTES`(추출한 단일 HWP/HWPX 파일, 기본 50 MiB),
+`PREREVIEW_HTTP_MAX_BODY_BYTES`(multipart boundary/header와 모든 part를 포함한 전체 HTTP
+body, 기본 51 MiB), Uvicorn `--limit-concurrency`(`PREREVIEW_API_LIMIT_CONCURRENCY`,
+기본 32)다. migration 37의 `PREREVIEW_GLOBAL_QUEUE_MAX`(기본 25)는 모든 API replica의
+analysis upload와 chat create/retry가 공유하며, 새 작업이 가득 차면 `503`을 반환한다.
+
 ## 13. migration 구현 규칙
 
 - migration은 기능별 신규 번호로 나누되 최종 상태가 전체 replay에서도 동일해야 한다.
 - 01~32의 public 함수와 migration 26 ML wrapper는 그대로 둔다.
+- 현재 fresh 적용 범위는 migration 01~40이며, 01~32가 이미 적용된 DB는 33~40을
+  순서대로 upgrade한 뒤 전체 01~40 replay 검증을 수행한다. migration 38은 Model 1
+  runtime 코드 manifest가 바뀐 경우 새 inactive configuration을 등록하며, 과거 분류
+  row를 재작성하지 않는다. migration 39는 만료된 upload finalisation도 migration 37의
+  전역 admission lock 아래 re-admit하고, capacity가 가득 차면 exact source를
+  `cleanup_pending`으로 fence해 cleanup key를 반환한다. migration 40은 각 analysis
+  실행 시도가 실제 선택한 embedding configuration(또는 검색 축이 없어 선택하지
+  않았다는 명시적 null snapshot)을 fenced `ops.processing_run.run_metadata`에 고정한다.
 - 신규 worker는 `workspace.persist_analysis_result_core_v2`를 호출한다. v2 함수는 기존 fenced+ML writer를 같은 transaction 안에서 호출한 뒤 public projection/evidence context를 검증·저장하며, 어느 단계든 실패하면 기존 writer의 상태 전이까지 전부 rollback한다.
 - 신규 FastAPI는 `api.rpc_get_analysis_result_v2`, `api.rpc_get_sim_candidate_detail_v2`와 v2 history/current 함수를 호출한다. 구 함수는 rollback과 구 pod 보호를 위해 유지한다.
 - chat claim도 별도 복사본을 만들지 않고 v2 public projection helper를 사용한다.
@@ -402,7 +422,7 @@ Additive change:
 - SIM section status/reason/summary
 - candidate list comparison fields
 
-현재는 안정화 전 PoC이므로 `/api/v1`을 유지하고 dual v1/v2는 만들지 않는다. 단, backend만 배포하면 현재 frontend와 호환되지 않는다. Swagger와 `FRONTEND_API_CHANGE_HANDOFF.md` 전달 후 frontend 담당자의 동시 cutover가 끝나기 전에는 통합 완료 또는 production-ready로 표시하지 않는다.
+현재는 안정화 전 PoC이므로 `/api/v1`을 유지하고 dual v1/v2는 만들지 않는다. 단, backend만 배포하면 현재 frontend와 호환되지 않는다. Swagger와 [BACKEND_FASTAPI_SUPABASE_HANDOFF.md](BACKEND_FASTAPI_SUPABASE_HANDOFF.md)의 frontend cutover handoff를 전달한 뒤 frontend 담당자의 동시 cutover가 끝나기 전에는 통합 완료 또는 production-ready로 표시하지 않는다.
 
 단일 서버 maintenance cutover 순서는 다음으로 고정한다.
 

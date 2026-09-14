@@ -1,12 +1,16 @@
 # FastAPI·worker 문서 안내
 
-현재 서비스의 공개 업무 경계는 FastAPI이며, 분석 worker는 같은 서버에서 외부 포트
-없이 PostgreSQL queue를 polling한다.
+현재 서비스의 공개 업무 경계는 FastAPI이며, analysis worker와 chat worker는 같은
+서버에서 외부 포트 없이 각 PostgreSQL queue를 polling한다.
 
 - 실제 환경변수 설정·기동·재기동·로그·장애 확인:
   [FASTAPI_WORKER_RUNBOOK.md](docs/FASTAPI_WORKER_RUNBOOK.md)
+- Nginx reverse proxy 예제:
+  [backend/deploy/nginx/prereview-api.conf](../deploy/nginx/prereview-api.conf)
 - 프론트엔드 API 계약:
   [0.FASTAPI_FRONTEND_API_SPEC.md](docs/0.FASTAPI_FRONTEND_API_SPEC.md)
+- 현재 공개 응답 예시와 typed DTO shape:
+  [FASTAPI_RESPONSE_CONTRACT.json](docs/FASTAPI_RESPONSE_CONTRACT.json)
 - worker 결과 저장 계약:
   [WORKER_RESULT_PERSISTENCE_CONTRACT.md](docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md)
 - worker 구현 경계·레거시 제외 범위:

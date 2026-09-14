@@ -148,6 +148,10 @@ cross-reference가 필요하면 이 함수/계약을 확장한 migration을 먼�
 
 ## 결과 확인과 별도 채팅 계약
 
+migration 37은 FastAPI의 새 analysis upload reservation과 chat create/retry가 동일한
+PostgreSQL advisory lock과 `PREREVIEW_GLOBAL_QUEUE_MAX` cap을 사용하도록 한다. cap에
+도달한 새 작업은 `503`으로 거부되며, 정확한 idempotency replay는 기존 작업을 반환한다.
+
 FastAPI는 Cookie 사용자의 소유권을 확인한 뒤 `api` views/RPC로 결과를 읽는다.
 
 - `GET /api/v1/analysis-runs/{run_id}`: queued/running/succeeded/failed polling

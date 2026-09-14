@@ -13,7 +13,8 @@ Frontend (HttpOnly Cookie)
 ```
 
 - Redis/RQ, 브라우저의 Supabase 직접 호출, 현재 런타임의 Edge Function dispatch/callback은 사용하지 않는다.
-- 분석 진행 상황은 `GET /api/v1/analysis-runs/{id}` 폴링으로 조회한다. SSE/WebSocket은 현재 구현 범위가 아니다.
+- 분석 화면의 첫 진입은 `GET /api/v1/analysis/current`을 폴링하고, 업로드 응답의 run ID가 있으면
+  `GET /api/v1/analysis-runs/{id}`도 사용할 수 있다. SSE/WebSocket은 현재 구현 범위가 아니다.
 - worker는 신뢰된 서버 프로세스이며 PostgreSQL과 private Storage에만 내부 자격증명으로 접근한다. 브라우저 Cookie·사용자 token은 worker에 전달하지 않는다.
 
 ## 현재 API
@@ -22,16 +23,21 @@ Frontend (HttpOnly Cookie)
 - `GET /api/v1/auth/me`
 - `POST /api/v1/analysis-runs` — 필수 UUID v4 `Idempotency-Key`, HWP/HWPX 업로드와 queued run 생성
 - `GET /api/v1/analysis-runs/{analysis_run_id}` — 작업 상태 폴링
+- `GET /api/v1/analysis/current` — 현재 분석의 `processing`/`ready`/`idle` 공개 상태
 - `GET /api/v1/analysis-cases/{analysis_case_id}`
 - `GET /api/v1/sim-candidates/{sim_candidate_id}`
 - `GET /api/v1/analysis-sessions/active`
-- `GET /api/v1/analysis-history`
-- `POST /api/v1/analysis-cases/{analysis_case_id}/messages`
-- `GET /api/v1/analysis-cases/{analysis_case_id}/messages`
-- `POST /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry`
+- `POST /api/v1/analysis-sessions/{analysis_session_id}/close` — 해당 소유자의 특정 session만 idempotent하게 종료
+- `GET /api/v1/analysis-history` — page size 5의 signed snapshot cursor 이력
+- `POST /api/v1/analysis-cases/{analysis_case_id}/messages` — 필수 UUID v4 `Idempotency-Key`로 assistant turn 생성
+- `GET /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}` — 생성 중/완료 assistant turn polling
+- `GET /api/v1/analysis-cases/{analysis_case_id}/messages` — signed cursor 대화 이력
+- `POST /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry` — 필수 UUID v4 `Idempotency-Key` 재시도
 
 PDF 생성 API는 데이터 모델은 있으나 아직 이 공개 경계에 구현하지 않았다. 메시지
 POST/retry는 `202 Accepted`이며 별도 `chat-worker`가 저장된 분석 결과만 근거로 답한다.
+이력 응답의 `next_cursor`는 opaque 값이므로 수정하지 않고 그대로 다음 요청에 전달한다. cursor
+서명 비밀값을 교체하면 이미 발급한 cursor는 의도적으로 무효가 된다.
 
 ## 로컬 실행
 
@@ -40,10 +46,21 @@ uv sync --frozen --extra dev
 uv run uvicorn main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-환경 파일 없이 실행하면 기본은 offline-safe 모드다. 이 실행은 OpenAPI와 정적 계약
+환경 파일 없이 실행하면 기본은 online fail-closed 모드다. 이 실행은 OpenAPI와 정적 계약
 확인용이며 실제 Supabase/worker 분석을 수행하지 않는다. online Compose 모드에는
 `.env.example`의 Supabase·PostgreSQL 설정과 허용할 프론트 origin이 필요하다. 실제
 비밀값은 커밋하지 않는다.
+
+online host 개발은 같은 `.env.host.local`을 세 프로세스에 주입해 API, analysis worker,
+chat worker를 각각 실행한다. chat worker가 없으면 질문은 `generating`에 남고, analysis
+worker가 없으면 업로드 run은 `queued`에 남는다.
+
+```bash
+# backend/에서, .env.host.local에 server-only 값과 PREREVIEW_CURSOR_SIGNING_SECRET를 설정
+uv run uvicorn main:app --host 127.0.0.1 --port 8001 --env-file .env.host.local
+uv run python -m dotenv -f .env.host.local run -- python -m worker.main
+uv run python -m dotenv -f .env.host.local run -- python -m worker.chat_main
+```
 
 ```bash
 # 먼저 serving.zip에서 검증된 Model 1 runtime을 준비한다. Docker analysis worker는
@@ -65,7 +82,8 @@ uv run python scripts/prepare_local_backend_env.py
 PostgreSQL pooler(5432)를 사용하도록 주소와 URL encoding까지 처리한다. LAN 프론트
 origin 추가 옵션을 포함한 상세 절차는 아래 운영 가이드를 따른다. 이 자동 생성 파일은
 Docker Compose용이다. 호스트 Python으로 직접 실행할 때 필요한 `127.0.0.1` 주소 설정은
-운영 가이드의 별도 절차를 따른다.
+운영 가이드의 별도 절차를 따른다. online에서 analysis/conversation history를 사용하려면
+생성 뒤에도 `PREREVIEW_CURSOR_SIGNING_SECRET`에 충분히 긴 server-only 임의값을 설정한다.
 
 API와 same-server worker를 Docker Compose로 함께 기동할 때는 분석 `worker`와
 `chat-worker`가 기본 service로 포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만
@@ -80,6 +98,28 @@ analysis worker는 queue polling 전에 Model 1 weight/runtime manifest와 Model
 SHA-256을 모두 확인한다. 하나라도 빠지거나 다르면 `unavailable`로 계속 실행하지 않고
 fail-closed로 종료한다. 따라서 `.env` 생성 전에 Model 1 runtime 준비가 필수이며,
 `PREREVIEW_MODEL1_SERVING_HOST_DIR`, UID, GID를 빈 채로 Compose를 실행할 수 없다.
+
+배포 API는 operator가 지정한 revision label을 받지 않는다. Dockerfile의 pristine identity
+stage가 `COPY .` 직후, pip install보다 먼저 모든 backend build-context 파일·directory의
+canonical path·kind·mode·content를 SHA-256으로 계산한다. final runtime stage는 그 identity
+artifact만 복사해 `.prereview-build-id`에 둔다. `.dockerignore`의 credentials(`*.pem`,
+`*.key`, `secrets/`)와 local Python build outputs, generated identity 파일은 digest와 image
+context에서 함께 제외된다. 따라서 오래된 소스를 새 commit ID로 거짓 표기하거나 host build
+산출물이 image identity를 오염시킬 수 없고, runtime 환경변수/Compose build arg로 바꾸는 경로도 없다.
+
+```bash
+git diff --quiet && git diff --cached --quiet
+test -z "$(git ls-files --others --exclude-standard)"
+docker compose up -d --build
+```
+
+`run_local_live_e2e.py --worker-mode external`은 `/health/ready`의 본문·헤더 ID가
+서로 같은지뿐 아니라, 실행한 clean checkout에서 독립 계산한 backend Docker-context
+digest와 정확히 같은지도 확인한다. Git commit은 execution manifest에 별도로 남긴다.
+따라서 형식은 맞지만 오래된 API나 dirty checkout은 release E2E를 통과할 수 없다.
+`--api-base-url`은 `--worker-mode external`에서만 허용된다. E2E trace를 저장할 경우에는
+repo 밖의 경로를 사용하고, release build와 E2E 사이에는 tracked/untracked 파일을 바꾸지
+않는다.
 호스트의 `.runtime/ml-venv`는 Existing Model 1 one-shot backfill 또는 host 직접 개발용일
 뿐, 컨테이너에 mount하지 않는다.
 
@@ -109,17 +149,30 @@ ML child를 완전한 sandbox로 만드는 기능은 아니다. 운영 시에는
 
 ## Worker queue
 
-PostgreSQL polling queue와 원자적 결과 저장·legacy 완료 경로 폐기·queued 원본 무결성은 migration 21~25가
-정의한다.
+PostgreSQL polling queue의 기반은 migration 21~26이고, v0.2 lifecycle/public result/chat와
+전역 admission 경계와 analysis embedding execution provenance는 migration 33~40이 확정한다. 모두 적용한 DB에서만 현재
+FastAPI/worker를 실행한다.
+
+업로드 파일 바이트 상한은 `PREREVIEW_UPLOAD_MAX_BYTES`(기본 50 MiB), multipart boundary와
+모든 part를 포함한 HTTP 요청 전체 상한은 `PREREVIEW_HTTP_MAX_BODY_BYTES`(기본 51 MiB)다.
+Compose의 Uvicorn replica별 동시 처리 상한은 `PREREVIEW_API_LIMIT_CONCURRENCY`(기본 32)다.
+analysis upload reservation과 chat create/retry는 `PREREVIEW_GLOBAL_QUEUE_MAX`(기본 25)의
+하나의 PostgreSQL backlog cap을 공유하며, 새 작업이 가득 차면 `503`을 반환한다. 정확한
+idempotency replay는 기존 작업을 반환한다.
 
 - `workspace.analysis_run`: 브라우저에 보이는 작은 상태 레코드
 - `workspace.analysis_run_dispatch`: source 위치, claim, lease, heartbeat 같은 worker 전용 상태
 - `ops.processing_run`: 실행 시도 이력. `processing_run_pk`가 fencing token이다.
 - `workspace.claim_next_analysis_run()`: `FOR UPDATE SKIP LOCKED`로 claim
-- `workspace.persist_analysis_result_core()`: 유효한 fence를 확인한 뒤 결과와 terminal 상태를 한 transaction으로 반영
+- `workspace.persist_analysis_result_core_v2()`: 유효한 fence를 확인한 뒤 v0.2 raw/public 결과와 terminal 상태를 한 transaction으로 반영
 
 기본값은 heartbeat 30초, lease 120초, 전체 최대 두 번의 시도다. 오래된 worker는
 새 worker의 결과를 덮어쓸 수 없다.
+
+v0.2 retrieval은 request에서 실제로 준비된 purpose/target/support 0~3축만 보낸다. 0축은
+`RETRIEVAL_INPUT_MISSING`으로 SIM을 건너뛰며 zero vector를 만들지 않는다. 1~3축은 가능한
+축 수 `|A|`의 평균으로 검색한다. `PREREVIEW_EXISTING_KB_REQUIRED=true`이면 활성 KB/검색
+결과 부재는 재시도/실패이고, `false`이면 분석은 `KB_EMPTY`로 정상 완료될 수 있다.
 
 OpenAI Request Profile 구조화는 Compose 기본 `gpt-5.6-terra`, 호출별 hard timeout
 120초, `OPENAI_MAX_REPAIRS=2`를 사용한다. repair 수는 DB queue 재시도 횟수가 아니다.

@@ -1,6 +1,6 @@
 # Backend rebuild 구현 현황
 
-마지막 갱신: 2026-09-13
+마지막 갱신: 2026-09-14
 
 ## 현재 선택한 운영 구조
 
@@ -15,13 +15,15 @@ Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase�
 호출하지 않는다. Redis/RQ, external worker HTTP dispatch/callback, SSE/Realtime은 현재
 운영 경로에서 사용하지 않는다.
 
-## 2026-09-13 통합 상태
+## 2026-09-14 통합 상태
 
 `origin/develop`의 Model 1/2/3 결과 저장과 비동기 채팅 queue를 이 브랜치의 FastAPI·worker
 경계에 통합했다. 현재 migration 번호는 Model 결과 `26`, 채팅 queue `27`, component-name
 embedding v2 `28`, v2 활성화 보정 `29`, Existing KB 변경 직렬화/trigger `30`, versioned
 Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/promotion hardening
-`32`이다.
+`32`, 현재 코드용 inactive runtime configuration 등록은 `38`이며 v0.2 FastAPI
+lifecycle/result/retrieval/chat/admission은 `33`~`37`, atomic upload finalization은
+`39`, 실행 시도별 embedding provenance는 `40`이다.
 
 - Existing Model 1 분류는 `retrieval.classification_configuration`과
   `retrieval.existing_profile_classification`에 immutable weight/runtime-manifest/input configuration·input SHA-256·raw label·신뢰도·
@@ -30,22 +32,45 @@ Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/prom
 - `serving.zip`의 model weight는 Git이 아닌 ignored runtime 경로에 배치하고 weight와
   serving/pipeline/backend runtime manifest SHA-256을 검증한 뒤 backfill한다. 정확한 환경 변수·backfill·검증 순서는
   [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)에 있다.
-- 공식 `supabase/postgres:17.6.1.169` 임시 DB에서 migration `01`~`32`의 fresh apply와
-  전체 replay, 기존 committed migration 31 상태에서 31·32 upgrade/replay를 검증했다.
+- 공식 `supabase/postgres:17.6.1.169` 임시 DB의 migration `01`~`38` fresh 검증 상태에
+  `39`~`40` upgrade를 이어 적용하고, 전체 `01`~`40` replay와 현재 로컬 DB 적용을
+  검증했다. `01`~`32` fresh apply와 기존 committed migration 31
+  상태에서 31·32 upgrade/replay는 통합 전의 역사적 검증 기록으로 보존한다.
   실제 repository SQL과 두 세션 classification/embedding invalidation의 `40001` 전체
-  transaction retry도 검증했다. Existing 100건 Model 1 실제 추론 backfill은 아직
-  실행하지 않았다. 로컬 DB의 v2 재임베딩은 100건 × 4 scope(400행)를 완료해
+  transaction retry도 검증했다. Existing 100건 Model 1 실제 추론 backfill은 100건
+  모두 `execution_status=OK`로 완료했고, 재실행은 100건 모두 skip되어 idempotency도
+  확인했다. 활성 분류 결과는 `신뢰` 99건, raw `판단보류` 1건이다. 로컬 DB의 v2
+  재임베딩은 100건 × 4 scope(400행)를 완료해
   `approved-facts-components-role-aware-v2` 한 개가 활성 상태이고, 이전 설정의 400행은
   비활성 상태로 보존돼 있다. 아래 2026-09-10 결과는 통합 전 번호 체계와 로컬 runtime에
   대한 역사적 검증 기록이다.
-- 전체 backend 회귀 테스트 399개와 별도 Supabase migration/self-hosted 계약 테스트
-  22개, 합계 421개를 수집해 `420 passed, 1 skipped`로 통과했다. 생성된 OpenAPI는 `origin/develop`과 byte-canonical SHA-256
-  `9461f69719b391ffdbec4d5f4f56011fa31079627f29ffc73a9cacccffe452b5`로 동일하다.
-  Python compile, shell syntax, Compose config와 `git diff --check`도 통과했다.
+- 전체 backend pytest 903개를 수집해 `900 passed, 3 skipped`로 통과했다. 기본
+  `testpaths` 밖의 Supabase migration contract wrapper도 별도로 실행해 내부 정적 계약
+  24개를 모두 통과했다. Python compile, 응답 계약 JSON, Compose config와
+  `git diff --check`도 통과했다. OpenAPI는 breaking v0.2 계약을 명시적으로 표시한다.
 - Docker 배포 구조는 analysis `worker`만 CPU 전용 ML 이미지로 분리하고, API와
   `chat-worker`에는 ML runtime을 넣지 않는다. Model 1은 Git/image 밖의 검증된
   read-only bind mount, Model 2/3은 image-local artifact·venv로 구성하며 startup에서
   Model 1/2/3 SHA-256과 manifest를 fail-closed로 확인하도록 구현됐다.
+- 2026-09-14 현재 v0.2 코드로 Docker external live E2E를 실제 DB와 OpenAI에 대해
+  다시 완주했다.
+  - run `08614411-f17d-42f0-93aa-ece5dff0447d`, case
+    `af973b50-a90e-4b52-ba7b-83a26f9c4b55`
+  - analysis worker `45d192c4cf53:1:2a96831501b5`, chat worker
+    `5da52107c5a5:1:816e7882309e`가 각각 한 번의 DB queue attempt로 완료됐다.
+  - Request Profile은 Terra, CPL/FIT/SIM/채팅은 Luna, embedding은
+    `text-embedding-3-small`을 사용했고 Model 1/2/3은 모두 `OK`였다.
+  - CPL 13, FIT 7, SIM 후보 5, evidence 107개와 completed chat/reference 10개를
+    확인했다. 후보 상세의 Request/Existing 근거 연결, active session의 history 제외,
+    close 뒤 history 편입과 chat history 보존도 함께 통과했다.
+  - 입력은 `samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx`이며 trace는
+    `/tmp/prereview-e2e-v02-20260914-fullgreen`에 생성됐다. trace는 임시 운영 산출물로
+    Git에 포함하지 않는다.
+  - 별도 생성 fixture `01_유니콘브릿지_기술금융_사전협의요청서.hwpx`는 run
+    `fb049e4b-3ebe-4b6d-9203-1ab76b91a18c`, case
+    `3f703493-79ef-4489-abf1-b5c0b7ed5231`에서 Model 1/2 `OK`, Model 3
+    `INPUT_EVIDENCE_MISSING`으로 acceptance 실패했다. 문서에 금액·수량 원문 근거가
+    부족한 fixture 특성에 따른 기대 가능한 거부이며, 인프라 실패와 구분된다.
 - 2026-09-13 전용 Docker worker external live E2E를 실제 DB와 OpenAI로 완료했다.
   - 최신 run `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
     `c05d9ae0-d279-4839-8a86-102da0be18fd`
@@ -124,6 +149,12 @@ Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/prom
 - 비교에 사용한 정확한 Existing `profile_version_pk`를 결과까지 보존
 - parser 120초 hard deadline/process-group kill, HWPX declared unpacked-size 상한,
   parser 자식 프로세스의 DB/OpenAI/Storage 비밀값 차단
+- 전체 multipart HTTP body cap(`PREREVIEW_HTTP_MAX_BODY_BYTES`), 파일 cap
+  (`PREREVIEW_UPLOAD_MAX_BYTES`), Uvicorn replica concurrency limit, analysis/chat 공용
+  queue admission cap과 full 시 `503`
+- live E2E 실행 manifest(입력 SHA-256, Git commit, dirty 여부와 source-state SHA-256,
+  실제 worker/image identity, worker별 model/embedding configuration)와 성공·ML acceptance
+  실패 trace artifact 보존
 
 ## 2026-09-10 통합 전 역사적 검증 결과
 
@@ -225,8 +256,9 @@ migration 25 최종 적용 직전의 최신 백업은
 `265d0c3d5a060c2ed717139ed7e6f2459572f71e9efbe50d0997eb11936b48db`다.
 DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 
-채팅은 migration 27의 별도 queue, owner-scoped API, 결과 근거 제한 handler와 worker로
-구현되어 있으며, 위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
+채팅은 migration 27의 별도 queue와 migration 36의 v2 idempotency/claim, migration 37의
+공용 admission, owner-scoped API, 결과 근거 제한 handler와 worker로 구현되어 있으며,
+위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
 확인했다. PDF/OCR은 현재 요청 처리 범위에서 제외하며, PDF 생성도 E2E 완료 범위가 아니다.
 
 위 로컬 검증 환경에는 mode `600`인 `backend/.env`와 online API·worker가 준비되어 있었다.
@@ -237,20 +269,15 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 ## 남은 작업
 
-- migration 31·32를 적용한 뒤 Existing current Profile 100건의 Model 1 분류 backfill과
-  active-configuration gate를 검증
 - 수정된 Request Profile v0.1.3으로 실제 Hancom HWP와 HWPX live E2E를 완전 재검증해 사업명,
   사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검
 - password recovery link를 HttpOnly session cookie로 교환하는 callback/PKCE 흐름
-- reverse proxy/ASGI 경계의 multipart 전체 body·part 수 제한과 streaming upload
+- multipart part 수 제한과 streaming upload
 - `request-temp` 및 90일 만료 결과의 reference-aware cleanup/감사 작업. 현재 요청 경로의
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리해 업로드 지연을 제거해야 함
 - terminal idempotency replay의 HTTP 상태(`200`/`202`) 정규화
 - purpose/target/support 중 일부가 없는 요청을 실패 대신 insufficient 결과로 내리는 정책
 - worker heartbeat/queue lag를 포함한 배포 readiness
-- worker deployment/image identity를 `ops.processing_run.run_metadata`에 기록하고 external
-  E2E의 기대값과 자동 대조하는 검증. 현재 worker ID는 실행 replica만 식별하므로 검증 중
-  대상 Compose worker만 실행한다는 운영 전제가 필요함
 - OpenAI 호출 단위 `ops.model_invocation` 감사 기록 연결
   (현재는 `ops.processing_run`의 시도·성공·실패 이력만 기록)
 - 기존 로컬 runtime에 남아 있을 수 있는 legacy Edge Function 제거 및 direct grant 폐기
@@ -303,6 +330,14 @@ cd backend
   --api-base-url http://127.0.0.1:8001 \
   --file /safe/local/request.hwpx
 ```
+
+external release gate는 clean checkout에서 `docker compose up -d --build`로 다시 build한다.
+Dockerfile pristine stage가 `COPY .` 직후·pip install 전에 backend context 전체(빈 directory와
+mode 포함)의 deterministic SHA-256을 계산하고 final image에는 artifact만 bake한다. E2E는 health
+header/body 일치와 clean checkout의 독립 context digest 일치를 모두 요구한다.
+Git commit은 manifest에 별도로 기록한다. runtime 환경변수/build arg로 image ID를 바꾸거나,
+`--api-base-url`과 inline worker를 섞는 실행은 허용하지 않는다. 최종 문서/코드를 commit한 뒤
+build와 E2E 사이에 tracked/untracked 파일을 바꾸지 않으며 trace는 repo 밖에 저장한다.
 
 기본 `inline` E2E는 시작 전 analysis/chat queue가 비어 있음을 확인한 뒤 자신이 생성한
 analysis run과 assistant message만 직접 점유한다. `external`은 배포된 API가 만든 target을

@@ -134,8 +134,9 @@ manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~32·same-server worker 경로에 맞춘 위 스크립트만 사용한다. `01`~`32`
-fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미 검증됐다고 간주하지 않는다.
+override·migration 01~40·same-server API/analysis worker/chat worker 경로에 맞춘 위 스크립트만
+사용한다. `01`~`40` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
+검증됐다고 간주하지 않는다.
 
 ## 데이터 위치
 
@@ -192,25 +193,41 @@ generic writer는 `40001`을 받으면 **해당 transaction 전체를 rollback�
 
 ## DB queue
 
-migration 21~25는 Redis/RQ 없이 PostgreSQL을 durable queue와 fenced 결과 저장 경계로 쓴다.
+migration 21~26은 Redis/RQ 없이 PostgreSQL을 analysis durable queue와 fenced 결과 저장
+경계로 쓴다. v0.2의 FastAPI lifecycle/read boundary는 migration 33, raw/public result
+projection은 34, partial-axis retrieval은 35, chat idempotency/queue는 36, analysis/chat
+공용 전역 admission/backpressure는 37에서 추가한다.
 
 | 영역 | 역할 |
 |---|---|
 | `workspace.analysis_run` | 브라우저가 FastAPI를 통해 polling하는 lifecycle |
 | `workspace.analysis_run_dispatch` | source object, lease, heartbeat, claim 등 private worker state |
 | `ops.processing_run` | 실행 시도 감사와 fencing token |
-| `result.*` | 90일 read window의 분석 결과; 물리 cleanup은 미구현 |
+| `result.*` | raw audit와 browser/chat용 public projection이 분리된 분석 결과; retention window 적용 |
 
 worker는 `workspace.claim_next_analysis_run()`을 polling한다. `FOR UPDATE SKIP LOCKED`,
 30초 heartbeat, 120초 lease, 최대 두 번 시도가 기본이다. 완료는
-`workspace.persist_analysis_result_core()`로만 수행한다. 이 함수는 live
-`processing_run_pk` fence를 검증한 뒤 결과 materialisation과 run 성공 전이를 한
-transaction으로 처리한다. stale worker는 `NULL`을 받아 결과를 바꾸지 못한다.
+`workspace.persist_analysis_result_core_v2()`로만 수행한다. 이 함수는 live
+`processing_run_pk` fence를 검증하고 migration 26의 ML writer를 보존한 채 raw audit와
+public result projection, run 성공 전이를 한 transaction으로 처리한다. stale worker는
+`NULL`을 받아 결과를 바꾸지 못한다.
 `queued` 전환은 같은 run의 source artifact와 dispatch에 기록된 bucket·object key·SHA-256·
 크기가 정확히 일치할 때만 허용하며, active run의 source identity는 이후 변경할 수 없다.
 SIM 후보는 논리 `source_profile_id`뿐 아니라 retrieval에서 실제 읽은
 `profile_version_pk`도 완료 payload에 포함한다. 분석 중 KB의 current version이
 바뀌어도 DB는 비교한 exact version에 결과·metadata·evidence를 연결한다.
+
+v0.2의 retrieval RPC `retrieval.match_existing_profiles_partial_axes(config_pk, request_vectors,
+limit)`는 purpose/target/support 중 worker가 실제 만든 1~3축만 검사하고, supplied 축 수
+`|A|`로 평균 cosine을 계산한다. delivery는 retrieval/aggregate core 축이 아니다. request
+0축은 worker가 `RETRIEVAL_INPUT_MISSING`으로 SIM을 생략하며 DB에 zero vector를 보내지
+않는다. `PREREVIEW_EXISTING_KB_REQUIRED=true`이면 active KB/retrieval 부재는 fail-closed이고,
+`false`이면 `KB_EMPTY` 완료를 허용한다.
+
+FastAPI와 worker가 migration 33~40의 `workspace.*_v2`/`api.rpc_*_v2`를 호출할 때에도
+browser는 그 RPC에 직접 접근하지 않는다. 이 함수와 partial retrieval은 `service_role`만
+실행할 수 있으며, FastAPI는 검증한 user UUID를 인자로 넘겨 owner-scoped public DTO만
+반환한다.
 
 ## EC2 최초 배포
 
@@ -289,7 +306,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`32` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`39` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤
@@ -317,6 +334,11 @@ FastAPI와 worker의 server-only `.env`는 `backend/.env.example`을 기준으�
 ```text
 PREREVIEW_OFFLINE_MODE=false
 PREREVIEW_AUTH_ALLOWED_ORIGINS=https://frontend.example
+PREREVIEW_CURSOR_SIGNING_SECRET=<long-random-server-secret>
+PREREVIEW_UPLOAD_MAX_BYTES=52428800
+PREREVIEW_HTTP_MAX_BODY_BYTES=53477376
+PREREVIEW_API_LIMIT_CONCURRENCY=32
+PREREVIEW_GLOBAL_QUEUE_MAX=25
 SUPABASE_URL=http://host.docker.internal:8000
 SUPABASE_ANON_KEY=<server-only>
 SUPABASE_SECRET_KEY=<server-only>
@@ -325,14 +347,25 @@ OPENAI_API_KEY=<worker-only>
 PREREVIEW_WORKER_HEARTBEAT_SECONDS=30
 PREREVIEW_WORKER_LEASE_SECONDS=120
 PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS=120
+PREREVIEW_EXISTING_KB_REQUIRED=true
 ```
 
 FastAPI는 Auth 검증·private upload·owner-scoped 결과 조회에, worker는 DB queue·Storage
-I/O·OpenAI 분석에 이를 사용한다. 브라우저, Git, 로그에는 넣지 않는다.
+I/O·OpenAI 분석에 이를 사용한다. `PREREVIEW_CURSOR_SIGNING_SECRET`은 analysis/conversation
+history cursor를 HMAC으로 서명하므로 online API에서 비워 둘 수 없고, API 인스턴스·재기동
+간에 동일하게 유지해야 한다. 값을 바꾸면 기존 cursor는 무효화된다. 브라우저, Git, 로그에는
+어떤 server-only 값도 넣지 않는다.
 
-저장소의 `backend/compose.yaml`에서는 API와 worker가 기본으로 함께 기동되고 worker는
-포트를 publish하지 않는다. 배포 gate는 `/health/ready`만 사용하지 말고 worker container
-상태와 최근 `ops.processing_run`/queue 지연도 확인한다.
+`PREREVIEW_UPLOAD_MAX_BYTES`는 추출된 단일 HWP/HWPX 파일 상한이고,
+`PREREVIEW_HTTP_MAX_BODY_BYTES`는 multipart boundary/header와 모든 part를 포함한 전체 HTTP
+요청 상한이다. 전자는 기본 50 MiB, 후자는 기본 51 MiB이며 reverse proxy도 후자와 같은
+51 MiB로 설정한다. `PREREVIEW_GLOBAL_QUEUE_MAX`는 analysis upload와 chat create/retry가
+공유하는 cap이므로 모든 API replica에서 같은 값이어야 한다. cap에 도달한 새 작업은
+FastAPI가 `503`으로 거부한다.
+
+저장소의 `backend/compose.yaml`에서는 API, analysis `worker`, `chat-worker`가 기본으로 함께
+기동되고 두 worker는 포트를 publish하지 않는다. 배포 gate는 `/health/ready`만 사용하지
+말고 두 worker container 상태와 최근 `ops.processing_run`/queue 지연도 확인한다.
 
 `.env` 작성부터 Docker 기동·재생성·로그·WSL/EC2 공개 방식까지의 실제 명령은
 [FastAPI·worker 운영 가이드](../fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)를 따른다.
