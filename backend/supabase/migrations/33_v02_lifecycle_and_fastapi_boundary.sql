@@ -156,10 +156,12 @@ $$;
 
 -- Reconcile only this owner's stale pre-processing lifecycle rows.  A caller
 -- can safely retry it: terminal/cleanup rows no longer match the predicate.
--- The returned object location is for FastAPI's service-credential cleanup;
--- no Storage operation occurs in PostgreSQL.
-CREATE OR REPLACE FUNCTION workspace.reconcile_stale_analysis_runs_for_user_v2(
-    p_user_id UUID
+-- Only expired upload reservations are returned because those are the sole
+-- rows whose unregistered Storage object may be deleted by FastAPI.  Queued
+-- and exhausted-running failures retain their registered source provenance.
+CREATE OR REPLACE FUNCTION workspace.reconcile_stale_analysis_runs_for_user_core_v2(
+    p_user_id UUID,
+    p_collect_upload_cleanup BOOLEAN
 )
 RETURNS TABLE (
     analysis_run_id UUID,
@@ -188,8 +190,10 @@ BEGIN
           FROM workspace.analysis_run
          WHERE user_id = p_user_id
            AND (
-                (status = 'uploading' AND expires_at <= v_now)
+                (p_collect_upload_cleanup AND status = 'cleanup_pending')
+                OR (p_collect_upload_cleanup AND status = 'uploading' AND expires_at <= v_now)
                 OR (status = 'queued' AND expires_at <= v_now)
+                OR status = 'running'
            )
          ORDER BY created_at, analysis_run_pk
     LOOP
@@ -209,7 +213,16 @@ BEGIN
          WHERE dispatch.analysis_run_pk = v_run.analysis_run_pk
          FOR UPDATE;
 
-        IF v_run.status = 'uploading' AND v_run.expires_at <= v_now THEN
+        IF v_run.status = 'cleanup_pending' AND p_collect_upload_cleanup THEN
+            analysis_run_id := v_run.analysis_run_pk;
+            source_bucket := v_dispatch.source_bucket;
+            source_object_key := v_dispatch.source_object_key;
+            terminal_status := 'cleanup_pending';
+            error_code := v_run.error_code;
+            RETURN NEXT;
+        ELSIF v_run.status = 'uploading'
+              AND p_collect_upload_cleanup
+              AND v_run.expires_at <= v_now THEN
             UPDATE workspace.analysis_run
                SET status = 'cleanup_pending',
                    completed_at = COALESCE(completed_at, v_now),
@@ -232,14 +245,306 @@ BEGIN
                    error_message = '분석 대기 시간이 만료되었습니다. 다시 시도해 주세요.'
              WHERE analysis_run_pk = v_run.analysis_run_pk
                AND status = 'queued';
-            analysis_run_id := v_run.analysis_run_pk;
-            source_bucket := v_dispatch.source_bucket;
-            source_object_key := v_dispatch.source_object_key;
-            terminal_status := 'failed';
-            error_code := 'ANALYSIS_QUEUE_EXPIRED';
-            RETURN NEXT;
+        ELSIF v_run.status = 'running'
+              AND v_dispatch.attempt_count >= 2
+              AND (
+                  v_dispatch.processing_run_pk IS NULL
+                  OR v_dispatch.lease_expires_at <= v_now
+              ) THEN
+            IF v_dispatch.processing_run_pk IS NOT NULL THEN
+                UPDATE ops.processing_run AS processing_attempt
+                   SET status = 'failed',
+                       finished_at = v_now,
+                       error_code = 'WORKER_LEASE_EXPIRED',
+                       error_message = 'Worker lease expired before completion.',
+                       run_metadata = COALESCE(run_metadata, '{}'::jsonb)
+                           || jsonb_build_object('lease_expired_at', v_now)
+                 WHERE processing_attempt.processing_run_pk = v_dispatch.processing_run_pk
+                   AND processing_attempt.status IN ('queued', 'running');
+            END IF;
+
+            UPDATE workspace.analysis_run_dispatch
+               SET processing_run_pk = NULL,
+                   claimed_by = NULL,
+                   claimed_at = NULL,
+                   heartbeat_at = NULL,
+                   lease_expires_at = NULL,
+                   last_error_code = 'WORKER_MAX_ATTEMPTS_EXCEEDED',
+                   last_error_message = 'The worker lease expired after two attempts.'
+             WHERE analysis_run_pk = v_run.analysis_run_pk;
+
+            UPDATE workspace.analysis_run
+               SET status = 'failed',
+                   completed_at = COALESCE(completed_at, v_now),
+                   error_code = 'WORKER_MAX_ATTEMPTS_EXCEEDED',
+                   error_message = '분석 작업이 시간 내에 완료되지 않았습니다. 다시 시도해 주세요.'
+             WHERE analysis_run_pk = v_run.analysis_run_pk
+               AND status = 'running';
         END IF;
     END LOOP;
+END;
+$$;
+
+-- Mutating callers that can actually delete private Storage objects use this
+-- public wrapper. Read-only current-state polling calls the core helper with
+-- ``FALSE`` below, so it may terminalise stale queued/running work but can
+-- never claim an upload cleanup key and then discard it.
+CREATE OR REPLACE FUNCTION workspace.reconcile_stale_analysis_runs_for_user_v2(
+    p_user_id UUID
+)
+RETURNS TABLE (
+    analysis_run_id UUID,
+    source_bucket TEXT,
+    source_object_key TEXT,
+    terminal_status TEXT,
+    error_code TEXT
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, workspace
+AS $$
+    SELECT *
+      FROM workspace.reconcile_stale_analysis_runs_for_user_core_v2(
+          p_user_id, TRUE
+      );
+$$;
+
+-- Migration 21's queue claim predates the uploading/queued TTL contract.  A
+-- polling worker must reconcile an expired queued row even when no browser
+-- calls upload/current again, and the actual candidate predicate must repeat
+-- the deadline check to close the expiry-boundary race.
+CREATE OR REPLACE FUNCTION workspace.claim_next_analysis_run(
+    p_worker_id TEXT,
+    p_lease_seconds INTEGER DEFAULT 120
+)
+RETURNS TABLE (
+    analysis_run_pk UUID,
+    source_bucket TEXT,
+    source_object_key TEXT,
+    source_content_sha256 TEXT,
+    processing_run_pk UUID,
+    attempt_count INTEGER,
+    lease_expires_at TIMESTAMPTZ,
+    heartbeat_interval_seconds INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, ops, workspace
+AS $$
+DECLARE
+    v_now TIMESTAMPTZ := clock_timestamp();
+    v_heartbeat_seconds CONSTANT INTEGER := 30;
+    v_analysis_run_pk UUID;
+    v_source_bucket TEXT;
+    v_source_object_key TEXT;
+    v_source_content_sha256 TEXT;
+    v_previous_processing_run_pk UUID;
+    v_processing_run_pk UUID;
+    v_attempt_count INTEGER;
+    v_lease_expires_at TIMESTAMPTZ;
+BEGIN
+    IF btrim(COALESCE(p_worker_id, '')) = '' THEN
+        RAISE EXCEPTION 'WORKER_ID_REQUIRED' USING ERRCODE = '22023';
+    END IF;
+    IF p_lease_seconds IS NULL OR p_lease_seconds < v_heartbeat_seconds
+       OR p_lease_seconds > 3600 THEN
+        RAISE EXCEPTION 'LEASE_SECONDS_OUT_OF_RANGE' USING ERRCODE = '22023';
+    END IF;
+
+    -- Reconcile every expired queued row before taking a live job.  Registered
+    -- source provenance remains in dispatch/Storage for the normal retention
+    -- policy; only an uncompleted upload reservation is cleanup-pending.
+    LOOP
+        SELECT ar.analysis_run_pk, dispatch.processing_run_pk
+          INTO v_analysis_run_pk, v_previous_processing_run_pk
+          FROM workspace.analysis_run AS ar
+          JOIN workspace.analysis_run_dispatch AS dispatch
+            ON dispatch.analysis_run_pk = ar.analysis_run_pk
+         WHERE ar.status = 'queued'
+           AND ar.expires_at <= v_now
+         ORDER BY ar.created_at, ar.analysis_run_pk
+         LIMIT 1
+         FOR UPDATE OF ar, dispatch SKIP LOCKED;
+
+        EXIT WHEN NOT FOUND;
+
+        IF v_previous_processing_run_pk IS NOT NULL THEN
+            UPDATE ops.processing_run AS processing_attempt
+               SET status = 'failed',
+                   finished_at = v_now,
+                   error_code = 'ANALYSIS_QUEUE_EXPIRED',
+                   error_message = 'Analysis queue deadline expired before claim.'
+             WHERE processing_attempt.processing_run_pk = v_previous_processing_run_pk
+               AND processing_attempt.status IN ('queued', 'running');
+        END IF;
+
+        UPDATE workspace.analysis_run_dispatch AS dispatch
+           SET processing_run_pk = NULL,
+               claimed_by = NULL,
+               claimed_at = NULL,
+               heartbeat_at = NULL,
+               lease_expires_at = NULL,
+               last_error_code = 'ANALYSIS_QUEUE_EXPIRED',
+               last_error_message = 'Analysis queue deadline expired before claim.'
+         WHERE dispatch.analysis_run_pk = v_analysis_run_pk;
+
+        UPDATE workspace.analysis_run AS ar
+           SET status = 'failed',
+               completed_at = COALESCE(completed_at, v_now),
+               error_code = 'ANALYSIS_QUEUE_EXPIRED',
+               error_message = '분석 대기 시간이 만료되었습니다. 다시 시도해 주세요.'
+         WHERE ar.analysis_run_pk = v_analysis_run_pk
+           AND ar.status = 'queued';
+    END LOOP;
+
+    -- A stale second attempt cannot be reclaimed again.
+    LOOP
+        SELECT ar.analysis_run_pk, dispatch.processing_run_pk
+          INTO v_analysis_run_pk, v_previous_processing_run_pk
+          FROM workspace.analysis_run AS ar
+          JOIN workspace.analysis_run_dispatch AS dispatch
+            ON dispatch.analysis_run_pk = ar.analysis_run_pk
+         WHERE ar.status = 'running'
+           AND dispatch.attempt_count >= 2
+           AND (
+                dispatch.processing_run_pk IS NULL
+                OR dispatch.lease_expires_at <= v_now
+           )
+         ORDER BY ar.created_at, ar.analysis_run_pk
+         LIMIT 1
+         FOR UPDATE OF ar, dispatch SKIP LOCKED;
+
+        EXIT WHEN NOT FOUND;
+
+        IF v_previous_processing_run_pk IS NOT NULL THEN
+            UPDATE ops.processing_run AS processing_attempt
+               SET status = 'failed',
+                   finished_at = v_now,
+                   error_code = 'WORKER_LEASE_EXPIRED',
+                   error_message = 'Worker lease expired before completion.',
+                   run_metadata = COALESCE(run_metadata, '{}'::jsonb)
+                       || jsonb_build_object('lease_expired_at', v_now)
+             WHERE processing_attempt.processing_run_pk = v_previous_processing_run_pk
+               AND processing_attempt.status IN ('queued', 'running');
+        END IF;
+
+        UPDATE workspace.analysis_run_dispatch AS dispatch
+           SET processing_run_pk = NULL,
+               claimed_by = NULL,
+               claimed_at = NULL,
+               heartbeat_at = NULL,
+               lease_expires_at = NULL,
+               last_error_code = 'WORKER_MAX_ATTEMPTS_EXCEEDED',
+               last_error_message = 'The worker lease expired after two attempts.'
+         WHERE dispatch.analysis_run_pk = v_analysis_run_pk;
+
+        UPDATE workspace.analysis_run AS ar
+           SET status = 'failed',
+               completed_at = v_now,
+               error_code = 'WORKER_MAX_ATTEMPTS_EXCEEDED',
+               error_message = '분석 작업이 시간 내에 완료되지 않았습니다. 다시 시도해 주세요.'
+         WHERE ar.analysis_run_pk = v_analysis_run_pk;
+    END LOOP;
+
+    SELECT
+        ar.analysis_run_pk,
+        dispatch.source_bucket,
+        dispatch.source_object_key,
+        dispatch.source_content_sha256,
+        dispatch.processing_run_pk,
+        dispatch.attempt_count
+      INTO
+        v_analysis_run_pk,
+        v_source_bucket,
+        v_source_object_key,
+        v_source_content_sha256,
+        v_previous_processing_run_pk,
+        v_attempt_count
+      FROM workspace.analysis_run AS ar
+      JOIN workspace.analysis_run_dispatch AS dispatch
+        ON dispatch.analysis_run_pk = ar.analysis_run_pk
+     WHERE dispatch.attempt_count < 2
+       AND (
+            (ar.status = 'queued' AND ar.expires_at > v_now)
+            OR (
+                ar.status = 'running'
+                AND (
+                    dispatch.processing_run_pk IS NULL
+                    OR dispatch.lease_expires_at <= v_now
+                )
+            )
+       )
+     ORDER BY ar.created_at, ar.analysis_run_pk
+     LIMIT 1
+     FOR UPDATE OF ar, dispatch SKIP LOCKED;
+
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    IF v_previous_processing_run_pk IS NOT NULL THEN
+        UPDATE ops.processing_run AS processing_attempt
+           SET status = 'failed',
+               finished_at = v_now,
+               error_code = 'WORKER_LEASE_EXPIRED',
+               error_message = 'Worker lease expired before completion.',
+               run_metadata = COALESCE(run_metadata, '{}'::jsonb)
+                   || jsonb_build_object('lease_expired_at', v_now)
+         WHERE processing_attempt.processing_run_pk = v_previous_processing_run_pk
+           AND processing_attempt.status IN ('queued', 'running');
+    END IF;
+
+    v_attempt_count := v_attempt_count + 1;
+    v_lease_expires_at := v_now + make_interval(secs => p_lease_seconds);
+
+    INSERT INTO ops.processing_run AS processing_attempt (
+        source_analysis_run_id,
+        run_type,
+        status,
+        started_at,
+        run_metadata
+    ) VALUES (
+        v_analysis_run_pk,
+        'analysis',
+        'running',
+        v_now,
+        jsonb_build_object(
+            'attempt_no', v_attempt_count,
+            'worker_id', btrim(p_worker_id),
+            'lease_seconds', p_lease_seconds
+        )
+    )
+    RETURNING processing_attempt.processing_run_pk INTO v_processing_run_pk;
+
+    UPDATE workspace.analysis_run_dispatch AS dispatch
+       SET attempt_count = v_attempt_count,
+           processing_run_pk = v_processing_run_pk,
+           claimed_by = btrim(p_worker_id),
+           claimed_at = v_now,
+           heartbeat_at = v_now,
+           lease_expires_at = v_lease_expires_at,
+           last_error_code = NULL,
+           last_error_message = NULL
+     WHERE dispatch.analysis_run_pk = v_analysis_run_pk;
+
+    UPDATE workspace.analysis_run AS ar
+       SET status = 'running',
+           started_at = COALESCE(started_at, v_now),
+           completed_at = NULL,
+           error_code = NULL,
+           error_message = NULL
+     WHERE ar.analysis_run_pk = v_analysis_run_pk;
+
+    RETURN QUERY
+    SELECT
+        v_analysis_run_pk,
+        v_source_bucket,
+        v_source_object_key,
+        v_source_content_sha256,
+        v_processing_run_pk,
+        v_attempt_count,
+        v_lease_expires_at,
+        v_heartbeat_seconds;
 END;
 $$;
 
@@ -247,6 +552,20 @@ $$;
 -- exact idempotency replay, stale reconciliation, active queue check, then
 -- active result-session check.  The immutable source identity is held in the
 -- existing dispatch record and remains compatible with migration 25 guards.
+--
+-- FastAPI must derive p_source_object_key deterministically from the owner and
+-- Idempotency-Key before this call (rather than from a speculative run UUID).
+-- This function is the sole run-ID allocator: on both a new reservation and
+-- an exact replay the handler must thread the returned analysis_run_id through
+-- source_artifact registration, queued finalisation, the 202 body, and later
+-- status reads.  A locally generated UUID must never be used as a substitute.
+-- The final JSONB return column was added while v0.2 was still unreleased.
+-- Drop the prior signature explicitly so replaying this migration can replace
+-- the table return type on an already-migrated development database.
+DROP FUNCTION IF EXISTS workspace.reserve_analysis_upload_v2(
+    UUID, UUID, TEXT, TEXT, BIGINT, TEXT, TEXT, TEXT, INTEGER
+);
+
 CREATE OR REPLACE FUNCTION workspace.reserve_analysis_upload_v2(
     p_user_id UUID,
     p_idempotency_key UUID,
@@ -265,7 +584,8 @@ RETURNS TABLE (
     error_code TEXT,
     error_message TEXT,
     created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ
+    updated_at TIMESTAMPTZ,
+    cleanup_objects JSONB
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -276,6 +596,7 @@ DECLARE
     v_existing_dispatch workspace.analysis_run_dispatch%ROWTYPE;
     v_new_run_id UUID := gen_random_uuid();
     v_now TIMESTAMPTZ := clock_timestamp();
+    v_cleanup_objects JSONB := '[]'::jsonb;
 BEGIN
     IF p_user_id IS NULL OR p_idempotency_key IS NULL
        OR btrim(COALESCE(p_original_filename, '')) = ''
@@ -323,6 +644,25 @@ BEGIN
             RAISE EXCEPTION 'IDEMPOTENCY_KEY_CONFLICT' USING ERRCODE = '23505';
         END IF;
 
+        -- An exact retry of an unfinished upload is a resume operation.  Give
+        -- the deterministic Storage write a fresh window before releasing the
+        -- per-owner lifecycle lock so a concurrent current-state read cannot
+        -- immediately expire the reservation.
+        IF v_existing_run.status = 'uploading' THEN
+            UPDATE workspace.analysis_run
+               SET expires_at = v_now + make_interval(secs => p_upload_ttl_seconds)
+             WHERE analysis_run_pk = v_existing_run.analysis_run_pk
+            RETURNING * INTO v_existing_run;
+        END IF;
+
+        IF v_existing_run.status = 'cleanup_pending' THEN
+            v_cleanup_objects := jsonb_build_array(jsonb_build_object(
+                'analysis_run_pk', v_existing_run.analysis_run_pk,
+                'source_bucket', v_existing_dispatch.source_bucket,
+                'source_object_key', v_existing_dispatch.source_object_key
+            ));
+        END IF;
+
         RETURN QUERY SELECT
             v_existing_run.analysis_run_pk,
             v_existing_run.status,
@@ -330,11 +670,21 @@ BEGIN
             v_existing_run.error_code,
             v_existing_run.error_message,
             v_existing_run.created_at,
-            v_existing_run.updated_at;
+            v_existing_run.updated_at,
+            v_cleanup_objects;
         RETURN;
     END IF;
 
-    PERFORM workspace.reconcile_stale_analysis_runs_for_user_v2(p_user_id);
+    SELECT COALESCE(
+               jsonb_agg(jsonb_build_object(
+                   'analysis_run_pk', cleanup.analysis_run_id,
+                   'source_bucket', cleanup.source_bucket,
+                   'source_object_key', cleanup.source_object_key
+               )),
+               '[]'::jsonb
+           )
+      INTO v_cleanup_objects
+      FROM workspace.reconcile_stale_analysis_runs_for_user_v2(p_user_id) AS cleanup;
 
     IF EXISTS (
         SELECT 1
@@ -389,7 +739,8 @@ BEGIN
         v_existing_run.error_code,
         v_existing_run.error_message,
         v_existing_run.created_at,
-        v_existing_run.updated_at;
+        v_existing_run.updated_at,
+        v_cleanup_objects;
 END;
 $$;
 
@@ -483,6 +834,9 @@ BEGIN
            AND c.analysis_completed_at IS NOT NULL
            AND c.analysis_completed_at <= v_snapshot_at
            AND c.retention_expires_at > v_snapshot_at
+           -- A signed cursor stabilizes ordering; it must never extend the
+           -- hard retention boundary after the underlying case expires.
+           AND c.retention_expires_at > clock_timestamp()
            -- Historical session eligibility is evaluated at snapshot_at, not
            -- against a later close that happens between cursor pages.
            AND NOT EXISTS (
@@ -537,9 +891,9 @@ BEGIN
 END;
 $$;
 
--- Current is a single transaction snapshot.  Stale uploading/queued rows are
--- reconciled before selection; a database failure therefore cannot resemble
--- the public idle state.
+-- Current is a single transaction snapshot.  Stale uploading/queued rows and
+-- exhausted running attempts are reconciled before selection; a database
+-- failure therefore cannot resemble the public idle state.
 CREATE OR REPLACE FUNCTION api.rpc_get_analysis_current_v2(
     p_user_id UUID
 )
@@ -554,7 +908,9 @@ DECLARE
     v_session RECORD;
 BEGIN
     PERFORM workspace.lock_analysis_lifecycle_user_v2(p_user_id);
-    PERFORM workspace.reconcile_stale_analysis_runs_for_user_v2(p_user_id);
+    PERFORM workspace.reconcile_stale_analysis_runs_for_user_core_v2(
+        p_user_id, FALSE
+    );
 
     UPDATE result.analysis_session
        SET status = 'expired', updated_at = v_now
@@ -572,11 +928,7 @@ BEGIN
        AND (
            (run.status = 'uploading' AND run.expires_at > v_now)
            OR (run.status = 'queued' AND run.expires_at > v_now)
-           OR (
-               run.status = 'running'
-               AND dispatch.processing_run_pk IS NOT NULL
-               AND dispatch.lease_expires_at > v_now
-           )
+           OR run.status = 'running'
        )
      ORDER BY run.created_at DESC, run.analysis_run_pk DESC
      LIMIT 1;
@@ -636,6 +988,27 @@ REVOKE SELECT ON ALL TABLES IN SCHEMA kb FROM authenticated;
 REVOKE USAGE ON SCHEMA kb FROM authenticated;
 DROP POLICY IF EXISTS user_profile_select_own ON app.user_profile;
 
+-- v0.2 browser clients use Supabase for Auth only.  Retire every legacy
+-- PostgREST/Realtime business surface so raw result_data, candidate internals,
+-- and the case-id based close RPC cannot bypass FastAPI's strict DTO and
+-- owner/session contracts.  Keep the objects themselves for rollback and
+-- trusted migration compatibility; only authenticated-browser privileges go.
+REVOKE SELECT ON api.v_active_analysis_session,
+                 api.v_my_analysis_history,
+                 api.v_conversation_messages
+FROM authenticated;
+REVOKE EXECUTE ON FUNCTION api.rpc_get_analysis_result(UUID),
+                           api.rpc_get_sim_candidate_detail(UUID),
+                           api.rpc_touch_active_analysis_session(UUID),
+                           api.rpc_close_active_analysis_session(UUID)
+FROM authenticated;
+REVOKE SELECT (
+    analysis_run_pk, status, analysis_case_pk,
+    error_code, error_message, updated_at
+) ON workspace.analysis_run FROM authenticated;
+DROP POLICY IF EXISTS analysis_run_select_own ON workspace.analysis_run;
+REVOKE USAGE ON SCHEMA app, workspace, result, api FROM authenticated;
+
 DO $$
 DECLARE
     v_table TEXT;
@@ -664,7 +1037,9 @@ SET LOCAL ROLE postgres;
 
 REVOKE ALL ON FUNCTION result.validate_analysis_session_owner_v2() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION workspace.lock_analysis_lifecycle_user_v2(UUID) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION workspace.reconcile_stale_analysis_runs_for_user_core_v2(UUID, BOOLEAN) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION workspace.reconcile_stale_analysis_runs_for_user_v2(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION workspace.claim_next_analysis_run(TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION workspace.reserve_analysis_upload_v2(UUID, UUID, TEXT, TEXT, BIGINT, TEXT, TEXT, TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION api.rpc_close_analysis_session_v2(UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION api.rpc_get_analysis_history_v2(UUID, TIMESTAMPTZ, TIMESTAMPTZ, UUID) FROM PUBLIC, anon, authenticated;
@@ -672,6 +1047,7 @@ REVOKE ALL ON FUNCTION api.rpc_get_analysis_current_v2(UUID) FROM PUBLIC, anon, 
 
 GRANT USAGE ON SCHEMA api, workspace TO service_role;
 GRANT EXECUTE ON FUNCTION workspace.reconcile_stale_analysis_runs_for_user_v2(UUID),
+                         workspace.claim_next_analysis_run(TEXT, INTEGER),
                          workspace.reserve_analysis_upload_v2(UUID, UUID, TEXT, TEXT, BIGINT, TEXT, TEXT, TEXT, INTEGER),
                          api.rpc_close_analysis_session_v2(UUID, UUID),
                          api.rpc_get_analysis_history_v2(UUID, TIMESTAMPTZ, TIMESTAMPTZ, UUID),

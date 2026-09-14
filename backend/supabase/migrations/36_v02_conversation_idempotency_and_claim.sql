@@ -237,6 +237,21 @@ BEGIN
         RAISE EXCEPTION 'ANALYSIS_SESSION_EXPIRED' USING ERRCODE = 'P0002';
     END IF;
 
+    -- Resolve and lock the requested assistant before writing the retry
+    -- idempotency ledger.  Otherwise a guessed/nonexistent UUID fails through
+    -- the ledger FK as 23503 and the API incorrectly reports a DB outage
+    -- instead of the owner-scoped 404 contract.
+    SELECT message.*
+      INTO v_message
+      FROM result.conversation_message AS message
+     WHERE message.message_pk = p_assistant_message_id
+       AND message.analysis_session_pk = v_session.analysis_session_pk
+       AND message.role = 'assistant'
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'CONVERSATION_NOT_FOUND' USING ERRCODE = 'P0002';
+    END IF;
+
     -- The legacy retry function has the mature retry budget/fence handling.
     -- This insert is in the same transaction, so any rejection rolls it back.
     INSERT INTO workspace.conversation_retry_idempotency_v2 (
@@ -277,6 +292,7 @@ BEGIN
         'reply_to_message_id', message.reply_to_message_pk,
         'retry_count', message.auto_retry_count + message.manual_retry_count,
         'error_code', message.error_code,
+        'error_message', message.error_message,
         'created_at', message.created_at,
         'updated_at', message.updated_at
     ) INTO v_payload
@@ -336,7 +352,8 @@ BEGIN
         SELECT message.message_pk, message.sequence_no, message.role,
                message.content, message.status, message.reply_to_message_pk,
                message.auto_retry_count + message.manual_retry_count AS retry_count,
-               message.error_code, message.created_at, message.updated_at
+               message.error_code, message.error_message,
+               message.created_at, message.updated_at
           FROM result.conversation_message AS message
           JOIN result.analysis_session AS session
             ON session.analysis_session_pk = message.analysis_session_pk
@@ -378,6 +395,7 @@ BEGIN
                'reply_to_message_id', chronological.reply_to_message_pk,
                'retry_count', chronological.retry_count,
                'error_code', chronological.error_code,
+               'error_message', chronological.error_message,
                'created_at', chronological.created_at,
                'updated_at', chronological.updated_at
            ) ORDER BY chronological.sequence_no, chronological.message_pk), '[]'::jsonb),
@@ -462,8 +480,15 @@ BEGIN
            last_error_code = 'CHAT_RETENTION_EXPIRED',
            last_error_message = 'Conversation retention expired before completion.'
       FROM result.conversation_message AS message
+      JOIN result.analysis_session AS session
+        ON session.analysis_session_pk = message.analysis_session_pk
+      JOIN result.analysis_case AS analysis_case
+        ON analysis_case.analysis_case_pk = session.analysis_case_pk
      WHERE message.message_pk = dispatch.assistant_message_pk
        AND message.status = 'failed'
+       AND message.error_code = 'CHAT_RETENTION_EXPIRED'
+       AND analysis_case.analysis_case_pk = dispatch.analysis_case_pk
+       AND analysis_case.retention_expires_at <= v_now
        AND dispatch.last_error_code IS DISTINCT FROM 'CHAT_RETENTION_EXPIRED';
 
     -- Second expired lease is terminal; first expired lease can be reclaimed.
@@ -599,12 +624,12 @@ BEGIN
     UPDATE workspace.conversation_message_dispatch AS dispatch
        SET heartbeat_at = v_now,
            lease_expires_at = v_now + make_interval(secs => p_lease_seconds)
-      FROM result.conversation_message AS message
-      JOIN result.analysis_case AS analysis_case
-        ON analysis_case.analysis_case_pk = dispatch.analysis_case_pk
+      FROM result.conversation_message AS message,
+           result.analysis_case AS analysis_case
      WHERE dispatch.assistant_message_pk = p_assistant_message_id
        AND dispatch.processing_run_pk = p_processing_run_pk
        AND message.message_pk = dispatch.assistant_message_pk
+       AND analysis_case.analysis_case_pk = dispatch.analysis_case_pk
        AND message.status = 'generating'
        AND analysis_case.retention_expires_at > v_now
        AND dispatch.lease_expires_at > v_now
@@ -653,11 +678,21 @@ BEGIN
 
     SELECT count(DISTINCT evidence.evidence_snapshot_pk)
       INTO v_matched_count
-      FROM result.evidence_snapshot AS evidence
+     FROM result.evidence_snapshot AS evidence
      WHERE evidence.analysis_case_pk = v_case_id
        AND evidence.usage_scope = 'RESULT'
        AND evidence.sim_candidate_pk IS NULL
-       AND evidence.evidence_snapshot_pk = ANY(COALESCE(p_evidence_ids, '{}'::uuid[]));
+       AND evidence.evidence_snapshot_pk = ANY(COALESCE(p_evidence_ids, '{}'::uuid[]))
+       AND EXISTS (
+           SELECT 1
+             FROM result.axis_result AS axis
+             CROSS JOIN LATERAL result.axis_public_evidence_ids_v2(
+                 axis.axis_type, axis.public_detail
+             ) AS referenced
+            WHERE axis.axis_result_pk = evidence.axis_result_pk
+              AND axis.analysis_case_pk = evidence.analysis_case_pk
+              AND referenced.evidence_id = evidence.evidence_snapshot_pk::text
+       );
     IF v_requested_count <> v_matched_count
        OR v_requested_count <> cardinality(ARRAY(SELECT DISTINCT unnest(COALESCE(p_evidence_ids, '{}'::uuid[])))) THEN
         RAISE EXCEPTION 'CHAT_EVIDENCE_NOT_IN_PUBLIC_ALLOW_LIST' USING ERRCODE = '23514';
@@ -680,11 +715,21 @@ BEGIN
         message_pk, evidence_snapshot_pk, reference_role
     )
     SELECT p_assistant_message_id, evidence.evidence_snapshot_pk, 'chat'
-      FROM result.evidence_snapshot AS evidence
+     FROM result.evidence_snapshot AS evidence
      WHERE evidence.analysis_case_pk = v_case_id
        AND evidence.usage_scope = 'RESULT'
        AND evidence.sim_candidate_pk IS NULL
-       AND evidence.evidence_snapshot_pk = ANY(COALESCE(p_evidence_ids, '{}'::uuid[]));
+       AND evidence.evidence_snapshot_pk = ANY(COALESCE(p_evidence_ids, '{}'::uuid[]))
+       AND EXISTS (
+           SELECT 1
+             FROM result.axis_result AS axis
+             CROSS JOIN LATERAL result.axis_public_evidence_ids_v2(
+                 axis.axis_type, axis.public_detail
+             ) AS referenced
+            WHERE axis.axis_result_pk = evidence.axis_result_pk
+              AND axis.analysis_case_pk = evidence.analysis_case_pk
+              AND referenced.evidence_id = evidence.evidence_snapshot_pk::text
+       );
     UPDATE workspace.conversation_message_dispatch
        SET processing_run_pk = NULL, claimed_by = NULL, claimed_at = NULL,
            heartbeat_at = NULL, lease_expires_at = NULL, result_payload = NULL,

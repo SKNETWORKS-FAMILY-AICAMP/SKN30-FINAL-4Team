@@ -64,6 +64,14 @@ class MigrationContractTest:
         "30_serialise_existing_kb_embedding_activation.sql",
         "31_existing_profile_model1_classification.sql",
         "32_existing_profile_model1_classification_hardening.sql",
+        "33_v02_lifecycle_and_fastapi_boundary.sql",
+        "34_v02_public_result_projection_and_evidence.sql",
+        "35_v02_partial_axis_retrieval.sql",
+        "36_v02_conversation_idempotency_and_claim.sql",
+        "37_v02_global_queue_admission.sql",
+        "38_model1_runtime_manifest_refresh.sql",
+        "39_v02_atomic_upload_finalization.sql",
+        "40_v02_embedding_execution_provenance.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -447,7 +455,10 @@ class MigrationContractTest:
             self.MIGRATIONS_DIR
             / "32_existing_profile_model1_classification_hardening.sql"
         ).read_text()
-        classification_all = legacy_classification + classification
+        runtime_refresh = (
+            self.MIGRATIONS_DIR / "38_model1_runtime_manifest_refresh.sql"
+        ).read_text()
+        classification_all = legacy_classification + classification + runtime_refresh
 
         # m31 is replayed before m32 on every ledgerless apply. It must not
         # commit an older trigger/projection boundary while m32 already exists.
@@ -469,8 +480,8 @@ class MigrationContractTest:
         assert "prediction_status IN ('판단보류', '참고용', '신뢰')" in classification_all
         assert "uq_retrieval_one_active_classification_configuration" in classification_all
         assert "runtime_manifest_sha256" in classification_all
-        assert "d44007342e06d7f20039d53e140e04221e8029b4cd6735dd3fbacc6864eb7912" in classification_all
-        assert "pre-review-existing-model1-runtime-v2" in classification_all
+        assert "2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60" in classification_all
+        assert "pre-review-existing-model1-runtime-v3" in classification_all
         assert "uq_retrieval_classification_configuration_identity" in classification
         assert "CLASSIFICATION_CONFIGURATION_IDENTITY_IMMUTABLE" in classification
         assert "CLASSIFICATION_CONFIGURATION_EMPTY_CURRENT_CORPUS" in classification
@@ -522,6 +533,14 @@ class MigrationContractTest:
         assert "trg_kb_source_profile_classification_notice_activation" in classification
         assert "DROP TRIGGER IF EXISTS trg_kb_support_component_classification_activation" in classification
         assert "CREATE TRIGGER trg_kb_support_component_classification_activation" not in classification
+
+        # A runtime/code change creates a new immutable identity.  It does
+        # not rewrite historic configurations or their classification rows.
+        assert "INSERT INTO retrieval.classification_configuration" in runtime_refresh
+        assert "ON CONFLICT DO NOTHING" in runtime_refresh
+        assert "runtime refreshes register a new inactive configuration" in runtime_refresh
+        assert "UPDATE retrieval.classification_configuration" not in runtime_refresh
+        assert "existing_profile_classification" not in runtime_refresh
 
     def test_storage_owner_windows_preserve_project_function_ownership(self):
         """Storage policy DDL needs its official table owner, not postgres."""
@@ -761,6 +780,18 @@ class MigrationContractTest:
             "unfenced live processing attempt was accepted",
         ):
             assert negative_case in runtime
+        # The queue runtime intentionally materializes with the legacy fenced
+        # writer, then upgrades a real candidate/evidence row only for its v2
+        # service-role read checks.  This keeps both contracts observable.
+        for v2_upgrade_token in (
+            "runtime/candidate/%s/evidence/%s",
+            "evidence_role = 'RIGHT'",
+            "public_metadata = jsonb_build_object(",
+            "public_axes = jsonb_build_object(",
+            "v_candidate_evidence_id::text",
+            "candidate detail RPC omitted linked evidence",
+        ):
+            assert v2_upgrade_token in runtime
 
     def test_result_read_retention_and_candidate_evidence_contract(self):
         """Result reads hide expired history and expose only linked SIM evidence."""

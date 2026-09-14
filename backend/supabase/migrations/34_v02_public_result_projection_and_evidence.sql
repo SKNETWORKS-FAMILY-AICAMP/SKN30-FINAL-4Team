@@ -317,12 +317,22 @@ BEGIN
         PERFORM result.assert_nullable_text_v2(p_detail->'reason', 'fit.reason');
         IF NOT result.jsonb_has_exact_keys_v2(p_detail->'left', ARRAY['value_summary', 'evidence_ids'])
            OR NOT result.jsonb_has_exact_keys_v2(p_detail->'right', ARRAY['value_summary', 'evidence_ids'])
-           OR jsonb_typeof(p_detail#>'{left,value_summary}') <> 'string'
-           OR jsonb_typeof(p_detail#>'{right,value_summary}') <> 'string'
            OR jsonb_typeof(p_detail#>'{left,evidence_ids}') <> 'array'
            OR jsonb_typeof(p_detail#>'{right,evidence_ids}') <> 'array'
            OR jsonb_typeof(p_detail->'evidence_ids') <> 'array' THEN
             RAISE EXCEPTION 'INVALID_FIT_PUBLIC_SIDE' USING ERRCODE = '22023';
+        END IF;
+        PERFORM result.assert_nullable_text_v2(
+            p_detail#>'{left,value_summary}', 'fit.left.value_summary'
+        );
+        PERFORM result.assert_nullable_text_v2(
+            p_detail#>'{right,value_summary}', 'fit.right.value_summary'
+        );
+        IF ((p_detail->>'comparison_performed')::boolean = TRUE
+                AND p_status NOT IN ('FIT', 'NEEDS_REVIEW', 'CONFLICT'))
+           OR ((p_detail->>'comparison_performed')::boolean = FALSE
+                AND p_status NOT IN ('INSUFFICIENT', 'NOT_APPLICABLE')) THEN
+            RAISE EXCEPTION 'FIT_STATUS_COMPARISON_MISMATCH' USING ERRCODE = '23514';
         END IF;
         IF (p_detail->>'comparison_performed')::boolean = FALSE
            AND (jsonb_array_length(p_detail#>'{left,evidence_ids}') <> 0
@@ -478,11 +488,18 @@ BEGIN
        AND NEW.sim_summary IS NULL THEN
         RETURN NEW;
     END IF;
-    IF NEW.sim_status NOT IN ('completed', 'skipped')
+    -- A completed retrieval can be empty without being skipped.  Conversely,
+    -- a skipped section is only the no-retrieval-input case.  Keep this
+    -- pairing strict so callers cannot use a terminal reason to disguise an
+    -- incomplete or failed retrieval.
+    IF NEW.sim_status IS NULL
+       OR NEW.sim_status NOT IN ('completed', 'skipped')
        OR NEW.sim_summary IS NULL
+       OR (NEW.sim_status = 'completed'
+           AND NEW.sim_reason_code IS NOT NULL
+           AND NEW.sim_reason_code <> 'KB_EMPTY')
        OR (NEW.sim_status = 'skipped'
-           AND NEW.sim_reason_code NOT IN ('RETRIEVAL_INPUT_MISSING', 'KB_EMPTY'))
-       OR (NEW.sim_status = 'completed' AND NEW.sim_reason_code IS NOT NULL) THEN
+           AND NEW.sim_reason_code IS DISTINCT FROM 'RETRIEVAL_INPUT_MISSING') THEN
         RAISE EXCEPTION 'INVALID_SIM_SECTION' USING ERRCODE = '22023';
     END IF;
     RETURN NEW;
@@ -544,9 +561,15 @@ BEGIN
         RAISE EXCEPTION 'INVALID_ANALYSIS_RESULT_V2' USING ERRCODE = '22023';
     END IF;
 
-    IF p_result#>>'{sim,status}' NOT IN ('completed', 'skipped')
+    IF p_result#>>'{sim,status}' IS NULL
+       OR p_result#>>'{sim,status}' NOT IN ('completed', 'skipped')
        OR jsonb_typeof(p_result#>'{sim,reason_code}') NOT IN ('string','null')
-       OR jsonb_typeof(p_result#>'{sim,summary}') <> 'string' THEN
+       OR jsonb_typeof(p_result#>'{sim,summary}') <> 'string'
+       OR (p_result#>>'{sim,status}' = 'completed'
+           AND p_result#>>'{sim,reason_code}' IS NOT NULL
+           AND p_result#>>'{sim,reason_code}' <> 'KB_EMPTY')
+       OR (p_result#>>'{sim,status}' = 'skipped'
+           AND p_result#>>'{sim,reason_code}' IS DISTINCT FROM 'RETRIEVAL_INPUT_MISSING') THEN
         RAISE EXCEPTION 'INVALID_SIM_SECTION' USING ERRCODE = '22023';
     END IF;
 
@@ -918,6 +941,83 @@ $$;
 -- It exposes no scores, fact ids, raw diagnostics, or source coordinates.
 -- --------------------------------------------------------------------------
 
+-- Return only evidence IDs that the validated public detail actually cites.
+-- This relational allow-list prevents a legacy/orphan RESULT row from
+-- becoming public merely because it shares the same analysis case.
+CREATE OR REPLACE FUNCTION result.axis_public_evidence_ids_v2(
+    p_axis_type TEXT,
+    p_detail JSONB
+)
+RETURNS TABLE (evidence_id TEXT)
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog
+AS $$
+    SELECT DISTINCT referenced.evidence_id
+      FROM (
+          SELECT top_level.value AS evidence_id
+            FROM jsonb_array_elements_text(
+                CASE WHEN jsonb_typeof(p_detail->'evidence_ids') = 'array'
+                     THEN p_detail->'evidence_ids' ELSE '[]'::jsonb END
+            ) AS top_level(value)
+          UNION ALL
+          SELECT nested.value
+            FROM jsonb_array_elements(
+                CASE WHEN p_axis_type = 'CPL'
+                          AND jsonb_typeof(p_detail->'values') = 'array'
+                     THEN p_detail->'values' ELSE '[]'::jsonb END
+            ) AS item(value)
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+                CASE WHEN jsonb_typeof(item.value->'evidence_ids') = 'array'
+                     THEN item.value->'evidence_ids' ELSE '[]'::jsonb END
+            ) AS nested(value)
+          UNION ALL
+          SELECT left_side.value
+            FROM jsonb_array_elements_text(
+                CASE WHEN p_axis_type = 'FIT'
+                          AND jsonb_typeof(p_detail#>'{left,evidence_ids}') = 'array'
+                     THEN p_detail#>'{left,evidence_ids}' ELSE '[]'::jsonb END
+            ) AS left_side(value)
+          UNION ALL
+          SELECT right_side.value
+            FROM jsonb_array_elements_text(
+                CASE WHEN p_axis_type = 'FIT'
+                          AND jsonb_typeof(p_detail#>'{right,evidence_ids}') = 'array'
+                     THEN p_detail#>'{right,evidence_ids}' ELSE '[]'::jsonb END
+            ) AS right_side(value)
+      ) AS referenced
+     WHERE referenced.evidence_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+$$;
+
+CREATE OR REPLACE FUNCTION result.sim_public_evidence_ids_v2(
+    p_public_axes JSONB
+)
+RETURNS TABLE (evidence_id TEXT)
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog
+AS $$
+    SELECT DISTINCT referenced.evidence_id
+      FROM jsonb_each(
+          CASE WHEN jsonb_typeof(p_public_axes) = 'object'
+               THEN p_public_axes ELSE '{}'::jsonb END
+      ) AS axis(axis_name, axis_value)
+      CROSS JOIN LATERAL (
+          SELECT request_side.value AS evidence_id
+            FROM jsonb_array_elements_text(
+                CASE WHEN jsonb_typeof(axis.axis_value->'request_evidence_ids') = 'array'
+                     THEN axis.axis_value->'request_evidence_ids' ELSE '[]'::jsonb END
+            ) AS request_side(value)
+          UNION ALL
+          SELECT existing_side.value
+            FROM jsonb_array_elements_text(
+                CASE WHEN jsonb_typeof(axis.axis_value->'existing_evidence_ids') = 'array'
+                     THEN axis.axis_value->'existing_evidence_ids' ELSE '[]'::jsonb END
+            ) AS existing_side(value)
+      ) AS referenced
+     WHERE referenced.evidence_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+$$;
+
 CREATE OR REPLACE FUNCTION api.public_analysis_projection_v2(
     p_analysis_case_id UUID,
     p_user_id UUID
@@ -1036,9 +1136,19 @@ BEGIN
               'excerpt', evidence.context_excerpt
           ) ORDER BY evidence.created_at, evidence.evidence_snapshot_pk) AS items
             FROM result.evidence_snapshot AS evidence
+            JOIN result.axis_result AS axis
+              ON axis.axis_result_pk = evidence.axis_result_pk
+             AND axis.analysis_case_pk = evidence.analysis_case_pk
            WHERE evidence.analysis_case_pk = analysis_case.analysis_case_pk
              AND evidence.usage_scope = 'RESULT'
              AND evidence.sim_candidate_pk IS NULL
+             AND EXISTS (
+                 SELECT 1
+                   FROM result.axis_public_evidence_ids_v2(
+                       axis.axis_type, axis.public_detail
+                   ) AS referenced
+                  WHERE referenced.evidence_id = evidence.evidence_snapshot_pk::text
+             )
       ) AS evidence ON true
      WHERE analysis_case.analysis_case_pk = p_analysis_case_id
        AND analysis_case.user_id = p_user_id
@@ -1097,6 +1207,7 @@ BEGIN
       LEFT JOIN LATERAL (
           SELECT jsonb_agg(jsonb_build_object(
               'evidence_id', evidence.evidence_snapshot_pk,
+              'axis_type', 'SIM',
               'side', lower(evidence.side),
               'field_name', evidence.field_name,
               'raw_value', evidence.raw_value,
@@ -1106,6 +1217,11 @@ BEGIN
            WHERE evidence.analysis_case_pk = candidate.analysis_case_pk
              AND evidence.sim_candidate_pk = candidate.sim_candidate_pk
              AND evidence.usage_scope = 'RESULT'
+             AND EXISTS (
+                 SELECT 1
+                   FROM result.sim_public_evidence_ids_v2(candidate.public_axes) AS referenced
+                  WHERE referenced.evidence_id = evidence.evidence_snapshot_pk::text
+             )
       ) AS evidence ON true
      WHERE candidate.sim_candidate_pk = p_sim_candidate_id
        AND analysis_case.user_id = p_user_id
@@ -1126,6 +1242,8 @@ REVOKE ALL ON FUNCTION result.assert_text_array_v2(JSONB, TEXT) FROM PUBLIC, ano
 REVOKE ALL ON FUNCTION result.assert_public_evidence_list_v2(JSONB, UUID, UUID, UUID, TEXT, TEXT, TEXT[], TEXT[], TEXT) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION result.assert_public_detail_shape_v2(TEXT, TEXT, JSONB) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION result.validate_evidence_snapshot_context_v2() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION result.axis_public_evidence_ids_v2(TEXT, JSONB) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION result.sim_public_evidence_ids_v2(JSONB) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION result.validate_axis_public_detail_v2() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION result.validate_sim_candidate_public_v2() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION result.validate_analysis_case_sim_public_v2() FROM PUBLIC, anon, authenticated, service_role;

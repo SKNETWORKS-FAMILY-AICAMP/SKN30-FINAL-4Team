@@ -74,9 +74,9 @@ INSERT INTO retrieval.classification_configuration (
 VALUES (
     'model_1_support_type',
     '8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779',
-    'd44007342e06d7f20039d53e140e04221e8029b4cd6735dd3fbacc6864eb7912',
+    '2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60',
     'existing-profile-model1-input-v1',
-    'pre-review-existing-model1-runtime-v2',
+    'pre-review-existing-model1-runtime-v3',
     FALSE
 )
 ON CONFLICT DO NOTHING;

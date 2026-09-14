@@ -35,10 +35,10 @@ BEGIN
     VALUES (v_user_id, 'queue-quarantine@example.invalid', now(), now());
 
     INSERT INTO workspace.analysis_run (
-        analysis_run_pk, user_id, status, original_filename,
+        analysis_run_pk, user_id, idempotency_key, status, original_filename,
         declared_mime_type, declared_size_bytes
     ) VALUES (
-        v_run_id, v_user_id, 'uploading', 'legacy.hwpx',
+        v_run_id, v_user_id, v_run_id, 'uploading', 'legacy.hwpx',
         'application/vnd.hancom.hwpx', 4
     );
     INSERT INTO workspace.analysis_run_dispatch (
@@ -121,10 +121,10 @@ BEGIN
         v_dispatch_key := v_run_id || '/source/' || repeat('a', 64) || '.hwpx';
 
         INSERT INTO workspace.analysis_run (
-            analysis_run_pk, user_id, status, original_filename,
+            analysis_run_pk, user_id, idempotency_key, status, original_filename,
             declared_mime_type, declared_size_bytes
         ) VALUES (
-            v_run_id, v_user_id, 'uploading', 'mismatch.hwpx',
+            v_run_id, v_user_id, v_run_id, 'uploading', 'mismatch.hwpx',
             'application/vnd.hancom.hwpx', 4
         );
         INSERT INTO workspace.analysis_run_dispatch (
@@ -175,6 +175,7 @@ DECLARE
     v_first RECORD;
     v_second RECORD;
     v_case_id UUID;
+    v_session_id UUID;
     v_existing_source_profile_id TEXT;
     v_existing_profile_version_pk UUID;
     v_expected_notice_title TEXT;
@@ -187,9 +188,15 @@ DECLARE
     v_candidate_issuing_organization TEXT;
     v_candidate_source_url TEXT;
     v_candidate_notice_status TEXT;
+    v_candidate_evidence_id UUID;
     v_evidence_candidate_id UUID;
     v_evidence_profile_version_pk UUID;
     v_result_payload JSONB;
+    v_ml_result JSONB := '{
+      "model_1":{"status":"UNAVAILABLE","support_type":null,"message":"런타임 테스트에서 실행하지 않았습니다.","reason_code":"ML_RUNTIME_MISSING"},
+      "model_2":{"status":"UNAVAILABLE","predicted_amount_won":null,"message":"런타임 테스트에서 실행하지 않았습니다.","reason_code":"ML_RUNTIME_MISSING"},
+      "model_3":{"status":"UNAVAILABLE","anomaly_level":null,"cause_axes":[],"message":"런타임 테스트에서 실행하지 않았습니다.","reason_code":"ML_RUNTIME_MISSING"}
+    }'::jsonb;
     v_state TEXT;
     v_count INTEGER;
     v_dummy_processing_run_pk UUID;
@@ -198,10 +205,10 @@ BEGIN
     VALUES (v_user_id, 'queue-contract@example.invalid', now(), now());
 
     INSERT INTO workspace.analysis_run (
-        analysis_run_pk, user_id, status, original_filename,
+        analysis_run_pk, user_id, idempotency_key, status, original_filename,
         declared_mime_type, declared_size_bytes
     ) VALUES (
-        v_run_id, v_user_id, 'uploading', 'contract.hwpx',
+        v_run_id, v_user_id, v_run_id, 'uploading', 'contract.hwpx',
         'application/vnd.hancom.hwpx', 4
     );
     INSERT INTO workspace.analysis_run_dispatch (
@@ -455,6 +462,7 @@ BEGIN
 
     v_result_payload := jsonb_build_object(
         'program_name', '런타임 계약 검증',
+        'ml', v_ml_result,
         'axes', jsonb_build_array(jsonb_build_object(
             'axis_type', 'CPL',
             'axis_code', 'CPL-01',
@@ -539,6 +547,7 @@ BEGIN
         v_first.processing_run_pk,
         jsonb_build_object(
             'program_name', 'stale overwrite',
+            'ml', v_ml_result,
             'axes', '[]'::jsonb,
             'candidates', '[]'::jsonb,
             'evidences', '[]'::jsonb
@@ -552,7 +561,81 @@ BEGIN
         RAISE EXCEPTION 'stale write changed result axes';
     END IF;
 
+    -- This queue suite deliberately exercises the legacy fenced materializer
+    -- above.  Keep those rows as its audit result, then explicitly upgrade
+    -- the real Existing-KB candidate/evidence to the strict v2 public shape
+    -- required by the service-role v2 read RPCs below.  Do not replace the
+    -- legacy call with persist_analysis_result_core_v2: that would stop this
+    -- test from covering legacy queue materialization and its fence.
     IF v_existing_source_profile_id IS NOT NULL THEN
+        SELECT sim_candidate_pk
+          INTO STRICT v_candidate_id
+          FROM result.sim_candidate
+         WHERE analysis_case_pk = v_case_id
+           AND rank_no = 1;
+
+        UPDATE result.evidence_snapshot
+           SET logical_code = 'SIM-1',
+               sim_axis_code = 'purpose',
+               evidence_role = 'RIGHT',
+               source_identity = format(
+                   'runtime/candidate/%s/evidence/%s',
+                   v_candidate_id,
+                   evidence_snapshot_pk
+               )
+         WHERE analysis_case_pk = v_case_id
+           AND sim_candidate_pk = v_candidate_id
+           AND raw_value = 'runtime candidate-linked evidence'
+        RETURNING evidence_snapshot_pk INTO STRICT v_candidate_evidence_id;
+
+        UPDATE result.sim_candidate
+           SET status = 'similar',
+               public_metadata = jsonb_build_object(
+                   'title', notice_title,
+                   'support_field', NULL,
+                   'apply_period', NULL,
+                   'ministry', NULL,
+                   'executing_agency', issuing_organization,
+                   'registered_at', NULL,
+                   'notice_status', notice_status,
+                   'source_url', source_url
+               ),
+               public_axes = jsonb_build_object(
+                   'purpose', jsonb_build_object(
+                       'code', 'SIM-1', 'status', 'similar',
+                       'summary', '런타임 후보 목적 근거를 확인했습니다.',
+                       'reason_code', NULL, 'reason', NULL,
+                       'common_points', '[]'::jsonb, 'differences', '[]'::jsonb,
+                       'request_evidence_ids', '[]'::jsonb,
+                       'existing_evidence_ids', jsonb_build_array(v_candidate_evidence_id::text)
+                   ),
+                   'target', jsonb_build_object(
+                       'code', 'SIM-2', 'status', 'insufficient',
+                       'summary', '런타임 대상 근거가 없습니다.',
+                       'reason_code', NULL, 'reason', NULL,
+                       'common_points', '[]'::jsonb, 'differences', '[]'::jsonb,
+                       'request_evidence_ids', '[]'::jsonb,
+                       'existing_evidence_ids', '[]'::jsonb
+                   ),
+                   'support', jsonb_build_object(
+                       'code', 'SIM-3', 'status', 'insufficient',
+                       'summary', '런타임 지원 근거가 없습니다.',
+                       'reason_code', NULL, 'reason', NULL,
+                       'common_points', '[]'::jsonb, 'differences', '[]'::jsonb,
+                       'request_evidence_ids', '[]'::jsonb,
+                       'existing_evidence_ids', '[]'::jsonb
+                   ),
+                   'delivery', jsonb_build_object(
+                       'code', 'SIM-4', 'status', 'insufficient',
+                       'summary', '런타임 전달 근거가 없습니다.',
+                       'reason_code', NULL, 'reason', NULL,
+                       'common_points', '[]'::jsonb, 'differences', '[]'::jsonb,
+                       'request_evidence_ids', '[]'::jsonb,
+                       'existing_evidence_ids', '[]'::jsonb
+                   )
+               )
+         WHERE sim_candidate_pk = v_candidate_id;
+
         SELECT
             sc.sim_candidate_pk,
             sc.existing_profile_version_pk,
@@ -593,42 +676,55 @@ BEGIN
     PERFORM set_config('runtime_contract.user_id', v_user_id::text, true);
     PERFORM set_config('runtime_contract.case_id', v_case_id::text, true);
     PERFORM set_config('runtime_contract.candidate_id', COALESCE(v_candidate_id::text, ''), true);
+    SELECT analysis_session_pk INTO STRICT v_session_id
+      FROM result.analysis_session
+     WHERE analysis_case_pk = v_case_id;
+    PERFORM set_config('runtime_contract.session_id', v_session_id::text, true);
 END;
 $$;
 
--- Exercise the granted browser read surface under the same request claim that
--- PostgREST would set.  The worker/materialiser portion above intentionally
--- remains a privileged operation.
-SELECT set_config(
-    'request.jwt.claim.sub', current_setting('runtime_contract.user_id'), true
-);
-SET LOCAL ROLE authenticated;
+-- Exercise the trusted FastAPI DB boundary. Migration 33 intentionally
+-- revoked the old authenticated/PostgREST business-data surface; service_role
+-- calls the owner-explicit v2 RPCs on FastAPI's behalf.
+SET LOCAL ROLE service_role;
 
 DO $$
 DECLARE
+    v_user_id UUID := current_setting('runtime_contract.user_id')::UUID;
     v_case_id UUID := current_setting('runtime_contract.case_id')::UUID;
+    v_session_id UUID := current_setting('runtime_contract.session_id')::UUID;
     v_candidate_id_text TEXT := current_setting('runtime_contract.candidate_id', true);
     v_result JSONB;
+    v_history JSONB;
     v_candidate_detail JSONB;
-    v_count INTEGER;
 BEGIN
-    v_result := api.rpc_get_analysis_result(v_case_id);
+    v_result := api.rpc_get_analysis_result_v2(v_user_id, v_case_id);
     IF v_result #>> '{case,analysis_case_id}' <> v_case_id::text THEN
-        RAISE EXCEPTION 'authenticated result RPC returned the wrong case';
+        RAISE EXCEPTION 'trusted v2 result RPC returned the wrong case';
     END IF;
     IF NOT EXISTS (
         SELECT 1
           FROM jsonb_array_elements(v_result -> 'cpl' -> 'items') item
          WHERE item ->> 'code' = 'CPL-01'
     ) THEN
-        RAISE EXCEPTION 'authenticated result RPC omitted CPL projection';
+        RAISE EXCEPTION 'trusted v2 result RPC omitted CPL projection';
     END IF;
 
-    SELECT count(*) INTO v_count
-      FROM api.v_my_analysis_history
-     WHERE analysis_case_id = v_case_id;
-    IF v_count <> 1 THEN
-        RAISE EXCEPTION 'authenticated history view did not expose live case';
+    v_history := api.rpc_get_analysis_history_v2(v_user_id, NULL, NULL, NULL);
+    IF EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_history->'items') AS item(value)
+         WHERE item.value->>'analysis_case_id' = v_case_id::text
+    ) THEN
+        RAISE EXCEPTION 'v2 history exposed an active result session';
+    END IF;
+
+    PERFORM api.rpc_close_analysis_session_v2(v_user_id, v_session_id);
+    v_history := api.rpc_get_analysis_history_v2(v_user_id, NULL, NULL, NULL);
+    IF NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_history->'items') AS item(value)
+         WHERE item.value->>'analysis_case_id' = v_case_id::text
+    ) THEN
+        RAISE EXCEPTION 'v2 history omitted the closed result session';
     END IF;
 
     IF COALESCE(v_candidate_id_text, '') <> '' THEN
@@ -639,7 +735,9 @@ BEGIN
         ) THEN
             RAISE EXCEPTION 'authenticated result RPC omitted KB candidate';
         END IF;
-        v_candidate_detail := api.rpc_get_sim_candidate_detail(v_candidate_id_text::UUID);
+        v_candidate_detail := api.rpc_get_sim_candidate_detail_v2(
+            v_user_id, v_candidate_id_text::UUID
+        );
         IF v_candidate_detail ->> 'sim_candidate_id' <> v_candidate_id_text
            OR NOT EXISTS (
                 SELECT 1
@@ -654,28 +752,30 @@ $$;
 
 -- Expiry must hide the existing row immediately, even before cleanup.  Switch
 -- back to the owner role only for the controlled expiry update, then return to
--- the authenticated browser role for the negative reads.
+-- the trusted service role for the negative reads.
 RESET ROLE;
 UPDATE result.analysis_case
    SET retention_expires_at = now() - interval '1 second'
  WHERE analysis_case_pk = current_setting('runtime_contract.case_id')::UUID;
-SET LOCAL ROLE authenticated;
+SET LOCAL ROLE service_role;
 
 DO $$
 DECLARE
+    v_user_id UUID := current_setting('runtime_contract.user_id')::UUID;
     v_case_id UUID := current_setting('runtime_contract.case_id')::UUID;
     v_candidate_id_text TEXT := current_setting('runtime_contract.candidate_id', true);
-    v_count INTEGER;
+    v_history JSONB;
 BEGIN
-    SELECT count(*) INTO v_count
-      FROM api.v_my_analysis_history
-     WHERE analysis_case_id = v_case_id;
-    IF v_count <> 0 THEN
-        RAISE EXCEPTION 'expired case remained visible in history';
+    v_history := api.rpc_get_analysis_history_v2(v_user_id, NULL, NULL, NULL);
+    IF EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_history->'items') AS item(value)
+         WHERE item.value->>'analysis_case_id' = v_case_id::text
+    ) THEN
+        RAISE EXCEPTION 'expired case remained visible in v2 history';
     END IF;
 
     BEGIN
-        PERFORM api.rpc_get_analysis_result(v_case_id);
+        PERFORM api.rpc_get_analysis_result_v2(v_user_id, v_case_id);
         RAISE EXCEPTION 'expired case remained visible through result RPC';
     EXCEPTION WHEN SQLSTATE 'P0002' THEN
         NULL;
@@ -683,7 +783,9 @@ BEGIN
 
     IF COALESCE(v_candidate_id_text, '') <> '' THEN
         BEGIN
-            PERFORM api.rpc_get_sim_candidate_detail(v_candidate_id_text::UUID);
+            PERFORM api.rpc_get_sim_candidate_detail_v2(
+                v_user_id, v_candidate_id_text::UUID
+            );
             RAISE EXCEPTION 'expired candidate remained visible through detail RPC';
         EXCEPTION WHEN SQLSTATE 'P0002' THEN
             NULL;
@@ -693,5 +795,97 @@ END;
 $$;
 
 RESET ROLE;
+
+-- Migration 40 snapshots the configuration selected for one *processing
+-- attempt*.  Replaying that same decision is idempotent; a later, conflicting
+-- decision must return false and preserve the original JSON audit evidence.
+DO $$
+DECLARE
+    v_user_id UUID := gen_random_uuid();
+    v_run_id UUID := gen_random_uuid();
+    v_claim RECORD;
+    v_config_id UUID;
+BEGIN
+    INSERT INTO auth.users (id, email, created_at, updated_at)
+    VALUES (v_user_id, 'embedding-provenance@example.invalid', now(), now());
+    INSERT INTO workspace.analysis_run (
+        analysis_run_pk, user_id, idempotency_key, status, original_filename,
+        declared_mime_type, declared_size_bytes
+    ) VALUES (
+        v_run_id, v_user_id, v_run_id, 'uploading', 'provenance.hwpx',
+        'application/vnd.hancom.hwpx', 4
+    );
+    INSERT INTO workspace.analysis_run_dispatch (
+        analysis_run_pk, source_bucket, source_object_key, source_content_sha256
+    ) VALUES (
+        v_run_id, 'request-temp', v_run_id || '/source/provenance.hwpx', repeat('c', 64)
+    );
+    INSERT INTO workspace.source_artifact (
+        analysis_run_pk, artifact_type, storage_bucket, storage_object_key,
+        content_sha256, mime_type, size_bytes
+    ) VALUES (
+        v_run_id, 'source', 'request-temp', v_run_id || '/source/provenance.hwpx',
+        repeat('c', 64), 'application/vnd.hancom.hwpx', 4
+    );
+    UPDATE workspace.analysis_run
+       SET status = 'queued'
+     WHERE analysis_run_pk = v_run_id;
+
+    SELECT * INTO STRICT v_claim
+      FROM workspace.claim_next_analysis_run('provenance-runtime-worker', 120);
+    SELECT embedding_config_pk INTO STRICT v_config_id
+      FROM retrieval.embedding_configuration
+     WHERE is_active;
+    PERFORM set_config('runtime_provenance.run_id', v_run_id::text, true);
+    PERFORM set_config(
+        'runtime_provenance.processing_id', v_claim.processing_run_pk::text, true
+    );
+    PERFORM set_config('runtime_provenance.config_id', v_config_id::text, true);
+END;
+$$;
+
+SET LOCAL ROLE service_role;
+
+DO $$
+DECLARE
+    v_run_id UUID := current_setting('runtime_provenance.run_id')::UUID;
+    v_processing_id UUID := current_setting('runtime_provenance.processing_id')::UUID;
+    v_config_id UUID := current_setting('runtime_provenance.config_id')::UUID;
+BEGIN
+    IF NOT workspace.record_analysis_embedding_provenance_v2(
+        v_run_id, v_processing_id, v_config_id
+    ) THEN
+        RAISE EXCEPTION 'initial embedding provenance snapshot was fenced unexpectedly';
+    END IF;
+    IF NOT workspace.record_analysis_embedding_provenance_v2(
+        v_run_id, v_processing_id, v_config_id
+    ) THEN
+        RAISE EXCEPTION 'identical embedding provenance repeat was not idempotent';
+    END IF;
+    IF workspace.record_analysis_embedding_provenance_v2(
+        v_run_id, v_processing_id, NULL
+    ) THEN
+        RAISE EXCEPTION 'conflicting embedding provenance repeat overwrote the snapshot';
+    END IF;
+END;
+$$;
+
+RESET ROLE;
+
+DO $$
+DECLARE
+    v_processing_id UUID := current_setting('runtime_provenance.processing_id')::UUID;
+    v_config_id UUID := current_setting('runtime_provenance.config_id')::UUID;
+    v_snapshot JSONB;
+BEGIN
+    SELECT run_metadata -> 'embedding_configuration' INTO STRICT v_snapshot
+      FROM ops.processing_run
+     WHERE processing_run_pk = v_processing_id;
+    IF v_snapshot ->> 'configuration_id' <> v_config_id::text
+       OR v_snapshot ->> 'selected' <> 'true' THEN
+        RAISE EXCEPTION 'conflicting provenance repeat changed the stored snapshot';
+    END IF;
+END;
+$$;
 
 ROLLBACK;
