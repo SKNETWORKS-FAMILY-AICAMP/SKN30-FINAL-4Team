@@ -261,6 +261,11 @@ DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
 확인했다. PDF/OCR은 현재 요청 처리 범위에서 제외하며, PDF 생성도 E2E 완료 범위가 아니다.
 
+비밀번호 재설정은 PKCE verifier를 짧은 수명의 HttpOnly Cookie로 보관하고, 메일 redirect의
+Auth Code를 `POST /api/v1/auth/password-recovery/exchange`에서 세션 Cookie로 교환한 뒤
+`update-password`를 호출하는 backend 흐름까지 구현했다. 최종 브라우저 E2E는 프론트의
+`/password-reset/update` route와 code 교환 연동 후 수행한다.
+
 위 로컬 검증 환경에는 mode `600`인 `backend/.env`와 online API·worker가 준비되어 있었다.
 환경 파일과 실행 상태는 Git 산출물이 아니다. 새 checkout/서버에서는 Supabase migration, Existing KB bootstrap과
 Supabase/Auth·PostgreSQL·OpenAI server-only 환경 설정을 먼저 준비해야 한다. 환경 파일은
@@ -271,7 +276,6 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 - 수정된 Request Profile v0.1.3으로 실제 Hancom HWP와 HWPX live E2E를 완전 재검증해 사업명,
   사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검
-- password recovery link를 HttpOnly session cookie로 교환하는 callback/PKCE 흐름
 - multipart part 수 제한과 streaming upload
 - `request-temp` 및 90일 만료 결과의 reference-aware cleanup/감사 작업. 현재 요청 경로의
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리해 업로드 지연을 제거해야 함

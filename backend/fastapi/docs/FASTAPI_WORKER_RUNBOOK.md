@@ -938,10 +938,12 @@ model의 strict typed DTO로 표시된다. raw/internal key는 응답에 추가�
 [프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)다.
 `FASTAPI_RESPONSE_CONTRACT.json`은 mock용 비규범 예시로만 사용한다.
 
-OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie` Cookie security scheme과 각
-endpoint의 성공·주요 오류(`ErrorResponse`) schema가 표시된다. `sign-in`, `sign-up`,
-`password-reset`은 Cookie가 없어도 호출할 수 있으므로 인증 요구가 표시되지 않는다. 반면
-업무 API, `me`, `update-password`는 access Cookie, `refresh`는 refresh Cookie를 요구한다.
+OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie`,
+`PreReviewRecoveryVerifierCookie` Cookie security scheme과 각 endpoint의 성공·주요
+오류(`ErrorResponse`) schema가 표시된다. `sign-in`, `sign-up`, `password-reset`은
+Cookie가 없어도 호출할 수 있으므로 인증 요구가 표시되지 않는다. 반면 업무 API, `me`,
+`update-password`는 access Cookie, `refresh`는 refresh Cookie를 요구하고,
+`password-recovery/exchange`는 reset 요청에서 설정한 recovery verifier Cookie를 요구한다.
 
 이 security scheme은 HttpOnly Cookie라는 전달 방식을 문서화하기 위한 것이다. Swagger의
 `Authorize`에 access/refresh token이나 쿠키 값을 직접 입력하지 않는다. 성공한 `sign-in`
@@ -952,9 +954,10 @@ run ID를 `GET /analysis-runs/{analysis_run_id}`로 poll한다. frontend의 실�
 나타나는 선택 필드이고, 비밀번호 같은 원 요청 비밀값은 포함하지 않는다.
 
 인증 및 재설정 완료 흐름의 현재 지원 범위도 같은
-[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. 특히 password-reset은
-메일 발송만 제공하고, token/PKCE callback으로 비로그인 비밀번호를 변경하는 endpoint는 아직
-없다. 과거 `AUTH_API_CONTRACT.md`는 이 명세로 안내하는 호환용 문서일 뿐이다.
+[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. password-reset이 만든
+PKCE verifier Cookie와 메일 redirect의 Auth Code는 `password-recovery/exchange`에서
+세션 Cookie로 교환하며, 이후 `update-password`로 비밀번호를 변경한다. 과거
+`AUTH_API_CONTRACT.md`는 이 명세로 안내하는 호환용 문서일 뿐이다.
 
 현재 `frontend/src`에는 API base URL, Cookie 포함 HTTP client, polling 호출이 연결되어 있지
 않다. Swagger/OpenAPI가 보인다는 사실만으로 화면 통합이 완료된 것은 아니며,
@@ -1055,7 +1058,6 @@ Nginx를 사용하는 경우 [nginx reverse-proxy example](../../deploy/nginx/pr
 
 다음은 기본 분석 E2E와 별개의 미완료 운영 항목이다.
 
-- password recovery callback/PKCE 완결
 - multipart part 수 제한과 streaming upload
 - `request-temp` 및 만료 결과의 reference-aware cleanup
 - worker heartbeat/queue lag를 포함한 readiness
