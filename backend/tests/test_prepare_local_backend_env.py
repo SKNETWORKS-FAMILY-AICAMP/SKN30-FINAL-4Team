@@ -87,10 +87,17 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
     assert settings["SUPABASE_SERVICE_ROLE_KEY"] == "service-test-secret"
     assert settings["SUPABASE_SECRET_KEY"] == ""
     assert settings["OPENAI_API_KEY"] == "openai-test-secret"
+    assert settings["PREREVIEW_LLM_PROVIDER"] == "openai"
+    assert settings["PREREVIEW_EMBEDDING_PROVIDER"] == "openai"
     assert settings["OPENAI_LLM_MODEL"] == "test-luna"
     assert settings["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
+    assert settings["OPENAI_CPL_MODEL"] == ""
     assert settings["OPENAI_TIMEOUT_SECONDS"] == "120"
     assert settings["OPENAI_MAX_REPAIRS"] == "2"
+    assert settings["VLLM_BASE_URL"] == ""
+    assert settings["VLLM_TIMEOUT_SECONDS"] == "120"
+    assert settings["VLLM_MAX_OUTPUT_TOKENS"] == "16384"
+    assert settings["VLLM_MAX_RESPONSE_BYTES"] == "1048576"
     assert settings["PREREVIEW_OFFLINE_MODE"] == "false"
     assert settings["PREREVIEW_API_BIND_ADDRESS"] == "127.0.0.1"
     assert settings["PREREVIEW_MODEL1_SERVING_HOST_DIR"] == "/srv/prereview/model1"
@@ -99,6 +106,83 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
     assert "http://192.168.0.67:3000" in settings[
         "PREREVIEW_AUTH_ALLOWED_ORIGINS"
     ].split(",")
+
+
+def test_build_settings_preserves_selectable_vllm_configuration() -> None:
+    settings = dict(
+        MODULE.build_settings(
+            {
+                "PREREVIEW_LLM_PROVIDER": "vllm",
+                "PREREVIEW_EMBEDDING_PROVIDER": "openai",
+                "OPENAI_API_KEY": "embedding-only-secret",
+                "OPENAI_EMBEDDING_MODEL": "text-embedding-test",
+                "VLLM_BASE_URL": "https://gpu.internal/v1",
+                "VLLM_API_KEY": "vllm-secret",
+                "VLLM_LLM_MODEL": "gemma-test",
+                "VLLM_CHAT_MODEL": "gemma-chat",
+            },
+            {
+                "POSTGRES_PASSWORD": "db-secret",
+                "POSTGRES_DB": "postgres",
+                "POOLER_TENANT_ID": "tenant-id",
+                "ANON_KEY": "anon-secret",
+                "SERVICE_ROLE_KEY": "service-secret",
+            },
+            model1_serving_host_dir="/srv/prereview/model1",
+            model1_runtime_uid="1001",
+            model1_runtime_gid="1002",
+        )
+    )
+
+    assert settings["PREREVIEW_LLM_PROVIDER"] == "vllm"
+    assert settings["PREREVIEW_EMBEDDING_PROVIDER"] == "openai"
+    assert settings["VLLM_BASE_URL"] == "https://gpu.internal/v1"
+    assert settings["VLLM_API_KEY"] == "vllm-secret"
+    assert settings["VLLM_LLM_MODEL"] == "gemma-test"
+    assert settings["VLLM_CHAT_MODEL"] == "gemma-chat"
+
+
+@pytest.mark.parametrize("missing", ["VLLM_BASE_URL", "VLLM_API_KEY", "VLLM_LLM_MODEL"])
+def test_build_settings_fails_closed_for_selected_vllm_missing_required_value(
+    missing: str,
+) -> None:
+    provider = {
+        "PREREVIEW_LLM_PROVIDER": "vllm",
+        "OPENAI_API_KEY": "embedding-secret",
+        "VLLM_BASE_URL": "https://gpu.internal/v1",
+        "VLLM_API_KEY": "vllm-secret",
+        "VLLM_LLM_MODEL": "gemma",
+    }
+    del provider[missing]
+    with pytest.raises(MODULE.ConfigurationError, match=missing):
+        MODULE.build_settings(
+            provider,
+            {
+                "POSTGRES_PASSWORD": "db-secret",
+                "POOLER_TENANT_ID": "tenant-id",
+                "ANON_KEY": "anon-secret",
+                "SERVICE_ROLE_KEY": "service-secret",
+            },
+        )
+
+
+def test_build_settings_fails_closed_for_unsupported_embedding_provider() -> None:
+    with pytest.raises(
+        MODULE.ConfigurationError,
+        match="PREREVIEW_EMBEDDING_PROVIDER",
+    ):
+        MODULE.build_settings(
+            {
+                "PREREVIEW_EMBEDDING_PROVIDER": "vllm",
+                "OPENAI_API_KEY": "embedding-secret",
+            },
+            {
+                "POSTGRES_PASSWORD": "db-secret",
+                "POOLER_TENANT_ID": "tenant-id",
+                "ANON_KEY": "anon-secret",
+                "SERVICE_ROLE_KEY": "service-secret",
+            },
+        )
 
 
 def test_cli_creates_mode_600_env_without_printing_secrets(tmp_path: Path) -> None:
@@ -141,6 +225,9 @@ def test_cli_creates_mode_600_env_without_printing_secrets(tmp_path: Path) -> No
         "@host.docker.internal:5432/postgres?sslmode=disable"
     )
     assert generated["OPENAI_API_KEY"] == "openai-test-secret"
+    assert generated["PREREVIEW_LLM_PROVIDER"] == "openai"
+    assert generated["PREREVIEW_EMBEDDING_PROVIDER"] == "openai"
+    assert generated["VLLM_MAX_REPAIRS"] == "2"
     assert generated["PREREVIEW_MODEL1_SERVING_HOST_DIR"] == str(model1.resolve())
     assert generated["PREREVIEW_MODEL1_RUNTIME_UID"] == str(model1.stat().st_uid)
     assert generated["PREREVIEW_MODEL1_RUNTIME_GID"] == str(model1.stat().st_gid)

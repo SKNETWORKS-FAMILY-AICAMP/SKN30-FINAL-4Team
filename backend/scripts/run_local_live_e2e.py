@@ -71,16 +71,30 @@ ML_ENVIRONMENT_KEYS = (
 )
 OPTIONAL_STAGE_MODEL_ENVIRONMENT_KEYS = (
     "OPENAI_REQUEST_PROFILE_MODEL",
+    "OPENAI_CPL_MODEL",
     "OPENAI_FIT_MODEL",
     "OPENAI_SIM_MODEL",
     "OPENAI_CHAT_MODEL",
 )
 CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY = "PREREVIEW_CURSOR_SIGNING_SECRET"
 MODEL_CONFIGURATION_ENVIRONMENT_KEYS = (
+    "PREREVIEW_LLM_PROVIDER",
+    "PREREVIEW_EMBEDDING_PROVIDER",
     "OPENAI_LLM_MODEL",
     "OPENAI_EMBEDDING_MODEL",
     *OPTIONAL_STAGE_MODEL_ENVIRONMENT_KEYS,
     "OPENAI_MAX_REPAIRS",
+    "OPENAI_TIMEOUT_SECONDS",
+    "VLLM_LLM_MODEL",
+    "VLLM_REQUEST_PROFILE_MODEL",
+    "VLLM_CPL_MODEL",
+    "VLLM_FIT_MODEL",
+    "VLLM_SIM_MODEL",
+    "VLLM_CHAT_MODEL",
+    "VLLM_MAX_REPAIRS",
+    "VLLM_TIMEOUT_SECONDS",
+    "VLLM_MAX_OUTPUT_TOKENS",
+    "VLLM_MAX_RESPONSE_BYTES",
 )
 
 _CLAIM_NEXT_RUN_SQL = """
@@ -788,22 +802,36 @@ def _external_worker_model_environment(worker_id: str) -> dict[str, str]:
 
 def _model_configuration_manifest(
     environment: Mapping[str, str] | None = None,
+    *,
+    embedding_required: bool = True,
+    allow_vllm: bool = True,
 ) -> dict[str, object]:
     """Return only public model identifiers, never provider credentials."""
 
     if environment is None:
-        from worker.config import OpenAIConfig
+        from worker.providers import build_llm_provider
 
-        config = OpenAIConfig.from_env()
+        provider = build_llm_provider(
+            profiles=("request_profile", "cpl", "fit", "sim", "chat")
+        )
+        embedding_model: str | None = None
+        if embedding_required:
+            from worker.config import OpenAIEmbeddingConfig
+
+            embedding_model = OpenAIEmbeddingConfig.from_env().embedding_model
+        provider_bounds = _provider_execution_bounds(
+            provider.name, os.environ,
+        )
         return {
-            "provider": "openai",
-            "request_profile_model": config.llm_model_for("request_profile"),
-            "cpl_model": config.llm_model,
-            "fit_model": config.llm_model_for("fit"),
-            "sim_model": config.llm_model_for("sim"),
-            "chat_model": config.llm_model_for("chat"),
-            "embedding_model": config.embedding_model,
-            "max_repairs": config.max_repairs,
+            "provider": provider.name,
+            "request_profile_model": provider.model_id_for("request_profile"),
+            "cpl_model": provider.model_id_for("cpl"),
+            "fit_model": provider.model_id_for("fit"),
+            "sim_model": provider.model_id_for("sim"),
+            "chat_model": provider.model_id_for("chat"),
+            "embedding_model": embedding_model,
+            "max_repairs": provider.max_repairs,
+            **provider_bounds,
         }
 
     def required_model(name: str) -> str:
@@ -816,27 +844,82 @@ def _model_configuration_manifest(
         value = str(environment.get(name) or "").strip()
         return value or fallback
 
-    cpl_model = required_model("OPENAI_LLM_MODEL")
+    provider_name = str(
+        environment.get("PREREVIEW_LLM_PROVIDER") or "openai"
+    ).strip().lower()
+    if provider_name not in {"openai", "vllm"}:
+        raise E2EFailure("External worker model configuration is unavailable")
+    if provider_name == "vllm" and not allow_vllm:
+        raise E2EFailure(
+            "External release E2E does not support vLLM until a runtime-bound "
+            "manifest contract exists"
+        )
+    prefix = "OPENAI" if provider_name == "openai" else "VLLM"
+    fallback_model = required_model(f"{prefix}_LLM_MODEL")
     try:
         # This accepts the same integer/default semantics as OpenAIConfig,
         # while passing the allowlisted container mapping explicitly so no
         # process environment (and therefore no provider secret) is read.
-        from worker.config import MissingConfigError, _int_from_env
+        from worker.config import MissingConfigError, _nonnegative_int_from_env
+        from worker.providers import _bounded_int
 
-        max_repairs = _int_from_env("OPENAI_MAX_REPAIRS", 2, environment)
+        max_repairs = (
+            _bounded_int(
+                environment, "VLLM_MAX_REPAIRS", 2, minimum=0, maximum=8
+            )
+            if provider_name == "vllm"
+            else _nonnegative_int_from_env("OPENAI_MAX_REPAIRS", 2, environment)
+        )
     except MissingConfigError:
         raise E2EFailure("External worker model configuration is unavailable") from None
-    return {
-        "provider": "openai",
+    manifest = {
+        "provider": provider_name,
         "request_profile_model": stage_model(
-            "OPENAI_REQUEST_PROFILE_MODEL", cpl_model
+            f"{prefix}_REQUEST_PROFILE_MODEL", fallback_model
         ),
-        "cpl_model": cpl_model,
-        "fit_model": stage_model("OPENAI_FIT_MODEL", cpl_model),
-        "sim_model": stage_model("OPENAI_SIM_MODEL", cpl_model),
-        "chat_model": stage_model("OPENAI_CHAT_MODEL", cpl_model),
-        "embedding_model": required_model("OPENAI_EMBEDDING_MODEL"),
+        "cpl_model": stage_model(f"{prefix}_CPL_MODEL", fallback_model),
+        "fit_model": stage_model(f"{prefix}_FIT_MODEL", fallback_model),
+        "sim_model": stage_model(f"{prefix}_SIM_MODEL", fallback_model),
+        "chat_model": stage_model(f"{prefix}_CHAT_MODEL", fallback_model),
+        "embedding_model": (
+            required_model("OPENAI_EMBEDDING_MODEL")
+            if embedding_required
+            else None
+        ),
         "max_repairs": max_repairs,
+    }
+    manifest.update(
+        _provider_execution_bounds(
+            provider_name, environment,
+        )
+    )
+    return manifest
+
+
+def _provider_execution_bounds(
+    provider_name: str, environment: Mapping[str, str]
+) -> dict[str, object]:
+    """Expose only non-secret vLLM call bounds in the reproducibility trace."""
+
+    if provider_name != "vllm":
+        return {}
+    try:
+        from worker.providers import _bounded_int, _positive_float
+
+        timeout = _positive_float(environment, "VLLM_TIMEOUT_SECONDS", 120.0)
+        max_tokens = _bounded_int(
+            environment, "VLLM_MAX_OUTPUT_TOKENS", 16384, minimum=1, maximum=32768
+        )
+        max_bytes = _bounded_int(
+            environment, "VLLM_MAX_RESPONSE_BYTES", 1048576,
+            minimum=1024, maximum=4194304,
+        )
+    except Exception:  # noqa: BLE001 - safe generic E2E configuration failure
+        raise E2EFailure("External worker model configuration is unavailable") from None
+    return {
+        "timeout_seconds": timeout,
+        "max_output_tokens": max_tokens,
+        "max_response_bytes": max_bytes,
     }
 
 
@@ -881,10 +964,14 @@ def _execution_manifest(
         }
         models: dict[str, object] = {
             "analysis_worker": _model_configuration_manifest(
-                _external_worker_model_environment(analysis_worker_id)
+                _external_worker_model_environment(analysis_worker_id),
+                embedding_required=True,
+                allow_vllm=False,
             ),
             "chat_worker": _model_configuration_manifest(
-                _external_worker_model_environment(chat_worker_id)
+                _external_worker_model_environment(chat_worker_id),
+                embedding_required=False,
+                allow_vllm=False,
             ),
         }
         api_runtime: dict[str, object] = {
@@ -1581,6 +1668,12 @@ def _configure_environment(
         "SUPABASE_URL": "http://127.0.0.1:8000",
         "SUPABASE_ANON_KEY": _required(local, "ANON_KEY"),
         "SUPABASE_SERVICE_ROLE_KEY": _required(local, "SERVICE_ROLE_KEY"),
+        "PREREVIEW_LLM_PROVIDER": str(
+            provider.get("PREREVIEW_LLM_PROVIDER") or "openai"
+        ).strip().lower(),
+        "PREREVIEW_EMBEDDING_PROVIDER": str(
+            provider.get("PREREVIEW_EMBEDDING_PROVIDER") or "openai"
+        ).strip().lower(),
         "OPENAI_API_KEY": _required(provider, "OPENAI_API_KEY"),
         "OPENAI_LLM_MODEL": llm_model
         or str(provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-luna"),
@@ -1594,6 +1687,25 @@ def _configure_environment(
         "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS": "120",
         "PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS": "20",
     }
+    # Inline E2E imports the worker in this process, so it must receive the
+    # selected provider's complete non-default configuration from backend/.env
+    # rather than silently reconstructing OpenAI-only defaults.
+    for name, default in (
+        ("OPENAI_MAX_REPAIRS", "2"),
+        ("VLLM_BASE_URL", ""),
+        ("VLLM_API_KEY", ""),
+        ("VLLM_LLM_MODEL", ""),
+        ("VLLM_REQUEST_PROFILE_MODEL", ""),
+        ("VLLM_CPL_MODEL", ""),
+        ("VLLM_FIT_MODEL", ""),
+        ("VLLM_SIM_MODEL", ""),
+        ("VLLM_CHAT_MODEL", ""),
+        ("VLLM_TIMEOUT_SECONDS", "120"),
+        ("VLLM_MAX_REPAIRS", "2"),
+        ("VLLM_MAX_OUTPUT_TOKENS", "16384"),
+        ("VLLM_MAX_RESPONSE_BYTES", "1048576"),
+    ):
+        settings[name] = str(provider.get(name) or default).strip()
     if sys.platform != "win32":
         settings["PREREVIEW_FREETYPE_LIB"] = "/lib/x86_64-linux-gnu/libfreetype.so.6"
     if auth_allowed_origins is not None:

@@ -241,6 +241,26 @@ def build_settings(
 
     provider_label = "provider env"
     supabase_label = "Supabase env"
+    llm_provider = _optional(
+        provider, "PREREVIEW_LLM_PROVIDER", "openai", label=provider_label
+    ).lower()
+    if llm_provider not in {"openai", "vllm"}:
+        raise ConfigurationError("provider env의 PREREVIEW_LLM_PROVIDER 값이 올바르지 않습니다.")
+    embedding_provider = _optional(
+        provider,
+        "PREREVIEW_EMBEDDING_PROVIDER",
+        "openai",
+        label=provider_label,
+    ).lower()
+    if embedding_provider != "openai":
+        raise ConfigurationError(
+            "provider env의 PREREVIEW_EMBEDDING_PROVIDER 값이 올바르지 않습니다."
+        )
+    if llm_provider == "vllm":
+        # Do not produce a plausible-looking .env that will fail only after a
+        # worker has been started. Values are intentionally never echoed.
+        for name in ("VLLM_BASE_URL", "VLLM_API_KEY", "VLLM_LLM_MODEL"):
+            _required(provider, name, label=provider_label)
     postgres_password = _required(
         supabase, "POSTGRES_PASSWORD", label=supabase_label
     )
@@ -291,6 +311,14 @@ def build_settings(
         ("DATABASE_URL", database_url),
         ("SUPABASE_DB_URL", ""),
         (
+            "PREREVIEW_LLM_PROVIDER",
+            llm_provider,
+        ),
+        (
+            "PREREVIEW_EMBEDDING_PROVIDER",
+            embedding_provider,
+        ),
+        (
             "OPENAI_API_KEY",
             _required(provider, "OPENAI_API_KEY", label=provider_label),
         ),
@@ -306,6 +334,10 @@ def build_settings(
                 "gpt-5.6-terra",
                 label=provider_label,
             ),
+        ),
+        (
+            "OPENAI_CPL_MODEL",
+            _optional(provider, "OPENAI_CPL_MODEL", "", label=provider_label),
         ),
         (
             "OPENAI_FIT_MODEL",
@@ -336,6 +368,61 @@ def build_settings(
         (
             "OPENAI_MAX_REPAIRS",
             _optional(provider, "OPENAI_MAX_REPAIRS", "2", label=provider_label),
+        ),
+        (
+            "VLLM_BASE_URL",
+            _optional(provider, "VLLM_BASE_URL", "", label=provider_label),
+        ),
+        (
+            "VLLM_API_KEY",
+            _optional(provider, "VLLM_API_KEY", "", label=provider_label),
+        ),
+        (
+            "VLLM_LLM_MODEL",
+            _optional(provider, "VLLM_LLM_MODEL", "", label=provider_label),
+        ),
+        (
+            "VLLM_REQUEST_PROFILE_MODEL",
+            _optional(
+                provider,
+                "VLLM_REQUEST_PROFILE_MODEL",
+                "",
+                label=provider_label,
+            ),
+        ),
+        (
+            "VLLM_CPL_MODEL",
+            _optional(provider, "VLLM_CPL_MODEL", "", label=provider_label),
+        ),
+        (
+            "VLLM_FIT_MODEL",
+            _optional(provider, "VLLM_FIT_MODEL", "", label=provider_label),
+        ),
+        (
+            "VLLM_SIM_MODEL",
+            _optional(provider, "VLLM_SIM_MODEL", "", label=provider_label),
+        ),
+        (
+            "VLLM_CHAT_MODEL",
+            _optional(provider, "VLLM_CHAT_MODEL", "", label=provider_label),
+        ),
+        (
+            "VLLM_TIMEOUT_SECONDS",
+            _optional(
+                provider, "VLLM_TIMEOUT_SECONDS", "120", label=provider_label
+            ),
+        ),
+        (
+            "VLLM_MAX_REPAIRS",
+            _optional(provider, "VLLM_MAX_REPAIRS", "2", label=provider_label),
+        ),
+        (
+            "VLLM_MAX_OUTPUT_TOKENS",
+            _optional(provider, "VLLM_MAX_OUTPUT_TOKENS", "16384", label=provider_label),
+        ),
+        (
+            "VLLM_MAX_RESPONSE_BYTES",
+            _optional(provider, "VLLM_MAX_RESPONSE_BYTES", "1048576", label=provider_label),
         ),
         ("PREREVIEW_WORKER_HEARTBEAT_SECONDS", "30"),
         ("PREREVIEW_WORKER_LEASE_SECONDS", "120"),

@@ -1,22 +1,25 @@
-"""레거시 선택지: vLLM(OpenAI 호환) Chat Completions 기반 LLM 클라이언트.
+"""vLLM(OpenAI 호환) Chat Completions 기반 LLM 클라이언트.
 
-현재 production composition(``worker.main``)은 이 adapter를 생성하지 않고
-``OpenAILLMClient``를 사용한다. 이 파일은 과거/향후 self-hosted provider 실험용으로만
-보관한다.
+``worker.providers``가 ``PREREVIEW_LLM_PROVIDER=vllm``일 때 이 adapter를
+생성한다. provider는 구조화 추론만 담당하며 DB·Storage credential을 받지 않는다.
 
 vLLM 은 Responses API 를 구현하지 않는다. 그래서
 ``app/infrastructure/openai_llm_client.py`` 의 형제 구현이되 엔드포인트만
 ``/chat/completions`` 이고 구조화 출력은 ``response_format`` 으로 건다.
 """
 
-import asyncio
 from collections.abc import Mapping
+import asyncio
+import ipaddress
 import json
 import logging
+import math
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
+from openai.lib._parsing import type_to_response_format_param
 from pydantic import BaseModel, ValidationError
 
 from ..ports.llm import (
@@ -29,6 +32,62 @@ from ..ports.llm import (
 
 logger = logging.getLogger(__name__)
 
+_MIN_MAX_OUTPUT_TOKENS = 1
+_MAX_MAX_OUTPUT_TOKENS = 32_768
+_MIN_MAX_RESPONSE_BYTES = 1_024
+_MAX_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+def validate_vllm_base_url(base_url: str) -> str:
+    """Return a safe vLLM endpoint or reject it without exposing its value.
+
+    The provider token is sent in an Authorization header.  HTTP is therefore
+    intentionally limited to an explicitly local development endpoint; a
+    remote endpoint must use HTTPS.  Do not resolve arbitrary host names here:
+    a DNS answer can change after validation.  ``localhost`` and numeric
+    loopback literals are the only cleartext exceptions.
+    """
+
+    normalized_base_url = base_url.strip().rstrip("/")
+    parsed = urlsplit(normalized_base_url)
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError(
+            "vLLM base URL must use HTTPS or literal loopback HTTP"
+        ) from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or port is not None and not 0 < port < 65536
+    ):
+        raise ValueError("vLLM base URL must use HTTPS or literal loopback HTTP")
+    if parsed.scheme == "http" and not _is_literal_loopback(parsed.hostname):
+        raise ValueError("vLLM base URL must use HTTPS or literal loopback HTTP")
+    return normalized_base_url
+
+
+def _is_literal_loopback(hostname: str) -> bool:
+    """Accept only ``localhost``, IPv4 127/8, or IPv6 ::1 for cleartext."""
+
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return (
+        (isinstance(address, ipaddress.IPv4Address) and address.is_loopback)
+        or (
+            isinstance(address, ipaddress.IPv6Address)
+            and address == ipaddress.IPv6Address("::1")
+        )
+    )
+
 
 class VllmLLMClient:
     def __init__(
@@ -38,12 +97,49 @@ class VllmLLMClient:
         base_url: str,
         model_profiles: Mapping[str, str],
         timeout_seconds: float,
+        max_output_tokens: int = 16_384,
+        max_response_bytes: int = 1_048_576,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        if not api_key.strip():
+            raise ValueError("vLLM API key must not be blank")
+        # Revalidate at the adapter boundary even though provider composition
+        # validates it before a worker claims work.  Direct callers must not
+        # be able to bypass the cleartext-token transport policy.
+        normalized_base_url = validate_vllm_base_url(base_url)
+        if not math.isfinite(float(timeout_seconds)) or timeout_seconds <= 0:
+            raise ValueError("vLLM timeout must be a finite positive number")
+        if (
+            isinstance(max_output_tokens, bool)
+            or not isinstance(max_output_tokens, int)
+            or not _MIN_MAX_OUTPUT_TOKENS
+            <= max_output_tokens
+            <= _MAX_MAX_OUTPUT_TOKENS
+        ):
+            raise ValueError("vLLM max output tokens must be a bounded integer")
+        if (
+            isinstance(max_response_bytes, bool)
+            or not isinstance(max_response_bytes, int)
+            or not _MIN_MAX_RESPONSE_BYTES
+            <= max_response_bytes
+            <= _MAX_MAX_RESPONSE_BYTES
+        ):
+            raise ValueError("vLLM max response bytes must be a bounded integer")
+        profiles = {
+            str(profile): str(model).strip()
+            for profile, model in model_profiles.items()
+            if str(profile).strip() and str(model).strip()
+        }
+        if not profiles:
+            raise ValueError("At least one vLLM model profile is required")
+
         self._api_key = api_key
-        self._base_url = base_url.rstrip("/")
-        self._model_profiles = dict(model_profiles)
-        self._timeout = httpx.Timeout(timeout_seconds)
+        self._base_url = normalized_base_url
+        self._model_profiles = profiles
+        self._timeout_seconds = float(timeout_seconds)
+        self._timeout = httpx.Timeout(self._timeout_seconds)
+        self._max_output_tokens = max_output_tokens
+        self._max_response_bytes = max_response_bytes
         self._transport = transport
 
     async def generate_structured(
@@ -60,30 +156,32 @@ class VllmLLMClient:
         except KeyError:
             raise LLMUnavailableError("Unknown LLM model profile") from None
 
+        # This is deliberately the SDK conversion rather than a hand-written
+        # model_json_schema() wrapper: it carries OpenAI's strict-schema
+        # normalization (including additionalProperties) to compatible vLLM.
+        response_format = type_to_response_format_param(response_schema)
         payload = {
             "model": model,
             # 같은 문서에 같은 판정이 나와야 한다. 기본값에서는 동일 문서의
             # CPL 개수가 26회 실행 동안 6~9 로 흔들렸다.
             # ponytail: 상수 0. 분산을 의도적으로 재려면 그때 설정으로 뺀다.
             "temperature": 0,
+            # vLLM's OpenAI-compatible Chat Completions accepts these sampling
+            # controls. Determinism is still best-effort across server/model versions.
+            "seed": 0,
+            "top_p": 1,
+            "max_tokens": self._max_output_tokens,
             "messages": [
                 {"role": message.role, "content": message.content}
                 for message in messages
             ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": task_name,
-                    "schema": response_schema.model_json_schema(),
-                    "strict": True,
-                },
-            },
+            "response_format": response_format,
         }
 
         response = await self._request("POST", "/chat/completions", json=payload)
         try:
             response_data = response.json()
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, RecursionError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
         if not isinstance(response_data, dict):
             raise LLMInvalidResponseError("LLM returned an invalid response")
@@ -96,13 +194,13 @@ class VllmLLMClient:
         # 함께 내려간다.
         try:
             finish_reason = _read_finish_reason(response_data)
-            if finish_reason is not None and finish_reason != "stop":
+            if finish_reason != "stop":
                 raise LLMInvalidResponseError("LLM returned an incomplete response")
             content = _read_message_content(response_data)
             raw = json.loads(content)
         except LLMInvalidResponseError:
             raise
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, RecursionError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
         try:
             result = response_schema.model_validate(raw)
@@ -117,9 +215,9 @@ class VllmLLMClient:
             "completion_tokens=%s total_tokens=%s duration_ms=%s",
             task_name,
             model,
-            usage.get("prompt_tokens") if isinstance(usage, dict) else None,
-            usage.get("completion_tokens") if isinstance(usage, dict) else None,
-            usage.get("total_tokens") if isinstance(usage, dict) else None,
+            _safe_usage_int(usage, "prompt_tokens"),
+            _safe_usage_int(usage, "completion_tokens"),
+            _safe_usage_int(usage, "total_tokens"),
             round((time.perf_counter() - started_at) * 1000),
         )
         return result
@@ -136,7 +234,7 @@ class VllmLLMClient:
             ids = [item["id"] for item in data]
             if any(not isinstance(model_id, str) for model_id in ids):
                 raise ValueError
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, RecursionError):
             raise LLMInvalidResponseError("LLM returned an invalid response") from None
         return ids
 
@@ -148,34 +246,58 @@ class VllmLLMClient:
             "Content-Type": "application/json",
         }
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
-                transport=self._transport,
-            ) as client:
-                for attempt in range(2):
-                    response = await client.request(
+            # httpx's timeout covers inactivity phases; asyncio.timeout also
+            # bounds the entire connect/send/receive/read call.
+            async with asyncio.timeout(self._timeout_seconds):
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    transport=self._transport,
+                    trust_env=False,
+                ) as client:
+                    async with client.stream(
                         method,
                         f"{self._base_url}{path}",
                         headers=headers,
                         json=json,
-                    )
-                    if response.status_code != 429 and response.status_code < 500:
-                        break
-                    if attempt == 0:
-                        await asyncio.sleep(0.25)
-        except httpx.TimeoutException:
+                    ) as response:
+                        declared_length = response.headers.get("content-length")
+                        if declared_length is not None:
+                            try:
+                                if (
+                                    int(declared_length) < 0
+                                    or int(declared_length)
+                                    > self._max_response_bytes
+                                ):
+                                    raise ValueError
+                            except ValueError:
+                                raise LLMInvalidResponseError(
+                                    "LLM returned an invalid response"
+                                ) from None
+                        if response.is_error:
+                            logger.warning(
+                                "LLM provider HTTP error status=%s retryable=%s",
+                                response.status_code,
+                                response.status_code == 429 or response.status_code >= 500,
+                            )
+                            raise LLMUnavailableError("LLM service rejected the request")
+                        body = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            if len(body) + len(chunk) > self._max_response_bytes:
+                                raise LLMInvalidResponseError(
+                                    "LLM returned an invalid response"
+                                )
+                            body.extend(chunk)
+                        return httpx.Response(
+                            response.status_code,
+                            headers=response.headers,
+                            content=bytes(body),
+                        )
+        except (TimeoutError, httpx.TimeoutException):
             raise LLMTimeoutError("LLM request timed out") from None
-        except httpx.RequestError:
+        except (LLMInvalidResponseError, LLMUnavailableError):
+            raise
+        except (httpx.InvalidURL, httpx.RequestError):
             raise LLMUnavailableError("LLM service is unavailable") from None
-
-        if response.is_error:
-            logger.warning(
-                "LLM provider HTTP error status=%s retryable=%s",
-                response.status_code,
-                response.status_code == 429 or response.status_code >= 500,
-            )
-            raise LLMUnavailableError("LLM service rejected the request")
-        return response
 
 
 def _read_message_content(response_data: dict[str, Any]) -> str:
@@ -193,7 +315,7 @@ def _read_message_content(response_data: dict[str, Any]) -> str:
     return content
 
 
-def _read_finish_reason(response_data: dict[str, Any]) -> str | None:
+def _read_finish_reason(response_data: dict[str, Any]) -> str:
     choices = response_data.get("choices")
     if not isinstance(choices, list) or not choices:
         raise ValueError("response choices are missing")
@@ -201,6 +323,17 @@ def _read_finish_reason(response_data: dict[str, Any]) -> str | None:
     if not isinstance(choice, dict):
         raise ValueError("response choice is missing")
     finish_reason = choice.get("finish_reason")
-    if finish_reason is not None and not isinstance(finish_reason, str):
+    if not isinstance(finish_reason, str):
         raise ValueError("response finish_reason is invalid")
     return finish_reason
+
+
+def _safe_usage_int(usage: object, key: str) -> int | None:
+    """Return a non-negative native int only; logs must be total on bad JSON."""
+
+    if not isinstance(usage, dict):
+        return None
+    value = usage.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value

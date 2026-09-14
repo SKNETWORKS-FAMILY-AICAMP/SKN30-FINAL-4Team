@@ -158,6 +158,45 @@ def test_configure_environment_defaults_request_profile_model_to_terra(
     assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
 
 
+def test_inline_configure_environment_loads_selected_vllm_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "OPENAI_API_KEY=embedding-key\n"
+        "OPENAI_EMBEDDING_MODEL=embedding-model\n"
+        "PREREVIEW_LLM_PROVIDER=vllm\n"
+        "VLLM_BASE_URL=https://gpu.internal/v1\n"
+        "VLLM_API_KEY=vllm-key\n"
+        "VLLM_LLM_MODEL=served-model\n"
+        "VLLM_TIMEOUT_SECONDS=42\n"
+        "VLLM_MAX_OUTPUT_TOKENS=1234\n"
+        "VLLM_MAX_RESPONSE_BYTES=2048\n",
+        encoding="utf-8",
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=test-password\n"
+        "POOLER_TENANT_ID=test-tenant\n"
+        "ANON_KEY=test-anon-key\n"
+        "SERVICE_ROLE_KEY=test-service-key\n",
+        encoding="utf-8",
+    )
+    environment: dict[str, str] = {}
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(backend_env, supabase_env)
+
+    assert environment["PREREVIEW_LLM_PROVIDER"] == "vllm"
+    assert environment["VLLM_BASE_URL"] == "https://gpu.internal/v1"
+    assert environment["VLLM_API_KEY"] == "vllm-key"
+    assert environment["VLLM_LLM_MODEL"] == "served-model"
+    assert environment["VLLM_TIMEOUT_SECONDS"] == "42"
+    assert environment["VLLM_MAX_OUTPUT_TOKENS"] == "1234"
+    assert environment["VLLM_MAX_RESPONSE_BYTES"] == "2048"
+
+
 def test_configure_environment_preserves_explicit_blank_stage_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2110,10 +2149,49 @@ def test_external_manifest_resolves_both_immutable_worker_images(
             "fit_model": "cpl-b",
             "sim_model": "cpl-b",
             "chat_model": "chat-b",
-            "embedding_model": "embedding-b",
+            "embedding_model": None,
             "max_repairs": 4,
         },
     }
+
+
+def test_external_execution_manifest_explicitly_rejects_vllm_until_runtime_contract_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE, "_git_commit", lambda: "b" * 40)
+    monkeypatch.setattr(
+        MODULE, "_git_source_state", lambda _revision: (False, "e" * 64)
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_require_clean_checkout_build_context_digest",
+        lambda: "b" * 64,
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_docker_image_identity",
+        lambda _worker_id: "sha256:" + ("c" * 64),
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_external_worker_model_environment",
+        lambda _worker_id: {
+            "PREREVIEW_LLM_PROVIDER": "vllm",
+            "VLLM_LLM_MODEL": "gemma",
+            "OPENAI_EMBEDDING_MODEL": "embedding",
+        },
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="does not support vLLM"):
+        MODULE._execution_manifest(
+            source_content=b"fixture",
+            worker_mode="external",
+            analysis_worker_id="a" * 12 + ":1:x",
+            chat_worker_id="b" * 12 + ":2:y",
+            database_url="not-used",
+            analysis_run_id="run-id",
+            deployed_api_build_id="b" * 64,
+        )
 
 
 def test_external_worker_model_environment_uses_allowlisted_docker_exec(
@@ -2126,13 +2204,27 @@ def test_external_worker_model_environment_uses_allowlisted_docker_exec(
         return SimpleNamespace(
             returncode=0,
             stdout=(
+                "PREREVIEW_LLM_PROVIDER=openai\n"
+                "PREREVIEW_EMBEDDING_PROVIDER=openai\n"
                 "OPENAI_LLM_MODEL=analysis-cpl\n"
                 "OPENAI_EMBEDDING_MODEL=analysis-embedding\n"
                 "OPENAI_REQUEST_PROFILE_MODEL=analysis-profile\n"
+                "OPENAI_CPL_MODEL=\n"
                 "OPENAI_FIT_MODEL=\n"
                 "OPENAI_SIM_MODEL=analysis-sim\n"
                 "OPENAI_CHAT_MODEL=analysis-chat\n"
                 "OPENAI_MAX_REPAIRS=7\n"
+                "OPENAI_TIMEOUT_SECONDS=120\n"
+                "VLLM_LLM_MODEL=\n"
+                "VLLM_REQUEST_PROFILE_MODEL=\n"
+                "VLLM_CPL_MODEL=\n"
+                "VLLM_FIT_MODEL=\n"
+                "VLLM_SIM_MODEL=\n"
+                "VLLM_CHAT_MODEL=\n"
+                "VLLM_MAX_REPAIRS=\n"
+                "VLLM_TIMEOUT_SECONDS=120\n"
+                "VLLM_MAX_OUTPUT_TOKENS=16384\n"
+                "VLLM_MAX_RESPONSE_BYTES=1048576\n"
             ),
         )
 
@@ -2141,13 +2233,27 @@ def test_external_worker_model_environment_uses_allowlisted_docker_exec(
     environment = MODULE._external_worker_model_environment("a" * 12 + ":worker")
 
     assert environment == {
+        "PREREVIEW_LLM_PROVIDER": "openai",
+        "PREREVIEW_EMBEDDING_PROVIDER": "openai",
         "OPENAI_LLM_MODEL": "analysis-cpl",
         "OPENAI_EMBEDDING_MODEL": "analysis-embedding",
         "OPENAI_REQUEST_PROFILE_MODEL": "analysis-profile",
+        "OPENAI_CPL_MODEL": "",
         "OPENAI_FIT_MODEL": "",
         "OPENAI_SIM_MODEL": "analysis-sim",
         "OPENAI_CHAT_MODEL": "analysis-chat",
         "OPENAI_MAX_REPAIRS": "7",
+        "OPENAI_TIMEOUT_SECONDS": "120",
+        "VLLM_LLM_MODEL": "",
+        "VLLM_REQUEST_PROFILE_MODEL": "",
+        "VLLM_CPL_MODEL": "",
+        "VLLM_FIT_MODEL": "",
+        "VLLM_SIM_MODEL": "",
+        "VLLM_CHAT_MODEL": "",
+        "VLLM_MAX_REPAIRS": "",
+        "VLLM_TIMEOUT_SECONDS": "120",
+        "VLLM_MAX_OUTPUT_TOKENS": "16384",
+        "VLLM_MAX_RESPONSE_BYTES": "1048576",
     }
     assert len(calls) == 1
     command = calls[0]
@@ -2284,6 +2390,67 @@ def test_external_model_manifest_uses_worker_max_repairs_default_and_rejects_inv
     environment["OPENAI_MAX_REPAIRS"] = "not-an-integer"
     with pytest.raises(MODULE.E2EFailure, match="model configuration is unavailable"):
         MODULE._model_configuration_manifest(environment)
+
+    environment["OPENAI_MAX_REPAIRS"] = "-1"
+    with pytest.raises(MODULE.E2EFailure, match="model configuration is unavailable"):
+        MODULE._model_configuration_manifest(environment)
+
+
+def test_inline_model_manifest_supports_vllm_without_openai_llm_settings() -> None:
+    environment = {
+        "PREREVIEW_LLM_PROVIDER": "vllm",
+        "VLLM_LLM_MODEL": "gemma-default",
+        "VLLM_REQUEST_PROFILE_MODEL": "gemma-request",
+        "VLLM_CHAT_MODEL": "gemma-chat",
+        "VLLM_MAX_REPAIRS": "3",
+        "OPENAI_EMBEDDING_MODEL": "embedding",
+    }
+
+    assert MODULE._model_configuration_manifest(environment) == {
+        "provider": "vllm",
+        "request_profile_model": "gemma-request",
+        "cpl_model": "gemma-default",
+        "fit_model": "gemma-default",
+        "sim_model": "gemma-default",
+        "chat_model": "gemma-chat",
+        "embedding_model": "embedding",
+        "max_repairs": 3,
+        "timeout_seconds": 120.0,
+        "max_output_tokens": 16384,
+        "max_response_bytes": 1048576,
+    }
+
+
+def test_external_release_model_manifest_rejects_vllm_without_runtime_bound_contract() -> None:
+    environment = {
+        "PREREVIEW_LLM_PROVIDER": "vllm",
+        "VLLM_LLM_MODEL": "gemma-default",
+        "OPENAI_EMBEDDING_MODEL": "embedding",
+    }
+    with pytest.raises(MODULE.E2EFailure, match="does not support vLLM"):
+        MODULE._model_configuration_manifest(
+            environment, allow_vllm=False
+        )
+
+
+def test_inline_chat_manifest_does_not_require_embedding_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from worker import providers
+
+    class Provider:
+        name = "openai"
+        max_repairs = 2
+
+        @staticmethod
+        def model_id_for(profile: str) -> str:
+            return f"model-{profile}"
+
+    monkeypatch.setattr(providers, "build_llm_provider", lambda **_kwargs: Provider())
+
+    manifest = MODULE._model_configuration_manifest(embedding_required=False)
+
+    assert manifest["embedding_model"] is None
 
 
 def test_git_source_state_is_deterministic_and_does_not_expose_contents(

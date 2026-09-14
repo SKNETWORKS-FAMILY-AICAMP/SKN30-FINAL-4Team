@@ -61,27 +61,6 @@ def _optional(name: str, env: Mapping[str, str] | None = None) -> str | None:
 
 
 @dataclass(frozen=True, slots=True)
-class VllmConfig:
-    base_url: str
-    api_key: str
-    llm_model: str
-    embedding_model: str
-    timeout_seconds: float = 60.0
-    max_repairs: int = 1
-
-    @classmethod
-    def from_env(cls) -> "VllmConfig":
-        return cls(
-            base_url=_required("VLLM_BASE_URL").rstrip("/"),
-            api_key=_required("VLLM_API_KEY"),
-            llm_model=_required("VLLM_LLM_MODEL"),
-            embedding_model=_required("VLLM_EMBEDDING_MODEL"),
-            timeout_seconds=float(_int("VLLM_TIMEOUT_SECONDS", 60)),
-            max_repairs=_int("VLLM_MAX_REPAIRS", 1),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class OpenAIConfig:
     """OpenAI provider settings for the worker process only.
 
@@ -92,8 +71,8 @@ class OpenAIConfig:
 
     api_key: str
     llm_model: str
-    embedding_model: str
     request_profile_model: str | None = None
+    cpl_model: str | None = None
     fit_model: str | None = None
     sim_model: str | None = None
     chat_model: str | None = None
@@ -108,13 +87,15 @@ class OpenAIConfig:
         return cls(
             api_key=_required("OPENAI_API_KEY", env),
             llm_model=_required("OPENAI_LLM_MODEL", env),
-            embedding_model=_required("OPENAI_EMBEDDING_MODEL", env),
             request_profile_model=_optional("OPENAI_REQUEST_PROFILE_MODEL", env),
+            cpl_model=_optional("OPENAI_CPL_MODEL", env),
             fit_model=_optional("OPENAI_FIT_MODEL", env),
             sim_model=_optional("OPENAI_SIM_MODEL", env),
             chat_model=_optional("OPENAI_CHAT_MODEL", env),
             timeout_seconds=_float_from_env("OPENAI_TIMEOUT_SECONDS", 120.0, env),
-            max_repairs=_int_from_env("OPENAI_MAX_REPAIRS", 2, env),
+            max_repairs=_nonnegative_int_from_env(
+                "OPENAI_MAX_REPAIRS", 2, env
+            ),
         )
 
     def llm_model_profiles(self, *names: str) -> dict[str, str]:
@@ -137,11 +118,36 @@ class OpenAIConfig:
             raise ValueError("OpenAI model profile names must not be blank")
         overrides = {
             "request_profile": self.request_profile_model,
+            "cpl": self.cpl_model,
             "fit": self.fit_model,
             "sim": self.sim_model,
             "chat": self.chat_model,
         }
         return overrides.get(name) or self.llm_model
+
+
+@dataclass(frozen=True, slots=True)
+class OpenAIEmbeddingConfig:
+    """OpenAI embedding settings, deliberately independent of the LLM provider.
+
+    Retrieval embeddings are persisted with their model provenance.  Selecting
+    a self-hosted chat-completions provider must therefore not implicitly
+    replace this boundary or require an unrelated OpenAI LLM model setting.
+    """
+
+    api_key: str
+    embedding_model: str
+    timeout_seconds: float = 120.0
+
+    @classmethod
+    def from_env(
+        cls, env: Mapping[str, str] | None = None
+    ) -> "OpenAIEmbeddingConfig":
+        return cls(
+            api_key=_required("OPENAI_API_KEY", env),
+            embedding_model=_required("OPENAI_EMBEDDING_MODEL", env),
+            timeout_seconds=_float_from_env("OPENAI_TIMEOUT_SECONDS", 120.0, env),
+        )
 
 
 def _int_from_env(name: str, default: int, env: Mapping[str, str] | None) -> int:
@@ -156,6 +162,17 @@ def _int_from_env(name: str, default: int, env: Mapping[str, str] | None) -> int
         raise MissingConfigError(
             f"environment variable must be an integer: {name}"
         ) from None
+
+
+def _nonnegative_int_from_env(
+    name: str, default: int, env: Mapping[str, str] | None
+) -> int:
+    value = _int_from_env(name, default, env)
+    if value < 0:
+        raise MissingConfigError(
+            f"environment variable must be non-negative: {name}"
+        )
+    return value
 
 
 def _float_from_env(

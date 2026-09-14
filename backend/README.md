@@ -179,12 +179,31 @@ v0.2 retrieval은 request에서 실제로 준비된 purpose/target/support 0~3�
 축 수 `|A|`의 평균으로 검색한다. `PREREVIEW_EXISTING_KB_REQUIRED=true`이면 활성 KB/검색
 결과 부재는 재시도/실패이고, `false`이면 분석은 `KB_EMPTY`로 정상 완료될 수 있다.
 
+LLM 실행기는 `PREREVIEW_LLM_PROVIDER=openai|vllm`로 선택하며, 비어 있으면 기존과
+동일하게 OpenAI다. 각 제공자는 공통 fallback 모델과 Request Profile/CPL/FIT/SIM/chat
+단계별 override를 가진다. retrieval embedding은 별도
+`PREREVIEW_EMBEDDING_PROVIDER=openai` 경계로 고정되어 있으므로 LLM만 vLLM으로 바꿔도
+Existing vector provenance는 바뀌지 않는다. 알 수 없는 provider나 선택한 provider의
+필수 설정이 빠지면 worker는 queue claim 전에 종료한다.
+
+vLLM은 현재 experimental 선택지다. adapter는 OpenAI SDK의 strict JSON Schema 변환을
+그대로 쓰고 `temperature=0`, `top_p=1`, `seed=0`과 `max_tokens`를 보낸다. 이는 동일
+runtime에서의 재현성을 돕지만 서버·모델 버전과 병렬 실행에 따라 결정성은 best-effort다.
+호출 전체 deadline 및 streaming body/output 상한을 적용하며, 실제 vLLM 서버 canary는 아직
+실행하지 않았다. vLLM endpoint는 HTTPS만 허용하고, local 개발의 `localhost`/`127.0.0.0/8`/
+`::1`에만 HTTP를 허용한다. runtime-bound manifest 계약이 아직 없으므로 external release
+E2E에서 vLLM 선택은 명시적으로 NO-GO다. worker heartbeat는 별도 thread에서
+lease를 renew하므로 LLM deadline과 lease 총 길이 사이에 startup restriction을 두지 않는다.
+Request Profile의 LLM 출력은 최종 profile이 아니라 source selection이고, 최종 profile은
+local exact-span materialization으로 만든다. 따라서 `VLLM_MAX_OUTPUT_TOKENS` 기본 16384
+(상한 32768)는 16,836-byte selection fixture에 여유를 주되 무제한 출력은 허용하지 않는다.
+
 OpenAI Request Profile 구조화는 Compose 기본 `gpt-5.6-terra`, 호출별 hard timeout
 120초, `OPENAI_MAX_REPAIRS=2`를 사용한다. repair 수는 DB queue 재시도 횟수가 아니다.
 한 worker attempt 안에서 최초 구조화 호출 뒤 서버 검증 오류를 첨부한 수정 호출을 최대
 두 번 더 허용한다(따라서 최대 세 번). 긴 HWP/HWPX의 구조화 응답 시간을 유한하게
 보장하면서도, 한 번의 수정만으로 서로 다른 근거·컴포넌트 검증을 모두 해결하지 못한
-실측 사례를 수용하기 위한 값이다. FIT·SIM·채팅은 단계별 override가 없으면
+실측 사례를 수용하기 위한 값이다. CPL·FIT·SIM·채팅은 단계별 override가 없으면
 `OPENAI_LLM_MODEL`을 사용하고, 같은 bounded repair 상한은 FIT·SIM에도 전달된다.
 
 parser는 기본 120초 hard deadline을 사용하며 timeout 시 process group 전체를

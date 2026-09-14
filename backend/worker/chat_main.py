@@ -10,11 +10,11 @@ import os
 
 from dotenv import load_dotenv
 
-from worker.adapters.openai_llm_client import OpenAILLMClient
 from worker.chat import ResultGroundedChatHandler
-from worker.config import MissingConfigError, OpenAIConfig
-from worker.main import make_worker_id
+from worker.config import MissingConfigError
+from worker.main import configure_runtime_logging, make_worker_id
 from worker.postgres_chat_repository import PostgresChatJobRepository
+from worker.providers import build_llm_provider
 from worker.runtime import (
     DEFAULT_HEARTBEAT_SECONDS,
     DEFAULT_IDLE_POLL_SECONDS,
@@ -137,26 +137,15 @@ def build_chat_worker(
     """Build chat-only adapters without importing FastAPI or analysis storage."""
 
     settings = ChatWorkerSettings.from_env(env)
-    openai = _openai_config(env)
-    llm = OpenAILLMClient(
-        api_key=openai.api_key,
-        model_profiles=openai.llm_model_profiles("chat"),
-        timeout_seconds=openai.timeout_seconds,
-    )
+    llm_provider = build_llm_provider(profiles=("chat",), env=env)
     return ChatWorkerComposition(
         repository=PostgresChatJobRepository(
             settings.database_url,
             connect_timeout_seconds=settings.database_connect_timeout_seconds,
         ),
-        handler=ResultGroundedChatHandler(llm, model_profile="chat"),
+        handler=ResultGroundedChatHandler(llm_provider.client, model_profile="chat"),
         settings=settings,
     )
-
-
-def _openai_config(env: Mapping[str, str] | None) -> OpenAIConfig:
-    """Use the shared OpenAIConfig while keeping composition tests injectable."""
-
-    return OpenAIConfig.from_env(env)
 
 
 def run_chat_worker(
@@ -184,7 +173,7 @@ def run_chat_worker(
 
 def main() -> int:
     load_dotenv(override=False)
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+    configure_runtime_logging(level=os.getenv("LOG_LEVEL", "INFO").upper())
     try:
         composition = build_chat_worker()
     except (ChatWorkerConfigurationError, MissingConfigError) as error:

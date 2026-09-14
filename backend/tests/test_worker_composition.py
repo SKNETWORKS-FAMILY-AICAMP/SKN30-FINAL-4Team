@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from worker.analysis_job import AnalysisJobHandler
+from worker.adapters.vllm_llm_client import VllmLLMClient
 from worker import main as worker_main
 from worker.main import (
     WorkerConfigurationError,
@@ -146,6 +147,29 @@ def test_build_worker_uses_request_profile_override_without_changing_fit_or_sim(
     }
 
 
+def test_build_worker_selects_vllm_for_llm_and_keeps_openai_embeddings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _environment(monkeypatch)
+    monkeypatch.setenv("PREREVIEW_LLM_PROVIDER", "vllm")
+    monkeypatch.setenv("VLLM_BASE_URL", "https://gpu.internal/v1")
+    monkeypatch.setenv("VLLM_API_KEY", "never-print-vllm")
+    monkeypatch.setenv("VLLM_LLM_MODEL", "gemma-default")
+    monkeypatch.setenv("VLLM_REQUEST_PROFILE_MODEL", "gemma-request")
+
+    composition = build_worker()
+
+    delegate = composition.handler._producer._llm._delegate  # type: ignore[attr-defined]
+    assert isinstance(delegate, VllmLLMClient)
+    assert delegate._model_profiles == {  # type: ignore[attr-defined]
+        "request_profile": "gemma-request",
+        "cpl": "gemma-default",
+        "fit": "gemma-default",
+        "sim": "gemma-default",
+    }
+    assert composition.handler._producer._model_id == "gemma-request"  # type: ignore[attr-defined]
+
+
 def test_main_refuses_to_poll_when_ml_preflight_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -232,6 +256,20 @@ def test_main_refuses_to_build_or_poll_for_an_invalid_preflight_setting(
         "build_worker",
         lambda: pytest.fail("worker composition must not be built"),
     )
+    monkeypatch.setattr(
+        worker_main,
+        "run_worker",
+        lambda *_args, **_kwargs: pytest.fail("queue polling must not start"),
+    )
+
+    assert worker_main.main() == 2
+
+
+def test_main_refuses_to_poll_before_claim_for_an_invalid_llm_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _environment(monkeypatch)
+    monkeypatch.setenv("PREREVIEW_LLM_PROVIDER", "not-a-provider")
     monkeypatch.setattr(
         worker_main,
         "run_worker",

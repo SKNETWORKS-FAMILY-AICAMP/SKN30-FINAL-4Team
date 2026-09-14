@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from worker.chat.handler import ResultGroundedChatHandler
+from worker.adapters.vllm_llm_client import VllmLLMClient
 from worker.chat_main import (
     ChatWorkerConfigurationError,
     ChatWorkerSettings,
@@ -76,3 +77,19 @@ def test_build_chat_worker_uses_chat_model_override_without_changing_fallback() 
     composition = build_chat_worker(environment)
 
     assert composition.handler._llm._model_profiles == {"chat": "configured-chat"}  # type: ignore[attr-defined]
+
+
+def test_build_chat_worker_selects_vllm_without_openai_embedding_settings() -> None:
+    composition = build_chat_worker(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "PREREVIEW_LLM_PROVIDER": "vllm",
+            "VLLM_BASE_URL": "https://gpu.internal/v1",
+            "VLLM_API_KEY": "not-a-real-secret",
+            "VLLM_LLM_MODEL": "gemma-default",
+            "VLLM_CHAT_MODEL": "gemma-chat",
+        }
+    )
+
+    assert isinstance(composition.handler._llm, VllmLLMClient)  # type: ignore[attr-defined]
+    assert composition.handler._llm._model_profiles == {"chat": "gemma-chat"}  # type: ignore[attr-defined]

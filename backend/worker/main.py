@@ -28,14 +28,12 @@ from worker.adapters.ml_subprocess import (
     model2_command,
     model3_command,
 )
-from worker.adapters.openai_embedding_client import OpenAIEmbeddingClient
-from worker.adapters.openai_llm_client import OpenAILLMClient
 from worker.analysis_job import (
     AnalysisJobHandler,
     CoreAnalysisEngine,
     VendoredRequestProfileProducer,
 )
-from worker.config import MissingConfigError, OpenAIConfig
+from worker.config import MissingConfigError
 from worker.contracts.ml_result import MlModelId
 from worker.cpl_prompt import check_prompts_ready
 from worker.ml_reference import (
@@ -47,6 +45,7 @@ from worker.ml_runtime_preflight import MlRuntimePreflightError, verify_ml_runti
 from worker.postgres_analysis_store import PostgresAnalysisStore
 from worker.postgres_repository import PostgresJobRepository
 from worker.profiles import DEFAULT_PARSE_TIMEOUT_SECONDS
+from worker.providers import build_embedding_client, build_llm_provider
 from worker.runtime import (
     DEFAULT_HEARTBEAT_SECONDS,
     DEFAULT_IDLE_POLL_SECONDS,
@@ -387,26 +386,17 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
     return models
 
 
-def build_worker() -> WorkerComposition:
+def build_worker(env: Mapping[str, str] | None = None) -> WorkerComposition:
     """Build the PostgreSQL-polling HWP/HWPX analysis worker without I/O."""
 
-    settings = WorkerSettings.from_env()
-    openai = OpenAIConfig.from_env()
+    settings = WorkerSettings.from_env(env)
     # 설정이 잘못됐으면 작업을 받기 전에 멈춘다. 문서마다 축을 조용히 비우는
     # 것보다 기동에 실패하는 편이 낫다.
     check_prompts_ready()
-    llm = OpenAILLMClient(
-        api_key=openai.api_key,
-        model_profiles=openai.llm_model_profiles(
-            "request_profile", "cpl", "fit", "sim"
-        ),
-        timeout_seconds=openai.timeout_seconds,
+    llm_provider = build_llm_provider(
+        profiles=("request_profile", "cpl", "fit", "sim"), env=env
     )
-    embedding = OpenAIEmbeddingClient(
-        api_key=openai.api_key,
-        model_name=openai.embedding_model,
-        timeout_seconds=openai.timeout_seconds,
-    )
+    embedding = build_embedding_client(env)
     handler = AnalysisJobHandler(
         storage=SupabaseWorkerStorage(
             supabase_url=settings.supabase_url,
@@ -418,19 +408,19 @@ def build_worker() -> WorkerComposition:
             connect_timeout_seconds=settings.database_connect_timeout_seconds,
         ),
         producer=VendoredRequestProfileProducer(
-            llm,
+            llm_provider.client,
             model_profile="request_profile",
-            model_id=openai.llm_model_for("request_profile"),
-            max_repairs=openai.max_repairs,
+            model_id=llm_provider.model_id_for("request_profile"),
+            max_repairs=llm_provider.max_repairs,
             parse_timeout_seconds=settings.parse_timeout_seconds,
         ),
         embedding_client=embedding,
         analysis_engine=CoreAnalysisEngine(
-            llm,
+            llm_provider.client,
             cpl_model_profile="cpl",
             fit_model_profile="fit",
             sim_model_profile="sim",
-            max_repairs=openai.max_repairs,
+            max_repairs=llm_provider.max_repairs,
             ml_models=_build_ml_models(settings),
         ),
         top_k=settings.top_k,

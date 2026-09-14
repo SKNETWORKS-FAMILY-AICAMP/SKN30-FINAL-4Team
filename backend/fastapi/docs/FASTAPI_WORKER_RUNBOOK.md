@@ -253,19 +253,43 @@ SUPABASE_SERVICE_ROLE_KEY=
 DATABASE_URL=postgresql://<user>:<url-encoded-password>@host.docker.internal:<db-port>/postgres
 SUPABASE_DB_URL=
 
-# worker 전용 OpenAI
+# LLM은 OpenAI(기본) 또는 **experimental** OpenAI-compatible vLLM을 선택한다. embedding은
+# 별도 provider 경계이며 현재 OpenAI만 지원한다.
+PREREVIEW_LLM_PROVIDER=openai
+PREREVIEW_EMBEDDING_PROVIDER=openai
+
+# OpenAI embedding은 LLM provider와 무관하게 analysis worker에 항상 필요하다.
 OPENAI_API_KEY=<openai-api-key>
 # 모든 LLM 단계의 fallback. 단계별 override가 비어 있으면 이 모델을 사용한다.
 OPENAI_LLM_MODEL=gpt-5.6-luna
 # Request Profile 구조화는 별도 모델을 권장한다.
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 # 아래 단계별 override는 필요할 때만 설정한다.
+OPENAI_CPL_MODEL=
 OPENAI_FIT_MODEL=
 OPENAI_SIM_MODEL=
 OPENAI_CHAT_MODEL=
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_TIMEOUT_SECONDS=120
 OPENAI_MAX_REPAIRS=2
+
+# PREREVIEW_LLM_PROVIDER=vllm일 때의 OpenAI-compatible endpoint.
+# HTTPS만 허용한다. local 개발 예외는 localhost/127.0.0.0/8/::1 HTTP뿐이다.
+# VLLM_LLM_MODEL은 공통 fallback이고, 단계별 값은 선택 사항이다.
+VLLM_BASE_URL=https://<internal-vllm>/v1
+VLLM_API_KEY=<internal-token>
+VLLM_LLM_MODEL=<served-model-id>
+VLLM_REQUEST_PROFILE_MODEL=
+VLLM_CPL_MODEL=
+VLLM_FIT_MODEL=
+VLLM_SIM_MODEL=
+VLLM_CHAT_MODEL=
+VLLM_TIMEOUT_SECONDS=120
+VLLM_MAX_REPAIRS=2
+# LLM은 final profile이 아니라 source selection만 내고 final profile은 local materialize한다.
+# 16,384는 16.8KB selection fixture보다 충분한 여유를 준다 (1..32768).
+VLLM_MAX_OUTPUT_TOKENS=16384
+VLLM_MAX_RESPONSE_BYTES=1048576
 
 # PostgreSQL polling worker
 PREREVIEW_WORKER_HEARTBEAT_SECONDS=30
@@ -303,15 +327,22 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `SUPABASE_ANON_KEY` | O | - | 필수 | FastAPI가 Supabase Auth를 호출할 때 사용 |
 | `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY` | O | O | 필수 | private Storage용 서버 비밀값 |
 | `DATABASE_URL` | O | O | 필수 | FastAPI repository와 worker queue/result 저장 |
-| `OPENAI_API_KEY` | - | O | 분석 시 필수 | 구조화·embedding·비교 호출 |
-| `OPENAI_LLM_MODEL` | - | O | 선택(기본값 있음) | 모든 LLM 단계의 fallback 모델 |
+| `PREREVIEW_LLM_PROVIDER` | - | O | 선택(기본 `openai`) | `openai` 또는 experimental `vllm`; 선택한 provider 설정 오류는 claim 전 fail-closed |
+| `PREREVIEW_EMBEDDING_PROVIDER` | - | analysis worker | 선택(기본 `openai`) | retrieval embedding provider. 현재 `openai`만 허용; LLM 전환과 독립 |
+| `OPENAI_API_KEY` | - | analysis/chat worker | embedding 시 필수; OpenAI LLM 사용 시 필수 | analysis worker의 OpenAI embedding key이며, LLM provider가 `openai`이면 구조화·비교·채팅에도 사용 |
+| `OPENAI_LLM_MODEL` | - | OpenAI LLM worker | `PREREVIEW_LLM_PROVIDER=openai` 시 필수 | 모든 OpenAI LLM 단계의 fallback 모델. 예제·로컬 준비 스크립트는 기본값을 채움 |
 | `OPENAI_REQUEST_PROFILE_MODEL` | - | O | 권장 | Request Profile 구조화 모델. Compose 기본값은 `gpt-5.6-terra`; host 직접 실행에서 비우면 `OPENAI_LLM_MODEL` |
+| `OPENAI_CPL_MODEL` | - | O | 선택 | CPL 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_FIT_MODEL` | - | O | 선택 | FIT 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_SIM_MODEL` | - | O | 선택 | SIM 모델. 비우면 `OPENAI_LLM_MODEL` |
 | `OPENAI_CHAT_MODEL` | - | O (chat-worker) | 선택 | 결과 근거 채팅 모델. 비우면 `OPENAI_LLM_MODEL` |
-| `OPENAI_EMBEDDING_MODEL` | - | O | 선택(기본값 있음) | DB active embedding 설정과 일치해야 함 |
+| `OPENAI_EMBEDDING_MODEL` | - | analysis worker | 필수 | OpenAI embedding model; DB active embedding 설정과 일치해야 하며 vLLM LLM 선택과 무관 |
 | `OPENAI_TIMEOUT_SECONDS` | - | O | 선택(기본 120초) | 각 OpenAI 호출의 hard timeout. 전체 analysis run 제한이 아님 |
 | `OPENAI_MAX_REPAIRS` | - | O | 선택(기본 2회) | Request Profile·FIT·SIM 단계의 제한된 수정 호출 상한 |
+| `VLLM_BASE_URL`, `VLLM_API_KEY`, `VLLM_LLM_MODEL` | - | 선택한 worker | `PREREVIEW_LLM_PROVIDER=vllm` 시 필수 | OpenAI-compatible vLLM endpoint, 토큰, 공통 fallback 모델. endpoint는 HTTPS만 허용하며 local `localhost`/127.0.0.0/8/::1만 HTTP 예외 |
+| `VLLM_REQUEST_PROFILE_MODEL`, `VLLM_CPL_MODEL`, `VLLM_FIT_MODEL`, `VLLM_SIM_MODEL`, `VLLM_CHAT_MODEL` | - | 선택한 worker | 선택 | 해당 LLM 단계의 vLLM 모델 override. 비우면 `VLLM_LLM_MODEL` |
+| `VLLM_TIMEOUT_SECONDS`, `VLLM_MAX_REPAIRS` | - | 선택한 worker | 선택(기본 120/2) | 재시도 없는 단일 vLLM 호출 전체 hard deadline 및 구조화 repair 상한(0~8) |
+| `VLLM_MAX_OUTPUT_TOKENS`, `VLLM_MAX_RESPONSE_BYTES` | - | 선택한 worker | 선택(기본 16384/1048576) | `max_tokens` 생성 상한(1~32768). Request Profile은 selection만 LLM이 내고 final profile은 local materialize한다; streaming response body 상한은 1024~4194304 bytes |
 | `PREREVIEW_EXISTING_KB_REQUIRED` | - | O | 선택(기본 true) | true면 KB/retrieval 부재를 fail-closed; false면 `KB_EMPTY` 완료 허용. request 0축/zero vector 허용 설정이 아님 |
 | `PREREVIEW_FREETYPE_LIB` | - | O | 환경별 선택 | `rhwp` parser subprocess에만 주입 |
 | `PREREVIEW_MODEL1_SERVING_HOST_DIR` | - | O (Compose) | Docker 분석 시 필수 | 검증된 외부 `model1` 디렉터리의 절대 host 경로. `/opt/prereview/model1`로 read-only mount |
@@ -321,6 +352,12 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O (host 직접 실행) | host ML 실행 시 필수 | 별도 child Python. Docker에서는 image-local `/opt/prereview-ml-venv/bin/python`으로 고정 |
 | `PREREVIEW_ML_TIMEOUT_SECONDS` | - | O | 선택(기본 180초) | 각 ML child 호출의 hard timeout |
 | `PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT` | - | O | Docker에서는 필수 | startup 전 Model 1/2/3 artifact·manifest SHA-256을 확인. Compose는 `true`로 고정 |
+
+현재 단일 Compose 템플릿에는 두 LLM provider의 환경변수 슬롯이 함께 있다. 사용하지 않는
+provider의 API key는 채우지 않는다. analysis worker에서 vLLM을 선택해도 retrieval
+embedding용 `OPENAI_API_KEY`는 필요하지만, chat worker까지 provider별 최소권한 secret으로
+완전히 분리하는 Compose profile은 아직 구현되지 않았다. vLLM external release가 NO-GO인
+동안 이 항목도 production 전 후속 보안 gate로 유지한다.
 
 호환 alias는 새 배포에서 가급적 사용하지 않는다. DB는 `DATABASE_URL`, anon key는
 `SUPABASE_ANON_KEY`를 사용한다. Storage 비밀값은
