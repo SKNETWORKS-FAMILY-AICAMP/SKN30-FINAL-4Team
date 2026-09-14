@@ -39,6 +39,7 @@ class AnalysisHistoryPage:
 
     rows: list[Mapping[str, Any]]
     snapshot_at: datetime
+    next_after: tuple[datetime, str] | None = None
 
 
 @runtime_checkable

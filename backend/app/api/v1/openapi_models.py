@@ -32,6 +32,10 @@ class HealthStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str
+    build_id: str | None = Field(
+        default=None,
+        description="Configured immutable API build SHA, if deployment supplies one.",
+    )
 
 
 _ERROR_DESCRIPTIONS = {

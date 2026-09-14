@@ -308,8 +308,6 @@ class AnalysisHistoryEntryReadModel(_ReadModel):
     program_name: str | None
     original_filename: str | None
     completed_at: datetime
-    report_status: str | None
-    report_completed_at: datetime | None
 
 
 class AnalysisHistoryEnvelope(_ReadModel):
@@ -383,7 +381,10 @@ def _database_unavailable(exc: ResultRepositoryUnavailable) -> Exception:
 
 
 def _cursor_secret(request: Request) -> str:
-    return str(getattr(request.app.state, "cursor_signing_secret", "") or "")
+    secret = str(getattr(request.app.state, "cursor_signing_secret", "") or "").strip()
+    if not secret:
+        raise service_unavailable("Cursor signing is not configured")
+    return secret
 
 
 @router.get(
@@ -391,7 +392,7 @@ def _cursor_secret(request: Request) -> str:
     response_model=AnalysisResultReadModel,
     summary="분석 결과 전체 조회",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
 async def get_analysis_case(
     analysis_case_id: UUID,
@@ -415,7 +416,7 @@ async def get_analysis_case(
     response_model=SimCandidateDetailReadModel,
     summary="유사 공고 후보 상세 조회",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
 async def get_sim_candidate(
     sim_candidate_id: UUID,
@@ -440,7 +441,7 @@ async def get_sim_candidate(
     dependencies=[Security(access_cookie_scheme)],
     responses={
         204: {"description": "No active analysis session"},
-        **error_responses(401, 403, 422, 500, 503),
+        **error_responses(401, 403, 422, 429, 500, 502, 503),
     },
     summary="현재 활성 분석 세션 조회 (호환용 legacy endpoint)",
 )
@@ -461,7 +462,7 @@ async def get_active_analysis_session(
     "/analysis/current",
     response_model=AnalysisCurrentReadModel,
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 422, 500, 503),
+    responses=error_responses(401, 403, 422, 429, 500, 502, 503),
     summary="현재 처리 중/열람 가능한 분석 상태 조회 (단일 스냅샷 3상태)",
 )
 async def get_analysis_current(
@@ -479,7 +480,7 @@ async def get_analysis_current(
     "/analysis-sessions/{analysis_session_id}/close",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
     summary="지정한 분석 세션 종료 (owner-scoped, idempotent)",
 )
 async def close_analysis_session(
@@ -507,7 +508,7 @@ async def close_analysis_session(
     response_model=AnalysisHistoryEnvelope,
     summary="보관 기간 내 분석 이력 조회 (page size 5, signed snapshot cursor)",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 422, 500, 503),
+    responses=error_responses(401, 403, 422, 429, 500, 502, 503),
 )
 async def list_analysis_history(
     request: Request,
@@ -533,7 +534,7 @@ async def list_analysis_history(
         snapshot_at = _parse_cursor_datetime(fields["snapshot_at"])
         after = (
             _parse_cursor_datetime(fields["completed_at"]),
-            _cursor_str(fields["analysis_case_id"]),
+            _cursor_uuid(fields["analysis_case_id"]),
         )
     try:
         page: AnalysisHistoryPage = await repository.list_analysis_history_page(
@@ -546,8 +547,8 @@ async def list_analysis_history(
         raise _database_unavailable(exc) from exc
     items = [AnalysisHistoryEntryReadModel.model_validate(row) for row in page.rows]
     next_cursor = None
-    if len(page.rows) == HISTORY_PAGE_SIZE:
-        last = page.rows[-1]
+    if page.next_after is not None:
+        next_completed_at, next_case_id = page.next_after
         next_cursor = encode_cursor(
             secret=secret,
             endpoint=_HISTORY_CURSOR_ENDPOINT,
@@ -555,8 +556,8 @@ async def list_analysis_history(
             version=_HISTORY_CURSOR_VERSION,
             fields={
                 "snapshot_at": _isoformat(page.snapshot_at),
-                "completed_at": _isoformat(last["completed_at"]),
-                "analysis_case_id": str(last["analysis_case_id"]),
+                "completed_at": _isoformat(next_completed_at),
+                "analysis_case_id": next_case_id,
             },
         )
     return AnalysisHistoryEnvelope(items=items, next_cursor=next_cursor)
@@ -573,13 +574,19 @@ def _parse_cursor_datetime(value: object) -> datetime:
         return value
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value)
+            parsed = datetime.fromisoformat(value)
         except ValueError as exc:
             raise validation_error("cursor is invalid") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise validation_error("cursor is invalid")
+        return parsed
     raise validation_error("cursor is invalid")
 
 
-def _cursor_str(value: object) -> str:
-    if not isinstance(value, str) or not value:
+def _cursor_uuid(value: object) -> str:
+    if not isinstance(value, str):
         raise validation_error("cursor is invalid")
-    return value
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise validation_error("cursor is invalid") from exc

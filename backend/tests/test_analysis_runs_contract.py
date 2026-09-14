@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import sha256
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
     AnalysisRunFinalizationRejected,
+    AnalysisRunFinalizationExpired,
     AnalysisRunFinalizationUncertain,
     AnalysisRunRecord,
     IdempotencyKeyConflict,
@@ -76,19 +79,30 @@ class FakeRepository:
     async def reserve_uploading(
         self,
         *,
-        analysis_run_id: str,
+        idempotency_key: str,
         owner_id: str,
         source: SourceObject,
     ) -> UploadReservation:
         self.events.append("repository.reserve")
+        analysis_run_id = idempotency_key
         if self.reserve_fail_with:
             raise self.reserve_fail_with
         existing = self.records.get(analysis_run_id)
         if existing is not None:
             if existing[0] == owner_id and existing[2] == source:
+                cleanup_objects: tuple[UploadCleanupObject, ...] = ()
+                if existing[1].status == "cleanup_pending":
+                    cleanup_objects = (
+                        UploadCleanupObject(
+                            analysis_run_id=analysis_run_id,
+                            bucket=source.bucket,
+                            object_key=source.object_key,
+                        ),
+                    )
                 return UploadReservation(
                     record=existing[1],
                     replayed=existing[1].status != "uploading",
+                    cleanup_objects=cleanup_objects,
                 )
             raise IdempotencyKeyConflict("idempotency key reused for a different owner or source")
         if any(
@@ -239,7 +253,7 @@ def test_hwp_and_hwpx_create_durable_pollable_runs() -> None:
             assert owner == user_id
             assert source.filename == filename
             assert source.bucket == "request-temp"
-            assert source.object_key.startswith(f"{run_id}/source/")
+            assert "/source/" in source.object_key
             assert source.object_key.endswith(filename[filename.rfind(".") :])
             assert source.mime_type in {
                 "application/x-hwp",
@@ -268,6 +282,29 @@ def test_hwp_and_hwpx_create_durable_pollable_runs() -> None:
             "storage.put",
             "repository.finalize",
         ]
+
+
+def test_complete_multipart_body_is_rejected_before_upload_parsing() -> None:
+    api, repository, _storage = configured_client()
+    api.app.state.request_body_max_bytes = 128
+
+    with api:
+        response = api.post(
+            "/api/v1/analysis-runs",
+            headers=headers(),
+            files={
+                "file": (
+                    "request.hwpx",
+                    HWPX + (b"x" * 256),
+                    "application/vnd.hancom.hwpx",
+                )
+            },
+        )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "FILE_TOO_LARGE"
+    assert response.headers["cache-control"] == "private, no-store"
+    assert repository.events == []
 
 
 def test_polling_hides_another_users_run() -> None:
@@ -317,9 +354,13 @@ def test_idempotency_key_resumes_exact_uploading_reservation() -> None:
     repository = FakeRepository()
     key = "77777777-7777-4777-8777-777777777777"
     digest = sha256(HWP).hexdigest()
+    storage_scope_id = uuid5(
+        NAMESPACE_URL,
+        f"https://pre-review.local/analysis-source/{USER_ID}/{key}",
+    )
     source = SourceObject(
         bucket="request-temp",
-        object_key=f"{key}/source/{digest}.hwp",
+        object_key=f"{storage_scope_id}/source/{digest}.hwp",
         content_sha256=digest,
         filename="request.hwp",
         mime_type="application/x-hwp",
@@ -511,6 +552,67 @@ def test_known_finalize_rollback_cleans_source_but_uncertain_outcome_does_not() 
     ]
 
 
+def test_expired_finalization_capacity_cleans_the_db_fenced_source() -> None:
+    class ExpiredCapacityRepository(FakeRepository):
+        async def finalize_queued(
+            self,
+            *,
+            analysis_run_id: str,
+            owner_id: str,
+            source: SourceObject,
+        ) -> AnalysisRunRecord:
+            self.events.append("repository.finalize")
+            item_owner, record, item_source = self.records[analysis_run_id]
+            assert item_owner == owner_id
+            assert item_source == source
+            self.records[analysis_run_id] = (
+                item_owner,
+                replace(
+                    record,
+                    status="cleanup_pending",
+                    error_code="UPLOAD_RESERVATION_EXPIRED",
+                ),
+                item_source,
+            )
+            raise AnalysisRunFinalizationExpired(
+                "queue full after upload expiry",
+                UploadCleanupObject(
+                    analysis_run_id=analysis_run_id,
+                    bucket=source.bucket,
+                    object_key=source.object_key,
+                ),
+            )
+
+    repository = ExpiredCapacityRepository()
+    storage = FakeStorage()
+    events: list[str] = []
+    repository.events = events
+    storage.events = events
+    service = AnalysisRunService(repository, storage)
+
+    async def exercise() -> None:
+        with pytest.raises(AnalysisRunFinalizationExpired):
+            await service.create(
+                idempotency_key=str(uuid4()),
+                owner_id=USER_ID,
+                filename="request.hwp",
+                content=HWP,
+                mime_type="application/x-hwp",
+            )
+
+    asyncio.run(exercise())
+    assert len(storage.deleted) == 1
+    assert not storage.objects
+    assert repository.events == [
+        "repository.reserve",
+        "storage.put",
+        "repository.finalize",
+        "storage.delete",
+        "repository.complete_cleanup",
+    ]
+    assert next(iter(repository.records.values()))[1].status == "failed"
+
+
 def test_new_reservation_retries_stale_cleanup_before_current_upload() -> None:
     repository = FakeRepository()
     repository.cleanup_candidates = (
@@ -535,6 +637,94 @@ def test_new_reservation_retries_stale_cleanup_before_current_upload() -> None:
         "repository.complete_cleanup",
         "storage.put",
     ]
+
+
+def test_exact_cleanup_pending_replay_retries_delete_and_returns_refreshed_state() -> None:
+    repository = FakeRepository()
+    storage = FakeStorage()
+    storage.fail_put = ObjectStorageUnavailable("upload failed")
+    storage.fail_delete = RuntimeError("delete temporarily failed")
+    api, repository, storage = configured_client(repository=repository, storage=storage)
+    key = "66666666-6666-4666-8666-666666666666"
+    request_headers = headers(idempotency_key=key)
+
+    with api:
+        first = api.post(
+            "/api/v1/analysis-runs",
+            headers=request_headers,
+            files={"file": ("request.hwp", HWP, "application/x-hwp")},
+        )
+        assert first.status_code == 503
+        assert repository.records[key][1].status == "cleanup_pending"
+
+        storage.fail_put = None
+        storage.fail_delete = None
+        replay = api.post(
+            "/api/v1/analysis-runs",
+            headers=request_headers,
+            files={"file": ("request.hwp", HWP, "application/x-hwp")},
+        )
+
+    assert replay.status_code == 202
+    assert replay.json() == {"analysis_run_id": key, "status": "failed"}
+    assert repository.records[key][1].status == "failed"
+    assert storage.events.count("storage.put") == 1
+    assert storage.deleted
+
+
+def test_upload_materialisation_and_storage_are_process_bounded() -> None:
+    class BlockingStorage(FakeStorage):
+        def __init__(self) -> None:
+            super().__init__()
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+            self.active = 0
+            self.maximum_active = 0
+
+        async def put(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            self.events.append("storage.put")
+            self.active += 1
+            self.maximum_active = max(self.maximum_active, self.active)
+            self.entered.set()
+            await self.release.wait()
+            self.active -= 1
+            self.objects[(kwargs["bucket"], kwargs["object_key"])] = (
+                kwargs["content"],
+                kwargs["content_type"],
+            )
+
+    async def run() -> None:
+        storage = BlockingStorage()
+        api, _repository, _ = configured_client(storage=storage)
+        api.app.state.upload_semaphore = asyncio.Semaphore(1)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            first = asyncio.create_task(
+                client.post(
+                    "/api/v1/analysis-runs",
+                    headers=headers(USER_ID),
+                    files={"file": ("request.hwp", HWP, "application/x-hwp")},
+                )
+            )
+            await asyncio.wait_for(storage.entered.wait(), timeout=1)
+            second = asyncio.create_task(
+                client.post(
+                    "/api/v1/analysis-runs",
+                    headers=headers(OTHER_USER_ID),
+                    files={"file": ("request.hwpx", HWPX, "application/vnd.hancom.hwpx")},
+                )
+            )
+            await asyncio.sleep(0.05)
+            assert storage.events.count("storage.put") == 1
+            assert storage.maximum_active == 1
+            storage.release.set()
+            responses = await asyncio.gather(first, second)
+        assert [response.status_code for response in responses] == [202, 202]
+        assert storage.maximum_active == 1
+
+    asyncio.run(run())
 
 
 def test_upload_requires_trusted_origin_and_matching_magic() -> None:

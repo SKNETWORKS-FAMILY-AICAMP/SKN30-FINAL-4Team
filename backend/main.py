@@ -1,6 +1,9 @@
 """FastAPI entrypoint for the rebuilt PreReview backend."""
 
+import asyncio
 import os
+import re
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -10,23 +13,117 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api.auth import parse_allowed_origins
+from app.api.auth import InvalidAuthSession, clear_session_cookies, parse_allowed_origins
 from app.api.router import router as api_router
 from app.api.v1.openapi_models import HealthStatusResponse, error_responses
 from app.infrastructure.postgres_conversations import PostgresConversationRepository
 from app.infrastructure.postgres_analysis_runs import PostgresAnalysisRunRepository
 from app.infrastructure.postgres_results import PostgresResultRepository
 from app.infrastructure.supabase_storage import SupabasePrivateObjectStorage
+from app.middleware.request_body_limit import RequestBodyLimitMiddleware
 from app.services.analysis_runs import AnalysisRunService
 
 
+DEFAULT_GLOBAL_QUEUE_MAX = 25
+MAX_GLOBAL_QUEUE_MAX = 10_000
+DEFAULT_UPLOAD_CONCURRENCY = 2
+MAX_UPLOAD_CONCURRENCY = 32
+_BUILD_ID_PATTERN = re.compile(r"[0-9a-f]{64}")
+_BUILD_ID_FILE = Path(__file__).resolve().with_name(".prereview-build-id")
+
+
+def _validated_build_id(value: str, *, source: str) -> str:
+    if _BUILD_ID_PATTERN.fullmatch(value) is None:
+        raise RuntimeError(f"{source} must be a 64 character lowercase SHA-256")
+    return value
+
+
+def _build_id_from_artifact() -> str | None:
+    """Read the baked image identity without any runtime override.
+
+    Docker builds always create ``.prereview-build-id`` from the deterministic
+    Docker context digest. Ordinary host ASGI development has no such file and
+    deliberately reports no deployment identity.
+    """
+
+    try:
+        baked_value = _BUILD_ID_FILE.read_text(encoding="ascii")
+    except FileNotFoundError:
+        baked_value = None
+    except OSError as exc:
+        raise RuntimeError("Baked API build identity is unreadable") from exc
+
+    if baked_value is not None:
+        # The Dockerfile writes exactly one newline-terminated SHA.  Reject a
+        # malformed or unexpectedly edited image artifact rather than masking
+        # it with the runtime environment.
+        if not baked_value.endswith("\n") or baked_value.count("\n") != 1:
+            raise RuntimeError("Baked API build identity is invalid")
+        return _validated_build_id(
+            baked_value.removesuffix("\n"), source="Baked API build identity"
+        )
+
+    return None
+
+
+def _health_headers(build_id: str | None) -> dict[str, str]:
+    return {"X-PreReview-Build-Id": build_id} if build_id is not None else {}
+
+
+def _global_queue_max_from_environment() -> int:
+    """Read the shared admission cap once and reject unsafe deployment input.
+
+    API replicas must use the same value. PostgreSQL serializes admissions;
+    this process-local setting is passed into each trusted SQL transaction.
+    """
+
+    raw_value = os.getenv("PREREVIEW_GLOBAL_QUEUE_MAX", str(DEFAULT_GLOBAL_QUEUE_MAX))
+    try:
+        limit = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("PREREVIEW_GLOBAL_QUEUE_MAX must be an integer") from exc
+    if not 1 <= limit <= MAX_GLOBAL_QUEUE_MAX:
+        raise RuntimeError(
+            f"PREREVIEW_GLOBAL_QUEUE_MAX must be between 1 and {MAX_GLOBAL_QUEUE_MAX}"
+        )
+    return limit
+
+
+def _upload_concurrency_from_environment() -> int:
+    """Bound simultaneous in-memory file assembly and Storage writes."""
+
+    raw_value = os.getenv(
+        "PREREVIEW_UPLOAD_CONCURRENCY", str(DEFAULT_UPLOAD_CONCURRENCY)
+    )
+    try:
+        limit = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("PREREVIEW_UPLOAD_CONCURRENCY must be an integer") from exc
+    if not 1 <= limit <= MAX_UPLOAD_CONCURRENCY:
+        raise RuntimeError(
+            "PREREVIEW_UPLOAD_CONCURRENCY must be between "
+            f"1 and {MAX_UPLOAD_CONCURRENCY}"
+        )
+    return limit
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="PreReview API", version="0.1.0")
+    app = FastAPI(title="PreReview API", version="0.2.0")
+    app.state.build_id = _build_id_from_artifact()
     # A missing/unset PREREVIEW_OFFLINE_MODE must fail toward the safer,
     # cookie-only production boundary. Offline dev-header auth is opt-in only
     # (see app.api.auth.offline_principal); it is never the silent default.
     app.state.offline_mode = os.getenv("PREREVIEW_OFFLINE_MODE", "false").lower() in {"1", "true", "yes"}
     app.state.upload_max_bytes = int(os.getenv("PREREVIEW_UPLOAD_MAX_BYTES", str(50 * 1024 * 1024)))
+    app.state.request_body_max_bytes = int(
+        os.getenv(
+            "PREREVIEW_HTTP_MAX_BODY_BYTES",
+            str(app.state.upload_max_bytes + 1024 * 1024),
+        )
+    )
+    app.state.upload_concurrency = _upload_concurrency_from_environment()
+    app.state.upload_semaphore = asyncio.Semaphore(app.state.upload_concurrency)
+    app.state.global_queue_max = _global_queue_max_from_environment()
     app.state.supabase_url = os.getenv("SUPABASE_URL", "")
     app.state.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY", "")
     app.state.supabase_service_role_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -52,7 +149,8 @@ def create_app() -> FastAPI:
     if not app.state.offline_mode and app.state.database_url:
         app.state.result_repository = PostgresResultRepository(app.state.database_url)
         app.state.conversation_repository = PostgresConversationRepository(
-            app.state.database_url
+            app.state.database_url,
+            global_queue_max=app.state.global_queue_max,
         )
     if (
         not app.state.offline_mode
@@ -61,7 +159,10 @@ def create_app() -> FastAPI:
         and app.state.database_url
     ):
         app.state.analysis_run_service = AnalysisRunService(
-            PostgresAnalysisRunRepository(app.state.database_url),
+            PostgresAnalysisRunRepository(
+                app.state.database_url,
+                global_queue_max=app.state.global_queue_max,
+            ),
             SupabasePrivateObjectStorage(
                 supabase_url=app.state.supabase_url,
                 service_role_key=app.state.supabase_service_role_key,
@@ -71,6 +172,10 @@ def create_app() -> FastAPI:
     # Cross-origin browser calls are allowed only for the same explicit list
     # used by the CSRF Origin gate. Credentials are required for HttpOnly
     # session cookies, so wildcard origins are intentionally unsupported.
+    # This is added before CORS so Starlette's reverse wrapping order keeps
+    # CORS outside the body limiter; browser clients still receive CORS
+    # headers on a rejected upload.
+    app.add_middleware(RequestBodyLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=sorted(app.state.auth_allowed_origins),
@@ -118,6 +223,8 @@ def create_app() -> FastAPI:
             413: "FILE_TOO_LARGE",
             415: "UNSUPPORTED_FILE_FORMAT",
             422: "VALIDATION_ERROR",
+            429: "RATE_LIMITED",
+            502: "BAD_GATEWAY",
             503: "SERVICE_UNAVAILABLE",
         }
         message = exc.detail if isinstance(exc.detail, str) else "Request failed"
@@ -129,6 +236,17 @@ def create_app() -> FastAPI:
                 "message": message,
             },
         )
+
+    @app.exception_handler(InvalidAuthSession)
+    async def invalid_auth_session_handler(
+        request: Request, exc: InvalidAuthSession
+    ) -> JSONResponse:
+        response = JSONResponse(
+            status_code=401,
+            content={"code": "UNAUTHORIZED", "message": str(exc)},
+        )
+        clear_session_cookies(response, request)
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -158,8 +276,11 @@ def create_app() -> FastAPI:
         response_model=HealthStatusResponse,
         responses=error_responses(500),
     )
-    async def live() -> HealthStatusResponse:
-        return HealthStatusResponse(status="live")
+    async def live() -> JSONResponse:
+        return JSONResponse(
+            content={"status": "live", "build_id": app.state.build_id},
+            headers=_health_headers(app.state.build_id),
+        )
 
     @app.get(
         "/health/ready",
@@ -173,12 +294,17 @@ def create_app() -> FastAPI:
             and bool(app.state.supabase_url)
             and bool(app.state.supabase_anon_key)
             and bool(app.state.auth_allowed_origins)
+            and bool(str(app.state.cursor_signing_secret).strip())
+            and app.state.upload_max_bytes > 0
+            and app.state.request_body_max_bytes > app.state.upload_max_bytes
+            and app.state.upload_concurrency > 0
             and app.state.analysis_run_service is not None
         )
         if configured:
             return JSONResponse(
                 status_code=200,
-                content={"status": "ready"},
+                content={"status": "ready", "build_id": app.state.build_id},
+                headers=_health_headers(app.state.build_id),
             )
         return JSONResponse(
             status_code=503,

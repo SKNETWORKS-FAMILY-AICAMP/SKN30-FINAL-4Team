@@ -28,6 +28,8 @@ def _assert_error_response(operation: dict[str, Any], status_code: str) -> None:
 
 def test_openapi_documents_http_only_cookie_security_without_bearer_auth() -> None:
     schema = create_app().openapi()
+
+    assert schema["info"]["version"] == "0.2.0"
     schemes = schema["components"]["securitySchemes"]
 
     assert schemes["PreReviewAccessCookie"] == {

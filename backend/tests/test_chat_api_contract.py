@@ -46,6 +46,7 @@ class FakeConversationRepository:
         self.created: list[tuple[str, str, str, str]] = []
         self.retried: list[tuple[str, str, str, str]] = []
         self.used_idempotency_keys: dict[str, tuple[str, str]] = {}
+        self.list_cursor: tuple[int, str] | None = None
         self.messages: dict[str, ConversationMessageRecord] = {
             ASSISTANT_MESSAGE_ID: ConversationMessageRecord(
                 message_id=ASSISTANT_MESSAGE_ID,
@@ -259,6 +260,19 @@ def test_get_returns_envelope_in_chronological_order() -> None:
     assert body["next_cursor"] is None
 
 
+def test_message_history_requires_cursor_secret_even_for_one_page() -> None:
+    client, _repository = _client()
+    client.app.state.cursor_signing_secret = ""  # type: ignore[attr-defined]
+
+    response = client.get(
+        f"/api/v1/analysis-cases/{CASE_ID}/messages",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "SERVICE_UNAVAILABLE"
+
+
 def test_list_history_cursor_round_trips_and_updated_since_is_gone() -> None:
     client, repository = _client()
     cursor = encode_cursor(
@@ -301,6 +315,26 @@ def test_message_cursor_from_a_different_case_is_rejected() -> None:
     )
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_message_cursor_rejects_signed_but_wrongly_typed_fields() -> None:
+    client, repository = _client()
+    cursor = encode_cursor(
+        secret=CURSOR_SECRET,
+        endpoint="analysis-case-messages",
+        scope=f"{OWNER_ID}:{CASE_ID}",
+        version=1,
+        fields={"sequence_no": "1", "message_id": USER_MESSAGE_ID},
+    )
+
+    response = client.get(
+        f"/api/v1/analysis-cases/{CASE_ID}/messages?cursor={cursor}",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert repository.list_cursor is None
 
 
 def test_retry_requires_idempotency_key_and_is_case_fenced() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -17,6 +18,7 @@ from app.api.errors import (
     idempotency_key_conflict,
     not_found,
     service_unavailable,
+    validation_error,
 )
 from app.ports.conversations import (
     ConversationConflict,
@@ -24,6 +26,7 @@ from app.ports.conversations import (
     ConversationMessagePage,
     ConversationMessageRecord,
     ConversationNotFound,
+    ConversationQueueCapacityExceeded,
     ConversationRepository,
     ConversationRepositoryUnavailable,
     ConversationRetryExhausted,
@@ -131,11 +134,33 @@ def _conflict(exc: ConversationConflict) -> ApiError:
 
 
 def _unavailable(exc: ConversationRepositoryUnavailable) -> ApiError:
+    if isinstance(exc, ConversationQueueCapacityExceeded):
+        return service_unavailable("Conversation queue is temporarily full")
     return service_unavailable("Conversation service is temporarily unavailable")
 
 
 def _cursor_secret(request: Request) -> str:
-    return str(getattr(request.app.state, "cursor_signing_secret", "") or "")
+    secret = str(getattr(request.app.state, "cursor_signing_secret", "") or "").strip()
+    if not secret:
+        raise service_unavailable("Cursor signing is not configured")
+    return secret
+
+
+def _message_cursor(fields: Mapping[str, object]) -> tuple[int, str]:
+    sequence_no = fields.get("sequence_no")
+    message_id = fields.get("message_id")
+    if (
+        not isinstance(sequence_no, int)
+        or isinstance(sequence_no, bool)
+        or sequence_no < 1
+        or not isinstance(message_id, str)
+    ):
+        raise validation_error("cursor is invalid")
+    try:
+        canonical_message_id = str(UUID(message_id))
+    except ValueError as exc:
+        raise validation_error("cursor is invalid") from exc
+    return sequence_no, canonical_message_id
 
 
 @router.post(
@@ -144,7 +169,7 @@ def _cursor_secret(request: Request) -> str:
     status_code=status.HTTP_202_ACCEPTED,
     summary="분석 결과에 질문 등록",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 409, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 409, 422, 429, 500, 502, 503),
 )
 async def create_conversation_message(
     analysis_case_id: UUID,
@@ -181,7 +206,7 @@ async def create_conversation_message(
     response_model=ConversationMessageEnvelope,
     summary="과거 대화 목록 조회 (keyset pagination)",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
 async def list_conversation_messages(
     request: Request,
@@ -206,7 +231,7 @@ async def list_conversation_messages(
             version=_MESSAGES_CURSOR_VERSION,
             required_keys=_MESSAGES_CURSOR_KEYS,
         )
-        decoded_cursor = (int(fields["sequence_no"]), str(fields["message_id"]))
+        decoded_cursor = _message_cursor(fields)
     try:
         page: ConversationMessagePage = await repository.list_messages(
             owner_id=principal.user_id,
@@ -239,7 +264,7 @@ async def list_conversation_messages(
     response_model=ConversationMessageResponse,
     summary="단건 메시지 상태 polling",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
 async def get_conversation_message(
     analysis_case_id: UUID,
@@ -266,7 +291,7 @@ async def get_conversation_message(
     status_code=status.HTTP_202_ACCEPTED,
     summary="실패한 AI 답변 재시도 등록",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 409, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 409, 422, 429, 500, 502, 503),
 )
 async def retry_conversation_message(
     analysis_case_id: UUID,

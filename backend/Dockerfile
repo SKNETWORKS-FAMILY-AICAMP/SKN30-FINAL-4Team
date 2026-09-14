@@ -1,5 +1,14 @@
 # Syntax is intentionally simple so this image can be built by either Docker
 # BuildKit or the classic builder.
+FROM python:3.12-slim AS pristine-identity
+
+# Compute provenance from the untouched Docker COPY context before dependency
+# installation, runtime caches, or any build command can add files. The final
+# runtime image receives only this artifact from the pristine stage.
+WORKDIR /app/backend
+COPY . ./
+RUN python scripts/build_context_digest.py --root . --write /tmp/prereview-build-id
+
 FROM python:3.12-slim
 
 # Keep tiktoken's verified encoding cache inside the image. Runtime
@@ -34,7 +43,10 @@ RUN python -m pip install --upgrade pip \
     && python -c "from pathlib import Path; import tiktoken; assert tiktoken.get_encoding('cl100k_base').name == 'cl100k_base'; assert any(Path('/opt/tiktoken-cache').iterdir())"
 
 COPY . ./
+# This is release provenance, not operator-supplied runtime configuration.
+# It was calculated in the pristine stage before pip/build side effects.
+COPY --from=pristine-identity /tmp/prereview-build-id .prereview-build-id
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-concurrency", "32"]

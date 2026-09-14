@@ -16,12 +16,13 @@ class ActiveAnalysisRunExists(AnalysisRunError):
 
 
 class IdempotencyKeyConflict(AnalysisRunError):
-    """The same Idempotency-Key was reused for a different owner or source.
+    """One owner reused the same Idempotency-Key for a different source.
 
     Distinct from :class:`ActiveAnalysisRunExists`: an exact replay (same
     owner, key, and source) is not a conflict at all — it returns the
-    existing run. This is only the *different input, same key* case (v0.2
-    spec section 5.2, step 3).
+    existing run. Keys are owner-scoped so an unrelated user's UUID collision
+    remains isolated. This is only the *different input, same owner/key* case
+    (v0.2 spec section 5.2, step 3).
     """
 
 
@@ -33,14 +34,30 @@ class ActiveResultSessionExists(AnalysisRunError):
     result session is still open. The caller must ``POST
     /analysis-sessions/{id}/close`` it before a new upload is accepted.
 
-    Not yet raised by :class:`app.infrastructure.postgres_analysis_runs
-    .PostgresAnalysisRunRepository` — see that module's docstring for the
-    parallel ``db-lifecycle`` assumption this depends on.
+    Raised by the v0.2 reservation RPC before a new upload is created; the
+    PostgreSQL adapter maps that domain conflict without exposing DB details.
     """
 
 
 class AnalysisRunPersistenceUnavailable(AnalysisRunError):
     """The internal database cannot currently serve the request."""
+
+
+class AnalysisQueueCapacityExceeded(AnalysisRunPersistenceUnavailable):
+    """The shared analysis/chat worker backlog has reached its admission cap.
+
+    This is intentionally a safe 503-class failure rather than a 409: callers
+    should retry with the same idempotency key, and an exact replay remains
+    accepted even while the queue is full.
+    """
+
+
+class AnalysisRunFinalizationExpired(AnalysisQueueCapacityExceeded):
+    """An expired upload could not be re-admitted and must be cleaned up."""
+
+    def __init__(self, message: str, cleanup_object: "UploadCleanupObject") -> None:
+        super().__init__(message)
+        self.cleanup_object = cleanup_object
 
 
 class AnalysisRunFinalizationRejected(AnalysisRunPersistenceUnavailable):
@@ -99,7 +116,7 @@ class AnalysisRunRepository(Protocol):
     async def reserve_uploading(
         self,
         *,
-        analysis_run_id: str,
+        idempotency_key: str,
         owner_id: str,
         source: SourceObject,
     ) -> UploadReservation: ...

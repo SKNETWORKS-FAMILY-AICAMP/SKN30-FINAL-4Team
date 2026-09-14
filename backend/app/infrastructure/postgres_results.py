@@ -1,45 +1,9 @@
-"""Trusted PostgreSQL adapter for owner-scoped analysis-result reads.
+"""Trusted PostgreSQL adapter for owner-scoped v0.2 result RPCs.
 
-FastAPI first validates the Supabase Auth cookie.  This adapter then creates a
-short-lived PostgreSQL connection and sets only the verified UUID as the local
-``request.jwt.claim.sub`` value.  The existing ``api`` views and RPCs continue
-to own every result-table join and ownership predicate through ``auth.uid()``.
-
-DB RPC assumptions (v0.2, section 13/16 ``db-lifecycle``/``db-result-retrieval``)
------------------------------------------------------------------------------
-The functions below are named for the v0.2 contract but have not shipped on
-this branch; the DB migration work is a parallel commit unit. Until that
-lands, any online (non-offline-mode) call into this adapter will fail with a
-plain ``undefined_function``/``42883`` error, which this adapter maps to
-:class:`ResultRepositoryUnavailable` like any other database failure — it
-never fabricates an empty or fake-success result.  The assumed signatures,
-all executed on the owner-scoped connection (``SET LOCAL ROLE authenticated``
-+ ``request.jwt.claim.sub``) exactly like the existing v1 RPCs below:
-
-- ``api.rpc_get_analysis_result_v2(p_analysis_case_id uuid) -> jsonb`` —
-  same ``payload`` shape as the legacy ``rpc_get_analysis_result``, extended
-  with typed CPL/FIT ``detail`` and SIM section status/reason/summary.
-- ``api.rpc_get_sim_candidate_detail_v2(p_sim_candidate_id uuid) -> jsonb`` —
-  returns the section-9.2 shape (``metadata``/``comparison``/``axes``)
-  instead of the legacy flat/raw-axis shape.
-- ``api.rpc_get_analysis_current_v2() -> jsonb`` — no arguments; owner comes
-  from the connection's ``auth.uid()``. Returns the section-5.4 discriminated
-  ``{"state": "processing"|"ready"|"idle", "run": ..., "session": ...}``
-  snapshot computed atomically (one statement, one point-in-time read).
-- ``api.rpc_close_analysis_session_v2(p_analysis_session_id uuid) -> void`` —
-  closes the session (``closed_at``, ``reason='new_analysis'``) if it is the
-  caller's and still active; is a silent no-op if it is the caller's and
-  already closed/expired; raises SQLSTATE ``P0002`` if it does not exist or
-  belongs to another owner.
-- ``api.rpc_list_analysis_history_v2(p_snapshot_at timestamptz,
-  p_after_completed_at timestamptz, p_after_analysis_case_id uuid, p_limit
-  int) -> jsonb`` — returns ``{"snapshot_at": <timestamptz>, "items": [...]}``.
-  When ``p_snapshot_at`` is NULL the function picks and returns the pinned
-  snapshot (the reference point later pages must keep re-sending); passing a
-  previously-returned ``snapshot_at`` back must not change what "now" means
-  for that pagination run. ``items`` are ordered
-  ``(completed_at DESC, analysis_case_id DESC)`` and exclude any
-  active/unexpired result session per spec section 6.
+FastAPI validates the Supabase Auth cookie, then passes only that verified
+UUID to service-only SQL functions.  Browser roles cannot execute these RPCs,
+and the adapter never switches to ``authenticated`` or relies on
+``auth.uid()``; every function applies its own explicit owner predicate.
 """
 
 from __future__ import annotations
@@ -59,20 +23,12 @@ from app.ports.results import (
 )
 
 
-_SET_OWNER_SQL = "SELECT set_config('request.jwt.claim.sub', %s, true)"
-_SET_AUTHENTICATED_ROLE_SQL = "SET LOCAL ROLE authenticated"
-_GET_CASE_SQL = "SELECT api.rpc_get_analysis_result_v2(%s) AS payload"
-_GET_SIM_CANDIDATE_SQL = "SELECT api.rpc_get_sim_candidate_detail_v2(%s) AS payload"
-_GET_CURRENT_SQL = "SELECT api.rpc_get_analysis_current_v2() AS payload"
-_CLOSE_SESSION_SQL = "SELECT api.rpc_close_analysis_session_v2(%s)"
-_GET_ACTIVE_SESSION_SQL = """
-SELECT analysis_session_id, analysis_case_id, program_name, original_filename,
-       session_expires_at
-  FROM api.v_active_analysis_session
- LIMIT 1
-"""
+_GET_CASE_SQL = "SELECT api.rpc_get_analysis_result_v2(%s, %s) AS payload"
+_GET_SIM_CANDIDATE_SQL = "SELECT api.rpc_get_sim_candidate_detail_v2(%s, %s) AS payload"
+_GET_CURRENT_SQL = "SELECT api.rpc_get_analysis_current_v2(%s) AS payload"
+_CLOSE_SESSION_SQL = "SELECT * FROM api.rpc_close_analysis_session_v2(%s, %s)"
 _LIST_HISTORY_PAGE_SQL = """
-SELECT api.rpc_list_analysis_history_v2(%s, %s, %s, %s) AS payload
+SELECT api.rpc_get_analysis_history_v2(%s, %s, %s, %s) AS payload
 """
 
 
@@ -123,11 +79,11 @@ class PostgresResultRepository:
         return dict(payload)
 
     async def get_active_session(self, *, owner_id: str) -> Mapping[str, Any] | None:
-        return await self._one_with_owner(
-            owner_id=owner_id,
-            query=_GET_ACTIVE_SESSION_SQL,
-            params=(),
-        )
+        current = await self.get_current(owner_id=owner_id)
+        session = current.get("session")
+        if current.get("state") != "ready" or not isinstance(session, Mapping):
+            return None
+        return dict(session)
 
     async def get_current(self, *, owner_id: str) -> Mapping[str, Any]:
         row = await self._one_with_owner(
@@ -159,7 +115,7 @@ class PostgresResultRepository:
         row = await self._one_with_owner(
             owner_id=owner_id,
             query=_LIST_HISTORY_PAGE_SQL,
-            params=(snapshot_at, after_completed_at, after_case_id, limit),
+            params=(snapshot_at, after_completed_at, after_case_id),
         )
         payload = row.get("payload") if row is not None else None
         if not isinstance(payload, Mapping):
@@ -173,7 +129,23 @@ class PostgresResultRepository:
             if isinstance(returned_snapshot_at, datetime)
             else datetime.fromisoformat(returned_snapshot_at)
         )
-        return AnalysisHistoryPage(rows=[dict(item) for item in items], snapshot_at=resolved_snapshot_at)
+        next_completed_at = payload.get("next_completed_at")
+        next_case_id = payload.get("next_analysis_case_id")
+        if (next_completed_at is None) != (next_case_id is None):
+            raise ResultRepositoryUnavailable("Analysis history cursor was malformed")
+        next_after = None
+        if next_completed_at is not None:
+            resolved_next_completed_at = (
+                next_completed_at
+                if isinstance(next_completed_at, datetime)
+                else datetime.fromisoformat(str(next_completed_at))
+            )
+            next_after = (resolved_next_completed_at, str(next_case_id))
+        return AnalysisHistoryPage(
+            rows=[dict(item) for item in items],
+            snapshot_at=resolved_snapshot_at,
+            next_after=next_after,
+        )
 
     async def _one_with_owner(
         self,
@@ -203,14 +175,7 @@ class PostgresResultRepository:
             ) as connection:
                 async with connection.transaction():
                     async with connection.cursor() as cursor:
-                        await cursor.execute(_SET_OWNER_SQL, (verified_owner_id,))
-                        # The API process uses a privileged DSN for queue
-                        # writes, but result reads must execute with the same
-                        # role/RLS boundary exercised by browser-facing
-                        # Supabase APIs.  The verified UUID remains the only
-                        # JWT claim material copied into PostgreSQL.
-                        await cursor.execute(_SET_AUTHENTICATED_ROLE_SQL)
-                        await cursor.execute(query, params)
+                        await cursor.execute(query, (verified_owner_id, *params))
                         if one:
                             row = await cursor.fetchone()
                             return dict(row) if row is not None else None

@@ -1,20 +1,9 @@
 """Direct trusted-Postgres adapter for FastAPI analysis-run commands.
 
-DB assumption (v0.2, parallel ``db-lifecycle`` unit) -- not yet shipped
-------------------------------------------------------------------------
-Spec section 5.1 adds a user-scoped invariant that a new upload must respect
-but that this adapter cannot yet detect: "같은 사용자에게 status='active'인
-result session은 최대 1건이다", enforced with a new partial unique index over
-``result.analysis_session``. Once that index exists, this adapter expects its
-``UniqueViolation`` to name a constraint called
-``uq_result_analysis_session_one_active_per_user`` -- the reservation query
-below already recognizes that exact name and raises
-:class:`app.ports.analysis_runs.ActiveResultSessionExists` (409
-``ACTIVE_RESULT_SESSION``) for it, distinct from
-:class:`app.ports.analysis_runs.ActiveAnalysisRunExists` (409
-``ANALYSIS_RUN_ACTIVE``, the existing in-flight-processing-run constraint).
-If the DB migration lands with a different constraint name, update the
-branch in :meth:`PostgresAnalysisRunRepository.reserve_uploading` to match.
+The v0.2 reservation RPC owns user-level serialization, exact idempotency,
+stale-run reconciliation, and canonical run-ID allocation.  FastAPI supplies
+only the verified owner and immutable source identity, then uses the returned
+run ID for every later transition.
 """
 
 from __future__ import annotations
@@ -23,14 +12,15 @@ from collections.abc import Mapping
 from typing import Any
 
 import psycopg
-from psycopg import errors
 from psycopg.rows import dict_row
 
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
     ActiveResultSessionExists,
+    AnalysisRunFinalizationExpired,
     AnalysisRunFinalizationRejected,
     AnalysisRunFinalizationUncertain,
+    AnalysisQueueCapacityExceeded,
     AnalysisRunPersistenceUnavailable,
     AnalysisRunRecord,
     IdempotencyKeyConflict,
@@ -40,155 +30,30 @@ from app.ports.analysis_runs import (
 )
 
 
-# See the module docstring: not yet created by any migration on this branch.
-_ACTIVE_RESULT_SESSION_CONSTRAINT = "uq_result_analysis_session_one_active_per_user"
-
-
 _UPLOAD_RESERVATION_TTL_SECONDS = 15 * 60
 _QUEUED_SOURCE_TTL_SECONDS = 60 * 60
-_STALE_CLEANUP_BATCH_SIZE = 25
+DEFAULT_GLOBAL_QUEUE_MAX = 25
+MAX_GLOBAL_QUEUE_MAX = 10_000
 
-_CLAIM_STALE_UPLOAD_CLEANUP_SQL = """
-WITH candidate_runs AS MATERIALIZED (
-    SELECT analysis_run.analysis_run_pk
-      FROM workspace.analysis_run AS analysis_run
-     WHERE (
-           (
-               analysis_run.status = 'uploading'
-               AND COALESCE(
-                   analysis_run.expires_at,
-                   analysis_run.created_at + interval '15 minutes'
-               ) <= clock_timestamp()
-           )
-           OR (
-            analysis_run.status = 'cleanup_pending'
-            AND analysis_run.error_code IN (
-                'UPLOAD_RESERVATION_EXPIRED',
-                'SOURCE_UPLOAD_FAILED',
-                'UPLOAD_FINALIZE_FAILED'
-            )
-           )
-       )
-       AND NOT EXISTS (
-           SELECT 1
-             FROM workspace.analysis_run_dispatch AS active_dispatch
-            WHERE active_dispatch.analysis_run_pk = analysis_run.analysis_run_pk
-              AND active_dispatch.processing_run_pk IS NOT NULL
-       )
-     ORDER BY COALESCE(analysis_run.expires_at, analysis_run.updated_at),
-              analysis_run.analysis_run_pk
-     LIMIT %s
-     FOR UPDATE OF analysis_run SKIP LOCKED
-), locked_dispatch AS MATERIALIZED (
-    SELECT dispatch.analysis_run_pk, dispatch.source_bucket,
-           dispatch.source_object_key, dispatch.processing_run_pk
-      FROM workspace.analysis_run_dispatch AS dispatch
-      JOIN candidate_runs
-        ON candidate_runs.analysis_run_pk = dispatch.analysis_run_pk
-     FOR UPDATE OF dispatch
-), candidates AS (
-    SELECT candidate_runs.analysis_run_pk,
-           locked_dispatch.analysis_run_pk IS NOT NULL AS has_cleanup_object
-      FROM candidate_runs
-      LEFT JOIN locked_dispatch
-        ON locked_dispatch.analysis_run_pk = candidate_runs.analysis_run_pk
-     WHERE locked_dispatch.analysis_run_pk IS NULL
-        OR locked_dispatch.processing_run_pk IS NULL
-), marked AS (
-    UPDATE workspace.analysis_run AS analysis_run
-       SET status = CASE
-               WHEN candidates.has_cleanup_object THEN 'cleanup_pending'
-               ELSE 'failed'
-           END,
-           completed_at = COALESCE(analysis_run.completed_at, clock_timestamp()),
-           error_code = CASE
-               WHEN analysis_run.status = 'uploading'
-                   THEN 'UPLOAD_RESERVATION_EXPIRED'
-               ELSE analysis_run.error_code
-           END,
-           error_message = CASE
-               WHEN analysis_run.status = 'uploading'
-                   THEN '파일 업로드 시간이 만료되었습니다. 다시 시도해 주세요.'
-               ELSE analysis_run.error_message
-           END
-      FROM candidates
-     WHERE analysis_run.analysis_run_pk = candidates.analysis_run_pk
-    RETURNING analysis_run.analysis_run_pk
-)
-SELECT marked.analysis_run_pk, dispatch.source_bucket, dispatch.source_object_key
-  FROM marked
-  JOIN locked_dispatch AS dispatch
-    ON dispatch.analysis_run_pk = marked.analysis_run_pk
+_SET_GLOBAL_QUEUE_LIMIT_SQL = """
+SELECT set_config('prereview.global_queue_max', %s, TRUE)
 """
 
 _RESERVE_RUN_SQL = """
-INSERT INTO workspace.analysis_run (
-    analysis_run_pk,
-    user_id,
-    status,
-    original_filename,
-    declared_mime_type,
-    declared_size_bytes,
-    expires_at
-) VALUES (
-    %s, %s, 'uploading', %s, %s, %s,
-    clock_timestamp() + make_interval(secs => %s)
-)
-RETURNING analysis_run_pk, status, analysis_case_pk, error_code, error_message,
-          created_at, updated_at
+SELECT analysis_run_id AS analysis_run_pk, status,
+       NULL::uuid AS analysis_case_pk, replayed, error_code, error_message,
+       created_at, updated_at, cleanup_objects
+  FROM workspace.reserve_analysis_upload_v2(
+      %s, %s, %s, %s, %s, %s, %s, %s, %s
+  )
 """
 
-_RESERVE_DISPATCH_SQL = """
-INSERT INTO workspace.analysis_run_dispatch (
-    analysis_run_pk,
-    source_bucket,
-    source_object_key,
-    source_content_sha256
-) VALUES (%s, %s, %s, %s)
-"""
-
-_LOCK_FINALIZATION_SQL = """
-SELECT analysis_run.analysis_run_pk, analysis_run.status,
-       analysis_run.analysis_case_pk, analysis_run.error_code,
-       analysis_run.error_message, analysis_run.created_at,
-       analysis_run.updated_at, analysis_run.original_filename,
-       analysis_run.declared_mime_type, analysis_run.declared_size_bytes,
-       dispatch.source_bucket,
-       dispatch.source_object_key, dispatch.source_content_sha256
-  FROM workspace.analysis_run AS analysis_run
-  JOIN workspace.analysis_run_dispatch AS dispatch
-    ON dispatch.analysis_run_pk = analysis_run.analysis_run_pk
- WHERE analysis_run.analysis_run_pk = %s
-   AND analysis_run.user_id = %s
- FOR UPDATE OF analysis_run, dispatch
-"""
-
-_INSERT_SOURCE_ARTIFACT_SQL = """
-INSERT INTO workspace.source_artifact (
-    analysis_run_pk,
-    artifact_type,
-    artifact_logical_id,
-    storage_bucket,
-    storage_object_key,
-    content_sha256,
-    mime_type,
-    size_bytes
-) VALUES (%s, 'source', %s, %s, %s, %s, %s, %s)
-RETURNING artifact_pk
-"""
-
-_QUEUE_RUN_SQL = """
-UPDATE workspace.analysis_run
-   SET status = 'queued',
-       expires_at = clock_timestamp() + make_interval(secs => %s),
-       completed_at = NULL,
-       error_code = NULL,
-       error_message = NULL
- WHERE analysis_run_pk = %s
-   AND user_id = %s
-   AND status = 'uploading'
-RETURNING analysis_run_pk, status, analysis_case_pk, error_code, error_message,
-          created_at, updated_at
+_FINALIZE_RUN_SQL = """
+SELECT analysis_run_id AS analysis_run_pk, status, analysis_case_id AS analysis_case_pk,
+       error_code, error_message, created_at, updated_at, outcome, cleanup_objects
+  FROM workspace.finalize_analysis_upload_v2(
+      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+  )
 """
 
 _FINALIZATION_STATE_SQL = """
@@ -260,8 +125,8 @@ SELECT analysis_run.analysis_run_pk, analysis_run.status,
   FROM workspace.analysis_run AS analysis_run
   JOIN workspace.analysis_run_dispatch AS dispatch
     ON dispatch.analysis_run_pk = analysis_run.analysis_run_pk
- WHERE analysis_run.analysis_run_pk = %s
-   AND analysis_run.user_id = %s
+ WHERE analysis_run.user_id = %s
+   AND analysis_run.idempotency_key = %s
 """
 
 _GET_RUN_SQL = """
@@ -276,9 +141,24 @@ SELECT analysis_run_pk, status, analysis_case_pk, error_code, error_message,
 class PostgresAnalysisRunRepository:
     """Persist reservation, immutable source, and queue transition safely."""
 
-    def __init__(self, database_url: str, *, connect_timeout_seconds: int = 10) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        connect_timeout_seconds: int = 10,
+        global_queue_max: int | None = None,
+    ) -> None:
+        if global_queue_max is not None and (
+            isinstance(global_queue_max, bool)
+            or not isinstance(global_queue_max, int)
+            or not 1 <= global_queue_max <= MAX_GLOBAL_QUEUE_MAX
+        ):
+            raise ValueError(
+                f"global_queue_max must be between 1 and {MAX_GLOBAL_QUEUE_MAX}"
+            )
         self._database_url = database_url
         self._connect_timeout = connect_timeout_seconds
+        self._global_queue_max = global_queue_max
 
     def _ensure_configured(self) -> None:
         if not self._database_url:
@@ -287,7 +167,7 @@ class PostgresAnalysisRunRepository:
     async def reserve_uploading(
         self,
         *,
-        analysis_run_id: str,
+        idempotency_key: str,
         owner_id: str,
         source: SourceObject,
     ) -> UploadReservation:
@@ -299,19 +179,22 @@ class PostgresAnalysisRunRepository:
                 row_factory=dict_row,
             ) as connection:
                 async with connection.cursor() as cursor:
-                    await cursor.execute(
-                        _CLAIM_STALE_UPLOAD_CLEANUP_SQL,
-                        (_STALE_CLEANUP_BATCH_SIZE,),
-                    )
-                    cleanup_rows = await cursor.fetchall()
+                    if self._global_queue_max is not None:
+                        await cursor.execute(
+                            _SET_GLOBAL_QUEUE_LIMIT_SQL,
+                            (str(self._global_queue_max),),
+                        )
                     await cursor.execute(
                         _RESERVE_RUN_SQL,
                         (
-                            analysis_run_id,
                             owner_id,
+                            idempotency_key,
                             source.filename,
                             source.declared_mime_type or source.mime_type,
                             source.size_bytes,
+                            source.bucket,
+                            source.object_key,
+                            source.content_sha256,
                             _UPLOAD_RESERVATION_TTL_SECONDS,
                         ),
                     )
@@ -320,69 +203,42 @@ class PostgresAnalysisRunRepository:
                         raise AnalysisRunPersistenceUnavailable(
                             "Analysis upload reservation was not returned"
                         )
-                    await cursor.execute(
-                        _RESERVE_DISPATCH_SQL,
-                        (
-                            analysis_run_id,
-                            source.bucket,
-                            source.object_key,
-                            source.content_sha256,
-                        ),
-                    )
                 await connection.commit()
-        except errors.UniqueViolation as exc:
-            if exc.diag.constraint_name in {
-                "analysis_run_pkey",
-                "uq_workspace_analysis_run_one_active_per_user",
-                _ACTIVE_RESULT_SESSION_CONSTRAINT,
-            }:
-                # Step 1-2 of the upload idempotency order (spec 5.2): an
-                # exact replay (same owner, key, and source) always wins,
-                # regardless of which constraint the race collided with.
-                confirmed = await self._read_exact_run(
-                    analysis_run_id=analysis_run_id,
-                    owner_id=owner_id,
-                    source=source,
-                )
-                if confirmed is not None:
-                    return UploadReservation(
-                        record=confirmed,
-                        replayed=confirmed.status != "uploading",
-                    )
-            if exc.diag.constraint_name == _ACTIVE_RESULT_SESSION_CONSTRAINT:
-                # Step 4-5: a *new* key, but the owner has not closed the
-                # result session from their previous analysis.
+        except (psycopg.Error, OSError) as exc:
+            message = _database_error_message(exc)
+            if "GLOBAL_QUEUE_CAPACITY_EXCEEDED" in message:
+                raise AnalysisQueueCapacityExceeded(
+                    "Analysis queue is temporarily full"
+                ) from exc
+            if "IDEMPOTENCY_KEY_CONFLICT" in message:
+                raise IdempotencyKeyConflict(
+                    "Idempotency-Key was reused for a different source"
+                ) from exc
+            if "ACTIVE_RESULT_SESSION" in message:
                 raise ActiveResultSessionExists(
                     "An active result session must be closed first"
                 ) from exc
-            if exc.diag.constraint_name == "uq_workspace_analysis_run_one_active_per_user":
-                # Step 4-5: a *new* key, but the owner already has an active
-                # processing run.
-                raise ActiveAnalysisRunExists("An active analysis run already exists") from exc
-            if exc.diag.constraint_name == "analysis_run_pkey":
-                # Step 3: the same key was reused for a different owner or a
-                # different source (filename/hash/size/mime) than the run it
-                # was already bound to. Never conflated with "an analysis is
-                # already running" -- they are different domain errors.
-                raise IdempotencyKeyConflict(
-                    "Idempotency-Key was reused for a different owner or source"
+            if "ANALYSIS_RUN_ACTIVE" in message:
+                raise ActiveAnalysisRunExists(
+                    "An active analysis run already exists"
                 ) from exc
-            raise AnalysisRunPersistenceUnavailable("Analysis upload could not be reserved") from exc
-        except (psycopg.Error, OSError) as exc:
             confirmed = await self._read_exact_run(
-                analysis_run_id=analysis_run_id,
+                idempotency_key=idempotency_key,
                 owner_id=owner_id,
                 source=source,
             )
             if confirmed is not None:
                 return UploadReservation(
                     record=confirmed,
-                    replayed=confirmed.status != "uploading",
+                    replayed=True,
                 )
             raise AnalysisRunPersistenceUnavailable("Analysis database is unavailable") from exc
         return UploadReservation(
             record=_record(row),
-            cleanup_objects=tuple(_cleanup_object(item) for item in cleanup_rows),
+            cleanup_objects=tuple(
+                _cleanup_object(item) for item in (row.get("cleanup_objects") or [])
+            ),
+            replayed=bool(row.get("replayed")),
         )
 
     async def finalize_queued(
@@ -393,6 +249,7 @@ class PostgresAnalysisRunRepository:
         source: SourceObject,
     ) -> AnalysisRunRecord:
         self._ensure_configured()
+        expired_cleanup: UploadCleanupObject | None = None
         try:
             async with await psycopg.AsyncConnection.connect(
                 self._database_url,
@@ -400,63 +257,39 @@ class PostgresAnalysisRunRepository:
                 row_factory=dict_row,
             ) as connection:
                 async with connection.cursor() as cursor:
-                    await cursor.execute(
-                        _LOCK_FINALIZATION_SQL,
-                        (analysis_run_id, owner_id),
-                    )
-                    state = await cursor.fetchone()
-                    if state is None or not _dispatch_matches(state, source):
-                        raise AnalysisRunFinalizationUncertain(
-                            "Analysis upload reservation does not match its source"
-                        )
-                    if state["status"] == "queued":
+                    if self._global_queue_max is not None:
                         await cursor.execute(
-                            _FINALIZATION_STATE_SQL,
-                            _finalization_params(analysis_run_id, owner_id, source),
-                        )
-                        finalized = await cursor.fetchone()
-                        if finalized and finalized["source_artifact_matches"]:
-                            return _record(finalized)
-                        raise AnalysisRunFinalizationUncertain(
-                            "Queued analysis source could not be verified"
-                        )
-                    if state["status"] != "uploading":
-                        raise AnalysisRunFinalizationUncertain(
-                            "Analysis upload is no longer finalizable"
-                        )
-
-                    await cursor.execute(
-                        _INSERT_SOURCE_ARTIFACT_SQL,
-                        (
-                            analysis_run_id,
-                            source.filename,
-                            source.bucket,
-                            source.object_key,
-                            source.content_sha256,
-                            source.mime_type,
-                            source.size_bytes,
-                        ),
-                    )
-                    artifact = await cursor.fetchone()
-                    if artifact is None:
-                        raise AnalysisRunFinalizationRejected(
-                            "Analysis source artifact was not returned"
+                            _SET_GLOBAL_QUEUE_LIMIT_SQL,
+                            (str(self._global_queue_max),),
                         )
                     await cursor.execute(
-                        _QUEUE_RUN_SQL,
-                        (
-                            _QUEUED_SOURCE_TTL_SECONDS,
-                            analysis_run_id,
-                            owner_id,
-                        ),
+                        _FINALIZE_RUN_SQL,
+                        _finalization_params(analysis_run_id, owner_id, source),
                     )
                     row = await cursor.fetchone()
                     if row is None:
-                        raise AnalysisRunFinalizationRejected(
-                            "Analysis upload could not transition to queued"
+                        raise AnalysisRunFinalizationUncertain(
+                            "Analysis upload finalization was not returned"
+                        )
+                    if row.get("outcome") == "expired_capacity":
+                        cleanup = _finalization_cleanup_object(row)
+                        if cleanup is None:
+                            raise AnalysisRunFinalizationUncertain(
+                                "Expired analysis upload cleanup was not returned"
+                            )
+                        # Commit the cleanup_pending fence before signalling a
+                        # typed capacity result to the service.
+                        expired_cleanup = cleanup
+                    elif row.get("outcome") not in {"queued", "queued_replay"}:
+                        raise AnalysisRunFinalizationUncertain(
+                            "Analysis upload finalization returned an invalid outcome"
                         )
                 await connection.commit()
-        except (AnalysisRunFinalizationRejected, AnalysisRunFinalizationUncertain):
+        except (
+            AnalysisRunFinalizationExpired,
+            AnalysisRunFinalizationRejected,
+            AnalysisRunFinalizationUncertain,
+        ):
             raise
         except (psycopg.Error, OSError) as exc:
             state = await self._read_finalization_state(
@@ -479,9 +312,26 @@ class PostgresAnalysisRunRepository:
                     raise AnalysisRunFinalizationRejected(
                         "Analysis upload finalization did not commit"
                     ) from exc
+                if (
+                    state["status"] == "cleanup_pending"
+                    and _dispatch_matches(state, source)
+                    and state["error_code"] == "UPLOAD_RESERVATION_EXPIRED"
+                ):
+                    raise AnalysisRunFinalizationExpired(
+                        "Analysis queue is temporarily full",
+                        UploadCleanupObject(
+                            analysis_run_id=analysis_run_id,
+                            bucket=source.bucket,
+                            object_key=source.object_key,
+                        ),
+                    ) from None
             raise AnalysisRunFinalizationUncertain(
                 "Analysis upload finalization could not be confirmed"
             ) from exc
+        if expired_cleanup is not None:
+            raise AnalysisRunFinalizationExpired(
+                "Analysis queue is temporarily full", expired_cleanup
+            )
         return _record(row)
 
     async def mark_upload_cleanup_pending(
@@ -567,7 +417,7 @@ class PostgresAnalysisRunRepository:
     async def _read_exact_run(
         self,
         *,
-        analysis_run_id: str,
+        idempotency_key: str,
         owner_id: str,
         source: SourceObject,
     ) -> AnalysisRunRecord | None:
@@ -580,7 +430,7 @@ class PostgresAnalysisRunRepository:
                 async with connection.cursor() as cursor:
                     await cursor.execute(
                         _CONFIRM_RESERVATION_SQL,
-                        (analysis_run_id, owner_id),
+                        (owner_id, idempotency_key),
                     )
                     row = await cursor.fetchone()
         except (psycopg.Error, OSError):
@@ -605,7 +455,7 @@ class PostgresAnalysisRunRepository:
                 async with connection.cursor() as cursor:
                     await cursor.execute(
                         _FINALIZATION_STATE_SQL,
-                        _finalization_params(analysis_run_id, owner_id, source),
+                        _finalization_readback_params(analysis_run_id, owner_id, source),
                     )
                     return await cursor.fetchone()
         except (psycopg.Error, OSError):
@@ -628,12 +478,35 @@ def _record(row: Mapping[str, Any]) -> AnalysisRunRecord:
     )
 
 
+def _database_error_message(exc: BaseException) -> str:
+    if not isinstance(exc, psycopg.Error):
+        return ""
+    diagnostic = getattr(exc, "diag", None)
+    primary = getattr(diagnostic, "message_primary", None)
+    return str(primary or exc).strip()
+
+
 def _cleanup_object(row: Mapping[str, Any]) -> UploadCleanupObject:
     return UploadCleanupObject(
         analysis_run_id=str(row["analysis_run_pk"]),
         bucket=str(row["source_bucket"]),
         object_key=str(row["source_object_key"]),
     )
+
+
+def _finalization_cleanup_object(
+    row: Mapping[str, Any],
+) -> UploadCleanupObject | None:
+    objects = row.get("cleanup_objects")
+    if not isinstance(objects, list) or len(objects) != 1:
+        return None
+    item = objects[0]
+    if not isinstance(item, Mapping):
+        return None
+    try:
+        return _cleanup_object(item)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _dispatch_matches(row: Mapping[str, Any], source: SourceObject) -> bool:
@@ -656,6 +529,26 @@ def _reservation_matches(row: Mapping[str, Any], source: SourceObject) -> bool:
 
 
 def _finalization_params(
+    analysis_run_id: str,
+    owner_id: str,
+    source: SourceObject,
+) -> tuple[Any, ...]:
+    return (
+        analysis_run_id,
+        owner_id,
+        source.filename,
+        source.declared_mime_type or source.mime_type,
+        source.size_bytes,
+        source.bucket,
+        source.object_key,
+        source.content_sha256,
+        source.mime_type,
+        source.size_bytes,
+        _QUEUED_SOURCE_TTL_SECONDS,
+    )
+
+
+def _finalization_readback_params(
     analysis_run_id: str,
     owner_id: str,
     source: SourceObject,

@@ -40,8 +40,6 @@ def _history_row(index: int) -> dict[str, Any]:
         "program_name": f"사업 {index}",
         "original_filename": "request.hwpx",
         "completed_at": completed_at,
-        "report_status": "ready",
-        "report_completed_at": completed_at,
     }
 
 
@@ -286,7 +284,16 @@ class FakeResultRepository:
                 for row in rows
                 if (row["completed_at"], row["analysis_case_id"]) < (after_completed_at, after_case_id)
             ]
-        return AnalysisHistoryPage(rows=rows[:limit], snapshot_at=pinned)
+        visible = rows[:limit]
+        next_after = None
+        if len(rows) > limit:
+            last = visible[-1]
+            next_after = (last["completed_at"], last["analysis_case_id"])
+        return AnalysisHistoryPage(
+            rows=visible,
+            snapshot_at=pinned,
+            next_after=next_after,
+        )
 
 
 def _app_with_results() -> tuple[object, FakeResultRepository]:
@@ -611,8 +618,6 @@ def test_history_first_page_is_size_five_and_next_cursor_advances() -> None:
                     "program_name": row["program_name"],
                     "original_filename": row["original_filename"],
                     "completed_at": _as_z(row["completed_at"]),
-                    "report_status": row["report_status"],
-                    "report_completed_at": _as_z(row["report_completed_at"]),
                 }
                 for row in repository._history[:5]
             ]

@@ -13,8 +13,10 @@ from ..auth import (
     REFRESH_COOKIE,
     REFRESH_COOKIE_PATH,
     AuthCookieConfig,
+    InvalidAuthSession,
     SupabaseClientDep,
     access_cookie_scheme,
+    clear_session_cookies,
     display_name_from_metadata,
     normalize_display_name,
     refresh_cookie_scheme,
@@ -153,12 +155,6 @@ def _set_session_cookies(response: Response, request: Request, payload: object) 
     )
 
 
-def _clear_session_cookies(response: Response, request: Request) -> None:
-    config = AuthCookieConfig.from_request(request)
-    response.delete_cookie(ACCESS_COOKIE, **config.attributes())
-    response.delete_cookie(REFRESH_COOKIE, **config.attributes(path=REFRESH_COOKIE_PATH))
-
-
 def _cleared_auth_error(
     request: Request, *, status_code: int, code: str, message: str
 ) -> JSONResponse:
@@ -174,7 +170,7 @@ def _cleared_auth_error(
         status_code=status_code,
         content={"code": code, "message": message},
     )
-    _clear_session_cookies(response, request)
+    clear_session_cookies(response, request)
     return response
 
 
@@ -307,7 +303,20 @@ async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClie
     # Supabase session. Do not reveal whether a remote session existed.
     access_token = request.cookies.get(ACCESS_COOKIE, "")
     if access_token:
-        response = await supabase.request("POST", "/logout", token=access_token)
+        try:
+            response = await supabase.request("POST", "/logout", token=access_token)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_503_SERVICE_UNAVAILABLE:
+                raise
+            # Local logout is authoritative even when the provider cannot be
+            # reached.  Return the dependency failure, but attach deletion
+            # cookies so a stale browser session is not retained.
+            return _cleared_auth_error(
+                request,
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="SERVICE_UNAVAILABLE",
+                message="Supabase authentication is unavailable",
+            )
         if response.status_code >= 500:
             return _cleared_auth_error(
                 request,
@@ -316,14 +325,14 @@ async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClie
                 message="Supabase authentication is unavailable",
             )
     result = Response(status_code=status.HTTP_204_NO_CONTENT)
-    _clear_session_cookies(result, request)
+    clear_session_cookies(result, request)
     return result
 
 
 @router.post(
     "/password-reset",
     response_model=PasswordResetResponse,
-    responses=error_responses(403, 422, 500, 503),
+    responses=error_responses(403, 422, 429, 500, 503),
 )
 async def password_reset(request: Request, body: PasswordResetRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> PasswordResetResponse:
     payload = {"email": body.email}
@@ -334,8 +343,10 @@ async def password_reset(request: Request, body: PasswordResetRequest, _: Truste
     )
     if provider_response.status_code >= 500:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Supabase authentication is unavailable")
+    if provider_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        _provider_failure(provider_response.status_code)
     # Supabase normally returns 200 for unknown accounts. Treat every provider
-    # 4xx identically to preserve that non-enumeration boundary.
+    # account-related 4xx identically to preserve that non-enumeration boundary.
     return PasswordResetResponse(
         message="If an account exists, password reset instructions have been sent."
     )
@@ -352,6 +363,8 @@ async def update_password(request: Request, body: UpdatePasswordRequest, _: Trus
     if not access_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication cookie is required")
     response = await supabase.request("PUT", "/user", token=access_token, json={"password": body.password.get_secret_value()})
+    if response.status_code in {400, 401, 403}:
+        raise InvalidAuthSession("Invalid or expired authentication cookie")
     if response.status_code != status.HTTP_200_OK:
         _provider_failure(response.status_code)
     result = Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -376,6 +389,8 @@ async def me(request: Request, supabase: SupabaseClientDep) -> AuthUserEnvelope:
     if not access_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication cookie is required")
     provider_response = await supabase.request("GET", "/user", token=access_token)
+    if provider_response.status_code in {400, 401, 403}:
+        raise InvalidAuthSession("Invalid or expired authentication cookie")
     if provider_response.status_code != status.HTTP_200_OK:
         _provider_failure(provider_response.status_code)
     try:

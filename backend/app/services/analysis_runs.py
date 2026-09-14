@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 from hashlib import sha256
 from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
 
 from app.models.artifacts import ArtifactType, MIME_BY_SUFFIX, StorageBucket
 from app.pipelines.artifacts import request_object_key
 from app.ports.analysis_runs import (
+    AnalysisRunFinalizationExpired,
     AnalysisRunFinalizationRejected,
     AnalysisRunRecord,
     AnalysisRunRepository,
@@ -46,7 +48,7 @@ class AnalysisRunService:
     async def create(
         self,
         *,
-        analysis_run_id: str,
+        idempotency_key: str,
         owner_id: str,
         filename: str,
         content: bytes,
@@ -55,8 +57,12 @@ class AnalysisRunService:
         suffix = Path(filename).suffix.lower()
         digest = sha256(content).hexdigest()
         bucket = StorageBucket.REQUEST_TEMP.value
+        storage_scope_id = uuid5(
+            NAMESPACE_URL,
+            f"https://pre-review.local/analysis-source/{owner_id}/{idempotency_key}",
+        )
         object_key = request_object_key(
-            analysis_run_pk=analysis_run_id,
+            analysis_run_pk=str(storage_scope_id),
             artifact_type=ArtifactType.SOURCE,
             content_sha256=digest,
             ext=suffix,
@@ -72,13 +78,24 @@ class AnalysisRunService:
         )
 
         reservation = await self._repository.reserve_uploading(
-            analysis_run_id=analysis_run_id,
+            idempotency_key=idempotency_key,
             owner_id=owner_id,
             source=source,
         )
+        analysis_run_id = reservation.record.analysis_run_id
         for stale in reservation.cleanup_objects:
             await self._cleanup_reserved_object(stale)
-        if reservation.replayed:
+        if reservation.replayed and reservation.record.status == "cleanup_pending":
+            # An exact replay is also a cleanup retry.  Return the durable
+            # post-delete state rather than the stale row captured before
+            # Storage deletion/cleanup completion.
+            refreshed = await self._repository.get_for_owner(
+                analysis_run_id=analysis_run_id,
+                owner_id=owner_id,
+            )
+            if refreshed is not None:
+                return refreshed
+        if reservation.replayed and reservation.record.status != "uploading":
             return reservation.record
 
         try:
@@ -109,6 +126,13 @@ class AnalysisRunService:
                 owner_id=owner_id,
                 source=source,
             )
+        except AnalysisRunFinalizationExpired as exc:
+            # PostgreSQL fenced the exact source into cleanup_pending after it
+            # proved an expired reservation could not regain a global slot.
+            # Deleting this returned deterministic key is safe; a failed
+            # delete remains retryable from the durable cleanup row.
+            await self._cleanup_reserved_object(exc.cleanup_object)
+            raise
         except AnalysisRunFinalizationRejected:
             # The repository performed a read-back and proved that queued
             # finalization did not commit.  A conditional state transition

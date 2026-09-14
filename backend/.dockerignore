@@ -11,3 +11,27 @@ venv
 !.env.example
 !**/.env.example
 handover
+.prereview-build-id
+# Git-ignored credentials. Explicit ** variants make the nested intent clear.
+*.pem
+**/*.pem
+*.key
+**/*.key
+secrets
+**/secrets
+# Local Python/build outputs. No tracked backend file currently matches these
+# patterns (verified before adding this boundary).
+.eggs
+**/.eggs
+*.egg-info
+**/*.egg-info
+dist
+**/dist
+build
+**/build
+sdist
+**/sdist
+*.so
+**/*.so
+.ipynb_checkpoints
+**/.ipynb_checkpoints

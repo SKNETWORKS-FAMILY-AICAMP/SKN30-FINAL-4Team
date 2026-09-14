@@ -39,6 +39,15 @@ class ConversationRepositoryUnavailable(ConversationError):
     """The trusted database is unavailable or not configured."""
 
 
+class ConversationQueueCapacityExceeded(ConversationRepositoryUnavailable):
+    """The shared analysis/chat worker backlog has reached its admission cap.
+
+    Routes intentionally report this as a retryable 503.  The SQL mutation
+    checks exact idempotency ledgers before this condition, so replaying a
+    previously admitted create or retry never consumes a second slot.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class ConversationMessageRecord:
     message_id: str

@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from psycopg.pq import DiagnosticField
 
 from app.infrastructure import postgres_analysis_runs
 from app.infrastructure.postgres_analysis_runs import PostgresAnalysisRunRepository
@@ -19,9 +18,12 @@ from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
     ActiveResultSessionExists,
     AnalysisRunFinalizationRejected,
+    AnalysisRunFinalizationExpired,
     AnalysisRunFinalizationUncertain,
+    AnalysisQueueCapacityExceeded,
     IdempotencyKeyConflict,
     SourceObject,
+    UploadCleanupObject,
 )
 
 
@@ -173,13 +175,7 @@ def _reservation_row(status: str = "uploading") -> dict[str, Any]:
     }
 
 
-def _unique_violation(constraint_name: str) -> psycopg.errors.UniqueViolation:
-    return psycopg.errors.UniqueViolation(
-        info={DiagnosticField.CONSTRAINT_NAME: constraint_name.encode()}
-    )
-
-
-def test_reserve_claims_stale_cleanup_before_run_and_dispatch_then_commits(
+def test_reserve_calls_atomic_v2_rpc_and_returns_its_cleanup_objects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
@@ -187,18 +183,20 @@ def test_reserve_claims_stale_cleanup_before_run_and_dispatch_then_commits(
     connection = FakeConnection(
         [
             Step(
-                "reserve.stale_cleanup",
-                "WITH candidate_runs AS MATERIALIZED",
-                many=(
-                    {
+                "reserve.run",
+                "reserve_analysis_upload_v2",
+                one={
+                    **_run_row("uploading"),
+                    "replayed": False,
+                    "cleanup_objects": [
+                        {
                         "analysis_run_pk": stale_id,
                         "source_bucket": "request-temp",
                         "source_object_key": f"{stale_id}/source/stale.hwpx",
-                    },
-                ),
+                        }
+                    ],
+                },
             ),
-            Step("reserve.run", "INSERT INTO workspace.analysis_run (", one=_run_row("uploading")),
-            Step("reserve.dispatch", "INSERT INTO workspace.analysis_run_dispatch ("),
         ],
         events,
     )
@@ -206,29 +204,27 @@ def test_reserve_claims_stale_cleanup_before_run_and_dispatch_then_commits(
 
     reservation = asyncio.run(
         _repository().reserve_uploading(
-            analysis_run_id=RUN_ID,
+            idempotency_key=RUN_ID,
             owner_id=OWNER_ID,
             source=SOURCE,
         )
     )
 
-    assert events == [
-        "reserve.stale_cleanup",
-        "reserve.run",
-        "reserve.dispatch",
-        "commit",
-    ]
+    assert events == ["reserve.run", "commit"]
     assert reservation.record.status == "uploading"
     assert reservation.cleanup_objects[0].analysis_run_id == stale_id
-    cleanup_query, _cleanup_params = connection.cursor_instance.calls[0]
-    active_prefilter = cleanup_query.index("AND NOT EXISTS")
-    batch_limit = cleanup_query.index("LIMIT %s")
-    run_lock = cleanup_query.index("FOR UPDATE OF analysis_run SKIP LOCKED")
-    dispatch_lock = cleanup_query.index("FOR UPDATE OF dispatch")
-    assert active_prefilter < batch_limit
-    assert run_lock < dispatch_lock
-    assert "LEFT JOIN locked_dispatch" in cleanup_query
-    assert "ELSE 'failed'" in cleanup_query
+    _reserve_query, reserve_params = connection.cursor_instance.calls[0]
+    assert reserve_params == (
+        OWNER_ID,
+        RUN_ID,
+        SOURCE.filename,
+        SOURCE.declared_mime_type,
+        SOURCE.size_bytes,
+        SOURCE.bucket,
+        SOURCE.object_key,
+        SOURCE.content_sha256,
+        900,
+    )
     assert factory.calls == [
         (
             DATABASE_URL,
@@ -238,234 +234,162 @@ def test_reserve_claims_stale_cleanup_before_run_and_dispatch_then_commits(
     assert connection.steps == []
 
 
-@pytest.mark.parametrize(
-    "constraint_name",
-    [
-        "analysis_run_pkey",
-        "uq_workspace_analysis_run_one_active_per_user",
-    ],
-)
-def test_reserve_unique_violation_resumes_exact_uploading_reservation(
-    monkeypatch: pytest.MonkeyPatch,
-    constraint_name: str,
-) -> None:
-    events: list[str] = []
-    attempted = FakeConnection(
-        [
-            Step(
-                "reserve.stale_cleanup",
-                "WITH candidate_runs AS MATERIALIZED",
-            ),
-            Step(
-                "reserve.run",
-                "INSERT INTO workspace.analysis_run (",
-                error=_unique_violation(constraint_name),
-            ),
-        ],
-        events,
-    )
-    readback = FakeConnection(
-        [
-            Step(
-                "reserve.readback",
-                "analysis_run.original_filename",
-                one=_reservation_row(),
-            )
-        ],
-        events,
-    )
-    factory = _install_connect(monkeypatch, attempted, readback)
-
-    reservation = asyncio.run(
-        _repository().reserve_uploading(
-            analysis_run_id=RUN_ID,
-            owner_id=OWNER_ID,
-            source=SOURCE,
-        )
-    )
-
-    assert reservation.replayed is False
-    assert reservation.record.analysis_run_id == RUN_ID
-    assert reservation.record.status == "uploading"
-    assert events == ["reserve.stale_cleanup", "reserve.run", "reserve.readback"]
-    assert len(factory.calls) == 2
-    _query, params = readback.cursor_instance.calls[0]
-    assert params == (RUN_ID, OWNER_ID)
-
-
-@pytest.mark.parametrize(
-    "status",
-    ["queued", "running", "succeeded", "failed", "cancelled", "cleanup_pending"],
-)
-def test_reserve_unique_violation_replays_exact_non_uploading_reservation(
+@pytest.mark.parametrize("status", ["uploading", "queued", "running", "succeeded"])
+def test_reserve_honours_v2_rpc_replay_flag(
     monkeypatch: pytest.MonkeyPatch,
     status: str,
 ) -> None:
     events: list[str] = []
-    attempted = FakeConnection(
+    connection = FakeConnection(
         [
-            Step(
-                "reserve.stale_cleanup",
-                "WITH candidate_runs AS MATERIALIZED",
-            ),
             Step(
                 "reserve.run",
-                "INSERT INTO workspace.analysis_run (",
-                error=_unique_violation("analysis_run_pkey"),
+                "reserve_analysis_upload_v2",
+                one={
+                    **_run_row(status),
+                    "replayed": True,
+                    "cleanup_objects": [],
+                },
             ),
         ],
         events,
     )
-    readback = FakeConnection(
-        [
-            Step(
-                "reserve.readback",
-                "analysis_run.original_filename",
-                one=_reservation_row(status),
-            )
-        ],
-        events,
-    )
-    _install_connect(monkeypatch, attempted, readback)
+    _install_connect(monkeypatch, connection)
 
     reservation = asyncio.run(
         _repository().reserve_uploading(
-            analysis_run_id=RUN_ID,
+            idempotency_key=RUN_ID,
             owner_id=OWNER_ID,
             source=SOURCE,
         )
     )
 
     assert reservation.replayed is True
+    assert reservation.record.analysis_run_id == RUN_ID
     assert reservation.record.status == status
+    assert events == ["reserve.run", "commit"]
 
 
-@pytest.mark.parametrize(
-    ("constraint_name", "expected_exception"),
-    [
-        # Same key (PK), but the readback proves the existing row is not an
-        # exact replay -> the caller reused Idempotency-Key for different
-        # input (spec 5.2 step 3), never conflated with "a run is active".
-        ("analysis_run_pkey", IdempotencyKeyConflict),
-        # This constraint only fires for a brand-new key -> a genuinely
-        # active run/session already exists for this owner (spec 5.2 step 5).
-        ("uq_workspace_analysis_run_one_active_per_user", ActiveAnalysisRunExists),
-    ],
-)
-@pytest.mark.parametrize(
-    ("field", "different_value"),
-    [
-        ("source_bucket", "different-bucket"),
-        ("source_object_key", "different/source.hwpx"),
-        ("source_content_sha256", "b" * 64),
-        ("original_filename", "different.hwpx"),
-        ("declared_mime_type", "application/octet-stream"),
-        ("declared_size_bytes", SOURCE.size_bytes + 1),
-    ],
-)
-def test_reserve_unique_violation_rejects_immutable_metadata_mismatch(
+def test_reserve_sets_the_configured_global_cap_in_its_rpc_transaction(
     monkeypatch: pytest.MonkeyPatch,
-    constraint_name: str,
-    expected_exception: type[Exception],
-    field: str,
-    different_value: object,
+) -> None:
+    events: list[str] = []
+    connection = FakeConnection(
+        [
+            Step("reserve.cap", "set_config", one={}),
+            Step(
+                "reserve.run",
+                "reserve_analysis_upload_v2",
+                one={**_run_row("uploading"), "replayed": False, "cleanup_objects": []},
+            ),
+        ],
+        events,
+    )
+    _install_connect(monkeypatch, connection)
+
+    reservation = asyncio.run(
+        PostgresAnalysisRunRepository(
+            DATABASE_URL, connect_timeout_seconds=7, global_queue_max=3
+        ).reserve_uploading(
+            idempotency_key=RUN_ID,
+            owner_id=OWNER_ID,
+            source=SOURCE,
+        )
+    )
+
+    assert reservation.record.status == "uploading"
+    assert events == ["reserve.cap", "reserve.run", "commit"]
+    assert connection.cursor_instance.calls[0][1] == ("3",)
+
+
+def test_reserve_unknown_database_outcome_reads_back_exact_owner_key(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
     attempted = FakeConnection(
         [
             Step(
-                "reserve.stale_cleanup",
-                "WITH candidate_runs AS MATERIALIZED",
-            ),
-            Step(
                 "reserve.run",
-                "INSERT INTO workspace.analysis_run (",
-                error=_unique_violation(constraint_name),
+                "reserve_analysis_upload_v2",
+                error=psycopg.OperationalError("response lost"),
             ),
         ],
         events,
     )
-    mismatched = _reservation_row()
-    mismatched[field] = different_value
     readback = FakeConnection(
         [
             Step(
                 "reserve.readback",
                 "analysis_run.original_filename",
-                one=mismatched,
+                one=_reservation_row("uploading"),
             )
         ],
         events,
     )
     _install_connect(monkeypatch, attempted, readback)
 
-    with pytest.raises(expected_exception):
-        asyncio.run(
-            _repository().reserve_uploading(
-                analysis_run_id=RUN_ID,
-                owner_id=OWNER_ID,
-                source=SOURCE,
-            )
+    reservation = asyncio.run(
+        _repository().reserve_uploading(
+            idempotency_key=RUN_ID,
+            owner_id=OWNER_ID,
+            source=SOURCE,
         )
+    )
+
+    assert reservation.replayed is True
+    assert reservation.record.status == "uploading"
+    _query, params = readback.cursor_instance.calls[0]
+    assert params == (OWNER_ID, RUN_ID)
 
 
-def test_reserve_active_result_session_constraint_is_a_distinct_domain_error(
+@pytest.mark.parametrize(
+    ("error_token", "expected_exception"),
+    [
+        ("IDEMPOTENCY_KEY_CONFLICT", IdempotencyKeyConflict),
+        ("ANALYSIS_RUN_ACTIVE", ActiveAnalysisRunExists),
+        ("ACTIVE_RESULT_SESSION", ActiveResultSessionExists),
+        ("GLOBAL_QUEUE_CAPACITY_EXCEEDED", AnalysisQueueCapacityExceeded),
+    ],
+)
+def test_reserve_maps_v2_domain_errors(
     monkeypatch: pytest.MonkeyPatch,
+    error_token: str,
+    expected_exception: type[Exception],
 ) -> None:
-    """New key, no active processing run, but an unclosed result session.
-
-    Assumed constraint name documented in the adapter module docstring; this
-    fixes the FastAPI-side contract (409 ACTIVE_RESULT_SESSION, distinct from
-    ANALYSIS_RUN_ACTIVE) ahead of the parallel db-lifecycle migration.
-    """
-
     events: list[str] = []
     attempted = FakeConnection(
         [
-            Step("reserve.stale_cleanup", "WITH candidate_runs AS MATERIALIZED"),
             Step(
                 "reserve.run",
-                "INSERT INTO workspace.analysis_run (",
-                error=_unique_violation("uq_result_analysis_session_one_active_per_user"),
+                "reserve_analysis_upload_v2",
+                error=psycopg.errors.UniqueViolation(error_token),
             ),
         ],
         events,
     )
-    # This is a brand-new key: no row exists yet at this PK, so the readback
-    # finds nothing to replay.
-    readback = FakeConnection(
-        [Step("reserve.readback", "analysis_run.original_filename", one=None)],
-        events,
-    )
-    _install_connect(monkeypatch, attempted, readback)
+    _install_connect(monkeypatch, attempted)
 
-    with pytest.raises(ActiveResultSessionExists):
+    with pytest.raises(expected_exception):
         asyncio.run(
             _repository().reserve_uploading(
-                analysis_run_id=RUN_ID,
+                idempotency_key=RUN_ID,
                 owner_id=OWNER_ID,
                 source=SOURCE,
             )
         )
 
 
-def test_finalize_locks_then_registers_source_and_queues_before_commit(
+def test_finalize_uses_one_db_owned_atomic_rpc_before_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
     connection = FakeConnection(
         [
             Step(
-                "finalize.lock",
-                "FOR UPDATE OF analysis_run, dispatch",
-                one=_finalization_row("uploading"),
-            ),
-            Step(
-                "finalize.source",
-                "INSERT INTO workspace.source_artifact (",
-                one={"artifact_pk": uuid4()},
-            ),
-            Step("finalize.queue", "SET status = 'queued'", one=_run_row("queued")),
+                "finalize.rpc",
+                "finalize_analysis_upload_v2",
+                one={**_run_row("queued"), "outcome": "queued", "cleanup_objects": []},
+            )
         ],
         events,
     )
@@ -480,7 +404,14 @@ def test_finalize_locks_then_registers_source_and_queues_before_commit(
     )
 
     assert record.status == "queued"
-    assert events == ["finalize.lock", "finalize.source", "finalize.queue", "commit"]
+    assert events == ["finalize.rpc", "commit"]
+    query, params = connection.cursor_instance.calls[0]
+    assert "workspace.analysis_run" not in query
+    assert params == (
+        RUN_ID, OWNER_ID, SOURCE.filename, SOURCE.declared_mime_type,
+        SOURCE.size_bytes, SOURCE.bucket, SOURCE.object_key,
+        SOURCE.content_sha256, SOURCE.mime_type, SOURCE.size_bytes, 3600,
+    )
     assert connection.steps == []
 
 
@@ -491,16 +422,10 @@ def test_finalize_commit_error_accepts_exact_durable_queued_readback(
     transaction = FakeConnection(
         [
             Step(
-                "finalize.lock",
-                "FOR UPDATE OF analysis_run, dispatch",
-                one=_finalization_row("uploading"),
-            ),
-            Step(
-                "finalize.source",
-                "INSERT INTO workspace.source_artifact (",
-                one={"artifact_pk": uuid4()},
-            ),
-            Step("finalize.queue", "SET status = 'queued'", one=_run_row("queued")),
+                "finalize.rpc",
+                "finalize_analysis_upload_v2",
+                one={**_run_row("queued"), "outcome": "queued", "cleanup_objects": []},
+            )
         ],
         events,
         commit_error=psycopg.OperationalError("commit result lost"),
@@ -527,9 +452,7 @@ def test_finalize_commit_error_accepts_exact_durable_queued_readback(
 
     assert record.status == "queued"
     assert events == [
-        "finalize.lock",
-        "finalize.source",
-        "finalize.queue",
+        "finalize.rpc",
         "commit",
         "finalize.readback",
     ]
@@ -542,16 +465,10 @@ def test_finalize_commit_error_with_exact_uploading_readback_is_rejected(
     transaction = FakeConnection(
         [
             Step(
-                "finalize.lock",
-                "FOR UPDATE OF analysis_run, dispatch",
-                one=_finalization_row("uploading"),
-            ),
-            Step(
-                "finalize.source",
-                "INSERT INTO workspace.source_artifact (",
-                one={"artifact_pk": uuid4()},
-            ),
-            Step("finalize.queue", "SET status = 'queued'", one=_run_row("queued")),
+                "finalize.rpc",
+                "finalize_analysis_upload_v2",
+                one={**_run_row("queued"), "outcome": "queued", "cleanup_objects": []},
+            )
         ],
         events,
         commit_error=psycopg.OperationalError("commit rejected"),
@@ -585,16 +502,10 @@ def test_finalize_commit_error_with_unavailable_readback_is_uncertain(
     transaction = FakeConnection(
         [
             Step(
-                "finalize.lock",
-                "FOR UPDATE OF analysis_run, dispatch",
-                one=_finalization_row("uploading"),
-            ),
-            Step(
-                "finalize.source",
-                "INSERT INTO workspace.source_artifact (",
-                one={"artifact_pk": uuid4()},
-            ),
-            Step("finalize.queue", "SET status = 'queued'", one=_run_row("queued")),
+                "finalize.rpc",
+                "finalize_analysis_upload_v2",
+                one={**_run_row("queued"), "outcome": "queued", "cleanup_objects": []},
+            )
         ],
         events,
         commit_error=psycopg.OperationalError("commit result lost"),
@@ -613,6 +524,47 @@ def test_finalize_commit_error_with_unavailable_readback_is_uncertain(
                 source=SOURCE,
             )
         )
+
+
+def test_finalize_expired_capacity_commits_cleanup_fence_and_returns_typed_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    connection = FakeConnection(
+        [
+            Step("finalize.cap", "set_config", one={}),
+            Step(
+                "finalize.rpc",
+                "finalize_analysis_upload_v2",
+                one={
+                    **_run_row("cleanup_pending"),
+                    "error_code": "UPLOAD_RESERVATION_EXPIRED",
+                    "outcome": "expired_capacity",
+                    "cleanup_objects": [{
+                        "analysis_run_pk": RUN_ID,
+                        "source_bucket": SOURCE.bucket,
+                        "source_object_key": SOURCE.object_key,
+                    }],
+                },
+            )
+        ],
+        events,
+    )
+    _install_connect(monkeypatch, connection)
+
+    with pytest.raises(AnalysisRunFinalizationExpired) as raised:
+        asyncio.run(
+            PostgresAnalysisRunRepository(
+                DATABASE_URL, global_queue_max=1
+            ).finalize_queued(
+                analysis_run_id=RUN_ID, owner_id=OWNER_ID, source=SOURCE
+            )
+        )
+
+    assert raised.value.cleanup_object == UploadCleanupObject(
+        analysis_run_id=RUN_ID, bucket=SOURCE.bucket, object_key=SOURCE.object_key
+    )
+    assert events == ["finalize.cap", "finalize.rpc", "commit"]
 
 
 def test_cleanup_pending_transition_is_fenced_to_exact_unclaimed_source(

@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi.responses import Response
 from fastapi.security import APIKeyCookie
 
 
@@ -56,6 +57,10 @@ refresh_cookie_scheme = APIKeyCookie(
 
 
 DISPLAY_NAME_MAX_LENGTH = 100
+
+
+class InvalidAuthSession(RuntimeError):
+    """The provider proved that the browser's stored session is invalid."""
 
 
 def normalize_display_name(value: str) -> str:
@@ -231,10 +236,10 @@ SupabaseClientDep = Annotated[SupabaseAuthClient, Depends(supabase_client)]
 
 def user_from_payload(payload: object) -> Principal:
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Supabase user identity is invalid")
+        raise ValueError("Supabase user identity is invalid")
     user_id = payload.get("id")
     if not isinstance(user_id, str) or not user_id.strip():
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Supabase user identity is invalid")
+        raise ValueError("Supabase user identity is invalid")
     metadata = payload.get("app_metadata")
     role = "admin" if isinstance(metadata, dict) and metadata.get("role") == "admin" else "user"
     return Principal(user_id=user_id, role=role)
@@ -274,12 +279,41 @@ async def supabase_principal(request: Request) -> Principal:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication cookie is required")
     response = await SupabaseAuthClient(request).request("GET", "/user", token=token)
+    if response.status_code in {400, 401, 403}:
+        raise InvalidAuthSession("Invalid or expired authentication cookie")
+    if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Authentication validation was rate limited",
+        )
+    if response.status_code >= 500:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase authentication is unavailable",
+        )
     if response.status_code != status.HTTP_200_OK:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication cookie")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Supabase authentication returned an unexpected response",
+        )
     try:
         return user_from_payload(response.json())
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Supabase user identity is invalid") from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Supabase authentication returned an invalid user",
+        ) from exc
+
+
+def clear_session_cookies(response: Response, request: Request) -> None:
+    """Delete both browser credentials with their original cookie scopes."""
+
+    config = AuthCookieConfig.from_request(request)
+    response.delete_cookie(ACCESS_COOKIE, **config.attributes())
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        **config.attributes(path=REFRESH_COOKIE_PATH),
+    )
 
 
 async def require_admin(principal: Annotated[Principal, Depends(offline_principal)]) -> Principal:

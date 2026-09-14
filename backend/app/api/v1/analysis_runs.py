@@ -14,6 +14,7 @@ from app.pipelines.formats import FormatError, validate_format
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
     ActiveResultSessionExists,
+    AnalysisQueueCapacityExceeded,
     AnalysisRunPersistenceUnavailable,
     IdempotencyKeyConflict,
     ObjectStorageUnavailable,
@@ -160,7 +161,7 @@ async def _bounded_content(request: Request, upload: UploadFile, filename: str) 
     status_code=status.HTTP_202_ACCEPTED,
     summary="요청서 업로드 및 분석 작업 생성",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 409, 413, 415, 422, 500, 503),
+    responses=error_responses(401, 403, 409, 413, 415, 422, 429, 500, 502, 503),
 )
 async def create_analysis_run(
     request: Request,
@@ -177,23 +178,33 @@ async def create_analysis_run(
     service: AnalysisRunServiceDep,
 ) -> AnalysisRunCreated:
     filename, _suffix = _safe_filename(file)
-    content = await _bounded_content(request, file, filename)
-    try:
-        record = await service.create(
-            analysis_run_id=str(idempotency_key),
-            owner_id=principal.user_id,
-            filename=filename,
-            content=content,
-            mime_type=file.content_type,
-        )
-    except IdempotencyKeyConflict as exc:
-        raise idempotency_key_conflict() from exc
-    except ActiveResultSessionExists as exc:
-        raise active_result_session() from exc
-    except ActiveAnalysisRunExists as exc:
-        raise analysis_run_active() from exc
-    except (AnalysisRunPersistenceUnavailable, ObjectStorageUnavailable) as exc:
-        raise service_unavailable("Analysis storage is temporarily unavailable") from exc
+    upload_semaphore = getattr(request.app.state, "upload_semaphore", None)
+    if upload_semaphore is None:
+        raise service_unavailable("Analysis upload capacity is not configured")
+    # Starlette has already parsed/spooled the multipart part. Keep the much
+    # larger file-byte materialisation and outbound Storage request within a
+    # separate, small process-wide budget so Uvicorn's general request limit
+    # cannot multiply the transient b''.join allocation by every connection.
+    async with upload_semaphore:
+        content = await _bounded_content(request, file, filename)
+        try:
+            record = await service.create(
+                idempotency_key=str(idempotency_key),
+                owner_id=principal.user_id,
+                filename=filename,
+                content=content,
+                mime_type=file.content_type,
+            )
+        except IdempotencyKeyConflict as exc:
+            raise idempotency_key_conflict() from exc
+        except ActiveResultSessionExists as exc:
+            raise active_result_session() from exc
+        except ActiveAnalysisRunExists as exc:
+            raise analysis_run_active() from exc
+        except AnalysisQueueCapacityExceeded as exc:
+            raise service_unavailable("Analysis queue is temporarily full") from exc
+        except (AnalysisRunPersistenceUnavailable, ObjectStorageUnavailable) as exc:
+            raise service_unavailable("Analysis storage is temporarily unavailable") from exc
     return AnalysisRunCreated(
         analysis_run_id=record.analysis_run_id,
         status=record.status,
@@ -205,7 +216,7 @@ async def create_analysis_run(
     response_model=AnalysisRunView,
     summary="분석 작업 상태 조회",
     dependencies=[Security(access_cookie_scheme)],
-    responses=error_responses(401, 403, 404, 422, 500, 503),
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
 async def get_analysis_run(
     analysis_run_id: UUID,

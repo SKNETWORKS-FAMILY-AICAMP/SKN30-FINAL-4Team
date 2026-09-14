@@ -1,28 +1,4 @@
-"""Trusted PostgreSQL adapter for the asynchronous conversation API.
-
-DB RPC assumptions (v0.2, section 13/16 ``db-lifecycle``) -- not yet shipped
-----------------------------------------------------------------------------
-``workspace.prepare_conversation_messages`` and
-``workspace.retry_conversation_message`` are assumed to gain a trailing
-``p_idempotency_key uuid`` parameter (spec section 11.1):
-
-- ``workspace.prepare_conversation_messages(p_owner_id uuid,
-  p_analysis_case_id uuid, p_content text, p_idempotency_key uuid)`` — the DB
-  stores ``(analysis_session_id, Idempotency-Key)`` as unique together with a
-  hash of the question body. An exact replay (same key, same body) returns
-  the existing ``user_message_id``/``assistant_message_id`` instead of
-  creating a new turn; same key with a different body raises the
-  ``IDEMPOTENCY_KEY_CONFLICT`` domain error text this adapter matches below.
-- ``workspace.retry_conversation_message(p_owner_id uuid,
-  p_assistant_message_id uuid, p_analysis_case_id uuid, p_idempotency_key
-  uuid)`` — same replay/conflict semantics, scoped to the retry target so a
-  lost 202 response can be resent without double-incrementing retry_count or
-  double-dispatching to the chat worker.
-
-Until the DB migration for these parameters lands, an online (non-offline)
-call here fails closed with :class:`ConversationRepositoryUnavailable`
-(``undefined_function``) rather than silently dropping the idempotency key.
-"""
+"""Trusted PostgreSQL adapter for the asynchronous v0.2 conversation RPCs."""
 
 from __future__ import annotations
 
@@ -41,6 +17,7 @@ from app.ports.conversations import (
     ConversationMessagePage,
     ConversationMessageRecord,
     ConversationNotFound,
+    ConversationQueueCapacityExceeded,
     ConversationRepositoryUnavailable,
     ConversationRetryCooldown,
     ConversationRetryExhausted,
@@ -48,77 +25,26 @@ from app.ports.conversations import (
 )
 
 
+DEFAULT_GLOBAL_QUEUE_MAX = 25
+MAX_GLOBAL_QUEUE_MAX = 10_000
+_SET_GLOBAL_QUEUE_LIMIT_SQL = """
+SELECT set_config('prereview.global_queue_max', %s, TRUE)
+"""
+
 _PREPARE_SQL = """
-SELECT user_message_id, assistant_message_id, analysis_session_id
-  FROM workspace.prepare_conversation_messages(%s, %s, %s, %s)
+SELECT user_message_id, assistant_message_id, analysis_session_id, replayed
+  FROM workspace.prepare_conversation_messages_v2(%s, %s, %s, %s)
 """
 _RETRY_SQL = """
 SELECT assistant_message_id, user_message_id, analysis_case_id,
-       analysis_session_id, retry_count
-  FROM workspace.retry_conversation_message(%s, %s, %s, %s)
+       analysis_session_id, retry_count, replayed
+  FROM workspace.retry_conversation_message_v2(%s, %s, %s, %s)
 """
-_MESSAGE_COLUMNS = """
-       m.message_pk AS message_id,
-       c.analysis_case_pk AS analysis_case_id,
-       m.role,
-       m.sequence_no,
-       m.content,
-       m.status,
-       m.reply_to_message_pk AS reply_to_message_id,
-       (m.auto_retry_count + m.manual_retry_count) AS retry_count,
-       m.error_code,
-       m.error_message,
-       m.created_at,
-       m.updated_at
+_GET_MESSAGE_SQL = """
+SELECT api.rpc_get_conversation_message_v2(%s, %s, %s) AS payload
 """
-_GET_MESSAGE_SQL = f"""
-SELECT {_MESSAGE_COLUMNS}
-  FROM result.conversation_message m
-  JOIN result.analysis_session s
-    ON s.analysis_session_pk = m.analysis_session_pk
-  JOIN result.analysis_case c
-    ON c.analysis_case_pk = s.analysis_case_pk
- WHERE m.message_pk = %s
-   AND c.analysis_case_pk = %s
-   AND c.user_id = %s
-   AND c.retention_expires_at > now()
-"""
-_LIST_FIRST_PAGE_SQL = f"""
-SELECT {_MESSAGE_COLUMNS}
-  FROM result.conversation_message m
-  JOIN result.analysis_session s
-    ON s.analysis_session_pk = m.analysis_session_pk
-  JOIN result.analysis_case c
-    ON c.analysis_case_pk = s.analysis_case_pk
- WHERE c.analysis_case_pk = %s
-       AND c.user_id = %s
-       AND c.retention_expires_at > now()
- ORDER BY m.sequence_no DESC, m.message_pk DESC
- LIMIT %s
-"""
-# The keyset predicate walks strictly older than the caller's cursor so a
-# message created/updated after the cursor was minted never gets inserted
-# into a page the caller has not fetched yet.
-_LIST_NEXT_PAGE_SQL = f"""
-SELECT {_MESSAGE_COLUMNS}
-  FROM result.conversation_message m
-  JOIN result.analysis_session s
-    ON s.analysis_session_pk = m.analysis_session_pk
-  JOIN result.analysis_case c
-    ON c.analysis_case_pk = s.analysis_case_pk
- WHERE c.analysis_case_pk = %s
-       AND c.user_id = %s
-       AND c.retention_expires_at > now()
-       AND (m.sequence_no, m.message_pk) < (%s, %s)
- ORDER BY m.sequence_no DESC, m.message_pk DESC
- LIMIT %s
-"""
-_VISIBLE_CASE_SQL = """
-SELECT 1
-  FROM result.analysis_case c
- WHERE c.analysis_case_pk = %s
-   AND c.user_id = %s
-   AND c.retention_expires_at > now()
+_LIST_PAGE_SQL = """
+SELECT api.rpc_get_conversation_history_v2(%s, %s, %s, %s, %s) AS payload
 """
 
 
@@ -130,9 +56,24 @@ class PostgresConversationRepository:
     a database role or an arbitrary SQL fragment.
     """
 
-    def __init__(self, database_url: str, *, connect_timeout_seconds: int = 10) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        connect_timeout_seconds: int = 10,
+        global_queue_max: int | None = None,
+    ) -> None:
+        if global_queue_max is not None and (
+            isinstance(global_queue_max, bool)
+            or not isinstance(global_queue_max, int)
+            or not 1 <= global_queue_max <= MAX_GLOBAL_QUEUE_MAX
+        ):
+            raise ValueError(
+                f"global_queue_max must be between 1 and {MAX_GLOBAL_QUEUE_MAX}"
+            )
         self._database_url = database_url
         self._connect_timeout = connect_timeout_seconds
+        self._global_queue_max = global_queue_max
 
     def _ensure_configured(self) -> None:
         if not self._database_url:
@@ -165,6 +106,11 @@ class PostgresConversationRepository:
             ) as connection:
                 async with connection.transaction():
                     async with connection.cursor() as cursor:
+                        if self._global_queue_max is not None:
+                            await cursor.execute(
+                                _SET_GLOBAL_QUEUE_LIMIT_SQL,
+                                (str(self._global_queue_max),),
+                            )
                         await cursor.execute(_PREPARE_SQL, (owner, case_id, content, key))
                         row = await cursor.fetchone()
             if row is None:
@@ -197,13 +143,14 @@ class PostgresConversationRepository:
             ) as connection:
                 async with connection.transaction():
                     async with connection.cursor() as cursor:
-                        await cursor.execute(_GET_MESSAGE_SQL, (target, case_id, owner))
+                        await cursor.execute(_GET_MESSAGE_SQL, (owner, case_id, target))
                         row = await cursor.fetchone()
         except (psycopg.Error, OSError) as exc:
             raise _map_database_error(exc) from exc
-        if row is None:
+        payload = row.get("payload") if row is not None else None
+        if not isinstance(payload, Mapping):
             raise ConversationNotFound("Conversation message was not found")
-        return _message_record(row)
+        return _message_record(payload)
 
     async def list_messages(
         self,
@@ -225,39 +172,45 @@ class PostgresConversationRepository:
             ) as connection:
                 async with connection.transaction():
                     async with connection.cursor() as cursor_obj:
-                        if cursor is None:
-                            await cursor_obj.execute(
-                                _LIST_FIRST_PAGE_SQL, (case_id, owner, bounded_limit)
+                        before_sequence_no, before_message_id = (
+                            cursor if cursor is not None else (None, None)
+                        )
+                        if before_message_id is not None:
+                            before_message_id = self._uuid(
+                                before_message_id, label="cursor message"
                             )
-                        else:
-                            sequence_no, message_id = cursor
-                            await cursor_obj.execute(
-                                _LIST_NEXT_PAGE_SQL,
-                                (
-                                    case_id,
-                                    owner,
-                                    sequence_no,
-                                    self._uuid(message_id, label="cursor message"),
-                                    bounded_limit,
-                                ),
-                            )
-                        rows = await cursor_obj.fetchall()
-                        if not rows:
-                            await cursor_obj.execute(_VISIBLE_CASE_SQL, (case_id, owner))
-                            if await cursor_obj.fetchone() is None:
-                                raise ConversationNotFound("Conversation was not found")
+                        await cursor_obj.execute(
+                            _LIST_PAGE_SQL,
+                            (
+                                owner,
+                                case_id,
+                                before_sequence_no,
+                                before_message_id,
+                                bounded_limit,
+                            ),
+                        )
+                        row = await cursor_obj.fetchone()
         except ConversationError:
             raise
         except (psycopg.Error, OSError) as exc:
             raise _map_database_error(exc) from exc
-        # Rows arrive newest-first (DESC) for the keyset predicate; the public
-        # contract returns each page in chronological order for display.
-        ordered = list(reversed(rows))
-        items = [_message_record(row) for row in ordered]
-        next_cursor = None
-        if len(rows) == bounded_limit:
-            oldest = ordered[0]
-            next_cursor = (int(oldest["sequence_no"]), str(oldest["message_id"]))
+        payload = row.get("payload") if row is not None else None
+        if not isinstance(payload, Mapping) or not isinstance(payload.get("items"), list):
+            raise ConversationRepositoryUnavailable(
+                "Conversation history payload was malformed"
+            )
+        items = [_message_record(item) for item in payload["items"]]
+        next_sequence_no = payload.get("next_sequence_no")
+        next_message_id = payload.get("next_message_id")
+        if (next_sequence_no is None) != (next_message_id is None):
+            raise ConversationRepositoryUnavailable(
+                "Conversation history cursor was malformed"
+            )
+        next_cursor = (
+            (int(next_sequence_no), str(next_message_id))
+            if next_sequence_no is not None
+            else None
+        )
         return ConversationMessagePage(items=items, next_cursor=next_cursor)
 
     async def retry_message(
@@ -281,7 +234,12 @@ class PostgresConversationRepository:
             ) as connection:
                 async with connection.transaction():
                     async with connection.cursor() as cursor:
-                        await cursor.execute(_RETRY_SQL, (owner, assistant_id, case_id, key))
+                        if self._global_queue_max is not None:
+                            await cursor.execute(
+                                _SET_GLOBAL_QUEUE_LIMIT_SQL,
+                                (str(self._global_queue_max),),
+                            )
+                        await cursor.execute(_RETRY_SQL, (owner, case_id, assistant_id, key))
                         row = await cursor.fetchone()
             if row is None:
                 raise ConversationNotFound("Conversation message was not found")
@@ -309,11 +267,7 @@ def _message_record(row: Mapping[str, Any]) -> ConversationMessageRecord:
         analysis_case_id=str(row["analysis_case_id"]),
         role=str(row["role"]),
         sequence_no=int(row["sequence_no"]),
-        content=(
-            None
-            if str(row["status"]) == "generating" and row["content"] == ""
-            else str(row["content"])
-        ),
+        content=None if row.get("content") is None else str(row["content"]),
         status=str(row["status"]),
         reply_to_message_id=(
             str(row["reply_to_message_id"])
@@ -350,6 +304,10 @@ def _map_database_error(exc: BaseException) -> ConversationError:
         if "IDEMPOTENCY_KEY_CONFLICT" in message:
             return ConversationIdempotencyKeyConflict(
                 "Idempotency-Key was reused with different input"
+            )
+        if "GLOBAL_QUEUE_CAPACITY_EXCEEDED" in message:
+            return ConversationQueueCapacityExceeded(
+                "Conversation queue is temporarily full"
             )
         if "CHAT_RETRY_EXHAUSTED" in message:
             return ConversationRetryExhausted("Conversation retry budget is exhausted")

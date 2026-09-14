@@ -224,6 +224,28 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
     asyncio.run(run())
 
 
+def test_password_reset_preserves_provider_rate_limit() -> None:
+    def provider(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"message": "rate limited"})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(
+                app=auth_app(httpx.MockTransport(provider))
+            ),
+            base_url="http://testserver",
+        ) as api:
+            response = await api.post(
+                "/api/v1/auth/password-reset",
+                headers={"Origin": ORIGIN},
+                json={"email": "nobody@example.com"},
+            )
+            assert response.status_code == 429
+            assert response.json()["code"] == "RATE_LIMITED"
+
+    asyncio.run(run())
+
+
 def test_sign_out_deletes_cookie_pair_and_update_password_never_echoes_secret() -> None:
     seen: list[httpx.Request] = []
 
@@ -297,6 +319,38 @@ def test_invalid_refresh_and_remote_logout_failure_clear_local_cookies() -> None
     asyncio.run(run())
 
 
+def test_sign_out_transport_failure_still_clears_local_cookies() -> None:
+    def provider(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("provider unavailable", request=request)
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(
+                app=auth_app(httpx.MockTransport(provider))
+            ),
+            base_url="http://testserver",
+        ) as api:
+            api.cookies.set(
+                "pre_review_access", "access-secret",
+                domain="testserver.local", path="/",
+            )
+            api.cookies.set(
+                "pre_review_refresh", "refresh-secret",
+                domain="testserver.local", path="/api/v1/auth",
+            )
+            response = await api.post(
+                "/api/v1/auth/sign-out", headers={"Origin": ORIGIN}
+            )
+
+            assert response.status_code == 503
+            assert response.json()["code"] == "SERVICE_UNAVAILABLE"
+            deleted = response.headers.get_list("set-cookie")
+            assert len(deleted) == 2
+            assert all("Max-Age=0" in item for item in deleted)
+
+    asyncio.run(run())
+
+
 def test_refresh_preserves_cookies_on_rate_limit_transport_and_malformed_payload() -> None:
     """Only an invalid/expired credential may clear the refresh cookie.
 
@@ -331,6 +385,74 @@ def test_refresh_preserves_cookies_on_rate_limit_transport_and_malformed_payload
                 # httpx's cookie jar only clears entries an actual
                 # Set-Cookie deleted; the refresh cookie must still be there.
                 assert api.cookies.get("pre_review_refresh", path="/api/v1/auth") == "still-valid-refresh"
+
+    asyncio.run(run())
+
+
+def test_invalid_access_cookie_is_cleared_on_business_and_me_routes() -> None:
+    def provider(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"message": "expired"})
+
+    async def run() -> None:
+        for path in (
+            "/api/v1/auth/me",
+            "/api/v1/analysis-sessions/active",
+        ):
+            app = auth_app(httpx.MockTransport(provider))
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+            ) as api:
+                api.cookies.set(
+                    "pre_review_access", "expired-access",
+                    domain="testserver.local", path="/",
+                )
+                api.cookies.set(
+                    "pre_review_refresh", "expired-refresh",
+                    domain="testserver.local", path="/api/v1/auth",
+                )
+                response = await api.get(path)
+                assert response.status_code == 401
+                assert response.json()["code"] == "UNAUTHORIZED"
+                deleted = response.headers.get_list("set-cookie")
+                assert len(deleted) == 2
+                assert all("Max-Age=0" in item for item in deleted)
+
+    asyncio.run(run())
+
+
+def test_business_auth_preserves_cookie_and_classifies_transient_provider_failures() -> None:
+    outcomes = (
+        (429, {"message": "slow down"}, 429),
+        (503, {"message": "unavailable"}, 503),
+        (418, {"message": "unexpected"}, 502),
+        (200, None, 502),
+    )
+
+    async def run() -> None:
+        for provider_status, payload, expected_status in outcomes:
+            def provider(
+                _: httpx.Request,
+                provider_status: int = provider_status,
+                payload: object = payload,
+            ) -> httpx.Response:
+                if payload is None:
+                    return httpx.Response(provider_status, content=b"not-json")
+                return httpx.Response(provider_status, json=payload)
+
+            app = auth_app(httpx.MockTransport(provider))
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+            ) as api:
+                api.cookies.set(
+                    "pre_review_access", "still-valid-access",
+                    domain="testserver.local", path="/",
+                )
+                response = await api.get("/api/v1/analysis-sessions/active")
+                assert response.status_code == expected_status
+                assert "set-cookie" not in response.headers
+                assert api.cookies.get("pre_review_access") == "still-valid-access"
 
     asyncio.run(run())
 
