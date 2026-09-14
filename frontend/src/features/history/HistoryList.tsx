@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import HistoryListView from './HistoryListView'
-import { historyService } from '../../services/historyService'
+import { historyService, type HistoryItemModel } from '../../services/historyService'
 
 interface HistoryListProps {
     onHistoryClick: (id: string) => void
 }
 
-const formatDate = (isoString?: string) => {
+const formatDate = (isoString?: string | null) => {
     if (!isoString) return ''
     const date = new Date(isoString)
     if (isNaN(date.getTime())) return isoString
@@ -21,60 +21,64 @@ const formatDate = (isoString?: string) => {
 }
 
 export default function HistoryList({ onHistoryClick }: HistoryListProps) {
-    const [allHistories, setAllHistories] = useState<any[]>([]) // 전체 데이터
-    const [displayedHistories, setDisplayedHistories] = useState<any[]>([]) // 화면에 보여줄 데이터 (5개씩)
-    const [page, setPage] = useState<number>(1)
+    const [histories, setHistories] = useState<any[]>([])
+    const [cursor, setCursor] = useState<string | null>(null)
     const [hasMore, setHasMore] = useState<boolean>(false)
     const [isLoading, setIsLoading] = useState(true)
 
-    const PAGE_LIMIT = 5
+    const fetchHistories = async (targetCursor?: string, isAppend = false) => {
+        try {
+            setIsLoading(true)
+            const response = await historyService.listHistory(targetCursor)
+            const rawItems = response.items || []
+
+            const mappedList = rawItems.map((item: HistoryItemModel) => ({
+                id: String(item.analysis_case_id),
+                title: item.program_name || item.original_filename || '제목 없음',
+                date: formatDate(item.completed_at),
+            }))
+
+            if (isAppend) {
+                setHistories((prev) => [...prev, ...mappedList])
+            } else {
+                setHistories(mappedList)
+            }
+
+            setCursor(response.next_cursor)
+            setHasMore(!!response.next_cursor)
+        } catch (error) {
+            if (!isAppend) {
+                setHistories([])
+            }
+            setHasMore(false)
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
     useEffect(() => {
-        const fetchHistories = async () => {
-            try {
-                setIsLoading(true)
-                const { data } = await historyService.listHistory()
-                const rawList = data || []
-
-                const mappedList = rawList.map((item: any) => ({
-                    id: String(item.analysis_case_id || item.id),
-                    title: item.title || item.program_name || item.original_filename || '제목 없음',
-                    date: formatDate(item.completed_at || item.created_at),
-                }))
-
-                setAllHistories(mappedList)
-                setDisplayedHistories(mappedList.slice(0, PAGE_LIMIT))
-                setHasMore(mappedList.length > PAGE_LIMIT)
-            } catch (error) {
-                setAllHistories([])
-                setDisplayedHistories([])
-            } finally {
-                setIsLoading(false)
-            }
-        }
-
         fetchHistories()
     }, [])
 
     const handleLoadMore = () => {
-        const nextPage = page + 1
-        const endIndex = nextPage * PAGE_LIMIT
-        const nextSlice = allHistories.slice(0, endIndex)
-
-        setDisplayedHistories(nextSlice)
-        setPage(nextPage)
-        setHasMore(endIndex < allHistories.length)
+        if (cursor && !isLoading) {
+            fetchHistories(cursor, true)
+        }
     }
 
-    if (isLoading || displayedHistories.length === 0) {
+    if (isLoading && histories.length === 0) {
+        return null
+    }
+
+    if (!isLoading && histories.length === 0) {
         return null
     }
 
     return (
         <HistoryListView 
-            histories={displayedHistories} 
+            histories={histories} 
             hasMore={hasMore}
-            totalCount={allHistories.length}
+            totalCount={histories.length}
             onHistoryClick={onHistoryClick} 
             onLoadMore={handleLoadMore}
         />
