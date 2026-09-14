@@ -93,7 +93,7 @@ export default function ResultView({
                             {cplItems.map((item: any, index: number) => (
                                 <li key={item.code || index} className="flex justify-between items-center bg-surface border border-outline-variant rounded-xs">
                                     <div className="p-md font-medium text-[14px] text-on-surface">
-                                        {getCplLabel(item.detail.field_code)}
+                                        {getCplLabel(item.code)}
                                     </div>
                                     {getCplBadge(item.status)}
                                 </li>

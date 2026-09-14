@@ -1,18 +1,18 @@
 // CPL 항목 코드 맵핑 (HTML에 명시된 13개 항목 기준)
 export const CPL_LABELS: Record<string, string> = {
-    REQUEST_TYPE: '요청유형 체크값',
-    PURPOSE_GOAL: '사업 목적 · 목표',
-    IMPLEMENTATION_PLAN: '연차별 · 내역사업별 추진계획',
-    BUSINESS_PERIOD: '사업기간',
-    NEW_OR_CHANGED_CONTENT: '신설 · 변경 주요내용',
-    BUSINESS_NEED: '사업필요성 최소 논리구조',
-    LEGAL_BASIS: '지원근거',
-    LINKED_POLICY: '연계정책',
-    BUDGET: '사업예산',
-    TARGET_AND_CONDITIONS: '지원대상 · 지원조건',
-    SUPPORT_CONTENT_AND_SCALE: '지원내용 · 지원규모',
-    DELIVERY_SYSTEM: '수행기관 · 수행방식 · 수행체계',
-    EXPECTED_EFFECTS_AND_PERFORMANCE: '기대효과 · 성과 관련 정보',
+    'CPL-01': '요청유형 체크값',
+    'CPL-02': '사업 목적 · 목표',
+    'CPL-03': '연차별 · 내역사업별 추진계획',
+    'CPL-04': '사업기간',
+    'CPL-05': '신설 · 변경 주요내용',
+    'CPL-06': '사업필요성 최소 논리구조',
+    'CPL-07': '지원근거',
+    'CPL-08': '연계정책',
+    'CPL-09': '사업예산',
+    'CPL-10': '지원대상 · 지원조건',
+    'CPL-11': '지원내용 · 지원규모',
+    'CPL-12': '수행기관 · 수행방식 · 수행체계',
+    'CPL-13': '기대효과 · 성과 관련 정보',
 }
 
 // FIT 관계 코드 맵핑
