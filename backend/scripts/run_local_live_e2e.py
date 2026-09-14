@@ -14,11 +14,15 @@ import argparse
 import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 import ipaddress
 import json
 import math
 import os
 from pathlib import Path
+import re
+import stat
+import subprocess
 import sys
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -58,6 +62,7 @@ ANALYSIS_POLL_TIMEOUT_SECONDS = 1800
 CHAT_POLL_INTERVAL_SECONDS = 0.25
 CHAT_POLL_TIMEOUT_SECONDS = 600
 E2E_CHAT_QUESTION = "이번 분석 결과를 요약하고 근거를 알려주세요."
+_BUILD_ID_PATTERN = re.compile(r"[0-9a-f]{64}")
 ML_ENVIRONMENT_KEYS = (
     "PREREVIEW_ML_ROOT",
     "PREREVIEW_MODEL1_SERVING_DIR",
@@ -69,6 +74,13 @@ OPTIONAL_STAGE_MODEL_ENVIRONMENT_KEYS = (
     "OPENAI_FIT_MODEL",
     "OPENAI_SIM_MODEL",
     "OPENAI_CHAT_MODEL",
+)
+CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY = "PREREVIEW_CURSOR_SIGNING_SECRET"
+MODEL_CONFIGURATION_ENVIRONMENT_KEYS = (
+    "OPENAI_LLM_MODEL",
+    "OPENAI_EMBEDDING_MODEL",
+    *OPTIONAL_STAGE_MODEL_ENVIRONMENT_KEYS,
+    "OPENAI_MAX_REPAIRS",
 )
 
 _CLAIM_NEXT_RUN_SQL = """
@@ -99,7 +111,7 @@ SELECT
     attempt_count,
     lease_expires_at,
     heartbeat_interval_seconds
-FROM workspace.claim_next_conversation_message(%s, %s)
+FROM workspace.claim_next_conversation_message_v2(%s, %s)
 """
 _CHAT_REFERENCE_COUNTS_SQL = """
 SELECT
@@ -130,6 +142,16 @@ _ML_RESULT_SQL = """
 SELECT ml_result
 FROM result.analysis_case
 WHERE analysis_case_pk = %s::uuid
+"""
+_ANALYSIS_EMBEDDING_CONFIGURATION_SQL = """
+SELECT processing.run_metadata -> 'embedding_configuration' AS provenance
+FROM ops.processing_run AS processing
+WHERE processing.source_analysis_run_id = %s::uuid
+  AND processing.run_type = 'analysis'
+  AND processing.status = 'succeeded'
+ORDER BY processing.finished_at DESC NULLS LAST,
+         processing.created_at DESC, processing.processing_run_pk DESC
+LIMIT 2
 """
 _ANALYSIS_WORKER_AUDIT_SQL = """
 SELECT
@@ -532,6 +554,429 @@ def _validated_source(source: Path) -> tuple[bytes, str]:
     return content, decision.mime_type
 
 
+def _git_commit() -> str:
+    """Return the exact checked-out commit without exposing worktree paths."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise E2EFailure("Git revision identity is unavailable") from None
+    revision = completed.stdout.strip().lower()
+    if completed.returncode != 0 or re.fullmatch(r"[0-9a-f]{40,64}", revision) is None:
+        raise E2EFailure("Git revision identity is unavailable")
+    return revision
+
+
+def _git_source_state(revision: str) -> tuple[bool, str]:
+    """Return dirty state and a content-safe fingerprint of the source tree.
+
+    The fingerprint includes the complete tracked diff plus untracked file
+    metadata and content digests.  It is deliberately a digest only: neither
+    source paths nor source contents are persisted in the execution manifest.
+    """
+
+    def git_bytes(*arguments: str) -> bytes:
+        try:
+            completed = subprocess.run(
+                ["git", *arguments],
+                cwd=REPOSITORY_ROOT,
+                check=False,
+                capture_output=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            raise E2EFailure("Git source state identity is unavailable") from None
+        if completed.returncode != 0:
+            raise E2EFailure("Git source state identity is unavailable")
+        return completed.stdout
+
+    status = git_bytes("status", "--porcelain=v1", "-z")
+    tracked_diff = git_bytes(
+        "diff", "--no-ext-diff", "--binary", "--full-index", "HEAD"
+    )
+    untracked = git_bytes("ls-files", "--others", "--exclude-standard", "-z")
+    source_state = sha256()
+    source_state.update(b"git-source-state-v1\0")
+    source_state.update(revision.encode("ascii"))
+    source_state.update(b"\0tracked-diff\0")
+    source_state.update(sha256(tracked_diff).digest())
+
+    for raw_path in sorted(path for path in untracked.split(b"\0") if path):
+        # Git paths are repository-relative.  Reject a surprising value before
+        # reading it, even though git normally guarantees this invariant.
+        if raw_path.startswith(b"/") or b".." in raw_path.split(b"/"):
+            raise E2EFailure("Git source state identity is unavailable")
+        path = REPOSITORY_ROOT / os.fsdecode(raw_path)
+        try:
+            path_stat = path.lstat()
+            if stat.S_ISREG(path_stat.st_mode):
+                content_digest = sha256(path.read_bytes()).digest()
+                kind = b"regular"
+            elif stat.S_ISLNK(path_stat.st_mode):
+                content_digest = sha256(os.fsencode(os.readlink(path))).digest()
+                kind = b"symlink"
+            else:
+                raise OSError("unsupported untracked file type")
+        except OSError:
+            raise E2EFailure("Git source state identity is unavailable") from None
+        source_state.update(b"\0untracked\0")
+        source_state.update(raw_path)
+        source_state.update(b"\0")
+        source_state.update(kind)
+        source_state.update(f"{stat.S_IMODE(path_stat.st_mode):o}".encode("ascii"))
+        source_state.update(content_digest)
+    return bool(status), source_state.hexdigest()
+
+
+def _require_clean_checkout_build_context_digest() -> str:
+    """Return this clean checkout's independently computed Docker identity."""
+
+    revision = _git_commit()
+    dirty, _ = _git_source_state(revision)
+    if dirty:
+        raise E2EFailure(
+            "external release E2E requires a clean Git checkout; commit or discard local changes first"
+        )
+    try:
+        from scripts.build_context_digest import backend_build_context_digest
+
+        return backend_build_context_digest(BACKEND_ROOT)
+    except (OSError, ValueError):
+        raise E2EFailure("Local Docker build-context identity is unavailable") from None
+
+
+def _analysis_embedding_configuration(
+    database_url: str,
+    analysis_run_id: str,
+) -> dict[str, object]:
+    """Read the exact retrieval configuration snapshotted by this attempt."""
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=10,
+            row_factory=dict_row,
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(_ANALYSIS_EMBEDDING_CONFIGURATION_SQL, (analysis_run_id,))
+                rows = cursor.fetchall()
+    except (psycopg.Error, OSError):
+        raise E2EFailure("Analysis embedding provenance is unavailable") from None
+    if len(rows) != 1:
+        raise E2EFailure("Analysis embedding provenance is unavailable")
+    provenance = rows[0].get("provenance")
+    if not isinstance(provenance, Mapping) or set(provenance) != {
+        "selected",
+        "configuration_id",
+        "provider",
+        "model_id",
+        "dimensions",
+        "max_input_tokens",
+        "assembly_version",
+    } or not isinstance(provenance.get("selected"), bool):
+        raise E2EFailure("Analysis embedding provenance is unavailable")
+    if provenance["selected"] is False:
+        if any(value is not None for key, value in provenance.items() if key != "selected"):
+            raise E2EFailure("Analysis embedding provenance is unavailable")
+        return dict(provenance)
+    try:
+        UUID(str(provenance["configuration_id"]))
+        dimensions = int(provenance["dimensions"])
+        max_input_tokens = int(provenance["max_input_tokens"])
+    except (TypeError, ValueError):
+        raise E2EFailure("Analysis embedding provenance is unavailable") from None
+    if (
+        not isinstance(provenance["provider"], str)
+        or not provenance["provider"].strip()
+        or not isinstance(provenance["model_id"], str)
+        or not provenance["model_id"].strip()
+        or not isinstance(provenance["assembly_version"], str)
+        or not provenance["assembly_version"].strip()
+        or dimensions <= 0
+        or max_input_tokens <= 0
+    ):
+        raise E2EFailure("Analysis embedding provenance is unavailable")
+    return {
+        "selected": True,
+        "configuration_id": str(provenance["configuration_id"]),
+        "provider": provenance["provider"],
+        "model_id": provenance["model_id"],
+        "dimensions": dimensions,
+        "max_input_tokens": max_input_tokens,
+        "assembly_version": provenance["assembly_version"],
+    }
+
+
+def _docker_container_id(worker_id: str) -> str:
+    """Extract the audited Docker container id from an external worker id."""
+
+    container_id = worker_id.split(":", 1)[0].strip()
+    if re.fullmatch(r"[0-9a-f]{12,64}", container_id) is None:
+        raise E2EFailure("External worker id does not contain a Docker container id")
+    return container_id
+
+
+def _docker_image_identity(worker_id: str) -> str:
+    """Resolve an external worker's container hostname to its immutable image."""
+
+    container_id = _docker_container_id(worker_id)
+    try:
+        completed = subprocess.run(
+            ["docker", "inspect", "--format={{.Image}}", container_id],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise E2EFailure("External worker image identity is unavailable") from None
+    image_id = completed.stdout.strip().lower()
+    if completed.returncode != 0 or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+        raise E2EFailure("External worker image identity is unavailable")
+    return image_id
+
+
+def _external_worker_model_environment(worker_id: str) -> dict[str, str]:
+    """Read just the non-secret model settings from an audited container.
+
+    Do not replace this with ``docker inspect``: its Config.Env field exposes
+    every container variable, including provider credentials.  The fixed shell
+    program below expands only the allowlisted model setting names.
+    """
+
+    container_id = _docker_container_id(worker_id)
+    command = "; ".join(
+        f"printf '{name}=%s\\n' \"${{{name}-}}\""
+        for name in MODEL_CONFIGURATION_ENVIRONMENT_KEYS
+    )
+    try:
+        completed = subprocess.run(
+            ["docker", "exec", container_id, "/bin/sh", "-c", command],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise E2EFailure("External worker model configuration is unavailable") from None
+    if completed.returncode != 0:
+        raise E2EFailure("External worker model configuration is unavailable")
+
+    lines = completed.stdout.splitlines()
+    if len(lines) != len(MODEL_CONFIGURATION_ENVIRONMENT_KEYS):
+        raise E2EFailure("External worker model configuration is unavailable")
+    environment: dict[str, str] = {}
+    for name, line in zip(MODEL_CONFIGURATION_ENVIRONMENT_KEYS, lines, strict=True):
+        prefix = f"{name}="
+        if not line.startswith(prefix):
+            raise E2EFailure("External worker model configuration is unavailable")
+        value = line.removeprefix(prefix)
+        if len(value) > 512 or any(
+            ord(character) < 32 or ord(character) == 127 for character in value
+        ):
+            raise E2EFailure("External worker model configuration is unavailable")
+        environment[name] = value
+    return environment
+
+
+def _model_configuration_manifest(
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    """Return only public model identifiers, never provider credentials."""
+
+    if environment is None:
+        from worker.config import OpenAIConfig
+
+        config = OpenAIConfig.from_env()
+        return {
+            "provider": "openai",
+            "request_profile_model": config.llm_model_for("request_profile"),
+            "cpl_model": config.llm_model,
+            "fit_model": config.llm_model_for("fit"),
+            "sim_model": config.llm_model_for("sim"),
+            "chat_model": config.llm_model_for("chat"),
+            "embedding_model": config.embedding_model,
+            "max_repairs": config.max_repairs,
+        }
+
+    def required_model(name: str) -> str:
+        value = str(environment.get(name) or "").strip()
+        if not value:
+            raise E2EFailure("External worker model configuration is unavailable")
+        return value
+
+    def stage_model(name: str, fallback: str) -> str:
+        value = str(environment.get(name) or "").strip()
+        return value or fallback
+
+    cpl_model = required_model("OPENAI_LLM_MODEL")
+    try:
+        # This accepts the same integer/default semantics as OpenAIConfig,
+        # while passing the allowlisted container mapping explicitly so no
+        # process environment (and therefore no provider secret) is read.
+        from worker.config import MissingConfigError, _int_from_env
+
+        max_repairs = _int_from_env("OPENAI_MAX_REPAIRS", 2, environment)
+    except MissingConfigError:
+        raise E2EFailure("External worker model configuration is unavailable") from None
+    return {
+        "provider": "openai",
+        "request_profile_model": stage_model(
+            "OPENAI_REQUEST_PROFILE_MODEL", cpl_model
+        ),
+        "cpl_model": cpl_model,
+        "fit_model": stage_model("OPENAI_FIT_MODEL", cpl_model),
+        "sim_model": stage_model("OPENAI_SIM_MODEL", cpl_model),
+        "chat_model": stage_model("OPENAI_CHAT_MODEL", cpl_model),
+        "embedding_model": required_model("OPENAI_EMBEDDING_MODEL"),
+        "max_repairs": max_repairs,
+    }
+
+
+def _execution_manifest(
+    *,
+    source_content: bytes,
+    worker_mode: str,
+    analysis_worker_id: str,
+    chat_worker_id: str,
+    database_url: str,
+    analysis_run_id: str,
+    deployed_api_build_id: str | None = None,
+) -> dict[str, object]:
+    """Build the reproducibility record required by the release E2E gate."""
+
+    revision = _git_commit()
+    git_dirty, git_source_state_sha256 = _git_source_state(revision)
+    if worker_mode == "external":
+        if git_dirty:
+            raise E2EFailure(
+                "external release E2E requires a clean Git checkout; commit or discard local changes first"
+            )
+        if (
+            not isinstance(deployed_api_build_id, str)
+            or _BUILD_ID_PATTERN.fullmatch(deployed_api_build_id) is None
+        ):
+            raise E2EFailure("External FastAPI build identity is unavailable")
+        expected_build_id = _require_clean_checkout_build_context_digest()
+        if deployed_api_build_id != expected_build_id:
+            raise E2EFailure(
+                "External FastAPI build identity does not match the clean checkout Docker context"
+            )
+        analysis_runtime: dict[str, object] = {
+            "kind": "docker",
+            "worker_id": analysis_worker_id,
+            "image_id": _docker_image_identity(analysis_worker_id),
+        }
+        chat_runtime: dict[str, object] = {
+            "kind": "docker",
+            "worker_id": chat_worker_id,
+            "image_id": _docker_image_identity(chat_worker_id),
+        }
+        models: dict[str, object] = {
+            "analysis_worker": _model_configuration_manifest(
+                _external_worker_model_environment(analysis_worker_id)
+            ),
+            "chat_worker": _model_configuration_manifest(
+                _external_worker_model_environment(chat_worker_id)
+            ),
+        }
+        api_runtime: dict[str, object] = {
+            "kind": "deployed-http",
+            "build_id": deployed_api_build_id,
+        }
+    else:
+        common = {
+            "kind": "host-python",
+            "python_version": sys.version.split()[0],
+            "platform": sys.platform,
+            "git_commit": revision,
+        }
+        analysis_runtime = {**common, "worker_id": analysis_worker_id}
+        chat_runtime = {**common, "worker_id": chat_worker_id}
+        models = _model_configuration_manifest()
+        api_runtime = {"kind": "in-process", "build_id": revision}
+    return {
+        "input_sha256": sha256(source_content).hexdigest(),
+        "git_commit": revision,
+        "git_dirty": git_dirty,
+        "git_source_state_sha256": git_source_state_sha256,
+        "api": api_runtime,
+        "analysis_worker": analysis_runtime,
+        "chat_worker": chat_runtime,
+        "models": models,
+        "embedding_configuration": _analysis_embedding_configuration(
+            database_url,
+            analysis_run_id,
+        ),
+    }
+
+
+def _partial_execution_manifest(
+    *,
+    source_content: bytes,
+    worker_mode: str,
+    analysis_worker_id: str | None,
+    database_url: str,
+    analysis_run_id: str,
+    deployed_api_build_id: str | None,
+) -> dict[str, object]:
+    """Return truthful known provenance after analysis but before chat exists.
+
+    This path must be total: tracing a rejected analysis can never replace the
+    original failure.  Unknown chat identity is represented as JSON null, not
+    an empty object that could be mistaken for captured provenance.
+    """
+
+    manifest: dict[str, object] = {
+        "partial": True,
+        "input_sha256": sha256(source_content).hexdigest(),
+        "git_commit": None,
+        "git_dirty": None,
+        "git_source_state_sha256": None,
+        "api": {
+            "kind": "deployed-http" if worker_mode == "external" else "in-process",
+            "build_id": deployed_api_build_id if worker_mode == "external" else None,
+        },
+        "analysis_worker": {
+            "kind": "docker" if worker_mode == "external" else "host-python",
+            "worker_id": analysis_worker_id,
+        },
+        "chat_worker": None,
+        "models": None,
+        "embedding_configuration": None,
+    }
+    try:
+        revision = _git_commit()
+        dirty, source_state = _git_source_state(revision)
+        manifest.update(
+            {
+                "git_commit": revision,
+                "git_dirty": dirty,
+                "git_source_state_sha256": source_state,
+            }
+        )
+        if worker_mode != "external":
+            manifest["api"] = {"kind": "in-process", "build_id": revision}
+            manifest["models"] = _model_configuration_manifest()
+    except Exception:  # noqa: BLE001 - original E2E failure takes precedence
+        pass
+    try:
+        manifest["embedding_configuration"] = _analysis_embedding_configuration(
+            database_url,
+            analysis_run_id,
+        )
+    except Exception:  # noqa: BLE001 - result may not have persisted metadata
+        pass
+    return manifest
+
+
 def _write_trace(
     trace_dir: Path,
     *,
@@ -541,6 +986,7 @@ def _write_trace(
     result: dict[str, object],
     cpl_diagnostics: object = None,
     run_state: object = None,
+    execution_manifest: object = None,
 ) -> None:
     """Record persisted E2E artifacts; never rerun a stage just to trace it."""
 
@@ -557,6 +1003,7 @@ def _write_trace(
         ("06_ml.json", result.get("ml")),
         ("07_result.json", result),
         ("08_run_state.json", run_state),
+        ("09_execution_manifest.json", execution_manifest or {}),
         ("cpl_diagnostics.json", cpl_diagnostics if cpl_diagnostics is not None else []),
     )
     for name, payload in stages:
@@ -590,6 +1037,7 @@ def _write_analysis_trace_safely(
     run_state: object,
     cpl_diagnostics: object,
     result: dict[str, object] | None = None,
+    execution_manifest: object = None,
 ) -> bool:
     """Best-effort trace of persisted analysis state without changing its result.
 
@@ -617,6 +1065,7 @@ def _write_analysis_trace_safely(
                 "analysis_run_id": run_id,
                 "diagnostics": cpl_diagnostics,
             },
+            execution_manifest=execution_manifest,
         )
     except Exception:  # noqa: BLE001 - tracing must not hide the original failure
         return False
@@ -666,6 +1115,8 @@ async def _capture_analysis_failure_trace(
     handler: object | None,
     run_id: str,
     cpl_diagnostics: object,
+    result: dict[str, object] | None = None,
+    execution_manifest: object = None,
 ) -> bool:
     """Read only already-persisted failure evidence, including external mode."""
 
@@ -681,7 +1132,46 @@ async def _capture_analysis_failure_trace(
         run_id=run_id,
         run_state=run_state,
         cpl_diagnostics=cpl_diagnostics,
+        result=result,
+        execution_manifest=execution_manifest,
     )
+
+
+async def _require_live_ml_results_with_failure_trace(
+    *,
+    client: httpx.AsyncClient,
+    trace_dir: Path | None,
+    upload: object,
+    handler: object | None,
+    run_id: str,
+    cpl_diagnostics: object,
+    result: dict[str, object],
+    database_url: str,
+    case_id: str,
+    execution_manifest: object,
+) -> dict[str, str]:
+    """Validate persisted ML acceptance and retain evidence if it is rejected."""
+
+    try:
+        return await asyncio.to_thread(
+            _require_live_ml_results,
+            database_url,
+            case_id=case_id,
+        )
+    except E2EFailure:
+        # This is deliberately scoped to the post-worker ML acceptance gate.
+        # The trace operation is best-effort and must not mask that rejection.
+        await _capture_analysis_failure_trace(
+            client=client,
+            trace_dir=trace_dir,
+            upload=upload,
+            handler=handler,
+            run_id=run_id,
+            cpl_diagnostics=cpl_diagnostics,
+            result=result,
+            execution_manifest=execution_manifest,
+        )
+        raise
 
 
 def _database_endpoint(tenant: str, platform: str = sys.platform) -> tuple[str, int]:
@@ -1002,6 +1492,38 @@ def _validated_api_base_url(value: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
 
+async def _external_api_build_identity(
+    client: httpx.AsyncClient,
+    *,
+    expected_build_id: str,
+) -> str:
+    """Verify the deployed image identity is this clean checkout's context."""
+
+    if _BUILD_ID_PATTERN.fullmatch(expected_build_id) is None:
+        raise E2EFailure("Clean checkout Docker build identity is unavailable")
+
+    try:
+        response = await client.get("/health/ready")
+        payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        raise E2EFailure("External FastAPI build identity is unavailable") from None
+    header_identity = response.headers.get("X-PreReview-Build-Id")
+    body_identity = payload.get("build_id") if isinstance(payload, Mapping) else None
+    if (
+        response.status_code != 200
+        or not isinstance(header_identity, str)
+        or not isinstance(body_identity, str)
+        or header_identity != body_identity
+        or _BUILD_ID_PATTERN.fullmatch(header_identity) is None
+    ):
+        raise E2EFailure("External FastAPI build identity is unavailable")
+    if header_identity != expected_build_id:
+        raise E2EFailure(
+            "External FastAPI build identity does not match the clean checkout Docker context"
+        )
+    return header_identity
+
+
 def _external_request_origin(
     *,
     explicit_origin: str | None,
@@ -1037,9 +1559,10 @@ def _configure_environment(
     auth_allowed_origins: str | None = TEST_ORIGIN,
     llm_model: str | None = None,
     top_k: int = DEFAULT_TOP_K,
+    require_cursor_signing_secret: bool = False,
 ) -> None:
-    if not 1 <= top_k <= 100:
-        raise E2EFailure("--top-k must be between 1 and 100")
+    if not 1 <= top_k <= 5:
+        raise E2EFailure("--top-k must be between 1 and 5")
     provider = dotenv_values(root_env)
     local = dotenv_values(supabase_env)
     password = _required(local, "POSTGRES_PASSWORD")
@@ -1075,6 +1598,25 @@ def _configure_environment(
         settings["PREREVIEW_FREETYPE_LIB"] = "/lib/x86_64-linux-gnu/libfreetype.so.6"
     if auth_allowed_origins is not None:
         settings["PREREVIEW_AUTH_ALLOWED_ORIGINS"] = auth_allowed_origins
+    if require_cursor_signing_secret:
+        # Inline mode imports FastAPI in this process, so its opaque-cursor
+        # routes require the server-only signing secret here too.  Preserve an
+        # explicitly exported process value (including an explicit invalid
+        # blank) before consulting backend/.env, matching deployment loading
+        # precedence without ever rendering the value.
+        secret_values: dict[str, str | None]
+        if CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY in os.environ:
+            secret_values = {
+                CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY: os.environ.get(
+                    CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY
+                )
+            }
+        else:
+            secret_values = provider
+        settings[CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY] = _required(
+            secret_values,
+            CURSOR_SIGNING_SECRET_ENVIRONMENT_KEY,
+        )
     # Keep the common fallback independent from stage-specific models.  Shell
     # values take precedence just as python-dotenv's ``override=False`` does;
     # the Request Profile override defaults to Terra for this live smoke test.
@@ -1155,28 +1697,28 @@ async def _assistant_message_state(
     case_id: str,
     assistant_message_id: str,
 ) -> dict[str, object]:
-    response = await client.get(f"/api/v1/analysis-cases/{case_id}/messages")
+    response = await client.get(
+        f"/api/v1/analysis-cases/{case_id}/messages/{assistant_message_id}"
+    )
     if response.status_code != 200:
         raise E2EFailure(
             f"FastAPI chat polling failed with HTTP {response.status_code}"
         )
     try:
-        messages = response.json()
+        message = response.json()
     except ValueError:
         raise E2EFailure("FastAPI chat polling response is invalid") from None
-    if not isinstance(messages, list):
+    if not isinstance(message, dict):
         raise E2EFailure("FastAPI chat polling response is invalid")
-    for message in messages:
-        if isinstance(message, dict) and message.get("message_id") == assistant_message_id:
-            if (
-                message.get("analysis_case_id") != case_id
-                or message.get("role") != "assistant"
-            ):
-                raise E2EFailure("FastAPI chat polling response is invalid")
-            if message.get("status") not in {"generating", "completed", "failed"}:
-                raise E2EFailure("FastAPI chat polling response is invalid")
-            return message
-    raise E2EFailure("FastAPI chat polling response omitted the assistant message")
+    if (
+        message.get("message_id") != assistant_message_id
+        or message.get("analysis_case_id") != case_id
+        or message.get("role") != "assistant"
+    ):
+        raise E2EFailure("FastAPI chat polling response is invalid")
+    if message.get("status") not in {"generating", "completed", "failed"}:
+        raise E2EFailure("FastAPI chat polling response is invalid")
+    return message
 
 
 async def _poll_external_analysis_until_terminal(
@@ -1391,6 +1933,7 @@ async def _run_target_chat_until_terminal(
     last_outcome = "not_started"
     for expected_attempt in range(1, MAX_WORKER_ATTEMPTS + 1):
         worker_task = asyncio.create_task(asyncio.to_thread(runtime.run_once))
+        worker_id: str | None = None
         try:
             message = await _poll_chat_message_while_worker_runs(
                 client=client,
@@ -1448,6 +1991,24 @@ async def _run_target_chat_until_terminal(
     raise E2EFailure("chat worker retry loop ended without a terminal state")
 
 
+async def _post_chat_message(
+    client: httpx.AsyncClient,
+    *,
+    case_id: str,
+    request_origin: str,
+) -> httpx.Response:
+    """Create an E2E chat turn with the v0.2 idempotency contract."""
+
+    return await client.post(
+        f"/api/v1/analysis-cases/{case_id}/messages",
+        headers={
+            "Origin": request_origin,
+            "Idempotency-Key": str(uuid4()),
+        },
+        json={"content": E2E_CHAT_QUESTION},
+    )
+
+
 async def _run(
     source: Path,
     *,
@@ -1466,6 +2027,14 @@ async def _run(
         raise E2EFailure("worker mode must be inline or external")
     if worker_mode == "external" and api_base_url is None:
         raise E2EFailure("external worker mode requires a deployed --api-base-url")
+    if worker_mode == "inline" and api_base_url is not None:
+        raise E2EFailure("--api-base-url requires --worker-mode external")
+
+    expected_external_build_id: str | None = None
+    if worker_mode == "external":
+        expected_external_build_id = await asyncio.to_thread(
+            _require_clean_checkout_build_context_digest
+        )
 
     # OPENAI_LOG=debug can make the SDK log its full request options, including
     # the uploaded document text.  Apply the same transport-logger floor as the
@@ -1493,11 +2062,18 @@ async def _run(
         }
     else:
         client_options = {"base_url": api_base_url}
+    deployed_api_build_id: str | None = None
     async with httpx.AsyncClient(
         **client_options,
         timeout=60,
         follow_redirects=False,
     ) as client:
+        if worker_mode == "external":
+            assert expected_external_build_id is not None
+            deployed_api_build_id = await _external_api_build_identity(
+                client,
+                expected_build_id=expected_external_build_id,
+            )
         signed_in = await client.post(
             "/api/v1/auth/sign-in",
             headers={"Origin": request_origin},
@@ -1606,6 +2182,14 @@ async def _run(
                 handler=trace_handler,
                 run_id=run_id,
                 cpl_diagnostics=cpl_diagnostics,
+                execution_manifest=_partial_execution_manifest(
+                    source_content=source_content,
+                    worker_mode=worker_mode,
+                    analysis_worker_id=worker_id,
+                    database_url=os.environ["DATABASE_URL"],
+                    analysis_run_id=run_id,
+                    deployed_api_build_id=deployed_api_build_id,
+                ),
             )
             raise
         case_id = state.get("analysis_case_id")
@@ -1621,38 +2205,120 @@ async def _run(
         if not isinstance(body, dict):
             raise E2EFailure("FastAPI result response is invalid")
         _require_public_ml_projection(body)
-        ml_statuses = await asyncio.to_thread(
-            _require_live_ml_results,
-            os.environ["DATABASE_URL"],
-            case_id=case_id,
-        )
-        if trace_dir is not None:
-            if trace_handler is None:
-                # External mode still reads only the artifacts the deployed
-                # worker wrote; it never runs or claims a worker locally.
-                from worker.main import build_worker
 
-                trace_handler = build_worker().handler
-            common_ir, structured_profile = _cached_artifacts(trace_handler, run_id)
-            if structured_profile is None:
-                raise E2EFailure("worker did not persist the structured profile")
-            _write_trace(
-                trace_dir,
-                upload=payload,
-                common_ir=common_ir,
-                structured_profile=structured_profile,
-                result=body,
-                run_state=state,
-                cpl_diagnostics={
-                    "analysis_run_id": run_id,
-                    "diagnostics": cpl_diagnostics,
-                },
+        current_ready_response = await client.get("/api/v1/analysis/current")
+        if current_ready_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI current analysis read failed with HTTP "
+                f"{current_ready_response.status_code}"
             )
+        current_ready = current_ready_response.json()
+        if (
+            not isinstance(current_ready, Mapping)
+            or current_ready.get("state") != "ready"
+            or not isinstance(current_ready.get("session"), Mapping)
+            or current_ready["session"].get("analysis_case_id") != case_id
+        ):
+            raise E2EFailure("FastAPI current analysis ready state is invalid")
 
-        created_chat = await client.post(
-            f"/api/v1/analysis-cases/{case_id}/messages",
-            headers={"Origin": request_origin},
-            json={"content": E2E_CHAT_QUESTION},
+        active_history_response = await client.get("/api/v1/analysis-history")
+        if active_history_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI active-session history read failed with HTTP "
+                f"{active_history_response.status_code}"
+            )
+        active_history = active_history_response.json()
+        if not isinstance(active_history, Mapping) or not isinstance(
+            active_history.get("items"), list
+        ):
+            raise E2EFailure("FastAPI active-session history response is invalid")
+        if any(
+            isinstance(item, Mapping) and item.get("analysis_case_id") == case_id
+            for item in active_history["items"]
+        ):
+            raise E2EFailure("Active analysis leaked into historical analysis list")
+
+        candidates = (body.get("sim") or {}).get("candidates", [])
+        if not isinstance(candidates, list) or not candidates:
+            raise E2EFailure("FastAPI result returned no SIM candidate to inspect")
+        first_candidate = candidates[0]
+        candidate_id = (
+            first_candidate.get("sim_candidate_id")
+            if isinstance(first_candidate, Mapping)
+            else None
+        )
+        if not isinstance(candidate_id, str):
+            raise E2EFailure("FastAPI SIM candidate summary is invalid")
+        candidate_response = await client.get(f"/api/v1/sim-candidates/{candidate_id}")
+        if candidate_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI SIM candidate detail failed with HTTP "
+                f"{candidate_response.status_code}"
+            )
+        candidate_detail = candidate_response.json()
+        if (
+            not isinstance(candidate_detail, Mapping)
+            or candidate_detail.get("analysis_case_id") != case_id
+            or candidate_detail.get("sim_candidate_id") != candidate_id
+            or not isinstance(candidate_detail.get("axes"), Mapping)
+            or set(candidate_detail["axes"]) != {"purpose", "target", "support", "delivery"}
+            or not isinstance(candidate_detail.get("evidences"), list)
+        ):
+            raise E2EFailure("FastAPI SIM candidate detail response is invalid")
+        evidence_by_side = {"request": set(), "existing": set()}
+        for evidence in candidate_detail["evidences"]:
+            if not isinstance(evidence, Mapping):
+                raise E2EFailure("FastAPI SIM candidate evidence is invalid")
+            evidence_id = evidence.get("evidence_id")
+            side = evidence.get("side")
+            if not isinstance(evidence_id, str) or side not in evidence_by_side:
+                raise E2EFailure("FastAPI SIM candidate evidence is invalid")
+            evidence_by_side[side].add(evidence_id)
+        referenced_by_side = {"request": set(), "existing": set()}
+        for axis in candidate_detail["axes"].values():
+            if not isinstance(axis, Mapping):
+                raise E2EFailure("FastAPI SIM candidate axis is invalid")
+            for side, field in (
+                ("request", "request_evidence_ids"),
+                ("existing", "existing_evidence_ids"),
+            ):
+                references = axis.get(field)
+                if not isinstance(references, list) or not all(
+                    isinstance(item, str) for item in references
+                ):
+                    raise E2EFailure("FastAPI SIM candidate axis evidence is invalid")
+                referenced_by_side[side].update(references)
+        if (
+            not referenced_by_side["request"]
+            or not referenced_by_side["existing"]
+            or not referenced_by_side["request"].issubset(evidence_by_side["request"])
+            or not referenced_by_side["existing"].issubset(evidence_by_side["existing"])
+        ):
+            raise E2EFailure("FastAPI SIM candidate evidence linkage is invalid")
+        ml_statuses = await _require_live_ml_results_with_failure_trace(
+            client=client,
+            trace_dir=trace_dir,
+            upload=payload,
+            handler=trace_handler,
+            run_id=run_id,
+            cpl_diagnostics=cpl_diagnostics,
+            result=body,
+            database_url=os.environ["DATABASE_URL"],
+            case_id=case_id,
+            execution_manifest=_partial_execution_manifest(
+                source_content=source_content,
+                worker_mode=worker_mode,
+                analysis_worker_id=worker_id,
+                database_url=os.environ["DATABASE_URL"],
+                analysis_run_id=run_id,
+                deployed_api_build_id=deployed_api_build_id,
+            ),
+        )
+
+        created_chat = await _post_chat_message(
+            client,
+            case_id=case_id,
+            request_origin=request_origin,
         )
         if created_chat.status_code != 202:
             raise E2EFailure(
@@ -1727,6 +2393,96 @@ async def _run(
             assistant_message_id=assistant_message_id,
             case_id=case_id,
         )
+
+        chat_history_response = await client.get(
+            f"/api/v1/analysis-cases/{case_id}/messages?limit=50"
+        )
+        if chat_history_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI chat history read failed with HTTP "
+                f"{chat_history_response.status_code}"
+            )
+        chat_history = chat_history_response.json()
+        history_items = chat_history.get("items") if isinstance(chat_history, Mapping) else None
+        if not isinstance(history_items, list) or not {
+            chat_turn["user_message_id"],
+            assistant_message_id,
+        }.issubset(
+            {
+                item.get("message_id")
+                for item in history_items
+                if isinstance(item, Mapping)
+            }
+        ):
+            raise E2EFailure("FastAPI chat history omitted the completed turn")
+
+        analysis_session_id = chat_turn["analysis_session_id"]
+        close_response = await client.post(
+            f"/api/v1/analysis-sessions/{analysis_session_id}/close",
+            headers={"Origin": request_origin},
+        )
+        if close_response.status_code != 204:
+            raise E2EFailure(
+                "FastAPI analysis session close failed with HTTP "
+                f"{close_response.status_code}"
+            )
+
+        current_closed_response = await client.get("/api/v1/analysis/current")
+        if current_closed_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI current state after close failed with HTTP "
+                f"{current_closed_response.status_code}"
+            )
+        current_closed = current_closed_response.json()
+        if not isinstance(current_closed, Mapping) or current_closed.get("state") != "idle":
+            raise E2EFailure("FastAPI current state was not idle after close")
+
+        closed_history_response = await client.get("/api/v1/analysis-history")
+        if closed_history_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI closed-session history read failed with HTTP "
+                f"{closed_history_response.status_code}"
+            )
+        closed_history = closed_history_response.json()
+        closed_items = closed_history.get("items") if isinstance(closed_history, Mapping) else None
+        if not isinstance(closed_items, list) or not any(
+            isinstance(item, Mapping) and item.get("analysis_case_id") == case_id
+            for item in closed_items
+        ):
+            raise E2EFailure("Closed analysis was not added to historical analysis list")
+
+        retained_chat_response = await client.get(
+            f"/api/v1/analysis-cases/{case_id}/messages?limit=50"
+        )
+        if retained_chat_response.status_code != 200:
+            raise E2EFailure(
+                "FastAPI retained chat history failed with HTTP "
+                f"{retained_chat_response.status_code}"
+            )
+        retained_chat = retained_chat_response.json()
+        retained_items = (
+            retained_chat.get("items") if isinstance(retained_chat, Mapping) else None
+        )
+        if not isinstance(retained_items, list) or not any(
+            isinstance(item, Mapping)
+            and item.get("message_id") == assistant_message_id
+            and item.get("status") == "completed"
+            for item in retained_items
+        ):
+            raise E2EFailure("Closed analysis did not retain completed chat history")
+
+        if not isinstance(worker_id, str) or not isinstance(chat_worker_id, str):
+            raise E2EFailure("Worker runtime identity is invalid")
+        execution_manifest = await asyncio.to_thread(
+            _execution_manifest,
+            source_content=source_content,
+            worker_mode=worker_mode,
+            analysis_worker_id=worker_id,
+            chat_worker_id=chat_worker_id,
+            database_url=os.environ["DATABASE_URL"],
+            analysis_run_id=run_id,
+            deployed_api_build_id=deployed_api_build_id,
+        )
         outcome: dict[str, object] = {
             "status": "ok",
             "worker_mode": worker_mode,
@@ -1752,8 +2508,36 @@ async def _run(
             "chat_worker_attempt_worker_ids": chat_worker_attempt_worker_ids,
             "chat_poll_count": chat_poll_count,
             "chat_reference_count": chat_reference_count,
+            "candidate_detail_checked": candidate_id,
+            "active_history_excluded_case": True,
+            "closed_history_included_case": True,
+            "chat_history_reloaded": True,
+            "session_closed": True,
+            "execution_manifest": execution_manifest,
         }
         if trace_dir is not None:
+            if trace_handler is None:
+                # External mode still reads only the artifacts the deployed
+                # worker wrote; it never runs or claims a worker locally.
+                from worker.main import build_worker
+
+                trace_handler = build_worker().handler
+            common_ir, structured_profile = _cached_artifacts(trace_handler, run_id)
+            if structured_profile is None:
+                raise E2EFailure("worker did not persist the structured profile")
+            _write_trace(
+                trace_dir,
+                upload=payload,
+                common_ir=common_ir,
+                structured_profile=structured_profile,
+                result=body,
+                run_state=state,
+                cpl_diagnostics={
+                    "analysis_run_id": run_id,
+                    "diagnostics": cpl_diagnostics,
+                },
+                execution_manifest=execution_manifest,
+            )
             outcome["trace_dir"] = str(trace_dir)
         return outcome
 
@@ -1849,6 +2633,13 @@ def main() -> int:
     )
     if args.worker_mode == "external" and api_base_url is None:
         raise E2EFailure("--worker-mode external requires --api-base-url")
+    if args.worker_mode == "inline" and api_base_url is not None:
+        raise E2EFailure("--api-base-url requires --worker-mode external")
+    if args.worker_mode == "external":
+        # Reject a non-release checkout before loading local service settings
+        # or touching the deployment. _run repeats this as a programmatic
+        # entrypoint defense.
+        _require_clean_checkout_build_context_digest()
     if args.request_origin is not None and api_base_url is None:
         raise E2EFailure("--request-origin requires --api-base-url")
     request_origin = (
@@ -1865,6 +2656,7 @@ def main() -> int:
         auth_allowed_origins=TEST_ORIGIN if api_base_url is None else None,
         llm_model=args.llm_model,
         top_k=args.top_k,
+        require_cursor_signing_secret=args.worker_mode == "inline",
     )
     result = asyncio.run(
         _run(

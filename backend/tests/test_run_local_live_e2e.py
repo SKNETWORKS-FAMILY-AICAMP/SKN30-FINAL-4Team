@@ -59,6 +59,20 @@ def test_external_mode_requires_a_deployed_api_url() -> None:
         )
 
 
+def test_inline_mode_rejects_a_deployed_api_url() -> None:
+    with pytest.raises(
+        MODULE.E2EFailure,
+        match="--api-base-url requires --worker-mode external",
+    ):
+        asyncio.run(
+            MODULE._run(
+                Path("never-read.hwpx"),
+                worker_mode="inline",
+                api_base_url="https://api.example.test",
+            )
+        )
+
+
 @pytest.mark.parametrize("raw", ("0", "-1", "nan", "inf", "not-a-number"))
 def test_poll_timeout_rejects_non_positive_or_non_finite_values(raw: str) -> None:
     with pytest.raises(argparse.ArgumentTypeError):
@@ -173,6 +187,90 @@ def test_configure_environment_preserves_explicit_blank_stage_override(
 
     assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == ""
     assert environment["OPENAI_CHAT_MODEL"] == ""
+
+
+def test_inline_configure_environment_loads_cursor_secret_from_backend_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "OPENAI_API_KEY=test-openai-key\n"
+        "PREREVIEW_CURSOR_SIGNING_SECRET=backend-only-cursor-secret\n",
+        encoding="utf-8",
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=test-password\n"
+        "POOLER_TENANT_ID=test-tenant\n"
+        "ANON_KEY=test-anon-key\n"
+        "SERVICE_ROLE_KEY=test-service-key\n",
+        encoding="utf-8",
+    )
+    environment: dict[str, str] = {}
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(
+        backend_env,
+        supabase_env,
+        require_cursor_signing_secret=True,
+    )
+
+    assert environment["PREREVIEW_CURSOR_SIGNING_SECRET"] == "backend-only-cursor-secret"
+
+
+def test_inline_configure_environment_prefers_existing_cursor_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text(
+        "OPENAI_API_KEY=test-openai-key\n"
+        "PREREVIEW_CURSOR_SIGNING_SECRET=backend-cursor-secret\n",
+        encoding="utf-8",
+    )
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=test-password\n"
+        "POOLER_TENANT_ID=test-tenant\n"
+        "ANON_KEY=test-anon-key\n"
+        "SERVICE_ROLE_KEY=test-service-key\n",
+        encoding="utf-8",
+    )
+    environment = {"PREREVIEW_CURSOR_SIGNING_SECRET": "shell-cursor-secret"}
+    monkeypatch.setattr(MODULE.os, "environ", environment)
+
+    MODULE._configure_environment(
+        backend_env,
+        supabase_env,
+        require_cursor_signing_secret=True,
+    )
+
+    assert environment["PREREVIEW_CURSOR_SIGNING_SECRET"] == "shell-cursor-secret"
+
+
+def test_inline_configure_environment_requires_cursor_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend_env = tmp_path / "backend.env"
+    backend_env.write_text("OPENAI_API_KEY=test-openai-key\n", encoding="utf-8")
+    supabase_env = tmp_path / "supabase.env"
+    supabase_env.write_text(
+        "POSTGRES_PASSWORD=test-password\n"
+        "POOLER_TENANT_ID=test-tenant\n"
+        "ANON_KEY=test-anon-key\n"
+        "SERVICE_ROLE_KEY=test-service-key\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(MODULE.os, "environ", {})
+
+    with pytest.raises(MODULE.E2EFailure, match="PREREVIEW_CURSOR_SIGNING_SECRET"):
+        MODULE._configure_environment(
+            backend_env,
+            supabase_env,
+            require_cursor_signing_secret=True,
+        )
 
 
 def test_configure_environment_does_not_override_deployed_api_origin(
@@ -521,9 +619,47 @@ def test_target_chat_claim_is_verified_before_database_transaction_commits(
     assert calls[0] == ("SET LOCAL lock_timeout = '5s'", None)
     assert calls[1] == ("SET LOCAL statement_timeout = '15s'", None)
     assert "pg_advisory_xact_lock" in calls[2][0]
-    assert "workspace.claim_next_conversation_message" in calls[3][0]
+    assert "workspace.claim_next_conversation_message_v2" in calls[3][0]
+    assert "workspace.claim_next_conversation_message(" not in calls[3][0]
     assert calls[3][1] == ("chat-worker-test", 120)
     assert exits == [None]
+
+
+def test_chat_create_request_uses_a_uuid_idempotency_header() -> None:
+    class Response:
+        pass
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, str], dict[str, str]]] = []
+
+        async def post(
+            self,
+            path: str,
+            *,
+            headers: dict[str, str],
+            json: dict[str, str],
+        ) -> Response:
+            self.calls.append((path, headers, json))
+            return Response()
+
+    client = Client()
+
+    response = asyncio.run(
+        MODULE._post_chat_message(
+            client,
+            case_id="8c5ce7e8-6be4-4d86-bc4c-7c2af01db4d1",
+            request_origin="https://e2e.example.test",
+        )
+    )
+
+    assert isinstance(response, Response)
+    assert len(client.calls) == 1
+    path, headers, payload = client.calls[0]
+    assert path == "/api/v1/analysis-cases/8c5ce7e8-6be4-4d86-bc4c-7c2af01db4d1/messages"
+    assert headers["Origin"] == "https://e2e.example.test"
+    assert str(MODULE.UUID(headers["Idempotency-Key"])) == headers["Idempotency-Key"]
+    assert payload == {"content": MODULE.E2E_CHAT_QUESTION}
 
 
 def test_target_claim_is_verified_before_database_transaction_commits(
@@ -1171,13 +1307,17 @@ class _ChatMessageResponse:
 
 
 class _ChatMessageClient:
-    def __init__(self, case_id: str, payload: object) -> None:
+    def __init__(self, case_id: str, assistant_id: str, payload: object) -> None:
         self._case_id = case_id
+        self._assistant_id = assistant_id
         self._payload = payload
         self.calls = 0
 
     async def get(self, path: str) -> _ChatMessageResponse:
-        assert path == f"/api/v1/analysis-cases/{self._case_id}/messages"
+        assert path == (
+            f"/api/v1/analysis-cases/{self._case_id}/messages/"
+            f"{self._assistant_id}"
+        )
         self.calls += 1
         return _ChatMessageResponse(self._payload)
 
@@ -1187,15 +1327,13 @@ def test_assistant_message_state_returns_only_a_valid_matching_assistant() -> No
     assistant_id = "assistant-id"
     client = _ChatMessageClient(
         case_id,
-        [
-            {"message_id": "user-id", "role": "user", "status": "completed"},
-            {
-                "message_id": assistant_id,
-                "analysis_case_id": case_id,
-                "role": "assistant",
-                "status": "generating",
-            },
-        ],
+        assistant_id,
+        {
+            "message_id": assistant_id,
+            "analysis_case_id": case_id,
+            "role": "assistant",
+            "status": "generating",
+        },
     )
 
     state = asyncio.run(
@@ -1232,7 +1370,7 @@ def test_assistant_message_state_returns_only_a_valid_matching_assistant() -> No
 def test_assistant_message_state_rejects_an_invalid_matching_message(
     message: dict[str, str],
 ) -> None:
-    client = _ChatMessageClient("case-id", [message])
+    client = _ChatMessageClient("case-id", "assistant-id", message)
 
     with pytest.raises(MODULE.E2EFailure, match="chat polling response is invalid"):
         asyncio.run(MODULE._assistant_message_state(client, "case-id", "assistant-id"))
@@ -1848,10 +1986,337 @@ def test_trace_writes_actual_stage_layout(tmp_path: Path) -> None:
         "06_ml.json",
         "07_result.json",
         "08_run_state.json",
+        "09_execution_manifest.json",
         "cpl_diagnostics.json",
     ]
     assert json.loads((trace_dir / "02_structured_profile.json").read_text("utf-8"))["profile_id"] == "request:run-1"
     assert json.loads((trace_dir / "03_cpl.json").read_text("utf-8")) == {"items": []}
+
+
+def test_embedding_provenance_query_survives_terminal_dispatch_cleanup() -> None:
+    query = MODULE._ANALYSIS_EMBEDDING_CONFIGURATION_SQL
+
+    assert "FROM ops.processing_run AS processing" in query
+    assert "processing.source_analysis_run_id = %s::uuid" in query
+    assert "processing.status = 'succeeded'" in query
+    assert "analysis_run_dispatch" not in query
+
+
+def test_execution_manifest_records_reproducible_non_secret_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE, "_git_commit", lambda: "a" * 40)
+    monkeypatch.setattr(MODULE, "_git_source_state", lambda _revision: (False, "d" * 64))
+    monkeypatch.setattr(
+        MODULE,
+        "_model_configuration_manifest",
+        lambda: {"provider": "openai", "request_profile_model": "terra"},
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_analysis_embedding_configuration",
+        lambda _url, _run_id: {"configuration_id": "embedding-v2"},
+    )
+
+    manifest = MODULE._execution_manifest(
+        source_content=b"fixture",
+        worker_mode="inline",
+        analysis_worker_id="analysis-worker",
+        chat_worker_id="chat-worker",
+        database_url="not-used",
+        analysis_run_id="run-id",
+    )
+
+    assert manifest["input_sha256"] == (
+        "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d"
+    )
+    assert manifest["git_commit"] == "a" * 40
+    assert manifest["git_dirty"] is False
+    assert manifest["git_source_state_sha256"] == "d" * 64
+    assert manifest["api"] == {"kind": "in-process", "build_id": "a" * 40}
+    assert manifest["analysis_worker"]["kind"] == "host-python"
+    assert manifest["chat_worker"]["worker_id"] == "chat-worker"
+    assert manifest["models"]["provider"] == "openai"
+    assert manifest["embedding_configuration"] == {
+        "configuration_id": "embedding-v2"
+    }
+
+
+def test_external_manifest_resolves_both_immutable_worker_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE, "_git_commit", lambda: "b" * 40)
+    monkeypatch.setattr(MODULE, "_git_source_state", lambda _revision: (False, "e" * 64))
+    monkeypatch.setattr(
+        MODULE,
+        "_require_clean_checkout_build_context_digest",
+        lambda: "b" * 64,
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_analysis_embedding_configuration",
+        lambda _url, _run_id: {},
+    )
+    seen: list[str] = []
+
+    def image_id(worker_id: str) -> str:
+        seen.append(worker_id)
+        return "sha256:" + ("c" * 64)
+
+    monkeypatch.setattr(MODULE, "_docker_image_identity", image_id)
+    model_worker_ids: list[str] = []
+
+    def model_environment(worker_id: str) -> dict[str, str]:
+        model_worker_ids.append(worker_id)
+        return {
+            "OPENAI_LLM_MODEL": f"cpl-{worker_id[0]}",
+            "OPENAI_EMBEDDING_MODEL": f"embedding-{worker_id[0]}",
+            "OPENAI_CHAT_MODEL": f"chat-{worker_id[0]}",
+            "OPENAI_MAX_REPAIRS": "3" if worker_id[0] == "a" else "4",
+        }
+
+    monkeypatch.setattr(MODULE, "_external_worker_model_environment", model_environment)
+    manifest = MODULE._execution_manifest(
+        source_content=b"fixture",
+        worker_mode="external",
+        analysis_worker_id="a" * 12 + ":1:x",
+        chat_worker_id="b" * 12 + ":2:y",
+        database_url="not-used",
+        analysis_run_id="run-id",
+        deployed_api_build_id="b" * 64,
+    )
+
+    assert seen == ["a" * 12 + ":1:x", "b" * 12 + ":2:y"]
+    assert model_worker_ids == ["a" * 12 + ":1:x", "b" * 12 + ":2:y"]
+    assert manifest["analysis_worker"]["image_id"].startswith("sha256:")
+    assert manifest["chat_worker"]["kind"] == "docker"
+    assert manifest["git_dirty"] is False
+    assert manifest["api"] == {"kind": "deployed-http", "build_id": "b" * 64}
+    assert manifest["models"] == {
+        "analysis_worker": {
+            "provider": "openai",
+            "request_profile_model": "cpl-a",
+            "cpl_model": "cpl-a",
+            "fit_model": "cpl-a",
+            "sim_model": "cpl-a",
+            "chat_model": "chat-a",
+            "embedding_model": "embedding-a",
+            "max_repairs": 3,
+        },
+        "chat_worker": {
+            "provider": "openai",
+            "request_profile_model": "cpl-b",
+            "cpl_model": "cpl-b",
+            "fit_model": "cpl-b",
+            "sim_model": "cpl-b",
+            "chat_model": "chat-b",
+            "embedding_model": "embedding-b",
+            "max_repairs": 4,
+        },
+    }
+
+
+def test_external_worker_model_environment_uses_allowlisted_docker_exec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "OPENAI_LLM_MODEL=analysis-cpl\n"
+                "OPENAI_EMBEDDING_MODEL=analysis-embedding\n"
+                "OPENAI_REQUEST_PROFILE_MODEL=analysis-profile\n"
+                "OPENAI_FIT_MODEL=\n"
+                "OPENAI_SIM_MODEL=analysis-sim\n"
+                "OPENAI_CHAT_MODEL=analysis-chat\n"
+                "OPENAI_MAX_REPAIRS=7\n"
+            ),
+        )
+
+    monkeypatch.setattr(MODULE.subprocess, "run", run)
+
+    environment = MODULE._external_worker_model_environment("a" * 12 + ":worker")
+
+    assert environment == {
+        "OPENAI_LLM_MODEL": "analysis-cpl",
+        "OPENAI_EMBEDDING_MODEL": "analysis-embedding",
+        "OPENAI_REQUEST_PROFILE_MODEL": "analysis-profile",
+        "OPENAI_FIT_MODEL": "",
+        "OPENAI_SIM_MODEL": "analysis-sim",
+        "OPENAI_CHAT_MODEL": "analysis-chat",
+        "OPENAI_MAX_REPAIRS": "7",
+    }
+    assert len(calls) == 1
+    command = calls[0]
+    assert command[:4] == ["docker", "exec", "a" * 12, "/bin/sh"]
+    assert "inspect" not in command
+    assert "OPENAI_API_KEY" not in command[-1]
+    for name in MODULE.MODEL_CONFIGURATION_ENVIRONMENT_KEYS:
+        assert name in command[-1]
+
+
+def test_external_api_build_identity_requires_matching_valid_health_values() -> None:
+    class Response:
+        status_code = 200
+        headers = {"X-PreReview-Build-Id": "a" * 64}
+
+        @staticmethod
+        def json() -> dict[str, str]:
+            return {"status": "ready", "build_id": "a" * 64}
+
+    class Client:
+        @staticmethod
+        async def get(path: str) -> Response:
+            assert path == "/health/ready"
+            return Response()
+
+    assert asyncio.run(
+        MODULE._external_api_build_identity(Client(), expected_build_id="a" * 64)
+    ) == "a" * 64
+
+
+def test_external_api_build_identity_rejects_missing_or_mismatched_health_values() -> None:
+    class Response:
+        status_code = 200
+        headers = {"X-PreReview-Build-Id": "a" * 64}
+
+        @staticmethod
+        def json() -> dict[str, str]:
+            return {"status": "ready", "build_id": "b" * 64}
+
+    class Client:
+        @staticmethod
+        async def get(_path: str) -> Response:
+            return Response()
+
+    with pytest.raises(MODULE.E2EFailure, match="build identity"):
+        asyncio.run(
+            MODULE._external_api_build_identity(Client(), expected_build_id="a" * 64)
+        )
+
+
+def test_external_api_build_identity_rejects_a_valid_but_stale_deployment() -> None:
+    class Response:
+        status_code = 200
+        headers = {"X-PreReview-Build-Id": "a" * 64}
+
+        @staticmethod
+        def json() -> dict[str, str]:
+            return {"status": "ready", "build_id": "a" * 64}
+
+    class Client:
+        @staticmethod
+        async def get(_path: str) -> Response:
+            return Response()
+
+    with pytest.raises(MODULE.E2EFailure, match="does not match the clean checkout"):
+        asyncio.run(
+            MODULE._external_api_build_identity(Client(), expected_build_id="b" * 64)
+        )
+
+
+def test_external_manifest_rejects_a_dirty_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE, "_git_commit", lambda: "a" * 40)
+    monkeypatch.setattr(MODULE, "_git_source_state", lambda _revision: (True, "d" * 64))
+
+    with pytest.raises(MODULE.E2EFailure, match="requires a clean Git checkout"):
+        MODULE._execution_manifest(
+            source_content=b"fixture",
+            worker_mode="external",
+            analysis_worker_id="analysis-worker",
+            chat_worker_id="chat-worker",
+            database_url="not-used",
+            analysis_run_id="run-id",
+            deployed_api_build_id="a" * 64,
+        )
+
+
+def test_partial_execution_manifest_marks_unknown_chat_identity_as_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE, "_git_commit", lambda: "a" * 40)
+    monkeypatch.setattr(MODULE, "_git_source_state", lambda _revision: (True, "b" * 64))
+    monkeypatch.setattr(
+        MODULE,
+        "_model_configuration_manifest",
+        lambda: {"provider": "openai"},
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_analysis_embedding_configuration",
+        lambda _url, _run_id: {"selected": False, "configuration_id": None},
+    )
+
+    manifest = MODULE._partial_execution_manifest(
+        source_content=b"fixture",
+        worker_mode="inline",
+        analysis_worker_id="analysis-worker",
+        database_url="not-used",
+        analysis_run_id="run-id",
+        deployed_api_build_id=None,
+    )
+
+    assert manifest["partial"] is True
+    assert manifest["chat_worker"] is None
+    assert manifest["analysis_worker"] == {
+        "kind": "host-python",
+        "worker_id": "analysis-worker",
+    }
+    assert manifest["embedding_configuration"] == {
+        "selected": False,
+        "configuration_id": None,
+    }
+
+
+def test_external_model_manifest_uses_worker_max_repairs_default_and_rejects_invalid_value() -> None:
+    environment = {
+        "OPENAI_LLM_MODEL": "cpl",
+        "OPENAI_EMBEDDING_MODEL": "embedding",
+    }
+
+    assert MODULE._model_configuration_manifest(environment)["max_repairs"] == 2
+
+    environment["OPENAI_MAX_REPAIRS"] = "not-an-integer"
+    with pytest.raises(MODULE.E2EFailure, match="model configuration is unavailable"):
+        MODULE._model_configuration_manifest(environment)
+
+
+def test_git_source_state_is_deterministic_and_does_not_expose_contents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "untracked.txt"
+    source.write_text("private source content", encoding="utf-8")
+    monkeypatch.setattr(MODULE, "REPOSITORY_ROOT", tmp_path)
+
+    def run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        arguments = command[1:]
+        outputs = {
+            ("status", "--porcelain=v1", "-z"): b"?? untracked.txt\0",
+            ("diff", "--no-ext-diff", "--binary", "--full-index", "HEAD"): b"",
+            ("ls-files", "--others", "--exclude-standard", "-z"): b"untracked.txt\0",
+        }
+        return SimpleNamespace(returncode=0, stdout=outputs[tuple(arguments)])
+
+    monkeypatch.setattr(MODULE.subprocess, "run", run)
+
+    dirty, first = MODULE._git_source_state("a" * 40)
+    repeated_dirty, second = MODULE._git_source_state("a" * 40)
+
+    assert dirty is repeated_dirty is True
+    assert first == second
+    assert len(first) == 64
+    assert "private source content" not in first
+
+    source.write_text("changed private source content", encoding="utf-8")
+    _, changed = MODULE._git_source_state("a" * 40)
+
+    assert changed != first
 
 
 def test_failure_trace_keeps_persisted_artifacts_diagnostics_and_run_state(
@@ -1894,6 +2359,74 @@ def test_failure_trace_keeps_persisted_artifacts_diagnostics_and_run_state(
     assert diagnostics["diagnostics"] == [
         {"stage": "structured_profile", "reason_code": "BAD"}
     ]
+
+
+def test_ml_acceptance_failure_writes_persisted_trace_without_masking_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trace_dir = tmp_path / "trace"
+    result = {
+        "cpl": {"items": []},
+        "fit": {"items": []},
+        "sim": {"candidates": []},
+        "ml": {"model_3": {"status": "UNAVAILABLE"}},
+    }
+
+    class Handler:
+        _store = SimpleNamespace(
+            cached_request_profile=lambda **_kwargs: SimpleNamespace(
+                common_ir="common-ir", structured_profile="structured-profile"
+            )
+        )
+
+        @staticmethod
+        def _load_json_artifact(value: str) -> object:
+            return {"artifact": value}
+
+    def reject_ml_acceptance(_database_url: str, *, case_id: str) -> dict[str, str]:
+        assert case_id == "case-id"
+        raise MODULE.E2EFailure(
+            "live ML execution did not complete: model_3=UNAVAILABLE"
+        )
+
+    async def persisted_run_state(*_args: object, **_kwargs: object) -> dict[str, str]:
+        return {"analysis_run_id": "run-id", "status": "succeeded"}
+
+    monkeypatch.setattr(MODULE, "_require_live_ml_results", reject_ml_acceptance)
+    monkeypatch.setattr(MODULE, "_analysis_state", persisted_run_state)
+
+    with pytest.raises(MODULE.E2EFailure, match="model_3=UNAVAILABLE"):
+        asyncio.run(
+            MODULE._require_live_ml_results_with_failure_trace(
+                client=object(),
+                trace_dir=trace_dir,
+                upload={"analysis_run_id": "run-id"},
+                handler=Handler(),
+                run_id="run-id",
+                cpl_diagnostics=[{"stage": "ml", "reason_code": "UNAVAILABLE"}],
+                result=result,
+                database_url="postgresql://test",
+                case_id="case-id",
+                execution_manifest={"partial": True, "chat_worker": None},
+            )
+        )
+
+    assert json.loads((trace_dir / "01_common_ir.json").read_text("utf-8")) == {
+        "artifact": "common-ir"
+    }
+    assert json.loads((trace_dir / "02_structured_profile.json").read_text("utf-8")) == {
+        "artifact": "structured-profile"
+    }
+    assert json.loads((trace_dir / "07_result.json").read_text("utf-8")) == result
+    assert json.loads((trace_dir / "08_run_state.json").read_text("utf-8")) == {
+        "analysis_run_id": "run-id",
+        "status": "succeeded",
+    }
+    assert json.loads((trace_dir / "09_execution_manifest.json").read_text("utf-8")) == {
+        "partial": True,
+        "chat_worker": None,
+    }
 
 
 def test_failure_trace_write_error_is_non_fatal(
@@ -1978,11 +2511,11 @@ def test_validated_source_rejects_wrong_magic_or_extension(
         MODULE._validated_source(source)
 
 
-@pytest.mark.parametrize("top_k", [0, -1, 101])
+@pytest.mark.parametrize("top_k", [0, -1, 6])
 def test_configure_environment_rejects_out_of_range_top_k(
     tmp_path: Path, top_k: int
 ) -> None:
-    with pytest.raises(MODULE.E2EFailure, match="between 1 and 100"):
+    with pytest.raises(MODULE.E2EFailure, match="between 1 and 5"):
         MODULE._configure_environment(
             tmp_path / "backend.env", tmp_path / "supabase.env", top_k=top_k
         )
