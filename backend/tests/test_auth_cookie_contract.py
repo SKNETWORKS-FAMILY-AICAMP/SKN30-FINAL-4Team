@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 
 import httpx
@@ -22,6 +24,9 @@ def auth_app(handler: httpx.MockTransport) -> object:
     app.state.auth_allowed_origins = frozenset({ORIGIN})
     app.state.auth_cookie_secure = False
     app.state.auth_cookie_samesite = "lax"
+    app.state.auth_password_reset_redirect_to = (
+        "https://frontend.example.test/password-reset/update"
+    )
     return app
 
 
@@ -306,7 +311,11 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
             ordinal = len(refresh_tokens)
             return httpx.Response(200, json={"access_token": f"new-access-{ordinal}", "refresh_token": f"new-refresh-{ordinal}", "expires_in": 3600})
         assert request.url.path == "/auth/v1/recover"
-        assert request.url.params.get("redirect_to") is None
+        assert request.url.params["redirect_to"] == "https://frontend.example.test/password-reset/update"
+        recovery = json.loads(request.content)
+        assert recovery["email"] == "nobody@example.com"
+        assert recovery["code_challenge_method"] == "s256"
+        assert len(recovery["code_challenge"]) == 43
         return httpx.Response(400, json={"message": "user not found"})
 
     async def run() -> None:
@@ -347,6 +356,75 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
 
     asyncio.run(run())
     assert refresh_tokens == ["root-legacy", "new-refresh-1"]
+
+
+def test_password_recovery_pkce_code_is_exchanged_for_http_only_session() -> None:
+    challenge = ""
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        nonlocal challenge
+        if request.url.path == "/auth/v1/recover":
+            payload = json.loads(request.content)
+            challenge = payload["code_challenge"]
+            assert payload["code_challenge_method"] == "s256"
+            assert request.url.params["redirect_to"].endswith("/password-reset/update")
+            return httpx.Response(200, json={})
+
+        assert request.url.path == "/auth/v1/token"
+        assert request.url.params["grant_type"] == "pkce"
+        payload = json.loads(request.content)
+        assert payload["auth_code"] == "one-time-auth-code"
+        verifier = payload["code_verifier"]
+        expected = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode("ascii")).digest()
+        ).rstrip(b"=").decode("ascii")
+        assert expected == challenge
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "recovery-access",
+                "refresh_token": "recovery-refresh",
+                "expires_in": 3600,
+            },
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(
+                app=auth_app(httpx.MockTransport(provider))
+            ),
+            base_url="http://testserver",
+        ) as api:
+            reset = await api.post(
+                "/api/v1/auth/password-reset",
+                headers={"Origin": ORIGIN},
+                json={"email": "user@example.com"},
+            )
+            assert reset.status_code == 200
+            verifier_cookie = _cookie(
+                reset.headers.get_list("set-cookie"),
+                "pre_review_recovery_verifier",
+                path="/api/v1/auth/password-recovery",
+            )
+            assert "HttpOnly" in verifier_cookie
+            assert "Max-Age=600" in verifier_cookie
+
+            exchanged = await api.post(
+                "/api/v1/auth/password-recovery/exchange",
+                headers={"Origin": ORIGIN},
+                json={"code": "one-time-auth-code"},
+            )
+            assert exchanged.status_code == 204
+            assert api.cookies.get("pre_review_access") == "recovery-access"
+            assert api.cookies.get(
+                "pre_review_refresh", path="/api/v1/auth"
+            ) == "recovery-refresh"
+            assert api.cookies.get(
+                "pre_review_recovery_verifier",
+                path="/api/v1/auth/password-recovery",
+            ) is None
+
+    asyncio.run(run())
 
 
 def test_password_reset_preserves_provider_rate_limit() -> None:
@@ -602,6 +680,10 @@ def test_openapi_exposes_typed_auth_success_models_and_write_only_passwords() ->
         "/PasswordResetResponse"
     )
     assert response_ref("/api/v1/auth/me", "200").endswith("/AuthUserEnvelope")
+    exchange = paths["/api/v1/auth/password-recovery/exchange"]["post"]
+    assert exchange["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith("/PasswordRecoveryExchangeRequest")
+    assert exchange["security"] == [{"PreReviewRecoveryVerifierCookie": []}]
+    assert "content" not in exchange["responses"]["204"]
 
     schemas = schema["components"]["schemas"]
     assert set(schemas["AuthUserResponse"]["required"]) == {"id", "email", "display_name"}
