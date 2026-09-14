@@ -91,6 +91,7 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/auth/refresh", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/sign-out", "post"): {"403", "422", "500", "503"},
         ("/api/v1/auth/password-reset", "post"): {"403", "422", "500", "503"},
+        ("/api/v1/auth/password-recovery/exchange", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/update-password", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/me", "get"): {"401", "429", "500", "502", "503"},
         ("/api/v1/analysis-runs", "post"): {"401", "403", "409", "413", "415", "422", "500", "503"},
