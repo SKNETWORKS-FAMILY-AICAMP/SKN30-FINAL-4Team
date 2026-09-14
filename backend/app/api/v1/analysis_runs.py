@@ -77,7 +77,7 @@ class AnalysisRunCreated(BaseModel):
 
 class AnalysisRunView(AnalysisRunCreated):
     analysis_case_id: str | None = Field(
-        description="status=succeeded일 때 결과 조회에 사용할 분석 case UUID",
+        description="status=succeeded일 때 반드시 non-null이며 결과 조회에 사용할 분석 case UUID",
     )
     error_code: str | None = Field(
         description="status=failed일 때 분기 가능한 안전한 오류 코드",
@@ -233,8 +233,11 @@ async def create_analysis_run(
     response_model=AnalysisRunView,
     summary="분석 작업 상태 조회",
     description=(
-        "업로드 응답의 analysis_run_id를 polling한다. queued/running이면 계속 조회하고, "
-        "succeeded이면 analysis_case_id로 결과를 조회하며, failed이면 오류 정보를 표시한다."
+        "업로드 응답의 analysis_run_id를 polling합니다. uploading/queued/running이면 계속 "
+        "조회하고, succeeded이면 반드시 non-null인 analysis_case_id로 결과를 조회합니다. "
+        "failed/cancelled/cleanup_pending이면 polling을 중단하고 오류·정리 상태를 표시합니다. "
+        "실패한 run을 다시 실행하는 endpoint는 없으며 재시도는 새 Idempotency-Key를 사용한 "
+        "새 파일 업로드입니다."
     ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),

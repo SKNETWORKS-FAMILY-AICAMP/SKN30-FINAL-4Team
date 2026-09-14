@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -532,7 +533,12 @@ def test_ml_read_contract_rejects_internal_score_fields() -> None:
         },
         "cpl": {"items": []},
         "fit": {"items": []},
-        "sim": {"status": "completed", "reason_code": None, "summary": None, "candidates": []},
+        "sim": {
+            "status": "completed",
+            "reason_code": None,
+            "summary": "유사 공고 검색을 완료했습니다.",
+            "candidates": [],
+        },
         "ml": {
             "model_1": {
                 "status": "OK",
@@ -582,13 +588,22 @@ def test_sim_and_candidate_detail_reject_raw_score_and_sim_evidence_mixing() -> 
     # rendering blank fields on the frontend.
     with pytest.raises(ValidationError):
         AnalysisSimSection.model_validate({"candidates": []})
+    with pytest.raises(ValidationError):
+        AnalysisSimSection.model_validate(
+            {
+                "status": "completed",
+                "reason_code": None,
+                "summary": None,
+                "candidates": [],
+            }
+        )
 
     # A raw similarity/priority score sneaking into candidate axis detail must
     # be rejected, not silently dropped or exposed.
     axis = {
         "code": "SIM-1",
         "status": "similar",
-        "summary": None,
+        "summary": "목적이 유사합니다.",
         "reason_code": None,
         "reason": None,
         "common_points": [],
@@ -852,6 +867,11 @@ def test_openapi_explains_frontend_result_rendering_and_lifecycle_contract() -> 
         "request",
         "existing",
     ]
+    assert models["CandidateEvidenceReadModel"]["properties"]["axis_type"]["const"] == "SIM"
+    assert models["AnalysisSimCandidateSummary"]["properties"]["rank"]["minimum"] == 1
+    assert models["SimCandidateDetailReadModel"]["properties"]["rank"]["minimum"] == 1
+    assert models["AnalysisSimSection"]["properties"]["summary"]["type"] == "string"
+    assert models["SimCandidateAxisDetail"]["properties"]["summary"]["type"] == "string"
     for exact_response_model in (
         "AnalysisCplSection",
         "AnalysisFitSection",
@@ -881,22 +901,43 @@ def test_openapi_explains_frontend_result_rendering_and_lifecycle_contract() -> 
     assert "sim_candidate_id" in models["AnalysisSimSection"]["properties"]["candidates"]["description"]
     assert "metadata" in models["SimCandidateDetailReadModel"]["description"]
     assert "existing_evidence_ids" in models["SimCandidateDetailReadModel"]["description"]
+    assert "출처 위치" in models["ResultEvidenceReadModel"]["properties"]["raw_value"]["description"]
+    assert "상태나 점수" in models["SimCandidateAxisDetail"]["properties"]["common_points"]["description"]
+    assert "오류·충돌" in models["SimCandidateAxisDetail"]["properties"]["differences"]["description"]
+
+    result_description = paths["/api/v1/analysis-cases/{analysis_case_id}"]["get"]["description"]
+    assert "`summary`는 한 줄 판단" in result_description
+    assert "`detail.reason`은 상세 판단 사유" in result_description
+    candidate_description = paths["/api/v1/sim-candidates/{sim_candidate_id}"]["get"]["description"]
+    assert "`common_points`" in candidate_description
+    assert "축 전체 근거" in candidate_description
 
     current_description = paths["/api/v1/analysis/current"]["get"]["description"]
     assert all(state in current_description for state in ("processing", "ready", "idle"))
     assert "업로드/새 분석 시작" in current_description
 
+    run_description = paths["/api/v1/analysis-runs/{analysis_run_id}"]["get"]["description"]
+    assert "uploading/queued/running" in run_description
+    assert "failed/cancelled/cleanup_pending" in run_description
+    assert "새 Idempotency-Key" in run_description
+    assert "반드시 non-null" in models["AnalysisRunView"]["properties"][
+        "analysis_case_id"
+    ]["description"]
+
     close_path = "/api/v1/analysis-sessions/{analysis_session_id}/close"
     close_description = paths[close_path]["post"]["description"]
     assert "정확한 세션 ID" in close_description
     assert "idempotent" in close_description
+    assert "요청 body는 없고" in close_description
+    assert "Origin" in close_description
     assert "/analysis-sessions/active/close" in close_description
     assert "/api/v1/analysis-sessions/active/close" not in paths
 
     history_operation = paths["/api/v1/analysis-history"]["get"]
-    assert "고정 5건" in history_operation["description"]
+    assert "최대 5건" in history_operation["description"]
     assert "활성 세션은 포함하지" in history_operation["description"]
     assert "서명된" in history_operation["parameters"][0]["description"]
+    assert "본문 없는 204" in paths["/api/v1/analysis-sessions/active"]["get"]["description"]
 
 
 def test_frontend_response_examples_match_openapi_and_have_valid_evidence_joins() -> None:
@@ -929,9 +970,11 @@ def test_frontend_response_examples_match_openapi_and_have_valid_evidence_joins(
         jsonschema.validate(examples[example_name], root_schema)
 
     analysis_result = examples["analysis_result"]
-    result_evidence_ids = {
-        evidence["evidence_id"] for evidence in analysis_result["evidences"]
+    result_evidence_by_id = {
+        evidence["evidence_id"]: evidence for evidence in analysis_result["evidences"]
     }
+    assert len(result_evidence_by_id) == len(analysis_result["evidences"])
+    evidence_contexts: dict[str, tuple[str, str]] = {}
     for item in analysis_result["cpl"]["items"]:
         detail = item["detail"]
         referenced_ids = set(detail["evidence_ids"])
@@ -940,19 +983,147 @@ def test_frontend_response_examples_match_openapi_and_have_valid_evidence_joins(
             for value in detail["values"]
             for evidence_id in value["evidence_ids"]
         )
-        assert referenced_ids <= result_evidence_ids
+        assert referenced_ids <= result_evidence_by_id.keys()
+        for evidence_id in referenced_ids:
+            context = ("CPL", item["code"])
+            assert evidence_contexts.setdefault(evidence_id, context) == context
+            assert result_evidence_by_id[evidence_id]["side"] == "request"
     for item in analysis_result["fit"]["items"]:
         detail = item["detail"]
         referenced_ids = set(detail["evidence_ids"])
         referenced_ids.update(detail["left"]["evidence_ids"])
         referenced_ids.update(detail["right"]["evidence_ids"])
-        assert referenced_ids <= result_evidence_ids
+        assert referenced_ids <= result_evidence_by_id.keys()
+        for evidence_id in referenced_ids:
+            context = ("FIT", item["code"])
+            assert evidence_contexts.setdefault(evidence_id, context) == context
+            assert result_evidence_by_id[evidence_id]["side"] == "request"
 
     candidate = examples["sim_candidate_detail"]
-    candidate_evidence_ids = {
-        evidence["evidence_id"] for evidence in candidate["evidences"]
+    candidate_evidence_by_id = {
+        evidence["evidence_id"]: evidence for evidence in candidate["evidences"]
     }
-    for axis in candidate["axes"].values():
-        referenced_ids = set(axis["request_evidence_ids"])
-        referenced_ids.update(axis["existing_evidence_ids"])
-        assert referenced_ids <= candidate_evidence_ids
+    assert len(candidate_evidence_by_id) == len(candidate["evidences"])
+    candidate_evidence_axes: dict[str, str] = {}
+    for axis_name, axis in candidate["axes"].items():
+        for field_name, expected_side in (
+            ("request_evidence_ids", "request"),
+            ("existing_evidence_ids", "existing"),
+        ):
+            referenced_ids = set(axis[field_name])
+            assert referenced_ids <= candidate_evidence_by_id.keys()
+            for evidence_id in referenced_ids:
+                assert candidate_evidence_axes.setdefault(evidence_id, axis_name) == axis_name
+                assert candidate_evidence_by_id[evidence_id]["side"] == expected_side
+                assert candidate_evidence_by_id[evidence_id]["axis_type"] == "SIM"
+
+
+def test_canonical_frontend_spec_json_examples_match_openapi() -> None:
+    """Copyable JSON in the human contract must stay schema-valid."""
+    spec_path = (
+        Path(__file__).resolve().parents[1]
+        / "fastapi"
+        / "docs"
+        / "0.FASTAPI_FRONTEND_API_SPEC.md"
+    )
+    blocks = [
+        json.loads(body)
+        for body in re.findall(
+            r"^```json\s*$\n(.*?)^```\s*$",
+            spec_path.read_text(encoding="utf-8"),
+            flags=re.MULTILINE | re.DOTALL,
+        )
+    ]
+    openapi = create_app().openapi()
+
+    def validate(payload: Mapping[str, Any], schema_name: str) -> None:
+        root_schema = dict(openapi)
+        root_schema["$ref"] = f"#/components/schemas/{schema_name}"
+        jsonschema.validate(payload, root_schema)
+
+    result_payload = next(payload for payload in blocks if "case" in payload)
+    candidate_payload = next(
+        payload
+        for payload in blocks
+        if set(payload) == {
+            "sim_candidate_id",
+            "analysis_case_id",
+            "rank",
+            "metadata",
+            "comparison",
+            "axes",
+            "evidences",
+        }
+    )
+    active_payload = next(
+        payload
+        for payload in blocks
+        if set(payload) == {
+            "analysis_session_id",
+            "analysis_case_id",
+            "program_name",
+            "original_filename",
+            "session_expires_at",
+        }
+    )
+    history_payload = next(
+        payload
+        for payload in blocks
+        if payload.get("items")
+        and set(payload) == {"items", "next_cursor"}
+        and "completed_at" in payload["items"][0]
+    )
+
+    validate(result_payload, "AnalysisResultReadModel")
+    validate(candidate_payload, "SimCandidateDetailReadModel")
+    validate(active_payload, "ActiveAnalysisSessionReadModel")
+    validate(history_payload, "AnalysisHistoryEnvelope")
+
+    current_models = {
+        "processing": "AnalysisCurrentProcessing",
+        "ready": "AnalysisCurrentReady",
+        "idle": "AnalysisCurrentIdle",
+    }
+    for state, schema_name in current_models.items():
+        payload = next(item for item in blocks if item.get("state") == state)
+        validate(payload, schema_name)
+
+    # Canonical copy/paste examples must use honest current-v0.2 evidence
+    # shapes, including independent CPL/FIT snapshots and SIM side joins.
+    result_context_by_evidence: dict[str, tuple[str, str]] = {}
+    result_evidence_by_id = {
+        evidence["evidence_id"]: evidence for evidence in result_payload["evidences"]
+    }
+    for section_name in ("cpl", "fit"):
+        for item in result_payload[section_name]["items"]:
+            detail = item["detail"]
+            references = set(detail["evidence_ids"])
+            if section_name == "cpl":
+                references.update(
+                    evidence_id
+                    for value in detail["values"]
+                    for evidence_id in value["evidence_ids"]
+                )
+            else:
+                references.update(detail["left"]["evidence_ids"])
+                references.update(detail["right"]["evidence_ids"])
+            assert references <= result_evidence_by_id.keys()
+            context = (section_name.upper(), item["code"])
+            for evidence_id in references:
+                assert result_context_by_evidence.setdefault(evidence_id, context) == context
+    assert all(evidence["excerpt"] is None for evidence in result_payload["evidences"])
+
+    candidate_evidence_by_id = {
+        evidence["evidence_id"]: evidence for evidence in candidate_payload["evidences"]
+    }
+    candidate_axis_by_evidence: dict[str, str] = {}
+    for axis_name, axis in candidate_payload["axes"].items():
+        for field_name, expected_side in (
+            ("request_evidence_ids", "request"),
+            ("existing_evidence_ids", "existing"),
+        ):
+            for evidence_id in axis[field_name]:
+                assert evidence_id in candidate_evidence_by_id
+                assert candidate_axis_by_evidence.setdefault(evidence_id, axis_name) == axis_name
+                assert candidate_evidence_by_id[evidence_id]["side"] == expected_side
+    assert all(evidence["excerpt"] is None for evidence in candidate_payload["evidences"])

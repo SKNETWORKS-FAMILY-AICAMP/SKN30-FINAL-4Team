@@ -114,10 +114,14 @@ class CplValueItem(_ReadModel):
 
 
 class CplAxisDetail(_ReadModel):
-    reason_code: str | None = Field(description="기계 판독용 판단 사유 코드. 없으면 null.")
+    reason_code: str | None = Field(
+        description="기계 판독·분기·로그용 판단 사유 코드. 사용자 주 문구로 직접 표시하지 않는다. 없으면 null."
+    )
     reason: str | None = Field(description="사용자에게 보여줄 판단 사유. 없으면 null.")
     values: list[CplValueItem] = Field(description="CPL 판단에 표시할 확인 값 목록.")
-    source_fields: list[str] = Field(description="판단에 사용한 원문 필드명 목록.")
+    source_fields: list[str] = Field(
+        description="판단에 사용한 정규화 필드 추적값. 일반 사용자 화면에는 표시하지 않는다."
+    )
     evidence_ids: list[UUID] = Field(
         description="이 CPL 축 전체의 근거 ID 목록. 결과 최상위 evidences[]의 evidence_id와 조인한다.",
     )
@@ -136,7 +140,9 @@ class FitAxisDetail(_ReadModel):
     comparison_performed: bool = Field(
         description="양쪽 모두에 근거가 있어 실제 비교 판단을 했으면 true. 외부 모델 호출 여부를 뜻하지 않는다."
     )
-    reason_code: str | None = Field(description="기계 판독용 비교 사유 코드. 없으면 null.")
+    reason_code: str | None = Field(
+        description="기계 판독·분기·로그용 비교 사유 코드. 사용자 주 문구로 직접 표시하지 않는다. 없으면 null."
+    )
     reason: str | None = Field(description="사용자에게 보여줄 비교 판단 근거. 없으면 null.")
     left: FitSideDetail = Field(description="관계 비교의 왼쪽 값과 원문 근거.")
     right: FitSideDetail = Field(description="관계 비교의 오른쪽 값과 원문 근거.")
@@ -212,7 +218,10 @@ class AnalysisSimCandidateSummary(_ReadModel):
     """
 
     sim_candidate_id: UUID = Field(description="후보 상세 조회에 그대로 사용할 후보 ID.")
-    rank: int = Field(description="후보 목록 표시 순서(1이 첫 번째). 점수나 유사도 값이 아니다.")
+    rank: int = Field(
+        ge=1,
+        description="후보 목록 표시 순서(1이 첫 번째). 점수나 유사도 값이 아니다.",
+    )
     title: str | None = Field(description="후보 공고 제목. 없으면 null.")
     comparison_status: SimAxisStatus = Field(
         description=(
@@ -227,7 +236,7 @@ class AnalysisSimCandidateSummary(_ReadModel):
 
 
 class AnalysisSimSection(_ReadModel):
-    # Pipeline-level status ("completed"/"failed"/...), independent of each
+    # Pipeline-level status ("completed"/"skipped"), independent of each
     # candidate's own comparison_status (spec section 9.1).
     status: Literal["completed", "skipped"] = Field(
         description=(
@@ -236,8 +245,10 @@ class AnalysisSimSection(_ReadModel):
             "comparison_status와 별개다."
         )
     )
-    reason_code: str | None = Field(description="SIM 파이프라인 상태 사유 코드. 없으면 null.")
-    summary: str | None = Field(description="SIM 후보 탐색 결과의 표시용 요약. 없으면 null.")
+    reason_code: str | None = Field(
+        description="SIM 파이프라인 분기·로그용 상태 사유 코드. 사용자 주 문구로 직접 표시하지 않는다. 없으면 null."
+    )
+    summary: str = Field(description="SIM 후보 탐색 결과의 표시용 요약.")
     candidates: list[AnalysisSimCandidateSummary] = Field(
         description="유사 공고 후보 목록. 각 항목의 sim_candidate_id로 후보 상세 API를 호출해 metadata/comparison/axes/evidences를 렌더링한다.",
     )
@@ -320,9 +331,21 @@ class ResultEvidenceReadModel(_ReadModel):
     side: Literal["request"] = Field(
         description="CPL/FIT 근거 출처. 두 축 모두 요청서 내부를 확인·비교하므로 request 고정값이다."
     )
-    field_name: str | None = Field(description="근거가 나온 정규화 필드명. 없으면 null.")
-    raw_value: str = Field(description="근거 원문 값.")
-    excerpt: str | None = Field(description="화면에 강조 표시할 원문 문맥 발췌. 없으면 null.")
+    field_name: str | None = Field(
+        description="근거가 나온 정규화 필드 추적값. 일반 사용자 화면에는 표시하지 않는다. 없으면 null."
+    )
+    raw_value: str = Field(
+        description=(
+            "원문에서 보존한 근거 값. 페이지·문단 같은 출처 위치를 뜻하지 않는다. "
+            "non-empty excerpt가 없으면 이 값을 화면에 표시한다."
+        )
+    )
+    excerpt: str | None = Field(
+        description=(
+            "화면에 우선 표시할 nullable 문맥 발췌. 현재 v0.2 저장 경로에서는 일반적으로 "
+            "null이며, non-empty일 때만 raw_value보다 우선한다."
+        )
+    )
 
 
 class AnalysisResultReadModel(_ReadModel):
@@ -369,8 +392,12 @@ class SimCandidateMetadata(_ReadModel):
     ministry: str | None = Field(description="소관 부처 표시값. 없으면 null.")
     executing_agency: str | None = Field(description="수행/전담 기관 표시값. 없으면 null.")
     registered_at: str | None = Field(description="후보 공고 등록일 표시 문자열. 없으면 null.")
-    notice_status: str | None = Field(description="후보 공고 상태 표시값. 없으면 null.")
-    source_url: str | None = Field(description="원문 공고로 이동할 URL. 없으면 null.")
+    notice_status: str | None = Field(
+        description="후보 공고의 raw 상태 snapshot. enum이나 활성 여부를 추정하지 않고 텍스트로만 표시한다."
+    )
+    source_url: str | None = Field(
+        description="원문 공고 링크 후보 문자열. 없으면 null이며 http/https 검증 후에만 링크로 사용한다."
+    )
 
 
 class SimCandidateComparison(_ReadModel):
@@ -404,21 +431,33 @@ class SimCandidateAxisDetail(_ReadModel):
         ),
         examples=["similar"],
     )
-    summary: str | None = Field(description="축별 짧은 표시 요약. 없으면 null.")
-    reason_code: str | None = Field(description="기계 판독용 축별 판단 사유 코드. 없으면 null.")
+    summary: str = Field(description="축별 짧은 표시 요약.")
+    reason_code: str | None = Field(
+        description="기계 판독·분기·로그용 축별 판단 사유 코드. 사용자 주 문구로 직접 표시하지 않는다. 없으면 null."
+    )
     reason: str | None = Field(description="상세 화면에 표시할 축별 판단 근거. 없으면 null.")
-    common_points: list[str] = Field(description="두 공고의 공통점 표시 목록.")
-    differences: list[str] = Field(description="두 공고의 차이점 표시 목록.")
+    common_points: list[str] = Field(
+        description=(
+            "두 공고의 축별 공통점 bullet 목록. evidence ID와 문장별 1:1 대응하지 않으며 "
+            "개수로 상태나 점수를 재계산하지 않는다."
+        )
+    )
+    differences: list[str] = Field(
+        description=(
+            "두 공고의 축별 차이점 bullet 목록. evidence ID와 문장별 1:1 대응하지 않으며 "
+            "차이가 곧 오류·충돌이라는 뜻은 아니다."
+        )
+    )
     request_evidence_ids: list[UUID] = Field(
         description=(
             "요청서(request) 근거 ID. 이 후보 상세 응답의 "
-            "evidences[].evidence_id와 조인한다."
+            "evidences[].evidence_id와 조인하며 개별 bullet이 아닌 이 축 전체를 뒷받침한다."
         ),
     )
     existing_evidence_ids: list[UUID] = Field(
         description=(
             "기존 공고(existing) 근거 ID. 이 후보 상세 응답의 "
-            "evidences[].evidence_id와 조인한다."
+            "evidences[].evidence_id와 조인하며 개별 bullet이 아닌 이 축 전체를 뒷받침한다."
         ),
     )
 
@@ -438,7 +477,9 @@ class CandidateEvidenceReadModel(ResultEvidenceReadModel):
     side: Literal["request", "existing"] = Field(
         description="SIM 근거 출처: request(요청서) 또는 existing(비교 후보 기존 공고)."
     )
-    axis_type: str | None = Field(description="근거가 연결된 비교 축 유형. 현재 SIM 또는 null.")
+    axis_type: Literal["SIM"] = Field(
+        description="근거가 연결된 비교 축 유형. 후보 상세에서는 SIM 고정 추적값이며 일반 화면에는 표시하지 않는다."
+    )
 
 
 class SimCandidateDetailReadModel(_ReadModel):
@@ -451,7 +492,10 @@ class SimCandidateDetailReadModel(_ReadModel):
 
     sim_candidate_id: UUID = Field(description="조회한 후보 ID.")
     analysis_case_id: UUID = Field(description="이 후보가 속한 분석 case ID.")
-    rank: int = Field(description="결과 후보 목록에서의 표시 순서(1이 첫 번째). 점수가 아니다.")
+    rank: int = Field(
+        ge=1,
+        description="결과 후보 목록에서의 표시 순서(1이 첫 번째). 점수가 아니다.",
+    )
     metadata: SimCandidateMetadata = Field(description="후보 공고 카드/정보 영역 렌더링 필드.")
     comparison: SimCandidateComparison = Field(description="상세 상단 전체 비교 배지와 요약.")
     axes: SimCandidateAxes = Field(description="목적·대상·지원·전달 방식별 비교 근거와 표시 내용.")
@@ -481,13 +525,13 @@ class AnalysisHistoryEntryReadModel(_ReadModel):
 
 
 class AnalysisHistoryEnvelope(_ReadModel):
-    """완료·종료된 분석만 담는 고정 5건 cursor 이력 페이지."""
+    """완료·종료된 분석만 담는 최대 5건 cursor 이력 페이지."""
 
     items: list[AnalysisHistoryEntryReadModel] = Field(
         description="완료·종료된 과거 분석 최대 5건. 현재 활성 세션은 이력에 포함하지 않는다.",
     )
     next_cursor: str | None = Field(
-        description="다음 고정 5건을 위한 서명된 불투명 cursor. 값 변경 없이 cursor 쿼리에 그대로 전달하며, null이면 마지막 페이지다.",
+        description="다음 최대 5건을 위한 서명된 불투명 cursor. 값 변경 없이 cursor 쿼리에 그대로 전달하며, null이면 마지막 페이지다.",
     )
 
 
@@ -586,10 +630,12 @@ def _cursor_secret(request: Request) -> str:
     response_model=AnalysisResultReadModel,
     summary="분석 결과 전체 조회",
     description=(
-        "완료된 분석 결과를 조회합니다. CPL/FIT의 `detail.evidence_ids`와 "
-        "`values[].evidence_ids`는 응답 최상위 `evidences[].evidence_id`에 조인해 "
-        "원문 근거를 표시합니다. CPL/FIT/SIM status는 UI 배지용 분류값이며 숫자 점수로 "
-        "환산하지 않습니다. SIM 후보 상세·근거는 후보 ID로 별도 API에서 조회합니다."
+        "완료된 분석 결과를 조회합니다. CPL/FIT 카드의 `summary`는 한 줄 판단, "
+        "`detail.reason`은 상세 판단 사유입니다. `detail.evidence_ids`, "
+        "`values[].evidence_ids`, `left/right.evidence_ids`는 응답 최상위 "
+        "`evidences[].evidence_id`에 조인해 원문 근거를 표시합니다. CPL/FIT/SIM status는 "
+        "UI 배지용 분류값이며 숫자 점수로 환산하지 않습니다. SIM 후보 상세·근거는 후보 "
+        "ID로 별도 API에서 조회합니다."
     ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
@@ -618,8 +664,10 @@ async def get_analysis_case(
     description=(
         "분석 결과의 `sim.candidates[]`에서 받은 `sim_candidate_id`로 호출합니다. "
         "`metadata`는 공고 정보 카드, `comparison`은 상세 상단 배지/요약, `axes`는 "
-        "축별 공통점·차이·판단 근거, `evidences`는 축별 evidence ID 조인에 사용합니다. "
-        "SIM status는 UI 배지용 분류값이고 숫자 유사도 점수가 아닙니다."
+        "축별 `summary`·`reason`·`common_points`·`differences`, `evidences`는 축별 "
+        "request/existing evidence ID 조인에 사용합니다. evidence는 개별 공통점/차이 문장이 "
+        "아니라 축 전체 근거입니다. SIM status는 UI 배지용 분류값이고 숫자 유사도 점수가 "
+        "아닙니다."
     ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
@@ -652,7 +700,8 @@ async def get_sim_candidate(
     summary="현재 활성 분석 세션 조회 (호환용 legacy endpoint)",
     description=(
         "기존 클라이언트 호환용 읽기 전용 endpoint입니다. 새 화면의 상태 분기는 "
-        "GET /analysis/current를 사용합니다. 이 경로에는 close 동작이나 "
+        "GET /analysis/current를 사용합니다. 활성 결과 세션이 없거나 현재 분석이 처리 "
+        "중이면 본문 없는 204를 반환합니다. 이 경로에는 close 동작이나 "
         "/active/close 별칭이 없습니다."
     ),
 )
@@ -702,7 +751,8 @@ async def get_analysis_current(
     description=(
         "새 분석을 시작할 때 `GET /analysis/current`의 `ready.session.analysis_session_id`처럼 "
         "명시적으로 받은 정확한 세션 ID를 경로에 넣어 호출합니다. 성공하면 204이며, 같은 소유자의 "
-        "같은 ID를 다시 종료해도 204입니다(idempotent). 성공 후 기존 결과는 과거 이력으로 조회합니다. "
+        "같은 ID를 다시 종료해도 204입니다(idempotent). 요청 body는 없고 허용된 정확한 Origin이 "
+        "필수입니다. 성공 후 기존 결과는 과거 이력으로 조회합니다. "
         "`/analysis-sessions/active/close` 별칭은 제공하지 않습니다."
     ),
 )
@@ -729,9 +779,9 @@ async def close_analysis_session(
 @router.get(
     "/analysis-history",
     response_model=AnalysisHistoryEnvelope,
-    summary="보관 기간 내 분석 이력 조회 (page size 5, signed snapshot cursor)",
+    summary="보관 기간 내 분석 이력 조회 (페이지당 최대 5건, signed snapshot cursor)",
     description=(
-        "완료·종료된 과거 분석만 최신 완료 순으로 고정 5건씩 반환합니다. 현재 활성 세션은 포함하지 "
+        "완료·종료된 과거 분석만 최신 완료 순으로 페이지당 최대 5건 반환합니다. 현재 활성 세션은 포함하지 "
         "않습니다. `next_cursor`는 사용자·endpoint·스냅샷에 서명된 불투명 값이므로 수정하지 말고 다음 "
         "요청의 `cursor`에 그대로 전달합니다. `next_cursor`가 null이면 마지막 페이지입니다."
     ),

@@ -306,7 +306,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`39` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`40` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤

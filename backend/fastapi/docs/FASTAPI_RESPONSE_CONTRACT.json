@@ -30,7 +30,7 @@
     "fit": {
       "items": [{
         "code": "FIT-1", "status": "FIT", "summary": "사업 목적과 지원대상의 연결이 확인되었습니다.",
-        "detail": {"comparison_performed": true, "reason_code": null, "reason": "사업 목적과 지원대상이 연결됩니다.", "left": {"value_summary": "지역 중소기업의 디지털 전환 촉진", "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}, "right": {"value_summary": "부산 소재 중소기업", "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}, "evidence_ids": ["66666666-6666-6666-6666-666666666666", "67666666-6666-6666-6666-666666666666"]}
+        "detail": {"comparison_performed": true, "reason_code": null, "reason": "사업 목적과 지원대상이 연결됩니다.", "left": {"value_summary": "지역 중소기업의 디지털 전환 촉진", "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}, "right": {"value_summary": "부산 소재 중소기업", "evidence_ids": ["69666666-6666-6666-6666-666666666666"]}, "evidence_ids": ["66666666-6666-6666-6666-666666666666", "69666666-6666-6666-6666-666666666666"]}
       }]
     },
     "sim": {
@@ -45,8 +45,9 @@
     "report": {"status": "generating", "can_download": false, "can_regenerate": false, "retry_count": 0},
     "session": {"analysis_session_id": "22222222-2222-2222-2222-222222222222", "is_active": true, "can_chat": true, "expires_at": "2026-09-14T03:30:00Z"},
     "evidences": [
-      {"evidence_id": "66666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": "사업목적: 지역 중소기업의 디지털 전환 촉진"},
-      {"evidence_id": "67666666-6666-6666-6666-666666666666", "side": "request", "field_name": "support_target", "raw_value": "부산 소재 중소기업", "excerpt": "지원대상: 부산 소재 중소기업"}
+      {"evidence_id": "66666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": null},
+      {"evidence_id": "67666666-6666-6666-6666-666666666666", "side": "request", "field_name": "support_target", "raw_value": "부산 소재 중소기업", "excerpt": null},
+      {"evidence_id": "69666666-6666-6666-6666-666666666666", "side": "request", "field_name": "support_target", "raw_value": "부산 소재 중소기업", "excerpt": null}
     ]
   },
   "sim_candidate_detail": {
@@ -62,8 +63,8 @@
       "delivery": {"code": "SIM-4", "status": "insufficient", "summary": "수행체계 비교 정보가 부족합니다.", "reason_code": "EVIDENCE_INSUFFICIENT", "reason": "비교 근거가 부족합니다.", "common_points": [], "differences": [], "request_evidence_ids": [], "existing_evidence_ids": []}
     },
     "evidences": [
-      {"evidence_id": "68666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": "요청서 사업 목적", "axis_type": "SIM"},
-      {"evidence_id": "78666666-6666-6666-6666-666666666666", "side": "existing", "field_name": "purpose_goal", "raw_value": "중소기업 디지털 전환 지원", "excerpt": "기존 공고 사업 목적", "axis_type": "SIM"}
+      {"evidence_id": "68666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": null, "axis_type": "SIM"},
+      {"evidence_id": "78666666-6666-6666-6666-666666666666", "side": "existing", "field_name": "purpose_goal", "raw_value": "중소기업 디지털 전환 지원", "excerpt": null, "axis_type": "SIM"}
     ]
   },
   "analysis_history": {
