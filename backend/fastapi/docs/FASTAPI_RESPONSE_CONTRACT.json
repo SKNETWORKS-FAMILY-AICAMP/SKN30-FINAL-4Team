@@ -1,5 +1,5 @@
 {
-  "_description": "현재 FastAPI 공개 API의 성공 응답 예시다. UUID·일시·문구는 예시이며 필드명, 배열, nullability와 enum 값이 계약이다. access/refresh token, Supabase key, Storage signed URL, score/priority/fact ID/diagnostics/source identity는 포함하지 않는다. CPL/FIT/SIM은 strict typed public DTO만 반환하며 raw audit payload는 browser와 chat에 반환하지 않는다. history의 next_cursor는 HMAC 서명된 opaque 값이므로 수정하지 않고 그대로 다음 요청의 cursor에 전달한다.",
+  "_description": "비규범(non-normative) 성공 응답 예시 모음이다. mock과 응답 이해에만 사용하며 필드, nullability, enum, 의미 또는 호출 흐름을 정의하지 않는다. 유일한 사람용 계약은 0.FASTAPI_FRONTEND_API_SPEC.md이고 실행 코드의 구조 계약은 /openapi.json이다. 예시와 OpenAPI가 다르면 배포 대상 OpenAPI를 구조 기준으로 사용한다. UUID·일시·문구는 모두 예시다.",
   "auth_sign_in": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
   "auth_me": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
   "auth_sign_up": {"email_confirmation_required": true, "user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
@@ -23,14 +23,14 @@
     "case": {"analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "completed_at": "2026-09-14T03:00:00Z"},
     "cpl": {
       "items": [{
-        "code": "CPL-01", "status": "confirmed", "summary": "요청유형이 확인되었습니다.",
-        "detail": {"reason_code": null, "reason": "원문에서 확인했습니다.", "values": [{"label": "지원 대상", "value": "부산 소재 중소기업", "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}], "source_fields": ["support_target"], "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}
+        "code": "CPL-10", "status": "confirmed", "summary": "지원대상이 확인되었습니다.",
+        "detail": {"reason_code": null, "reason": "원문에서 확인했습니다.", "values": [{"label": "지원 대상", "value": "부산 소재 중소기업", "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}], "source_fields": ["support_target"], "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}
       }]
     },
     "fit": {
       "items": [{
-        "code": "FIT-1", "status": "FIT", "summary": "사업 목적과 목표의 연결이 확인되었습니다.",
-        "detail": {"comparison_performed": true, "reason_code": null, "reason": "목적과 목표가 연결됩니다.", "left": {"value_summary": "사업 목적 요약", "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}, "right": {"value_summary": "사업 목표 요약", "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}, "evidence_ids": ["66666666-6666-6666-6666-666666666666", "67666666-6666-6666-6666-666666666666"]}
+        "code": "FIT-1", "status": "FIT", "summary": "사업 목적과 지원대상의 연결이 확인되었습니다.",
+        "detail": {"comparison_performed": true, "reason_code": null, "reason": "사업 목적과 지원대상이 연결됩니다.", "left": {"value_summary": "지역 중소기업의 디지털 전환 촉진", "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}, "right": {"value_summary": "부산 소재 중소기업", "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}, "evidence_ids": ["66666666-6666-6666-6666-666666666666", "67666666-6666-6666-6666-666666666666"]}
       }]
     },
     "sim": {
@@ -44,7 +44,10 @@
     },
     "report": {"status": "generating", "can_download": false, "can_regenerate": false, "retry_count": 0},
     "session": {"analysis_session_id": "22222222-2222-2222-2222-222222222222", "is_active": true, "can_chat": true, "expires_at": "2026-09-14T03:30:00Z"},
-    "evidences": [{"evidence_id": "66666666-6666-6666-6666-666666666666", "side": "request", "field_name": "request_type", "raw_value": "신설", "excerpt": "요청유형: 신설"}]
+    "evidences": [
+      {"evidence_id": "66666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": "사업목적: 지역 중소기업의 디지털 전환 촉진"},
+      {"evidence_id": "67666666-6666-6666-6666-666666666666", "side": "request", "field_name": "support_target", "raw_value": "부산 소재 중소기업", "excerpt": "지원대상: 부산 소재 중소기업"}
+    ]
   },
   "sim_candidate_detail": {
     "sim_candidate_id": "55555555-5555-5555-5555-555555555555",
@@ -58,7 +61,10 @@
       "support": {"code": "SIM-3", "status": "partial", "summary": "지원 방식에 차이가 있습니다.", "reason_code": null, "reason": "일부 지원 항목이 다릅니다.", "common_points": [], "differences": ["지원 방식"], "request_evidence_ids": [], "existing_evidence_ids": []},
       "delivery": {"code": "SIM-4", "status": "insufficient", "summary": "수행체계 비교 정보가 부족합니다.", "reason_code": "EVIDENCE_INSUFFICIENT", "reason": "비교 근거가 부족합니다.", "common_points": [], "differences": [], "request_evidence_ids": [], "existing_evidence_ids": []}
     },
-    "evidences": [{"evidence_id": "77777777-7777-7777-7777-777777777777", "side": "existing", "field_name": "support_methods", "raw_value": "전주기 통합지원", "excerpt": "지원 방식 근거", "axis_type": "SIM"}]
+    "evidences": [
+      {"evidence_id": "68666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": "요청서 사업 목적", "axis_type": "SIM"},
+      {"evidence_id": "78666666-6666-6666-6666-666666666666", "side": "existing", "field_name": "purpose_goal", "raw_value": "중소기업 디지털 전환 지원", "excerpt": "기존 공고 사업 목적", "axis_type": "SIM"}
+    ]
   },
   "analysis_history": {
     "items": [{"analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "completed_at": "2026-09-14T03:00:00Z"}],

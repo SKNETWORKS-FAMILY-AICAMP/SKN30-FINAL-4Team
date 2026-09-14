@@ -7,9 +7,9 @@
   [FASTAPI_WORKER_RUNBOOK.md](docs/FASTAPI_WORKER_RUNBOOK.md)
 - Nginx reverse proxy 예제:
   [backend/deploy/nginx/prereview-api.conf](../deploy/nginx/prereview-api.conf)
-- 프론트엔드 API 계약:
+- 프론트엔드의 유일한 사람용 API 계약:
   [0.FASTAPI_FRONTEND_API_SPEC.md](docs/0.FASTAPI_FRONTEND_API_SPEC.md)
-- 현재 공개 응답 예시와 typed DTO shape:
+- mock 작성용 비규범 응답 예시(구조 계약은 실행 API의 `/openapi.json`):
   [FASTAPI_RESPONSE_CONTRACT.json](docs/FASTAPI_RESPONSE_CONTRACT.json)
 - worker 결과 저장 계약:
   [WORKER_RESULT_PERSISTENCE_CONTRACT.md](docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md)

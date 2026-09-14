@@ -933,9 +933,10 @@ Swagger를 `localhost:8001`로 열 경우에는 두 번째 값을 그 origin으�
 
 프론트 코드는 `/openapi.json`으로 endpoint와 기본 request schema를 확인할 수 있다.
 현재 결과·후보·세션·이력 endpoint와 CPL/FIT/SIM detail은 모두 named OpenAPI response
-model의 strict typed DTO로 표시된다. raw/internal key는 응답에 추가하지 않는다. 세부 의미와
-응답 예시는
-[FASTAPI_RESPONSE_CONTRACT.json](FASTAPI_RESPONSE_CONTRACT.json)도 함께 기준으로 삼는다.
+model의 strict typed DTO로 표시된다. raw/internal key는 응답에 추가하지 않는다. 필드 의미와
+호출 흐름의 유일한 사람용 계약은
+[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)다.
+`FASTAPI_RESPONSE_CONTRACT.json`은 mock용 비규범 예시로만 사용한다.
 
 OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie` Cookie security scheme과 각
 endpoint의 성공·주요 오류(`ErrorResponse`) schema가 표시된다. `sign-in`, `sign-up`,
@@ -950,10 +951,10 @@ run ID를 `GET /analysis-runs/{analysis_run_id}`로 poll한다. frontend의 실�
 여전히 `credentials: "include"`를 설정해야 한다. `ErrorResponse.errors`는 검증 오류일 때만
 나타나는 선택 필드이고, 비밀번호 같은 원 요청 비밀값은 포함하지 않는다.
 
-인증 및 재설정 완료 흐름의 현재 지원 범위는
-[AUTH_API_CONTRACT.md](../../AUTH_API_CONTRACT.md)도 함께 확인한다. 특히 password-reset은
+인증 및 재설정 완료 흐름의 현재 지원 범위도 같은
+[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. 특히 password-reset은
 메일 발송만 제공하고, token/PKCE callback으로 비로그인 비밀번호를 변경하는 endpoint는 아직
-없다.
+없다. 과거 `AUTH_API_CONTRACT.md`는 이 명세로 안내하는 호환용 문서일 뿐이다.
 
 현재 `frontend/src`에는 API base URL, Cookie 포함 HTTP client, polling 호출이 연결되어 있지
 않다. Swagger/OpenAPI가 보인다는 사실만으로 화면 통합이 완료된 것은 아니며,

@@ -87,14 +87,15 @@ production-ready로 표시하지 않는다. 기존 legacy 응답 모양을 backe
   `idle` 세 상태를 처리한다.
 - CPL/FIT/SIM 결과와 SIM candidate detail은 opaque/raw legacy shape가 아닌
   strict typed public DTO를 사용한다. 후보 상세의 typed metadata/comparison,
-  축별 CPL/FIT/SIM detail과 evidence 배열을 해당 response contract에 맞춰
+  축별 CPL/FIT/SIM detail과 evidence 배열을 생성 OpenAPI schema와 사람용 명세에 맞춰
   렌더링한다.
 - 회원가입 `display_name`은 1~100자의 필수 필드이며, 성공 auth 응답의
   `display_name`도 표시한다.
 
-필드와 envelope의 정확한 shape는
-[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)와
-[typed response contract](FASTAPI_RESPONSE_CONTRACT.json)를 기준으로 한다.
+프론트 구현의 유일한 사람용 계약은
+[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)다. exact DTO shape는 배포 대상의
+`/openapi.json`에서 확인한다. `FASTAPI_RESPONSE_CONTRACT.json`은 mock용 비규범 예시이며
+별도 계약이 아니다.
 
 ## Worker queue와 결과 저장
 
