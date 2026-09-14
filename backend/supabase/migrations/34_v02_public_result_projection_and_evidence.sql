@@ -1042,7 +1042,11 @@ BEGIN
         'fit', jsonb_build_object('items', COALESCE(fit.items, '[]'::jsonb)),
         'sim', jsonb_build_object(
             'status', COALESCE(analysis_case.sim_status, 'skipped'),
-            'reason_code', COALESCE(analysis_case.sim_reason_code, 'LEGACY_PUBLIC_DETAIL_UNAVAILABLE'),
+            'reason_code', CASE
+                WHEN analysis_case.sim_status IS NULL
+                    THEN 'LEGACY_PUBLIC_DETAIL_UNAVAILABLE'
+                ELSE analysis_case.sim_reason_code
+            END,
             'summary', COALESCE(analysis_case.sim_summary, '공개 결과 상세를 복원할 수 없습니다.'),
             'candidates', COALESCE(sim.candidates, '[]'::jsonb)
         ),

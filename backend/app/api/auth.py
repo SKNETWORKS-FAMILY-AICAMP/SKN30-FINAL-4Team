@@ -30,6 +30,11 @@ COOKIE_SAME_SITE = {"lax", "strict", "none"}
 # 전송하지 않는다" contract. The access cookie stays at "/" because every
 # business route needs it.
 REFRESH_COOKIE_PATH = "/api/v1/auth"
+# v0.1 issued the same refresh-cookie name at the site root.  A browser can
+# retain that credential across the v0.2 path migration, producing two Cookie
+# header entries on auth routes.  Keep the old path explicit until every
+# session-setting and session-clearing response has expired it.
+LEGACY_REFRESH_COOKIE_PATH = "/"
 
 # These schemes are documentation dependencies.  ``auto_error=False`` keeps
 # the existing runtime boundary intact: online requests are validated by
@@ -306,13 +311,17 @@ async def supabase_principal(request: Request) -> Principal:
 
 
 def clear_session_cookies(response: Response, request: Request) -> None:
-    """Delete both browser credentials with their original cookie scopes."""
+    """Delete the access credential and every deployed refresh-cookie scope."""
 
     config = AuthCookieConfig.from_request(request)
     response.delete_cookie(ACCESS_COOKIE, **config.attributes())
     response.delete_cookie(
         REFRESH_COOKIE,
         **config.attributes(path=REFRESH_COOKIE_PATH),
+    )
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        **config.attributes(path=LEGACY_REFRESH_COOKIE_PATH),
     )
 
 

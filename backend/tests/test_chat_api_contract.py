@@ -46,6 +46,7 @@ class FakeConversationRepository:
         self.created: list[tuple[str, str, str, str]] = []
         self.retried: list[tuple[str, str, str, str]] = []
         self.used_idempotency_keys: dict[str, tuple[str, str]] = {}
+        self.retry_count = 1
         self.list_cursor: tuple[int, str] | None = None
         self.messages: dict[str, ConversationMessageRecord] = {
             ASSISTANT_MESSAGE_ID: ConversationMessageRecord(
@@ -142,10 +143,10 @@ class FakeConversationRepository:
             used_content, used_target = self.used_idempotency_keys[idempotency_key]
             if used_target != assistant_message_id:
                 raise ConversationIdempotencyKeyConflict("reused with different input")
-            return _turn(retry_count=1)
+            return _turn(retry_count=self.retry_count)
         self.used_idempotency_keys[idempotency_key] = ("__retry__", assistant_message_id)
         self.retried.append((owner_id, analysis_case_id, assistant_message_id, idempotency_key))
-        return _turn(retry_count=1)
+        return _turn(retry_count=self.retry_count)
 
 
 def _client() -> tuple[TestClient, FakeConversationRepository]:
@@ -353,6 +354,38 @@ def test_retry_requires_idempotency_key_and_is_case_fenced() -> None:
     assert response.status_code == 202
     assert response.json()["status"] == "generating"
     assert repository.retried == [(OWNER_ID, CASE_ID, ASSISTANT_MESSAGE_ID, key)]
+
+
+def test_retry_total_of_three_and_its_idempotency_replay_are_accepted() -> None:
+    """One automatic plus two manual retries is a valid public total.
+
+    This guards the response-model boundary: a valid DB idempotency replay at
+    total=3 must remain a 202 response instead of Pydantic causing a 500.
+    """
+
+    client, repository = _client()
+    repository.retry_count = 3
+    key = str(uuid4())
+    path = f"/api/v1/analysis-cases/{CASE_ID}/messages/{ASSISTANT_MESSAGE_ID}/retry"
+
+    first = client.post(path, headers=_headers(key))
+    replay = client.post(path, headers=_headers(key))
+
+    assert first.status_code == 202
+    assert replay.status_code == 202
+    assert first.json() == replay.json()
+    assert replay.json()["retry_count"] == 3
+    assert repository.retried == [(OWNER_ID, CASE_ID, ASSISTANT_MESSAGE_ID, key)]
+
+
+def test_openapi_turn_retry_count_maximum_is_combined_total_of_three() -> None:
+    schema = create_app().openapi()
+    for response_name in ("ConversationTurnResponse", "ConversationMessageResponse"):
+        retry_count = schema["components"]["schemas"][response_name]["properties"][
+            "retry_count"
+        ]
+        assert retry_count["minimum"] == 0
+        assert retry_count["maximum"] == 3
 
 
 def test_retry_exhausted_is_chat_retry_exhausted_conflict() -> None:

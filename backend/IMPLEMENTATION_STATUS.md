@@ -44,7 +44,7 @@ lifecycle/result/retrieval/chat/admission은 `33`~`37`, atomic upload finalizati
   `approved-facts-components-role-aware-v2` 한 개가 활성 상태이고, 이전 설정의 400행은
   비활성 상태로 보존돼 있다. 아래 2026-09-10 결과는 통합 전 번호 체계와 로컬 runtime에
   대한 역사적 검증 기록이다.
-- 전체 backend pytest 903개를 수집해 `900 passed, 3 skipped`로 통과했다. 기본
+- 전체 backend pytest 906개를 수집해 `903 passed, 3 skipped`로 통과했다. 기본
   `testpaths` 밖의 Supabase migration contract wrapper도 별도로 실행해 내부 정적 계약
   24개를 모두 통과했다. Python compile, 응답 계약 JSON, Compose config와
   `git diff --check`도 통과했다. OpenAPI는 breaking v0.2 계약을 명시적으로 표시한다.

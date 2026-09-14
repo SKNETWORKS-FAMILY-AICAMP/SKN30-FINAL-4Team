@@ -41,6 +41,9 @@ router = APIRouter(prefix="/analysis-cases", tags=["Conversations"])
 _MESSAGES_CURSOR_ENDPOINT = "analysis-case-messages"
 _MESSAGES_CURSOR_VERSION = 1
 _MESSAGES_CURSOR_KEYS = frozenset({"sequence_no", "message_id"})
+# Database retry policy permits one automatic worker retry plus two manual
+# retries. The public count is their combined total, not manual retries alone.
+MAX_CONVERSATION_TOTAL_RETRY_COUNT = 3
 
 
 class ConversationMessageRequest(BaseModel):
@@ -64,7 +67,7 @@ class ConversationTurnResponse(BaseModel):
     assistant_message_id: UUID
     analysis_session_id: UUID
     status: Literal["generating"]
-    retry_count: int = Field(ge=0, le=2)
+    retry_count: int = Field(ge=0, le=MAX_CONVERSATION_TOTAL_RETRY_COUNT)
 
 
 class ConversationMessageResponse(BaseModel):
@@ -77,7 +80,7 @@ class ConversationMessageResponse(BaseModel):
     content: str | None
     status: Literal["generating", "completed", "failed"]
     reply_to_message_id: UUID | None
-    retry_count: int = Field(ge=0)
+    retry_count: int = Field(ge=0, le=MAX_CONVERSATION_TOTAL_RETRY_COUNT)
     error_code: str | None
     error_message: str | None
     created_at: datetime

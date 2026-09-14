@@ -213,6 +213,8 @@ def test_sim_status_reason_pairs_accept_only_worker_terminal_semantics() -> None
     assert "p_result#>>'{sim,reason_code}' IS DISTINCT FROM 'RETRIEVAL_INPUT_MISSING'" in RESULT
     assert "NEW.sim_reason_code <> 'KB_EMPTY'" in RESULT
     assert "p_result#>>'{sim,reason_code}' <> 'KB_EMPTY'" in RESULT
+    assert "WHEN analysis_case.sim_status IS NULL" in RESULT
+    assert "ELSE analysis_case.sim_reason_code" in RESULT
 
 
 def test_fit_public_side_accepts_nullable_summary_for_unperformed_comparison() -> None:

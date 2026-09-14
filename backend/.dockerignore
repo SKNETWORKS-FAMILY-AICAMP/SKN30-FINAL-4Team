@@ -1,9 +1,15 @@
 .git
+**/.git
 .pytest_cache
+**/.pytest_cache
 __pycache__
+**/__pycache__
 *.py[cod]
+**/*.py[cod]
 .venv
+**/.venv
 venv
+**/venv
 .env
 .env.*
 **/.env
@@ -12,6 +18,7 @@ venv
 !**/.env.example
 handover
 .prereview-build-id
+**/.prereview-build-id
 # Git-ignored credentials. Explicit ** variants make the nested intent clear.
 *.pem
 **/*.pem

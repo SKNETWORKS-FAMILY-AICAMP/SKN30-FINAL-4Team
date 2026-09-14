@@ -671,6 +671,15 @@ BEGIN
         END IF;
     END IF;
 
+    -- A normal completed SIM intentionally has no reason code.  The public
+    -- projection must preserve JSON null instead of labelling it as a legacy
+    -- projection failure.
+    UPDATE result.analysis_case
+       SET sim_status = 'completed',
+           sim_reason_code = NULL,
+           sim_summary = '런타임 SIM 검색을 정상 완료했습니다.'
+     WHERE analysis_case_pk = v_case_id;
+
     -- Preserve only opaque identifiers in transaction-local settings so the
     -- following authenticated-role section can exercise the browser read API.
     PERFORM set_config('runtime_contract.user_id', v_user_id::text, true);
@@ -708,6 +717,10 @@ BEGIN
          WHERE item ->> 'code' = 'CPL-01'
     ) THEN
         RAISE EXCEPTION 'trusted v2 result RPC omitted CPL projection';
+    END IF;
+    IF v_result #> '{sim,reason_code}' IS DISTINCT FROM 'null'::jsonb THEN
+        RAISE EXCEPTION 'normal completed SIM received a synthetic reason code: %',
+            v_result #> '{sim,reason_code}';
     END IF;
 
     v_history := api.rpc_get_analysis_history_v2(v_user_id, NULL, NULL, NULL);

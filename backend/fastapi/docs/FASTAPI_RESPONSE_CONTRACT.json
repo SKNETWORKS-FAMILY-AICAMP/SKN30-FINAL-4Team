@@ -64,6 +64,12 @@
     "items": [{"analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "completed_at": "2026-09-14T03:00:00Z"}],
     "next_cursor": "opaque-hmac-signed-cursor"
   },
+  "conversation_retry_limits": {
+    "retry_count": "automatic_retry_count + manual_retry_count",
+    "automatic_retry_max": 1,
+    "manual_retry_max": 2,
+    "total_retry_max": 3
+  },
   "conversation_turn_accepted": {"user_message_id": "88888888-8888-8888-8888-888888888888", "assistant_message_id": "99999999-9999-9999-9999-999999999999", "analysis_session_id": "22222222-2222-2222-2222-222222222222", "status": "generating", "retry_count": 0},
   "conversation_message_polling": {"message_id": "99999999-9999-9999-9999-999999999999", "analysis_case_id": "33333333-3333-3333-3333-333333333333", "role": "assistant", "sequence_no": 2, "content": null, "status": "generating", "reply_to_message_id": "88888888-8888-8888-8888-888888888888", "retry_count": 0, "error_code": null, "error_message": null, "created_at": "2026-09-14T03:31:00Z", "updated_at": "2026-09-14T03:31:00Z"},
   "conversation_messages": {

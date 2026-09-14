@@ -25,8 +25,25 @@ def auth_app(handler: httpx.MockTransport) -> object:
     return app
 
 
-def _cookie(set_cookie: list[str], name: str) -> str:
-    return next(item for item in set_cookie if item.startswith(f"{name}="))
+def _cookie(set_cookie: list[str], name: str, *, path: str) -> str:
+    return next(
+        item
+        for item in set_cookie
+        if item.startswith(f"{name}=")
+        and f"Path={path}" in {part.strip() for part in item.split(";")[1:]}
+    )
+
+
+def _assert_session_deletions(set_cookie: list[str]) -> None:
+    assert len(set_cookie) == 3
+    deleted = (
+        _cookie(set_cookie, "pre_review_access", path="/"),
+        _cookie(set_cookie, "pre_review_refresh", path="/api/v1/auth"),
+        _cookie(set_cookie, "pre_review_refresh", path="/"),
+    )
+    assert all("Max-Age=0" in item for item in deleted)
+    assert all("HttpOnly" in item and "SameSite=lax" in item for item in deleted)
+    assert not any("Secure" in item for item in deleted)
 
 
 def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
@@ -64,6 +81,12 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
 
     async def run() -> None:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=auth_app(httpx.MockTransport(provider))), base_url="http://testserver") as api:
+            # A browser upgrading from v0.1 can still have this root-scoped
+            # credential. Every new v0.2 session must retire it.
+            api.cookies.set(
+                "pre_review_refresh", "legacy-refresh",
+                domain="testserver.local", path="/",
+            )
             sign_in = await api.post("/api/v1/auth/sign-in", headers={"Origin": ORIGIN}, json={"email": "User@Example.com", "password": "correct-password"})
             assert sign_in.status_code == 200
             assert sign_in.json() == {"user": {"id": "user-1", "email": "user@example.com", "display_name": "홍길동"}}
@@ -71,15 +94,25 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
             assert sign_in.headers["cache-control"] == "private, no-store"
             assert "Cookie" in sign_in.headers["vary"]
             set_cookie = sign_in.headers.get_list("set-cookie")
-            assert len(set_cookie) == 2
-            access = _cookie(set_cookie, "pre_review_access")
-            refresh = _cookie(set_cookie, "pre_review_refresh")
+            assert len(set_cookie) == 3
+            access = _cookie(set_cookie, "pre_review_access", path="/")
+            refresh = _cookie(
+                set_cookie, "pre_review_refresh", path="/api/v1/auth"
+            )
+            legacy_refresh = _cookie(
+                set_cookie, "pre_review_refresh", path="/"
+            )
             assert "HttpOnly" in access and "SameSite=lax" in access and "Path=/" in access
             # The refresh cookie is scoped to the auth prefix only, so
             # browsers never attach it to business API calls.
             assert "HttpOnly" in refresh and "SameSite=lax" in refresh
             assert "Path=/api/v1/auth" in refresh
+            assert "Max-Age=0" in legacy_refresh
             assert not any("Secure" in item for item in set_cookie)
+            assert api.cookies.get(
+                "pre_review_refresh", path="/api/v1/auth"
+            ) == "refresh-secret"
+            assert api.cookies.get("pre_review_refresh", path="/") is None
 
             me = await api.get("/api/v1/auth/me", headers={"Authorization": "Bearer ignored-by-server"})
             assert me.status_code == 200
@@ -87,6 +120,71 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
 
     asyncio.run(run())
     assert len(requests) == 2
+
+
+def test_legacy_refresh_expiration_matches_secure_domain_cookie_configuration() -> None:
+    def provider(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/auth/v1/token":
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "access-secret",
+                    "refresh_token": "refresh-secret",
+                    "expires_in": 3600,
+                    "user": {
+                        "id": "user-1",
+                        "email": "user@example.com",
+                    },
+                },
+            )
+        assert request.url.path == "/auth/v1/logout"
+        return httpx.Response(204)
+
+    async def run() -> None:
+        app = auth_app(httpx.MockTransport(provider))
+        app.state.auth_cookie_secure = True
+        app.state.auth_cookie_samesite = "none"
+        app.state.auth_cookie_domain = "example.test"
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="https://api.example.test",
+        ) as api:
+            signed_in = await api.post(
+                "/api/v1/auth/sign-in",
+                headers={"Origin": ORIGIN},
+                json={
+                    "email": "user@example.com",
+                    "password": "correct-password",
+                },
+            )
+            assert signed_in.status_code == 200
+            set_cookie = signed_in.headers.get_list("set-cookie")
+            assert len(set_cookie) == 3
+            scoped = _cookie(
+                set_cookie, "pre_review_refresh", path="/api/v1/auth"
+            )
+            legacy = _cookie(set_cookie, "pre_review_refresh", path="/")
+            for item in (scoped, legacy):
+                assert "Domain=example.test" in item
+                assert "HttpOnly" in item
+                assert "SameSite=none" in item
+                assert "Secure" in item
+            assert "Max-Age=0" in legacy
+
+            signed_out = await api.post(
+                "/api/v1/auth/sign-out", headers={"Origin": ORIGIN}
+            )
+            assert signed_out.status_code == 204
+            deleted = signed_out.headers.get_list("set-cookie")
+            assert len(deleted) == 3
+            for item in deleted:
+                assert "Domain=example.test" in item
+                assert "HttpOnly" in item
+                assert "SameSite=none" in item
+                assert "Secure" in item
+                assert "Max-Age=0" in item
+
+    asyncio.run(run())
 
 
 def test_display_name_falls_back_to_email_local_part_when_missing_or_invalid() -> None:
@@ -199,29 +297,56 @@ def test_state_changes_fail_closed_without_a_trusted_origin() -> None:
 
 
 def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None:
+    refresh_tokens: list[str] = []
+
     def provider(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/auth/v1/token":
             assert request.url.params["grant_type"] == "refresh_token"
-            assert json.loads(request.content) == {"refresh_token": "old-refresh"}
-            return httpx.Response(200, json={"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600})
+            refresh_tokens.append(json.loads(request.content)["refresh_token"])
+            ordinal = len(refresh_tokens)
+            return httpx.Response(200, json={"access_token": f"new-access-{ordinal}", "refresh_token": f"new-refresh-{ordinal}", "expires_in": 3600})
         assert request.url.path == "/auth/v1/recover"
         assert request.url.params.get("redirect_to") is None
         return httpx.Response(400, json={"message": "user not found"})
 
     async def run() -> None:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=auth_app(httpx.MockTransport(provider))), base_url="http://testserver") as api:
-            api.cookies.set("pre_review_refresh", "old-refresh", domain="testserver.local", path="/api/v1/auth")
-            refreshed = await api.post("/api/v1/auth/refresh", headers={"Origin": ORIGIN})
+            # HTTPX emits the longer path first; Starlette collapses duplicate
+            # names to the last value. This recreates the deployed v0.1/v0.2
+            # collision instead of hand-writing an artificial Cookie header.
+            api.cookies.set("pre_review_refresh", "scoped-current", domain="testserver.local", path="/api/v1/auth")
+            api.cookies.set("pre_review_refresh", "root-legacy", domain="testserver.local", path="/")
+            request = api.build_request(
+                "POST", "/api/v1/auth/refresh", headers={"Origin": ORIGIN}
+            )
+            assert request.headers["cookie"].count("pre_review_refresh=") == 2
+            refreshed = await api.send(request)
             assert refreshed.status_code == 204
             assert refreshed.content == b""
-            assert api.cookies.get("pre_review_access") == "new-access"
-            assert api.cookies.get("pre_review_refresh", path="/api/v1/auth") == "new-refresh"
+            refreshed_headers = refreshed.headers.get_list("set-cookie")
+            assert len(refreshed_headers) == 3
+            assert "Max-Age=0" in _cookie(
+                refreshed_headers, "pre_review_refresh", path="/"
+            )
+            assert api.cookies.get("pre_review_access") == "new-access-1"
+            assert api.cookies.get("pre_review_refresh", path="/api/v1/auth") == "new-refresh-1"
+            assert api.cookies.get("pre_review_refresh", path="/") is None
+
+            refreshed_again = await api.post(
+                "/api/v1/auth/refresh", headers={"Origin": ORIGIN}
+            )
+            assert refreshed_again.status_code == 204
+            assert len(refreshed_again.headers.get_list("set-cookie")) == 3
+            # The stale root credential cannot override the rotated scoped one
+            # on the request after the migration response.
+            assert refresh_tokens[-1] == "new-refresh-1"
 
             reset = await api.post("/api/v1/auth/password-reset", headers={"Origin": ORIGIN}, json={"email": "nobody@example.com"})
             assert reset.status_code == 200
             assert reset.json() == {"message": "If an account exists, password reset instructions have been sent."}
 
     asyncio.run(run())
+    assert refresh_tokens == ["root-legacy", "new-refresh-1"]
 
 
 def test_password_reset_preserves_provider_rate_limit() -> None:
@@ -263,6 +388,7 @@ def test_sign_out_deletes_cookie_pair_and_update_password_never_echoes_secret() 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=auth_app(httpx.MockTransport(provider))), base_url="http://testserver") as api:
             api.cookies.set("pre_review_access", "access-secret", domain="testserver.local", path="/")
             api.cookies.set("pre_review_refresh", "refresh-secret", domain="testserver.local", path="/api/v1/auth")
+            api.cookies.set("pre_review_refresh", "legacy-refresh", domain="testserver.local", path="/")
             updated = await api.post("/api/v1/auth/update-password", headers={"Origin": ORIGIN}, json={"password": "new-correct-password"})
             assert updated.status_code == 204
             assert "new-correct-password" not in updated.text
@@ -270,8 +396,10 @@ def test_sign_out_deletes_cookie_pair_and_update_password_never_echoes_secret() 
             signed_out = await api.post("/api/v1/auth/sign-out", headers={"Origin": ORIGIN})
             assert signed_out.status_code == 204
             deleted = signed_out.headers.get_list("set-cookie")
-            assert len(deleted) == 2
-            assert all("Max-Age=0" in item for item in deleted)
+            _assert_session_deletions(deleted)
+            assert api.cookies.get("pre_review_access", path="/") is None
+            assert api.cookies.get("pre_review_refresh", path="/api/v1/auth") is None
+            assert api.cookies.get("pre_review_refresh", path="/") is None
 
     asyncio.run(run())
     assert len(seen) == 2
@@ -300,7 +428,7 @@ def test_invalid_refresh_and_remote_logout_failure_clear_local_cookies() -> None
             )
             assert refreshed.status_code == 401
             assert refreshed.json()["code"] == "UNAUTHORIZED"
-            assert len(refreshed.headers.get_list("set-cookie")) == 2
+            _assert_session_deletions(refreshed.headers.get_list("set-cookie"))
 
             api.cookies.set(
                 "pre_review_access", "access-secret",
@@ -314,7 +442,7 @@ def test_invalid_refresh_and_remote_logout_failure_clear_local_cookies() -> None
                 "/api/v1/auth/sign-out", headers={"Origin": ORIGIN}
             )
             assert signed_out.status_code == 503
-            assert len(signed_out.headers.get_list("set-cookie")) == 2
+            _assert_session_deletions(signed_out.headers.get_list("set-cookie"))
 
     asyncio.run(run())
 
@@ -345,8 +473,7 @@ def test_sign_out_transport_failure_still_clears_local_cookies() -> None:
             assert response.status_code == 503
             assert response.json()["code"] == "SERVICE_UNAVAILABLE"
             deleted = response.headers.get_list("set-cookie")
-            assert len(deleted) == 2
-            assert all("Max-Age=0" in item for item in deleted)
+            _assert_session_deletions(deleted)
 
     asyncio.run(run())
 
@@ -415,8 +542,7 @@ def test_invalid_access_cookie_is_cleared_on_business_and_me_routes() -> None:
                 assert response.status_code == 401
                 assert response.json()["code"] == "UNAUTHORIZED"
                 deleted = response.headers.get_list("set-cookie")
-                assert len(deleted) == 2
-                assert all("Max-Age=0" in item for item in deleted)
+                _assert_session_deletions(deleted)
 
     asyncio.run(run())
 

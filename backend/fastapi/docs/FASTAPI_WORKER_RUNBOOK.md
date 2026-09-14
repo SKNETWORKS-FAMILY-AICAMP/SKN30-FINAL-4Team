@@ -11,7 +11,7 @@
 합성 HWPX를 사용한 **host inline** 및 전용 Docker ML
 worker **external** OpenAI live E2E에서 Request Profile 구조화(Terra), FIT·SIM·Model
 1/2/3 결과 저장과 결과 근거 채팅(Luna)을 모두 완주했다. 전체 backend pytest는
-903개를 수집해 `900 passed, 3 skipped`였고, 기본 testpaths 밖의 Supabase 정적 계약
+906개를 수집해 `903 passed, 3 skipped`였고, 기본 testpaths 밖의 Supabase 정적 계약
 24개와 실제 PostgreSQL runtime 계약도 별도로 통과했다.
 
 이 문서는 self-hosted Supabase가 준비된 뒤 FastAPI와 same-server polling worker를

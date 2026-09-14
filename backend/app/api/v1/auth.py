@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from ..auth import (
     ACCESS_COOKIE,
+    LEGACY_REFRESH_COOKIE_PATH,
     REFRESH_COOKIE,
     REFRESH_COOKIE_PATH,
     AuthCookieConfig,
@@ -148,6 +149,14 @@ def _set_session_cookies(response: Response, request: Request, payload: object) 
     access, refresh, access_max_age = _session(payload)
     config = AuthCookieConfig.from_request(request)
     response.set_cookie(ACCESS_COOKIE, access, **config.attributes(max_age=access_max_age))
+    # v0.1 used Path=/ for this same name.  Expire it whenever a v0.2 session
+    # is issued so Starlette cannot select a stale duplicate on the next
+    # refresh request.  Security and Domain attributes intentionally come from
+    # the same validated configuration as the replacement cookie.
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        **config.attributes(path=LEGACY_REFRESH_COOKIE_PATH),
+    )
     response.set_cookie(
         REFRESH_COOKIE,
         refresh,

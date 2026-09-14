@@ -79,6 +79,7 @@ Cookie를 삭제한 뒤 `503`을 반환한다. Provider 장애가 일시적인 `
 
 - 위 규칙은 auth route와 공통 `PrincipalDep`에 동일하게 적용한다.
 - refresh cookie는 auth 경로로 scope를 좁히고 업무 API에는 전송하지 않는다.
+- v0.1에서 `Path=/`로 발급된 동명 refresh cookie의 마이그레이션을 위해 세션 발급·갱신·삭제 응답은 현재 `Domain`/`Secure`/`SameSite` 설정을 그대로 사용해 legacy root-path cookie도 만료시킨다. 신규 credential은 계속 `Path=/api/v1/auth`에만 발급한다.
 - 모든 상태 변경 route는 정확한 allow-list 기반 Origin 검사를 유지한다.
 - 사용하지 않는 `X-CSRF-Token` CORS 허용은 제거한다.
 - cookie 인증 업무 응답에는 공통으로 `Cache-Control: private, no-store`와 cookie 기준 `Vary`를 적용한다.

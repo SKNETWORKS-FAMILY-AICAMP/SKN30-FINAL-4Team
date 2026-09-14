@@ -10,7 +10,7 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 ## 현재 수량
 
 - 순차 migration: 40개 (`01`~`40`)
-- SQL 물리 행 수: 11,472 (`wc -l`, 주석/빈 줄 포함)
+- SQL 물리 행 수: 11,476 (`wc -l`, 주석/빈 줄 포함)
 - 애플리케이션 table: 64개
 - data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
 - contract schema: 1개 (`api`, table 없이 View/RPC)
@@ -57,7 +57,7 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | 31 | `31_existing_profile_model1_classification.sql` | 450 | 2 | 4 | Model 1 base schema와 final-runtime replay compatibility |
 | 32 | `32_existing_profile_model1_classification_hardening.sql` | 371 | 0 | 1 | immutable runtime identity·retryable KB invalidation·complete promotion·service projection hardening |
 | 33 | `33_v02_lifecycle_and_fastapi_boundary.sql` | 1057 | 0 | 4 | owner-scoped upload/current/history/close lifecycle와 stale reconciliation |
-| 34 | `34_v02_public_result_projection_and_evidence.sql` | 1262 | 0 | 2 | typed public result/candidate projection과 evidence integrity |
+| 34 | `34_v02_public_result_projection_and_evidence.sql` | 1266 | 0 | 2 | typed public result/candidate projection과 evidence integrity |
 | 35 | `35_v02_partial_axis_retrieval.sql` | 155 | 0 | 0 | 1~3 genuine axis partial retrieval; zero vector 금지 |
 | 36 | `36_v02_conversation_idempotency_and_claim.sql` | 793 | 1 | 3 | chat idempotency, cursor history, lease/fenced claim |
 | 37 | `37_v02_global_queue_admission.sql` | 552 | 0 | 1 | analysis upload와 chat create/retry 공용 전역 queue cap/backpressure |
