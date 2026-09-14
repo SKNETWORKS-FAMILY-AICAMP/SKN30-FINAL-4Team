@@ -6,8 +6,11 @@ interface AiChatViewProps {
     inputText: string
     messages: ChatMessage[]
     readOnly?: boolean
+    hasMore?: boolean
+    isLoadingMore?: boolean
     onToggleChat: () => void
     onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+    onLoadMore: () => void
     onSendMessage: () => void
     onRetryMessage: (assistantMessageId?: string) => void
 }
@@ -17,20 +20,23 @@ export default function AiChatView({
     inputText,
     messages,
     readOnly = false,
+    hasMore = false,
+    isLoadingMore = false,
     onToggleChat,
     onInputChange,
+    onLoadMore,
     onSendMessage,
     onRetryMessage,
 }: AiChatViewProps) {
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
-    // 💡 메시지가 변경되거나 챗창이 열릴 때 스크롤을 항상 최하단(bottom)으로 이동
+    // 최초 열릴 때만 최하단 이동
     useEffect(() => {
         if (isChatOpen && scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
         }
-    }, [messages, isChatOpen])
+    }, [isChatOpen])
 
     useEffect(() => {
         const textarea = textareaRef.current
@@ -67,11 +73,25 @@ export default function AiChatView({
             {isChatOpen && (
                 <div className="flex-1 p-md bg-surface-bright flex flex-col overflow-hidden animate-fadeIn">
 
-                    {/* 대화 말풍선 리스트 영역 (ref를 부착하여 스크롤 하단 고정 제어) */}
+                    {/* 대화 말풍선 리스트 영역 */}
                     <div 
                         ref={scrollContainerRef}
                         className="flex-1 overflow-y-auto flex flex-col gap-md pr-xs group/scroll"
                     >
+                        {/* 과거 메시지 더보기 버튼 */}
+                        {hasMore && (
+                            <div className="flex justify-center my-2">
+                                <button
+                                    type="button"
+                                    onClick={onLoadMore}
+                                    disabled={isLoadingMore}
+                                    className="px-3 py-1 bg-surface-container-high text-on-surface-variant rounded-full text-xs shadow-sm hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                                >
+                                    {isLoadingMore ? '불러오는 중...' : '이전 대화 더보기'}
+                                </button>
+                            </div>
+                        )}
+
                         {messages.map((msg) => {
                             const isUser = msg.sender === 'user'
                             const isGenerating = msg.status === 'generating'
@@ -88,7 +108,6 @@ export default function AiChatView({
                                 >
                                     <div>{msg.text}</div>
 
-                                    {/* 생성 중일 때 로딩 표시 */}
                                     {isGenerating && (
                                         <div className="flex items-center gap-xs text-xs opacity-70">
                                             <span className="w-2 h-2 rounded-full bg-current animate-ping" />
@@ -96,7 +115,6 @@ export default function AiChatView({
                                         </div>
                                     )}
 
-                                    {/* 실패 시 재시도 버튼 노출 */}
                                     {isFailed && !readOnly && (
                                         <button
                                             type="button"

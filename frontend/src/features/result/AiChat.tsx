@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import AiChatView from './AiChatView'
-import { chatService } from '../../services/chatService'
+import { chatService, type ChatMessageModel } from '../../services/chatService'
 
 export type ChatMessage = {
     id: string
@@ -21,52 +21,60 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
     const [isChatOpen, setIsChatOpen] = useState(false)
     const [inputText, setInputText] = useState('')
     const [messages, setMessages] = useState<ChatMessage[]>([])
-    const [hasLoaded, setHasLoaded] = useState<boolean>(false) // API 로드 완료 여부
+    const [hasLoaded, setHasLoaded] = useState<boolean>(false)
+    const [cursor, setCursor] = useState<string | null>(null)
+    const [hasMore, setHasMore] = useState<boolean>(false)
+    const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
 
-    const lastUpdatedSinceRef = useRef<string | undefined>(undefined)
-
-    const fetchMessages = async () => {
+    const fetchMessages = async (targetCursor?: string, isAppend = false) => {
         if (!caseId) return
         try {
-            const data = await chatService.listMessages(caseId, lastUpdatedSinceRef.current)
-            if (Array.isArray(data)) {
-                const mapped: ChatMessage[] = data.map((item: any) => ({
-                    id: item.message_id,
-                    sender: item.role === 'user' ? 'user' : 'ai',
-                    text: item.content || (item.status === 'generating' ? '답변을 생성 중입니다...' : '내용이 없습니다.'),
-                    status: item.status,
-                    assistantMessageId: item.role === 'assistant' ? item.message_id : undefined,
-                    retryCount: item.retry_count || 0,
-                    createdAt: item.created_at || new Date().toISOString()
-                }))
-
-                setMessages((prev) => {
-                    const map = new Map(prev.map(m => [m.id, m]))
-                    mapped.forEach(m => map.set(m.id, m))
-                    
-                    return Array.from(map.values()).sort((a, b) => {
-                        const timeA = new Date(a.createdAt || 0).getTime()
-                        const timeB = new Date(b.createdAt || 0).getTime()
-                        return timeA - timeB
-                    })
-                })
-
-                if (data.length > 0) {
-                    const lastItem = data[data.length - 1]
-                    if (lastItem?.updated_at) {
-                        lastUpdatedSinceRef.current = lastItem.updated_at
-                    }
-                }
+            if (isAppend) {
+                setIsLoadingMore(true)
             }
+            
+            const response = await chatService.listMessages(caseId, targetCursor)
+            const items = response.items || []
+
+            const mapped: ChatMessage[] = items.map((item: ChatMessageModel) => ({
+                id: item.message_id,
+                sender: item.role === 'user' ? 'user' : 'ai',
+                text: item.content || (item.status === 'generating' ? '답변을 생성 중입니다...' : '내용이 없습니다.'),
+                status: item.status as any,
+                assistantMessageId: item.role === 'assistant' ? item.message_id : undefined,
+                retryCount: item.retry_count || 0,
+                createdAt: item.created_at || new Date().toISOString()
+            }))
+
+            setMessages((prev) => {
+                const map = new Map(prev.map(m => [m.id, m]))
+                mapped.forEach(m => map.set(m.id, m))
+                
+                return Array.from(map.values()).sort((a, b) => {
+                    const timeA = new Date(a.createdAt || 0).getTime()
+                    const timeB = new Date(b.createdAt || 0).getTime()
+                    return timeA - timeB
+                })
+            })
+
+            setCursor(response.next_cursor)
+            setHasMore(!!response.next_cursor)
         } catch (error) {
             console.error('메시지 조회 실패:', error)
         } finally {
-            setHasLoaded(true) // 로드 완료 상태로 변경
+            setHasLoaded(true)
+            setIsLoadingMore(false)
         }
     }
 
     useEffect(() => {
-        fetchMessages()
+        if (caseId) {
+            setMessages([])
+            setCursor(null)
+            setHasMore(false)
+            setHasLoaded(false)
+            fetchMessages()
+        }
     }, [caseId])
 
     useEffect(() => {
@@ -83,9 +91,6 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
         return () => clearInterval(interval)
     }, [messages, caseId, isChatOpen])
 
-    // 💡 핵심: 
-    // 1. 아직 API 로딩이 안 끝났다면(`!hasLoaded`), 깜빡임 방지를 위해 렌더링하지 않음.
-    // 2. 읽기 전용(readOnly) 모드이면서 불러온 대화 내역이 없다면 아예 렌더링하지 않음.
     if (!hasLoaded || (readOnly && messages.length === 0)) {
         return null
     }
@@ -97,6 +102,12 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (readOnly) return
         setInputText(e.target.value)
+    }
+
+    const handleLoadMore = () => {
+        if (cursor && !isLoadingMore) {
+            fetchMessages(cursor, true)
+        }
     }
 
     const handleSendMessage = async () => {
@@ -155,8 +166,11 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
             inputText={inputText}
             messages={messages}
             readOnly={readOnly}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
             onToggleChat={handleToggleChat}
             onInputChange={handleInputChange}
+            onLoadMore={handleLoadMore}
             onSendMessage={handleSendMessage}
             onRetryMessage={handleRetryMessage}
         />
