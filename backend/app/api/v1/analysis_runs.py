@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Security, UploadFile, status
-from pydantic import BaseModel, UUID4
+from pydantic import BaseModel, Field, UUID4
 
 from app.models.pipeline import PipelineKind
 from app.pipelines.formats import FormatError, validate_format
@@ -65,14 +65,26 @@ RunStatus = Literal[
 
 
 class AnalysisRunCreated(BaseModel):
-    analysis_run_id: str
-    status: RunStatus
+    analysis_run_id: str = Field(description="분석 작업 UUID")
+    status: RunStatus = Field(
+        description=(
+            "분석 작업 상태. uploading은 업로드 확정 전, queued는 worker 대기, "
+            "running은 처리 중, succeeded는 완료, failed는 실패, cancelled는 취소, "
+            "cleanup_pending은 실패 후 저장 객체 정리 대기 상태다."
+        )
+    )
 
 
 class AnalysisRunView(AnalysisRunCreated):
-    analysis_case_id: str | None = None
-    error_code: str | None = None
-    error_message: str | None = None
+    analysis_case_id: str | None = Field(
+        description="status=succeeded일 때 결과 조회에 사용할 분석 case UUID",
+    )
+    error_code: str | None = Field(
+        description="status=failed일 때 분기 가능한 안전한 오류 코드",
+    )
+    error_message: str | None = Field(
+        description="status=failed일 때 화면에 표시 가능한 오류 메시지",
+    )
 
 
 async def analysis_run_service(request: Request) -> AnalysisRunService:
@@ -160,6 +172,11 @@ async def _bounded_content(request: Request, upload: UploadFile, filename: str) 
     response_model=AnalysisRunCreated,
     status_code=status.HTTP_202_ACCEPTED,
     summary="요청서 업로드 및 분석 작업 생성",
+    description=(
+        "HWP/HWPX 요청서를 업로드하고 queued 분석 작업을 만든다. 같은 파일을 네트워크 "
+        "재시도할 때는 동일한 Idempotency-Key를 사용한다. 활성 분석 작업이나 결과 "
+        "세션이 있으면 새 작업을 만들지 않는다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 409, 413, 415, 422, 429, 500, 502, 503),
 )
@@ -215,6 +232,10 @@ async def create_analysis_run(
     "/{analysis_run_id}",
     response_model=AnalysisRunView,
     summary="분석 작업 상태 조회",
+    description=(
+        "업로드 응답의 analysis_run_id를 polling한다. queued/running이면 계속 조회하고, "
+        "succeeded이면 analysis_case_id로 결과를 조회하며, failed이면 오류 정보를 표시한다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )

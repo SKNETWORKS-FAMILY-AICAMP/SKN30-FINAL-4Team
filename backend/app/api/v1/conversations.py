@@ -49,7 +49,12 @@ MAX_CONVERSATION_TOTAL_RETRY_COUNT = 3
 class ConversationMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(min_length=1, max_length=4_000)
+    content: str = Field(
+        min_length=1,
+        max_length=4_000,
+        description="분석 결과에 관해 질문할 내용",
+        examples=["지원 대상과 판단 근거를 설명해줘."],
+    )
 
     @field_validator("content")
     @classmethod
@@ -63,35 +68,60 @@ class ConversationMessageRequest(BaseModel):
 class ConversationTurnResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    user_message_id: UUID
-    assistant_message_id: UUID
-    analysis_session_id: UUID
-    status: Literal["generating"]
-    retry_count: int = Field(ge=0, le=MAX_CONVERSATION_TOTAL_RETRY_COUNT)
+    user_message_id: UUID = Field(description="저장된 사용자 질문 UUID")
+    assistant_message_id: UUID = Field(
+        description="생성 상태를 polling할 assistant 메시지 UUID"
+    )
+    analysis_session_id: UUID = Field(description="질문이 속한 분석 세션 UUID")
+    status: Literal["generating"] = Field(
+        description="비동기 답변 생성이 접수됐음을 나타내는 고정값"
+    )
+    retry_count: int = Field(
+        ge=0,
+        le=MAX_CONVERSATION_TOTAL_RETRY_COUNT,
+        description="worker 자동 재시도와 사용자 수동 재시도를 합한 횟수(최대 3)",
+    )
 
 
 class ConversationMessageResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    message_id: UUID
-    analysis_case_id: UUID
-    role: Literal["user", "assistant"]
-    sequence_no: int = Field(gt=0)
-    content: str | None
-    status: Literal["generating", "completed", "failed"]
-    reply_to_message_id: UUID | None
-    retry_count: int = Field(ge=0, le=MAX_CONVERSATION_TOTAL_RETRY_COUNT)
-    error_code: str | None
-    error_message: str | None
-    created_at: datetime
-    updated_at: datetime
+    message_id: UUID = Field(description="메시지 UUID")
+    analysis_case_id: UUID = Field(description="대화가 속한 분석 case UUID")
+    role: Literal["user", "assistant"] = Field(description="메시지 작성 주체")
+    sequence_no: int = Field(gt=0, description="case 안에서 증가하는 메시지 순번")
+    content: str | None = Field(
+        description="메시지 본문. assistant가 generating 상태이면 null이다."
+    )
+    status: Literal["generating", "completed", "failed"] = Field(
+        description=(
+            "메시지 처리 상태. 사용자 메시지는 completed이며 assistant는 generating에서 "
+            "completed 또는 failed로 전이한다."
+        )
+    )
+    reply_to_message_id: UUID | None = Field(
+        description="assistant 답변이 대응하는 사용자 메시지 UUID"
+    )
+    retry_count: int = Field(
+        ge=0,
+        le=MAX_CONVERSATION_TOTAL_RETRY_COUNT,
+        description="worker 자동 재시도와 사용자 수동 재시도를 합한 횟수(최대 3)",
+    )
+    error_code: str | None = Field(description="failed 상태의 오류 코드")
+    error_message: str | None = Field(description="failed 상태의 안전한 오류 메시지")
+    created_at: datetime = Field(description="메시지 생성 시각")
+    updated_at: datetime = Field(description="마지막 상태 변경 시각")
 
 
 class ConversationMessageEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[ConversationMessageResponse] = Field(default_factory=list)
-    next_cursor: str | None = None
+    items: list[ConversationMessageResponse] = Field(
+        description="현재 페이지의 메시지. 응답 안에서는 sequence_no 오름차순이다.",
+    )
+    next_cursor: str | None = Field(
+        description="더 과거 메시지가 있으면 반환되는 opaque cursor. 수정 없이 전달한다.",
+    )
 
 
 IdempotencyKeyHeader = Annotated[
@@ -171,6 +201,10 @@ def _message_cursor(fields: Mapping[str, object]) -> tuple[int, str]:
     response_model=ConversationTurnResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="분석 결과에 질문 등록",
+    description=(
+        "active이며 만료되지 않은 분석 세션에 질문을 등록한다. 202로 접수된 답변은 "
+        "이후 세션을 닫더라도 worker가 completed 또는 failed까지 처리한다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 409, 422, 429, 500, 502, 503),
 )
@@ -208,6 +242,10 @@ async def create_conversation_message(
     "/{analysis_case_id}/messages",
     response_model=ConversationMessageEnvelope,
     summary="과거 대화 목록 조회 (keyset pagination)",
+    description=(
+        "보관 기간 안의 대화를 조회한다. 세션이 closed/expired여도 읽을 수 있으며, 각 "
+        "페이지는 시간순이다. next_cursor가 있으면 수정하지 않고 다음 요청에 전달한다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
@@ -216,7 +254,10 @@ async def list_conversation_messages(
     analysis_case_id: UUID,
     principal: PrincipalDep,
     repository: ConversationRepositoryDep,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=100, description="페이지당 메시지 수(기본 50, 최대 100)"),
+    ] = 50,
     cursor: Annotated[
         str | None,
         Query(max_length=2_000, description="이전 응답의 next_cursor를 그대로 전달한다."),
@@ -266,6 +307,10 @@ async def list_conversation_messages(
     "/{analysis_case_id}/messages/{message_id}",
     response_model=ConversationMessageResponse,
     summary="단건 메시지 상태 polling",
+    description=(
+        "assistant_message_id를 polling해 generating에서 completed/failed로 바뀌는지 "
+        "확인한다. 이미 접수된 답변은 세션 종료 뒤에도 조회할 수 있다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
 )
@@ -293,6 +338,10 @@ async def get_conversation_message(
     response_model=ConversationTurnResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="실패한 AI 답변 재시도 등록",
+    description=(
+        "active이며 만료되지 않은 세션의 failed assistant 답변만 재시도한다. 종료된 "
+        "과거 세션에서는 대화 조회만 가능하고 새 질문과 재시도는 허용하지 않는다."
+    ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 403, 404, 409, 422, 429, 500, 502, 503),
 )

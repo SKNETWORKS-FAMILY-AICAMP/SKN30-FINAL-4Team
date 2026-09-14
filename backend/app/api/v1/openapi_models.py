@@ -31,7 +31,7 @@ class HealthStatusResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    status: str
+    status: str = Field(description="상태 확인 결과. 정상 응답은 ok.", examples=["ok"])
     build_id: str | None = Field(
         default=None,
         description="Configured immutable API build SHA, if deployment supplies one.",
@@ -43,7 +43,7 @@ _ERROR_DESCRIPTIONS = {
     401: "A required or valid authentication cookie was not supplied.",
     403: "The request origin or caller role is not allowed.",
     404: "The requested resource is not visible to the current user.",
-    409: "An active analysis run already exists for this user.",
+    409: "The request conflicts with the current resource or idempotency state.",
     413: "The uploaded file exceeds the configured size limit.",
     415: "The uploaded file type or file signature is unsupported.",
     422: "The request failed validation.",

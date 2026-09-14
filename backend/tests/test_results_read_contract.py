@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import httpx
+import jsonschema
 import pytest
 from pydantic import ValidationError
 
@@ -86,7 +89,7 @@ class FakeResultRepository:
             "cpl": {
                 "items": [
                     {
-                        "code": "CPL-1",
+                        "code": "CPL-01",
                         "status": "confirmed",
                         "summary": "지원 대상을 확인했습니다.",
                         "detail": {
@@ -240,6 +243,14 @@ class FakeResultRepository:
             },
             "evidences": [
                 {
+                    "evidence_id": EVIDENCE_ID,
+                    "side": "request",
+                    "axis_type": "SIM",
+                    "field_name": "purpose_goal",
+                    "raw_value": "요청서의 목적 근거",
+                    "excerpt": "요청서 목적 근거 문맥",
+                },
+                {
                     "evidence_id": CANDIDATE_EVIDENCE_ID,
                     "side": "existing",
                     "axis_type": "SIM",
@@ -353,6 +364,14 @@ def test_result_routes_return_typed_contract_payloads_and_never_accept_owner_ids
             assert "issuing_organization" not in candidate_body
             assert "status" not in candidate_body
             assert candidate_body["evidences"] == [
+                {
+                    "evidence_id": EVIDENCE_ID,
+                    "side": "request",
+                    "axis_type": "SIM",
+                    "field_name": "purpose_goal",
+                    "raw_value": "요청서의 목적 근거",
+                    "excerpt": "요청서 목적 근거 문맥",
+                },
                 {
                     "evidence_id": CANDIDATE_EVIDENCE_ID,
                     "side": "existing",
@@ -762,3 +781,178 @@ def test_openapi_exposes_named_result_read_models_not_generic_objects() -> None:
     assert paths["/api/v1/analysis-sessions/active"]["get"]["responses"]["204"] == {
         "description": "No active analysis session"
     }
+
+
+def test_openapi_explains_frontend_result_rendering_and_lifecycle_contract() -> None:
+    """Swagger must be enough to render the result UI without a second spec."""
+    schema = create_app().openapi()
+    paths = schema["paths"]
+    models = schema["components"]["schemas"]
+
+    # The badge enum itself and its consuming fields explain the exact value
+    # mapping and explicitly forbid treating these classifications as scores.
+    assert models["CplStatus"]["enum"] == [
+        "confirmed",
+        "needs_confirmation",
+        "no_content",
+        "not_applicable",
+    ]
+    assert "숫자 점수" in models["CplStatus"]["description"]
+    assert models["FitStatus"]["enum"] == [
+        "FIT",
+        "NEEDS_REVIEW",
+        "CONFLICT",
+        "INSUFFICIENT",
+        "NOT_APPLICABLE",
+    ]
+    assert "검토 필요/주황" in models["FitStatus"]["description"]
+    assert "근거 부족/주황" in models["FitStatus"]["description"]
+    assert models["SimAxisStatus"]["enum"] == [
+        "similar",
+        "partial",
+        "different",
+        "insufficient",
+    ]
+    assert "숫자 유사도 점수" in models["SimAxisStatus"]["description"]
+    assert "근거 부족/회색" in models["SimAxisStatus"]["description"]
+    assert "숫자 점수" in models["AnalysisCplAxisItem"]["properties"]["status"]["description"]
+    assert "숫자 점수" in models["AnalysisFitAxisItem"]["properties"]["status"]["description"]
+    assert models["AnalysisCplAxisItem"]["properties"]["status"]["examples"] == ["confirmed"]
+    assert models["AnalysisFitAxisItem"]["properties"]["status"]["examples"] == ["FIT"]
+    assert models["AnalysisSimCandidateSummary"]["properties"]["comparison_status"]["examples"] == ["partial"]
+    assert models["AnalysisSimSection"]["properties"]["status"]["enum"] == [
+        "completed",
+        "skipped",
+    ]
+    assert set(models["AnalysisResultReadModel"]["required"]) == {
+        "case",
+        "cpl",
+        "fit",
+        "sim",
+        "ml",
+        "report",
+        "session",
+        "evidences",
+    }
+    assert set(models["AnalysisHistoryEnvelope"]["required"]) == {
+        "items",
+        "next_cursor",
+    }
+    assert set(models["SimCandidateDetailReadModel"]["required"]) == {
+        "sim_candidate_id",
+        "analysis_case_id",
+        "rank",
+        "metadata",
+        "comparison",
+        "axes",
+        "evidences",
+    }
+    assert models["ResultEvidenceReadModel"]["properties"]["side"]["const"] == "request"
+    assert models["CandidateEvidenceReadModel"]["properties"]["side"]["enum"] == [
+        "request",
+        "existing",
+    ]
+    for exact_response_model in (
+        "AnalysisCplSection",
+        "AnalysisFitSection",
+        "AnalysisSimSection",
+        "CplAxisDetail",
+        "CplValueItem",
+        "FitAxisDetail",
+        "FitSideDetail",
+        "SimCandidateComparison",
+        "SimCandidateAxisDetail",
+        "AnalysisCurrentProcessing",
+        "AnalysisCurrentReady",
+        "AnalysisCurrentIdle",
+    ):
+        model = models[exact_response_model]
+        assert set(model["required"]) == set(model["properties"])
+    assert "CPL-13" in models["AnalysisCplAxisItem"]["properties"]["code"]["description"]
+    assert "FIT-7" in models["AnalysisFitAxisItem"]["properties"]["code"]["description"]
+    assert "초록" in models["CplStatus"]["description"]
+    assert "빨강" in models["FitStatus"]["description"]
+
+    # CPL/FIT IDs join only this result-level evidence pool; SIM candidates
+    # are navigated from the list to a separate renderable detail payload.
+    assert "evidences[]" in models["CplAxisDetail"]["properties"]["evidence_ids"]["description"]
+    assert "evidences[]" in models["FitAxisDetail"]["properties"]["evidence_ids"]["description"]
+    assert "CPL/FIT 전용" in models["AnalysisResultReadModel"]["properties"]["evidences"]["description"]
+    assert "sim_candidate_id" in models["AnalysisSimSection"]["properties"]["candidates"]["description"]
+    assert "metadata" in models["SimCandidateDetailReadModel"]["description"]
+    assert "existing_evidence_ids" in models["SimCandidateDetailReadModel"]["description"]
+
+    current_description = paths["/api/v1/analysis/current"]["get"]["description"]
+    assert all(state in current_description for state in ("processing", "ready", "idle"))
+    assert "업로드/새 분석 시작" in current_description
+
+    close_path = "/api/v1/analysis-sessions/{analysis_session_id}/close"
+    close_description = paths[close_path]["post"]["description"]
+    assert "정확한 세션 ID" in close_description
+    assert "idempotent" in close_description
+    assert "/analysis-sessions/active/close" in close_description
+    assert "/api/v1/analysis-sessions/active/close" not in paths
+
+    history_operation = paths["/api/v1/analysis-history"]["get"]
+    assert "고정 5건" in history_operation["description"]
+    assert "활성 세션은 포함하지" in history_operation["description"]
+    assert "서명된" in history_operation["parameters"][0]["description"]
+
+
+def test_frontend_response_examples_match_openapi_and_have_valid_evidence_joins() -> None:
+    """The non-normative mock must not contradict the generated contract."""
+    examples_path = (
+        Path(__file__).resolve().parents[1]
+        / "fastapi"
+        / "docs"
+        / "FASTAPI_RESPONSE_CONTRACT.json"
+    )
+    examples = json.loads(examples_path.read_text(encoding="utf-8"))
+    openapi = create_app().openapi()
+
+    schema_pairs = {
+        "auth_sign_in": "AuthUserEnvelope",
+        "auth_me": "AuthUserEnvelope",
+        "auth_sign_up": "SignUpResponse",
+        "analysis_run_created": "AnalysisRunCreated",
+        "analysis_run_status": "AnalysisRunView",
+        "analysis_current_processing": "AnalysisCurrentProcessing",
+        "analysis_current_ready": "AnalysisCurrentReady",
+        "analysis_current_idle": "AnalysisCurrentIdle",
+        "analysis_result": "AnalysisResultReadModel",
+        "sim_candidate_detail": "SimCandidateDetailReadModel",
+        "analysis_history": "AnalysisHistoryEnvelope",
+    }
+    for example_name, schema_name in schema_pairs.items():
+        root_schema = dict(openapi)
+        root_schema["$ref"] = f"#/components/schemas/{schema_name}"
+        jsonschema.validate(examples[example_name], root_schema)
+
+    analysis_result = examples["analysis_result"]
+    result_evidence_ids = {
+        evidence["evidence_id"] for evidence in analysis_result["evidences"]
+    }
+    for item in analysis_result["cpl"]["items"]:
+        detail = item["detail"]
+        referenced_ids = set(detail["evidence_ids"])
+        referenced_ids.update(
+            evidence_id
+            for value in detail["values"]
+            for evidence_id in value["evidence_ids"]
+        )
+        assert referenced_ids <= result_evidence_ids
+    for item in analysis_result["fit"]["items"]:
+        detail = item["detail"]
+        referenced_ids = set(detail["evidence_ids"])
+        referenced_ids.update(detail["left"]["evidence_ids"])
+        referenced_ids.update(detail["right"]["evidence_ids"])
+        assert referenced_ids <= result_evidence_ids
+
+    candidate = examples["sim_candidate_detail"]
+    candidate_evidence_ids = {
+        evidence["evidence_id"] for evidence in candidate["evidences"]
+    }
+    for axis in candidate["axes"].values():
+        referenced_ids = set(axis["request_evidence_ids"])
+        referenced_ids.update(axis["existing_evidence_ids"])
+        assert referenced_ids <= candidate_evidence_ids

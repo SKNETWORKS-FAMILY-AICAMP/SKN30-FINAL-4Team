@@ -108,7 +108,15 @@ def _upload_concurrency_from_environment() -> int:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="PreReview API", version="0.2.0")
+    app = FastAPI(
+        title="PreReview API",
+        version="0.2.0",
+        description=(
+            "프론트엔드가 사용하는 공개 API의 구조·타입·상태값 기준입니다. 모든 업무 API는 "
+            "Supabase Auth 기반 HttpOnly Cookie를 사용하므로 브라우저 요청에 "
+            "credentials: 'include'를 설정해야 합니다. 별도 Bearer token은 보내지 않습니다."
+        ),
+    )
     app.state.build_id = _build_id_from_artifact()
     # A missing/unset PREREVIEW_OFFLINE_MODE must fail toward the safer,
     # cookie-only production boundary. Offline dev-header auth is opt-in only
