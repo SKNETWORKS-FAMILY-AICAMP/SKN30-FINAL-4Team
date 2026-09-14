@@ -92,7 +92,7 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/auth/refresh", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/sign-out", "post"): {"403", "422", "500", "503"},
         ("/api/v1/auth/password-reset", "post"): {"403", "422", "500", "503"},
-        ("/api/v1/auth/password-recovery/callback", "get"): {"401", "422", "429", "500", "502", "503"},
+        ("/api/v1/auth/password-recovery/callback", "get"): {"422", "429", "500", "502", "503"},
         ("/api/v1/auth/update-password", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/me", "get"): {"401", "429", "500", "502", "503"},
         ("/api/v1/analysis-runs", "post"): {"401", "403", "409", "413", "415", "422", "500", "503"},
@@ -120,10 +120,8 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         for status_code in status_codes:
             _assert_error_response(operation, status_code)
 
-    # Cookie-mutating operations deliberately continue to return no body on
-    # their successful 204 path.
+    # Cookie-clearing operations return no body on their successful 204 path.
     for path in (
-        "/api/v1/auth/refresh",
         "/api/v1/auth/sign-out",
         "/api/v1/auth/update-password",
     ):

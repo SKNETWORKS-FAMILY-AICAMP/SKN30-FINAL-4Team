@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import json
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import (
     APIRouter,
@@ -147,7 +150,21 @@ class AuthUserResponse(BaseModel):
 class AuthUserEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    access_token_expires_at: datetime = Field(
+        description=(
+            "현재 access token의 만료 시각(UTC ISO 8601). 프론트 로그인 타이머와 "
+            "세션 갱신 시각 동기화에 사용한다."
+        )
+    )
     user: AuthUserResponse = Field(description="인증된 사용자 공개 정보")
+
+
+class AuthSessionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    access_token_expires_at: datetime = Field(
+        description="갱신된 access token의 만료 시각(UTC ISO 8601)."
+    )
 
 
 class SignUpResponse(BaseModel):
@@ -185,7 +202,45 @@ def _public_user(payload: object) -> dict[str, str] | None:
     return {"id": user_id, "email": email, "display_name": display_name}
 
 
-def _session(payload: object) -> tuple[str, str, int | None]:
+def _jwt_expiry(access_token: str) -> datetime | None:
+    """Read the informational ``exp`` claim after Supabase validates the token."""
+
+    try:
+        encoded_payload = access_token.split(".")[1]
+        padding = "=" * (-len(encoded_payload) % 4)
+        claims = json.loads(
+            base64.urlsafe_b64decode(encoded_payload + padding).decode("utf-8")
+        )
+        expires_at = claims.get("exp")
+        if isinstance(expires_at, bool) or not isinstance(expires_at, int):
+            return None
+        return datetime.fromtimestamp(expires_at, tz=UTC)
+    except (IndexError, ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def _provider_expiry(
+    payload: dict[str, Any], access_token: str, expires_in: int | None
+) -> datetime:
+    expires_at = payload.get("expires_at")
+    if not isinstance(expires_at, bool) and isinstance(expires_at, int):
+        try:
+            return datetime.fromtimestamp(expires_at, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            pass
+
+    token_expiry = _jwt_expiry(access_token)
+    if token_expiry is not None:
+        return token_expiry
+    if expires_in is not None:
+        return datetime.now(tz=UTC) + timedelta(seconds=expires_in)
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Supabase authentication returned a session without an expiry",
+    )
+
+
+def _session(payload: object) -> tuple[str, str, int | None, datetime]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid session")
     access = payload.get("access_token")
@@ -197,11 +252,17 @@ def _session(payload: object) -> tuple[str, str, int | None]:
     # expiry. Never accept a non-positive or unreasonably large provider value.
     if isinstance(expires_in, bool) or not isinstance(expires_in, int) or not 0 < expires_in <= 60 * 60 * 24 * 7:
         expires_in = None
-    return access, refresh, expires_in
+    return access, refresh, expires_in, _provider_expiry(payload, access, expires_in)
 
 
-def _set_session_cookies(response: Response, request: Request, payload: object) -> None:
-    access, refresh, access_max_age = _session(payload)
+def _set_session_cookies(
+    response: Response,
+    request: Request,
+    payload: object,
+    *,
+    session_data: tuple[str, str, int | None, datetime] | None = None,
+) -> datetime:
+    access, refresh, access_max_age, access_expires_at = session_data or _session(payload)
     config = AuthCookieConfig.from_request(request)
     response.set_cookie(ACCESS_COOKIE, access, **config.attributes(max_age=access_max_age))
     # v0.1 used Path=/ for this same name.  Expire it whenever a v0.2 session
@@ -217,6 +278,7 @@ def _set_session_cookies(response: Response, request: Request, payload: object) 
         refresh,
         **config.attributes(max_age=config.refresh_max_age, path=REFRESH_COOKIE_PATH),
     )
+    return access_expires_at
 
 
 def _cleared_auth_error(
@@ -281,8 +343,15 @@ async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDe
     user = _public_user(payload)
     if user is None:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid user")
-    result = JSONResponse(status_code=status.HTTP_200_OK, content={"user": user})
-    _set_session_cookies(result, request, payload)
+    session_data = _session(payload)
+    response_body = AuthUserEnvelope(
+        user=AuthUserResponse.model_validate(user),
+        access_token_expires_at=session_data[3],
+    )
+    result = JSONResponse(
+        status_code=status.HTTP_200_OK, content=response_body.model_dump(mode="json")
+    )
+    _set_session_cookies(result, request, payload, session_data=session_data)
     return result
 
 
@@ -327,7 +396,8 @@ async def sign_up(request: Request, body: SignUpRequest, _: TrustedOriginDep, su
 
 @router.post(
     "/refresh",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=AuthSessionResponse,
+    status_code=status.HTTP_200_OK,
     summary="로그인 세션 갱신",
     description="refresh HttpOnly Cookie로 Supabase 세션을 갱신하고 Cookie를 다시 설정한다.",
     dependencies=[Security(refresh_cookie_scheme)],
@@ -362,8 +432,13 @@ async def refresh(request: Request, _: TrustedOriginDep, supabase: SupabaseClien
         # A malformed 200 payload is also transient upstream noise; leave the
         # existing cookies alone rather than treating it like an invalid grant.
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
-    result = Response(status_code=status.HTTP_204_NO_CONTENT)
-    _set_session_cookies(result, request, payload)
+    session_data = _session(payload)
+    response_body = AuthSessionResponse(access_token_expires_at=session_data[3])
+    result = JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_body.model_dump(mode="json"),
+    )
+    _set_session_cookies(result, request, payload, session_data=session_data)
     return result
 
 
@@ -468,9 +543,11 @@ async def password_reset(
     summary="비밀번호 recovery 링크 검증",
     description=(
         "메일 템플릿이 전달한 일회용 token_hash를 Supabase에서 검증하고 "
-        "HttpOnly 세션 Cookie를 설정한 뒤 비밀번호 변경 화면으로 이동한다."
+        "HttpOnly 세션 Cookie를 설정한 뒤 비밀번호 변경 화면으로 이동한다. "
+        "만료·사용 완료·잘못된 token은 같은 화면의 "
+        "error=invalid_or_expired 상태로 이동한다."
     ),
-    responses=error_responses(401, 422, 429, 500, 502, 503),
+    responses=error_responses(422, 429, 500, 502, 503),
 )
 async def password_recovery_callback(
     request: Request,
@@ -494,6 +571,19 @@ async def password_recovery_callback(
         "/verify",
         json={"token_hash": token_hash, "type": "recovery"},
     )
+    if provider_response.status_code in {400, 401, 403}:
+        parsed_redirect = urlsplit(redirect_to)
+        error_redirect = urlunsplit(
+            parsed_redirect._replace(
+                query=urlencode({"error": "invalid_or_expired"})
+            )
+        )
+        result = RedirectResponse(
+            url=error_redirect, status_code=status.HTTP_303_SEE_OTHER
+        )
+        result.headers["Cache-Control"] = "private, no-store"
+        result.headers["Referrer-Policy"] = "no-referrer"
+        return result
     if provider_response.status_code != status.HTTP_200_OK:
         _provider_failure(provider_response.status_code)
 
@@ -550,8 +640,8 @@ async def update_password(request: Request, body: UpdatePasswordRequest, _: Trus
     response_model=AuthUserEnvelope,
     summary="현재 로그인 사용자 조회",
     description=(
-        "HttpOnly access Cookie를 검증하고 id, email, display_name을 반환한다. "
-        "프론트는 사용자 이름을 별도 DB에서 조회하지 않는다."
+        "HttpOnly access Cookie를 검증하고 id, email, display_name과 access token "
+        "만료 시각을 반환한다. 프론트는 사용자 이름을 별도 DB에서 조회하지 않는다."
     ),
     dependencies=[Security(access_cookie_scheme)],
     responses=error_responses(401, 429, 500, 502, 503),
@@ -571,4 +661,13 @@ async def me(request: Request, supabase: SupabaseClientDep) -> AuthUserEnvelope:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid response") from exc
     if user is None:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Supabase authentication returned an invalid user")
-    return AuthUserEnvelope(user=AuthUserResponse.model_validate(user))
+    access_expires_at = _jwt_expiry(access_token)
+    if access_expires_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Supabase authentication returned a session without an expiry",
+        )
+    return AuthUserEnvelope(
+        user=AuthUserResponse.model_validate(user),
+        access_token_expires_at=access_expires_at,
+    )
