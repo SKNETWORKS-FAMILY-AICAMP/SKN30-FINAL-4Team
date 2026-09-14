@@ -50,17 +50,38 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
                 const map = new Map(prev.map(m => [m.id, m]))
                 mapped.forEach(m => map.set(m.id, m))
                 
-                return Array.from(map.values()).sort((a, b) => {
+                const sorted = Array.from(map.values()).sort((a, b) => {
                     const timeA = new Date(a.createdAt || 0).getTime()
                     const timeB = new Date(b.createdAt || 0).getTime()
                     return timeA - timeB
                 })
+
+                // 대화 내역이 전혀 없을 경우 기본 안내 메시지 추가
+                if (sorted.length === 0 && !targetCursor) {
+                    return [{
+                        id: 'initial-welcome',
+                        sender: 'ai',
+                        text: '분석 결과에 대해 궁금한 점을 물어보세요!',
+                        status: 'completed',
+                        createdAt: new Date().toISOString()
+                    }]
+                }
+
+                return sorted
             })
 
             setCursor(response.next_cursor)
             setHasMore(!!response.next_cursor)
         } catch (error) {
             console.error('메시지 조회 실패:', error)
+            // 에러 시에도 기본 안내 메시지 보장
+            setMessages([{
+                id: 'initial-welcome',
+                sender: 'ai',
+                text: '분석 결과에 대해 궁금한 점을 물어보세요!',
+                status: 'completed',
+                createdAt: new Date().toISOString()
+            }])
         } finally {
             setHasLoaded(true)
             setIsLoadingMore(false)
@@ -137,7 +158,11 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
                 createdAt: new Date(Date.now() + 10).toISOString()
             }
 
-            setMessages((prev) => [...prev, newUserMsg, newAiMsg])
+            setMessages((prev) => {
+                // 초기 안내 메시지만 있는 상태였다면 제거하고 새 메시지 추가
+                const filtered = prev.filter(m => m.id !== 'initial-welcome')
+                return [...filtered, newUserMsg, newAiMsg]
+            })
         } catch (error: any) {
             console.error('메시지 전송 실패:', error)
         }

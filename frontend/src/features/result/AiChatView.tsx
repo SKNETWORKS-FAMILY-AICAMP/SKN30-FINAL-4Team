@@ -31,12 +31,12 @@ export default function AiChatView({
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
-    // 최초 열릴 때만 최하단 이동
+    // 💡 메시지가 변경되거나 챗창이 열릴 때 스크롤을 항상 최하단(bottom)으로 이동
     useEffect(() => {
         if (isChatOpen && scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
         }
-    }, [isChatOpen])
+    }, [messages, isChatOpen])
 
     useEffect(() => {
         const textarea = textareaRef.current
