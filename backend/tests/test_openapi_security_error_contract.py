@@ -47,12 +47,13 @@ def test_openapi_documents_http_only_cookie_security_without_bearer_auth() -> No
     assert "bearer" not in str(schemes).lower()
 
     # Public bootstrap/recovery calls do not require an existing Cookie.
-    for path in (
-        "/api/v1/auth/sign-in",
-        "/api/v1/auth/sign-up",
-        "/api/v1/auth/password-reset",
+    for path, method in (
+        ("/api/v1/auth/sign-in", "post"),
+        ("/api/v1/auth/sign-up", "post"),
+        ("/api/v1/auth/password-reset", "post"),
+        ("/api/v1/auth/password-recovery/callback", "get"),
     ):
-        assert "security" not in _operation(schema, path, "post")
+        assert "security" not in _operation(schema, path, method)
 
     assert _operation(schema, "/api/v1/auth/refresh", "post")["security"] == REFRESH_SECURITY
     for path, method in (
@@ -91,6 +92,7 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/auth/refresh", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/sign-out", "post"): {"403", "422", "500", "503"},
         ("/api/v1/auth/password-reset", "post"): {"403", "422", "500", "503"},
+        ("/api/v1/auth/password-recovery/callback", "get"): {"401", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/update-password", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/me", "get"): {"401", "429", "500", "502", "503"},
         ("/api/v1/analysis-runs", "post"): {"401", "403", "409", "413", "415", "422", "500", "503"},

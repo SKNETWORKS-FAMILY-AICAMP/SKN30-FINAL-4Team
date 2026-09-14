@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import secrets
-
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, status
-from fastapi.responses import JSONResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+    status,
+)
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from ..auth import (
@@ -17,8 +23,6 @@ from ..auth import (
     LEGACY_REFRESH_COOKIE_PATH,
     REFRESH_COOKIE,
     REFRESH_COOKIE_PATH,
-    RECOVERY_COOKIE_PATH,
-    RECOVERY_VERIFIER_COOKIE,
     AuthCookieConfig,
     InvalidAuthSession,
     SupabaseClientDep,
@@ -27,7 +31,6 @@ from ..auth import (
     display_name_from_metadata,
     normalize_display_name,
     refresh_cookie_scheme,
-    recovery_cookie_scheme,
     require_trusted_origin,
 )
 from .openapi_models import error_responses
@@ -74,16 +77,6 @@ class PasswordResetRequest(BaseModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         return CredentialsRequest.normalize_email(value)
-
-
-class PasswordRecoveryExchangeRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str = Field(
-        min_length=1,
-        max_length=2048,
-        description="Supabase가 PKCE recovery redirect에 추가한 일회용 Auth Code",
-    )
 
 
 class UpdatePasswordRequest(BaseModel):
@@ -414,36 +407,22 @@ async def sign_out(request: Request, _: TrustedOriginDep, supabase: SupabaseClie
     return result
 
 
-PKCE_VERIFIER_MAX_AGE = 10 * 60
-
-
-def _pkce_pair() -> tuple[str, str]:
-    verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return verifier, challenge
-
-
-def _set_recovery_verifier_cookie(
-    response: Response, request: Request, verifier: str
-) -> None:
-    config = AuthCookieConfig.from_request(request)
-    response.set_cookie(
-        RECOVERY_VERIFIER_COOKIE,
-        verifier,
-        **config.attributes(
-            max_age=PKCE_VERIFIER_MAX_AGE,
-            path=RECOVERY_COOKIE_PATH,
-        ),
-    )
-
-
-def _clear_recovery_verifier_cookie(response: Response, request: Request) -> None:
-    config = AuthCookieConfig.from_request(request)
-    response.delete_cookie(
-        RECOVERY_VERIFIER_COOKIE,
-        **config.attributes(path=RECOVERY_COOKIE_PATH),
-    )
+def _configured_recovery_url(request: Request, attribute: str, label: str) -> str:
+    value = str(getattr(request.app.state, attribute, "") or "").strip()
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"{label} is not configured",
+        )
+    return value
 
 
 @router.post(
@@ -452,93 +431,90 @@ def _clear_recovery_verifier_cookie(response: Response, request: Request) -> Non
     summary="비밀번호 재설정 메일 요청",
     responses=error_responses(403, 422, 429, 500, 503),
 )
-async def password_reset(request: Request, response: Response, body: PasswordResetRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> PasswordResetResponse:
-    verifier, challenge = _pkce_pair()
-    payload = {
-        "email": body.email,
-        "code_challenge": challenge,
-        "code_challenge_method": "s256",
-    }
-    redirect_to = str(getattr(request.app.state, "auth_password_reset_redirect_to", "") or "").strip()
-    if not redirect_to:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Password recovery redirect is not configured",
-        )
-    params = {"redirect_to": redirect_to} if redirect_to else None
+async def password_reset(
+    request: Request,
+    body: PasswordResetRequest,
+    _: TrustedOriginDep,
+    supabase: SupabaseClientDep,
+) -> PasswordResetResponse:
+    callback_url = _configured_recovery_url(
+        request,
+        "auth_password_reset_callback_url",
+        "Password recovery callback",
+    )
     provider_response = await supabase.request(
-        "POST", "/recover", json=payload, params=params
+        "POST",
+        "/recover",
+        json={"email": body.email},
+        params={"redirect_to": callback_url},
     )
     if provider_response.status_code >= 500:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Supabase authentication is unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase authentication is unavailable",
+        )
     if provider_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
         _provider_failure(provider_response.status_code)
     # Supabase normally returns 200 for unknown accounts. Treat every provider
     # account-related 4xx identically to preserve that non-enumeration boundary.
-    _set_recovery_verifier_cookie(response, request, verifier)
     return PasswordResetResponse(
         message="If an account exists, password reset instructions have been sent."
     )
 
 
-@router.post(
-    "/password-recovery/exchange",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="비밀번호 recovery 코드 교환",
+@router.get(
+    "/password-recovery/callback",
+    status_code=status.HTTP_303_SEE_OTHER,
+    summary="비밀번호 recovery 링크 검증",
     description=(
-        "이메일 링크의 일회용 PKCE Auth Code와 password-reset 단계에서 설정한 "
-        "HttpOnly verifier Cookie를 Supabase 세션으로 교환한다."
+        "메일 템플릿이 전달한 일회용 token_hash를 Supabase에서 검증하고 "
+        "HttpOnly 세션 Cookie를 설정한 뒤 비밀번호 변경 화면으로 이동한다."
     ),
-    dependencies=[Security(recovery_cookie_scheme)],
-    responses=error_responses(401, 403, 422, 429, 500, 502, 503),
+    responses=error_responses(401, 422, 429, 500, 502, 503),
 )
-async def exchange_password_recovery(
+async def password_recovery_callback(
     request: Request,
-    body: PasswordRecoveryExchangeRequest,
-    _: TrustedOriginDep,
+    token_hash: Annotated[
+        str,
+        Query(
+            min_length=1,
+            max_length=2048,
+            description="Supabase recovery 메일 템플릿의 일회용 TokenHash",
+        ),
+    ],
     supabase: SupabaseClientDep,
 ) -> Response:
-    verifier = request.cookies.get(RECOVERY_VERIFIER_COOKIE, "")
-    if not verifier:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Password recovery session is missing or expired",
-        )
-
+    redirect_to = _configured_recovery_url(
+        request,
+        "auth_password_reset_redirect_to",
+        "Password recovery frontend redirect",
+    )
     provider_response = await supabase.request(
         "POST",
-        "/token",
-        params={"grant_type": "pkce"},
-        json={"auth_code": body.code, "code_verifier": verifier},
+        "/verify",
+        json={"token_hash": token_hash, "type": "recovery"},
     )
     if provider_response.status_code != status.HTTP_200_OK:
-        if provider_response.status_code >= 500:
-            _provider_failure(provider_response.status_code)
-        if provider_response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-            _provider_failure(provider_response.status_code)
-        result = JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "code": "UNAUTHORIZED",
-                "message": "Password recovery link is invalid or expired",
-            },
-        )
-        _clear_recovery_verifier_cookie(result, request)
-        return result
+        _provider_failure(provider_response.status_code)
 
     try:
         payload: Any = provider_response.json()
-        result = Response(status_code=status.HTTP_204_NO_CONTENT)
+        result = RedirectResponse(
+            url=redirect_to,
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
         _set_session_cookies(result, request, payload)
     except (ValueError, HTTPException):
-        result = JSONResponse(
+        return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content={
                 "code": "BAD_GATEWAY",
                 "message": "Supabase authentication returned an invalid session",
             },
         )
-    _clear_recovery_verifier_cookie(result, request)
+
+    result.headers["Cache-Control"] = "private, no-store"
+    result.headers["Referrer-Policy"] = "no-referrer"
     return result
 
 

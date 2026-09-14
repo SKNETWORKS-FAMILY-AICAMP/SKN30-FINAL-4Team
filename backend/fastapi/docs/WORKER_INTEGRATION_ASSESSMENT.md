@@ -88,7 +88,6 @@ malformed/timeout 문서 E2E는 아직 별도 범위다.
 
 ## 남은 운영·기능 작업
 
-- password recovery link를 HttpOnly Cookie 세션으로 교환하는 callback/PKCE
 - multipart part 수 제한과 streaming upload
 - `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사. 업로드 요청에 묶인
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리

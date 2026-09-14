@@ -278,8 +278,12 @@ def build_settings(
         ("PREREVIEW_AUTH_COOKIE_DOMAIN", ""),
         ("PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE", "2592000"),
         (
+            "PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL",
+            "http://localhost:3000/api/v1/auth/password-recovery/callback",
+        ),
+        (
             "PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO",
-            "http://localhost:3000/reset-password",
+            "http://localhost:3000/password-reset/update",
         ),
         ("SUPABASE_URL", "http://host.docker.internal:8000"),
         ("SUPABASE_ANON_KEY", _required(supabase, "ANON_KEY", label=supabase_label)),

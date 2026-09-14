@@ -261,10 +261,11 @@ DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
 확인했다. PDF/OCR은 현재 요청 처리 범위에서 제외하며, PDF 생성도 E2E 완료 범위가 아니다.
 
-비밀번호 재설정은 PKCE verifier를 짧은 수명의 HttpOnly Cookie로 보관하고, 메일 redirect의
-Auth Code를 `POST /api/v1/auth/password-recovery/exchange`에서 세션 Cookie로 교환한 뒤
-`update-password`를 호출하는 backend 흐름까지 구현했다. 최종 브라우저 E2E는 프론트의
-`/password-reset/update` route와 code 교환 연동 후 수행한다.
+비밀번호 재설정은 self-hosted Supabase recovery 메일의 일회용 `TokenHash`를
+`GET /api/v1/auth/password-recovery/callback`에서 검증해 HttpOnly 세션 Cookie로
+교환한 뒤 프론트의 `/password-reset/update`로 이동한다. 요청 브라우저의 로컬 verifier에
+의존하지 않으므로 메일을 다른 browser/device에서 열 수 있고, 프론트는 token/code 교환을
+구현하지 않는다. 최종 브라우저 E2E는 recovery 템플릿 배포 후 수행한다.
 
 위 로컬 검증 환경에는 mode `600`인 `backend/.env`와 online API·worker가 준비되어 있었다.
 환경 파일과 실행 상태는 Git 산출물이 아니다. 새 checkout/서버에서는 Supabase migration, Existing KB bootstrap과
