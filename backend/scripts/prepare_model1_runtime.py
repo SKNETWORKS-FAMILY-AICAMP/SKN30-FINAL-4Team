@@ -25,7 +25,7 @@ DEFAULT_ARCHIVE = Path.home() / "serving.zip"
 EXPECTED_ARCHIVE_SHA256 = "0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41"
 EXPECTED_WEIGHT_SHA256 = "8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779"
 EXPECTED_RUNTIME_MANIFEST_SHA256 = (
-    "2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60"
+    "85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597"
 )
 WEIGHT_MEMBER = "model1/model/model.safetensors"
 ARCHIVE_MODEL1_MEMBERS = (
@@ -41,7 +41,7 @@ ARCHIVE_MODEL1_MEMBERS = (
 )
 
 # These logical names are the registered Model 1 identity.  Do not add the
-# operator-only requirements file here: migrations 31/32/38 intentionally commit
+# operator-only requirements file here: migrations 31/32/38/41 intentionally commit
 # the digest of the base requirements file below.
 MANIFEST_FILES = {
     "serving/inference.py": ("serving", "inference.py"),

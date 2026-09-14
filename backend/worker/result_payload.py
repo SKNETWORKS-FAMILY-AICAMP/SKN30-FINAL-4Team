@@ -130,6 +130,13 @@ def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
     if model_3.status != "OK" or not isinstance(cause_axes, list):
         cause_axes = []
     cause_axes = [axis for axis in cause_axes if isinstance(axis, str)]
+
+    model_3_common = _ml_common(model_3)
+    if model_3.status == "FAILED":
+        # 모델 3은 한 번 재시도한 뒤에도 실행에 실패하면 내부 진단과 상태만
+        # 보존하고, 사용자 화면에는 실패 문구 대신 결과 없음(null)을 표시한다.
+        model_3_common["message"] = None
+
     return {
         "model_1": {**_ml_common(model_1), "support_type": support_type},
         "model_2": {
@@ -137,7 +144,7 @@ def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
             "predicted_amount_won": predicted_amount_won,
         },
         "model_3": {
-            **_ml_common(model_3),
+            **model_3_common,
             "anomaly_level": anomaly_level,
             "cause_axes": cause_axes,
         },

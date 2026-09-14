@@ -30,6 +30,9 @@ MODEL1_RUNTIME_REFRESH = (MIGRATIONS / "38_model1_runtime_manifest_refresh.sql")
 FINALIZATION = (MIGRATIONS / "39_v02_atomic_upload_finalization.sql").read_text(
     encoding="utf-8"
 )
+MODEL1_RUNTIME_REFRESH_V4 = (
+    MIGRATIONS / "41_model1_runtime_manifest_refresh_v4.sql"
+).read_text(encoding="utf-8")
 
 
 def test_v02_migrations_are_forward_only_after_32() -> None:
@@ -42,6 +45,8 @@ def test_v02_migrations_are_forward_only_after_32() -> None:
         "37_v02_global_queue_admission.sql",
         "38_model1_runtime_manifest_refresh.sql",
         "39_v02_atomic_upload_finalization.sql",
+        "40_v02_embedding_execution_provenance.sql",
+        "41_model1_runtime_manifest_refresh_v4.sql",
     } <= names
 
 
@@ -52,6 +57,15 @@ def test_model1_runtime_refresh_registers_a_new_inactive_immutable_identity() ->
     assert "ON CONFLICT DO NOTHING" in MODEL1_RUNTIME_REFRESH
     assert "UPDATE retrieval.classification_configuration" not in MODEL1_RUNTIME_REFRESH
     assert "existing_profile_classification" not in MODEL1_RUNTIME_REFRESH
+
+
+def test_model1_runtime_v4_refresh_preserves_existing_classifications() -> None:
+    assert "85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597" in MODEL1_RUNTIME_REFRESH_V4
+    assert "pre-review-existing-model1-runtime-v4" in MODEL1_RUNTIME_REFRESH_V4
+    assert "FALSE" in MODEL1_RUNTIME_REFRESH_V4
+    assert "ON CONFLICT DO NOTHING" in MODEL1_RUNTIME_REFRESH_V4
+    assert "UPDATE retrieval.classification_configuration" not in MODEL1_RUNTIME_REFRESH_V4
+    assert "existing_profile_classification" not in MODEL1_RUNTIME_REFRESH_V4
 
 
 def test_global_queue_admission_is_atomic_and_replays_precede_capacity() -> None:

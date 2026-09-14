@@ -1,7 +1,8 @@
 {
   "_description": "비규범(non-normative) 성공 응답 예시 모음이다. mock과 응답 이해에만 사용하며 필드, nullability, enum, 의미 또는 호출 흐름을 정의하지 않는다. 유일한 사람용 계약은 0.FASTAPI_FRONTEND_API_SPEC.md이고 실행 코드의 구조 계약은 /openapi.json이다. 예시와 OpenAPI가 다르면 배포 대상 OpenAPI를 구조 기준으로 사용한다. UUID·일시·문구는 모두 예시다.",
-  "auth_sign_in": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
-  "auth_me": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
+  "auth_sign_in": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}, "access_token_expires_at": "2030-01-01T00:00:00Z"},
+  "auth_me": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}, "access_token_expires_at": "2030-01-01T00:00:00Z"},
+  "auth_refresh": {"access_token_expires_at": "2030-01-01T01:00:00Z"},
   "auth_sign_up": {"email_confirmation_required": true, "user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
   "auth_password_reset": {"message": "If an account exists, password reset instructions have been sent."},
   "analysis_run_created": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "queued"},

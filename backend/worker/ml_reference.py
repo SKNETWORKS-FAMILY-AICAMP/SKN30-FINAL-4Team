@@ -1007,34 +1007,44 @@ def _run_one(
             model_input=model_input,
             artifact_version=artifact_version,
         )
-    try:
-        output = model.predict(model_input.payload)
-    except MlUnavailable as error:
-        diagnostics.append(
-            StageDiagnostic(
-                stage=_STAGE,
-                unit=model_id.value,
-                reason_code=error.reason_code,
-                # 찾던 경로·패키지 이름을 그대로 남긴다.
-                message=error.detail,
+    max_attempts = 2 if model_id is MlModelId.MODEL_3_ANOMALY else 1
+    for attempt in range(1, max_attempts + 1):
+        try:
+            output = model.predict(model_input.payload)
+            break
+        except MlUnavailable as error:
+            # artifact·runtime 부재는 같은 프로세스 안에서 재시도해도 복구되지
+            # 않으므로 기존처럼 즉시 UNAVAILABLE 로 확정한다.
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_STAGE,
+                    unit=model_id.value,
+                    reason_code=error.reason_code,
+                    # 찾던 경로·패키지 이름을 그대로 남긴다.
+                    message=error.detail,
+                )
             )
-        )
-        return _unavailable(
-            model_id,
-            error.reason_code,
-            model_input=model_input,
-            artifact_version=artifact_version,
-        )
-    except Exception as error:  # noqa: BLE001 - 국소 실패로 가둔다
-        diagnostics.append(
-            StageDiagnostic(
-                stage=_STAGE,
-                unit=model_id.value,
-                reason_code=MODEL_EXECUTION_FAILED,
-                message=f"{type(error).__name__}: {error}"[:2000],
+            return _unavailable(
+                model_id,
+                error.reason_code,
+                model_input=model_input,
+                artifact_version=artifact_version,
             )
-        )
-        return _failed(model_id, model_input, artifact_version)
+        except Exception as error:  # noqa: BLE001 - 국소 실패로 가둔다
+            if attempt < max_attempts:
+                continue
+            diagnostics.append(
+                StageDiagnostic(
+                    stage=_STAGE,
+                    unit=model_id.value,
+                    reason_code=MODEL_EXECUTION_FAILED,
+                    message=(
+                        f"{type(error).__name__}: {error} "
+                        f"(attempts={max_attempts})"
+                    )[:2000],
+                )
+            )
+            return _failed(model_id, model_input, artifact_version)
     if not isinstance(output, dict):
         diagnostics.append(
             StageDiagnostic(

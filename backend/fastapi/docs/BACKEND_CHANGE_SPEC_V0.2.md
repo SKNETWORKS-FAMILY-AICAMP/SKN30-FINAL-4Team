@@ -385,10 +385,10 @@ analysis upload와 chat create/retry가 공유하며, 새 작업이 가득 차�
 
 - migration은 기능별 신규 번호로 나누되 최종 상태가 전체 replay에서도 동일해야 한다.
 - 01~32의 public 함수와 migration 26 ML wrapper는 그대로 둔다.
-- 현재 fresh 적용 범위는 migration 01~40이며, 01~32가 이미 적용된 DB는 33~40을
-  순서대로 upgrade한 뒤 전체 01~40 replay 검증을 수행한다. migration 38은 Model 1
-  runtime 코드 manifest가 바뀐 경우 새 inactive configuration을 등록하며, 과거 분류
-  row를 재작성하지 않는다. migration 39는 만료된 upload finalisation도 migration 37의
+- 현재 fresh 적용 범위는 migration 01~41이며, 01~32가 이미 적용된 DB는 33~41을
+  순서대로 upgrade한 뒤 전체 01~41 replay 검증을 수행한다. migration 38과 41은 각
+  시점의 Model 1 runtime 코드 manifest를 새 inactive configuration으로 등록하며, 과거
+  분류 row를 재작성하지 않는다. migration 39는 만료된 upload finalisation도 migration 37의
   전역 admission lock 아래 re-admit하고, capacity가 가득 차면 exact source를
   `cleanup_pending`으로 fence해 cleanup key를 반환한다. migration 40은 각 analysis
   실행 시도가 실제 선택한 embedding configuration(또는 검색 축이 없어 선택하지

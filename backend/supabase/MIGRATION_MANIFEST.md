@@ -1,7 +1,7 @@
 # Supabase migration manifest
 
-마지막 감사: 2026-09-13
-현재 버전: v0.2 (migration 40)
+마지막 감사: 2026-09-15
+현재 버전: v0.2 (migration 41)
 
 이 manifest는 `backend/supabase/migrations`의 순차 SQL과 현재
 Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조를 설명한다.
@@ -9,8 +9,8 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 
 ## 현재 수량
 
-- 순차 migration: 40개 (`01`~`40`)
-- SQL 물리 행 수: 11,476 (`wc -l`, 주석/빈 줄 포함)
+- 순차 migration: 41개 (`01`~`41`)
+- SQL 물리 행 수: 11,503 (`wc -l`, 주석/빈 줄 포함)
 - 애플리케이션 table: 64개
 - data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
 - contract schema: 1개 (`api`, table 없이 View/RPC)
@@ -64,6 +64,7 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | 38 | `38_model1_runtime_manifest_refresh.sql` | 39 | 0 | 0 | 현재 Model 1 runtime manifest를 새 inactive immutable configuration으로 등록; 과거 분류 row 보존 |
 | 39 | `39_v02_atomic_upload_finalization.sql` | 201 | 0 | 0 | 만료 upload finalise도 전역 admission lock 아래 re-admit; full이면 cleanup_pending source key 반환 |
 | 40 | `40_v02_embedding_execution_provenance.sql` | 110 | 0 | 0 | analysis attempt가 실제 선택한 embedding configuration/zero-axis null snapshot을 fenced processing metadata에 영속 |
+| 41 | `41_model1_runtime_manifest_refresh_v4.sql` | 27 | 0 | 0 | 공용 ML runtime 변경을 반영한 Model 1 v4 identity를 inactive로 등록; 기존 활성 설정·분류 row 보존 |
 
 합계는 64 table, 88 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
 스키마 정확성을 대신하는 검증이 아니다.
@@ -145,7 +146,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-이 script에는 migration ledger가 없으며 매번 `01`~`40`를 모두 실행한다. 각 파일은 독립
+이 script에는 migration ledger가 없으며 매번 `01`~`41`을 모두 실행한다. 각 파일은 독립
 transaction이라 중간 실패 전 파일은 이미 commit된다. reset/delete는 하지 않지만 모든
 부분 적용·재실행 상태가 안전하다고 보장하지도 않는다. 실패 시 무작정 재실행하지 말고
 적용된 객체와 오류 migration을 확인한 뒤 backup restore 또는 검증된 repair 절차를 따른다.
@@ -172,8 +173,8 @@ SUPABASE_DIR=/path/to/supabase-compose \
   ./supabase/run_worker_queue_validation.sh
 ```
 
-배포 gate에는 별도로 migration 01~40 fresh apply, 기존 migration `01`~`32` 상태에서의
-upgrade/replay, 실제 private Storage put/get/delete,
+배포 gate에는 별도로 migration 01~41 fresh apply, 기존 migration `01`~`32` 상태에서의
+upgrade/replay, migration 41 Model 1 전체 재분류·승격, 실제 private Storage put/get/delete,
 FastAPI Cookie auth/upload/poll/result, HWP/HWPX parser와 OpenAI를 포함한 worker E2E가 필요하다.
 
 ## 관련 문서

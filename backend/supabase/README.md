@@ -86,6 +86,45 @@ role에 영구 권한을 추가하지 않는다.
 `docker compose ps`에서 최소 DB가 healthy가 된 뒤 migration을 적용하고, Auth·Storage까지
 healthy인지 확인한 뒤 FastAPI를 연결한다.
 
+
+### 비밀번호 recovery 메일 템플릿
+
+다른 browser/device에서도 recovery 링크를 완료할 수 있도록 기본 `ConfirmationURL`
+대신 [templates/recovery.html](templates/recovery.html)의 `TokenHash` 링크를 사용한다.
+self-hosted Auth는 mounted file을 직접 읽지 않고 내부 HTTP URL에서 template을 가져오므로,
+Supabase Compose network 안에 외부 port를 publish하지 않는 정적 file server를 둔다.
+
+[docker-compose.auth-templates.yml](docker-compose.auth-templates.yml)을 공식 Supabase
+Compose의 override로 사용한다. `PREREVIEW_AUTH_TEMPLATE_DIR`에는 이 저장소
+`backend/supabase/templates`의 절대경로를 넣는다. override는 recovery template URL과
+외부 port가 없는 private Caddy file server를 함께 정의한다.
+
+Auth에 전달하는 `redirect_to`는
+`PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL`이며 Supabase
+`ADDITIONAL_REDIRECT_URLS` allow-list에도 정확히 포함해야 한다. callback은 검증 성공
+후 `PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO`로 이동한다. 로컬 Vite proxy의 예시는
+각각 다음과 같다.
+
+```dotenv
+PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL=http://localhost:3000/api/v1/auth/password-recovery/callback
+PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO=http://localhost:3000/password-reset/update
+ADDITIONAL_REDIRECT_URLS=http://localhost:3000/api/v1/auth/password-recovery/callback
+```
+
+template server를 먼저 기동한 뒤 Auth만 재생성한다. DB·Storage·worker는 재기동하지 않는다.
+
+```bash
+export PREREVIEW_AUTH_TEMPLATE_DIR=/absolute/path/to/backend/supabase/templates
+docker compose \
+  -f docker-compose.yml \
+  -f /absolute/path/to/backend/supabase/docker-compose.auth-templates.yml \
+  up -d --no-deps auth-templates
+docker compose \
+  -f docker-compose.yml \
+  -f /absolute/path/to/backend/supabase/docker-compose.auth-templates.yml \
+  up -d --no-deps --force-recreate auth
+```
+
 새 로컬 환경의 전체 순서는 **Supabase healthy 확인 → migration → 명시적 로컬 Auth 사용자
 bootstrap → 전체 분석이 필요할 때 Existing KB bootstrap → `backend/.env` 준비 → API·worker
 기동 → Swagger `sign-in`/`me`/upload/poll**이다. FastAPI 설정과 Swagger 확인까지의 상세
@@ -134,8 +173,8 @@ manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~40·same-server API/analysis worker/chat worker 경로에 맞춘 위 스크립트만
-사용한다. `01`~`40` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
+override·migration 01~41·same-server API/analysis worker/chat worker 경로에 맞춘 위 스크립트만
+사용한다. `01`~`41` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
 검증됐다고 간주하지 않는다.
 
 ## 데이터 위치
@@ -306,7 +345,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`40` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`41` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤

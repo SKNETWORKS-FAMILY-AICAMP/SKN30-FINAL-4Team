@@ -144,6 +144,7 @@ def create_app() -> FastAPI:
     app.state.auth_cookie_samesite = os.getenv("PREREVIEW_AUTH_COOKIE_SAMESITE", "lax")
     app.state.auth_cookie_domain = os.getenv("PREREVIEW_AUTH_COOKIE_DOMAIN", "")
     app.state.auth_refresh_cookie_max_age = int(os.getenv("PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE", str(60 * 60 * 24 * 30)))
+    app.state.auth_password_reset_callback_url = os.getenv("PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL", "")
     app.state.auth_password_reset_redirect_to = os.getenv("PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO", "")
     # HMAC key for opaque history/message pagination cursors (see
     # app.api.v1.cursor). Cursors are bound to owner+endpoint+version, but the

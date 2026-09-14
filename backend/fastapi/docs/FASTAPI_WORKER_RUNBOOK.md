@@ -1,9 +1,12 @@
 # FastAPI·worker 배포 및 운영 가이드
 
-마지막 문서 동기화: 2026-09-14
+마지막 문서 동기화: 2026-09-15
 
-이 날짜의 통합 checkout에서는 공식 `supabase/postgres:17.6.1.169` 임시 DB의 기존
-`01`~`38` fresh 검증 상태에 `39`~`40`을 upgrade하고 전체 `01`~`40` replay를 검증했다.
+공식 `supabase/postgres:17.6.1.169` 임시 DB에서 기존 `01`~`38` fresh 검증 상태에
+`39`~`40`을 upgrade하고 전체 `01`~`40` replay한 기록이 있다. migration `41`은
+현재 Model 1 runtime identity를 비활성 설정으로 추가하며 정적 migration 계약을
+검증했다. 실제 DB에는 배포 전에 `41`을 적용하고 100건 재분류·승격 gate를 별도로
+완주해야 한다.
 현재 로컬 DB 적용, 실제 repository SQL, queue/provenance runtime contract와 두 세션
 `40001` lock retry도 통과했다. Existing 100건 Model 1 실제 추론 backfill은 100건 모두
 `OK`이고 idempotent 재실행은 100건 모두 skip됐다. 활성 결과는 `신뢰` 99건과 raw
@@ -51,7 +54,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 다음 조건이 먼저 충족되어야 한다.
 
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
-- `backend/supabase/migrations/01`부터 `40`까지 적용되어 있다.
+- `backend/supabase/migrations/01`부터 `41`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
 - Existing Profile 100건과 active v2 `retrieval.existing_profile_embedding` 100건 × 4 scope가 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
@@ -65,7 +68,7 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 처음부터 재현할 때는 다음 순서를 지킨다.
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
-2. migration 01~40을 적용한다.
+2. migration 01~41을 적용한다.
 3. Git 밖의 Model 1 runtime을 준비하고, server-only `backend/.env`를 생성한다.
 4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
 5. Existing 분류 결과를 쓰는 기능까지 검증할 때는 current Profile 100건에 Model 1을
@@ -241,7 +244,8 @@ PREREVIEW_AUTH_COOKIE_SECURE=true
 PREREVIEW_AUTH_COOKIE_SAMESITE=lax
 PREREVIEW_AUTH_COOKIE_DOMAIN=
 PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE=2592000
-PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO=https://app.example.com/reset-password
+PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL=https://app.example.com/api/v1/auth/password-recovery/callback
+PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO=https://app.example.com/password-reset/update
 
 # Supabase Auth·private Storage
 SUPABASE_URL=http://host.docker.internal:8000
@@ -400,11 +404,11 @@ mapping이 이미 있다. 기본 입력 위치인 `$HOME/serving.zip`에서 추�
 |---|---|
 | `$HOME/serving.zip` | `0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41` |
 | `model1/model/model.safetensors` | `8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779` |
-| Model 1 runtime manifest | `2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60` |
+| Model 1 runtime manifest | `85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597` |
 
 다음 스크립트는 SHA-256이 고정된 archive에서 Model 1에 필요한 allowlist 파일만
 Git에서 제외된 `.runtime/`에 새로 쓴다. archive와 weight digest, 그리고 DB에 등록된
-Model 1 runtime manifest(`2903...`)까지 확인하며, 대상이 이미 있으면 실패한다.
+Model 1 runtime manifest(`85aee0...`)까지 확인하며, 대상이 이미 있으면 실패한다.
 따라서 tracked checkout 파일이나 기존 runtime을 덮어쓰지 않는다. 현재 checkout의
 wrapper는 archive와 byte-identical하지 않으므로, 등록된 runtime을 재현할 때 archive의
 검증된 wrapper를 사용해야 한다.
@@ -485,8 +489,8 @@ namespace로 다시 매핑되는 rootless Docker는 현재 지원하지 않는�
 ### Existing 100건 Model 1 분류 backfill
 
 이 작업은 Request 분석을 실행하는 것이 아니라 현재 Existing Profile을 버전형
-KB 분류 결과로 보강하는 one-shot 운영 작업이다. 먼저 migration 31·32·38을 포함한
-전체 migration을 적용한다. `apply_migrations.sh`는 01~40을 순서대로 재적용하므로
+KB 분류 결과로 보강하는 one-shot 운영 작업이다. 먼저 migration 31·32·38·41을 포함한
+전체 migration을 적용한다. `apply_migrations.sh`는 01~41을 순서대로 재적용하므로
 기존 DB는 운영 가이드의 backup/staging 절차를 먼저 따른다.
 
 ```bash
@@ -495,7 +499,7 @@ SUPABASE_DIR="$PWD" \
   /absolute/path/to/SKN30-FINAL-4Team/backend/supabase/apply_migrations.sh
 ```
 
-migration 31·32·38이 보장하는 inactive 설정의 UUID를 model ID, weight SHA-256, runtime
+migration 31·32·38·41이 보장하는 현재 inactive 설정의 UUID를 model ID, weight SHA-256, runtime
 manifest SHA-256, input assembly 버전, producer 버전 **다섯 값 모두로** 조회한다. manifest는 sorted
 compact JSON으로 고정한 다음 logical file→SHA-256 mapping이다: serving의
 `inference.py`, label mapping, model config/weight, tokenizer 두 파일, checkout의
@@ -513,9 +517,9 @@ WHERE model_id = 'model_1_support_type'
   AND lower(artifact_sha256) =
       '8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779'
   AND lower(runtime_manifest_sha256) =
-      '2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60'
+      '85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597'
   AND input_assembly_version = 'existing-profile-model1-input-v1'
-  AND producer_version = 'pre-review-existing-model1-runtime-v3';
+  AND producer_version = 'pre-review-existing-model1-runtime-v4';
 "
 ```
 
@@ -766,7 +770,7 @@ LIMIT 20;
 
 ### Operator용 HWP/HWPX live E2E
 
-로컬 Supabase·migration 01~40·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
+로컬 Supabase·migration 01~41·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
 환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue → analysis
 worker → 결과 조회 → cookie 인증·trusted Origin 채팅 POST → chat-worker → 메시지 GET
 polling을 한 번에 검증할 수 있다. DB에 저장된 Model 1·2·3 status가 모두 `OK`인지도
@@ -975,12 +979,12 @@ model의 strict typed DTO로 표시된다. raw/internal key는 응답에 추가�
 [프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)다.
 `FASTAPI_RESPONSE_CONTRACT.json`은 mock용 비규범 예시로만 사용한다.
 
-OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie`,
-`PreReviewRecoveryVerifierCookie` Cookie security scheme과 각 endpoint의 성공·주요
-오류(`ErrorResponse`) schema가 표시된다. `sign-in`, `sign-up`, `password-reset`은
-Cookie가 없어도 호출할 수 있으므로 인증 요구가 표시되지 않는다. 반면 업무 API, `me`,
-`update-password`는 access Cookie, `refresh`는 refresh Cookie를 요구하고,
-`password-recovery/exchange`는 reset 요청에서 설정한 recovery verifier Cookie를 요구한다.
+OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie` Cookie security
+scheme과 각 endpoint의 성공·주요 오류(`ErrorResponse`) schema가 표시된다.
+`sign-in`, `sign-up`, `password-reset`, `password-recovery/callback`은 기존
+Cookie 없이 호출할 수 있다. 업무 API, `me`, `update-password`는 access Cookie,
+`refresh`는 refresh Cookie를 요구한다. callback의 query parameter는 recovery 메일의
+일회용 `token_hash`이며 성공 응답은 세션 Cookie를 설정하는 `303` redirect다.
 
 이 security scheme은 HttpOnly Cookie라는 전달 방식을 문서화하기 위한 것이다. Swagger의
 `Authorize`에 access/refresh token이나 쿠키 값을 직접 입력하지 않는다. 성공한 `sign-in`
@@ -991,10 +995,11 @@ run ID를 `GET /analysis-runs/{analysis_run_id}`로 poll한다. frontend의 실�
 나타나는 선택 필드이고, 비밀번호 같은 원 요청 비밀값은 포함하지 않는다.
 
 인증 및 재설정 완료 흐름의 현재 지원 범위도 같은
-[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. password-reset이 만든
-PKCE verifier Cookie와 메일 redirect의 Auth Code는 `password-recovery/exchange`에서
-세션 Cookie로 교환하며, 이후 `update-password`로 비밀번호를 변경한다. 과거
-`AUTH_API_CONTRACT.md`는 이 명세로 안내하는 호환용 문서일 뿐이다.
+[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. self-hosted Supabase의
+recovery 메일 템플릿은 `TokenHash`를 FastAPI `password-recovery/callback`으로
+보내고, callback은 이를 세션 Cookie로 교환한 뒤 프론트 비밀번호 변경 화면으로 이동한다.
+프론트는 token/code 교환을 구현하지 않는다. 과거 `AUTH_API_CONTRACT.md`는 이 명세로
+안내하는 호환용 문서일 뿐이다.
 
 현재 `frontend/src`에는 API base URL, Cookie 포함 HTTP client, polling 호출이 연결되어 있지
 않다. Swagger/OpenAPI가 보인다는 사실만으로 화면 통합이 완료된 것은 아니며,

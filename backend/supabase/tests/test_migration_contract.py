@@ -72,6 +72,7 @@ class MigrationContractTest:
         "38_model1_runtime_manifest_refresh.sql",
         "39_v02_atomic_upload_finalization.sql",
         "40_v02_embedding_execution_provenance.sql",
+        "41_model1_runtime_manifest_refresh_v4.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -458,7 +459,12 @@ class MigrationContractTest:
         runtime_refresh = (
             self.MIGRATIONS_DIR / "38_model1_runtime_manifest_refresh.sql"
         ).read_text()
-        classification_all = legacy_classification + classification + runtime_refresh
+        runtime_refresh_v4 = (
+            self.MIGRATIONS_DIR / "41_model1_runtime_manifest_refresh_v4.sql"
+        ).read_text()
+        classification_all = (
+            legacy_classification + classification + runtime_refresh + runtime_refresh_v4
+        )
 
         # m31 is replayed before m32 on every ledgerless apply. It must not
         # commit an older trigger/projection boundary while m32 already exists.
@@ -482,6 +488,10 @@ class MigrationContractTest:
         assert "runtime_manifest_sha256" in classification_all
         assert "2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60" in classification_all
         assert "pre-review-existing-model1-runtime-v3" in classification_all
+        assert "85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597" in classification_all
+        assert "pre-review-existing-model1-runtime-v4" in classification_all
+        assert "UPDATE retrieval.classification_configuration" not in runtime_refresh_v4
+        assert "existing_profile_classification" not in runtime_refresh_v4
         assert "uq_retrieval_classification_configuration_identity" in classification
         assert "CLASSIFICATION_CONFIGURATION_IDENTITY_IMMUTABLE" in classification
         assert "CLASSIFICATION_CONFIGURATION_EMPTY_CURRENT_CORPUS" in classification

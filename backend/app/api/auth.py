@@ -21,8 +21,6 @@ from fastapi.security import APIKeyCookie
 
 ACCESS_COOKIE = "pre_review_access"
 REFRESH_COOKIE = "pre_review_refresh"
-RECOVERY_VERIFIER_COOKIE = "pre_review_recovery_verifier"
-RECOVERY_COOKIE_PATH = "/api/v1/auth/password-recovery"
 DEV_USER_HEADER = "X-PreReview-Dev-User"
 DEV_ROLE_HEADER = "X-PreReview-Dev-Role"
 COOKIE_SAME_SITE = {"lax", "strict", "none"}
@@ -62,17 +60,6 @@ refresh_cookie_scheme = APIKeyCookie(
     auto_error=False,
 )
 
-
-recovery_cookie_scheme = APIKeyCookie(
-    name=RECOVERY_VERIFIER_COOKIE,
-    scheme_name="PreReviewRecoveryVerifierCookie",
-    description=(
-        "Short-lived HttpOnly PKCE verifier cookie set by POST "
-        "/api/v1/auth/password-reset and consumed by POST "
-        "/api/v1/auth/password-recovery/exchange."
-    ),
-    auto_error=False,
-)
 
 DISPLAY_NAME_MAX_LENGTH = 100
 

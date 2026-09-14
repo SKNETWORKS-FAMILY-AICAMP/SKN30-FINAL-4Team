@@ -1,0 +1,14 @@
+services:
+  auth:
+    depends_on:
+      auth-templates:
+        condition: service_started
+    environment:
+      GOTRUE_MAILER_TEMPLATES_RECOVERY: http://auth-templates/recovery.html
+
+  auth-templates:
+    image: caddy:2-alpine
+    command: ["caddy", "file-server", "-r", "/templates", "--listen", ":80"]
+    volumes:
+      - "${PREREVIEW_AUTH_TEMPLATE_DIR:?set PREREVIEW_AUTH_TEMPLATE_DIR to an absolute template directory}:/templates:ro"
+    restart: unless-stopped

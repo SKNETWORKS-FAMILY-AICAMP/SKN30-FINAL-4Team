@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import json
 
 import httpx
@@ -13,6 +12,18 @@ from main import create_app
 
 
 ORIGIN = "https://frontend.example.test"
+ACCESS_EXPIRES_AT = 1_893_456_000
+ACCESS_EXPIRES_AT_ISO = "2030-01-01T00:00:00Z"
+
+
+def _access_token(*, expires_at: int = ACCESS_EXPIRES_AT) -> str:
+    def encode(value: dict[str, object]) -> str:
+        return base64.urlsafe_b64encode(
+            json.dumps(value, separators=(",", ":")).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+
+    return f"{encode({'alg': 'none'})}.{encode({'exp': expires_at})}.signature"
+
 
 
 def auth_app(handler: httpx.MockTransport) -> object:
@@ -24,6 +35,9 @@ def auth_app(handler: httpx.MockTransport) -> object:
     app.state.auth_allowed_origins = frozenset({ORIGIN})
     app.state.auth_cookie_secure = False
     app.state.auth_cookie_samesite = "lax"
+    app.state.auth_password_reset_callback_url = (
+        "https://frontend.example.test/api/v1/auth/password-recovery/callback"
+    )
     app.state.auth_password_reset_redirect_to = (
         "https://frontend.example.test/password-reset/update"
     )
@@ -62,9 +76,10 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
             return httpx.Response(
                 200,
                 json={
-                    "access_token": "access-secret",
+                    "access_token": _access_token(),
                     "refresh_token": "refresh-secret",
                     "expires_in": 3600,
+                    "expires_at": ACCESS_EXPIRES_AT,
                     "user": {
                         "id": "user-1",
                         "email": "user@example.com",
@@ -73,7 +88,7 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
                 },
             )
         assert request.url.path == "/auth/v1/user"
-        assert request.headers["authorization"] == "Bearer access-secret"
+        assert request.headers["authorization"] == f"Bearer {_access_token()}"
         assert request.headers["apikey"] == "test-anon-key"
         return httpx.Response(
             200,
@@ -94,7 +109,10 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
             )
             sign_in = await api.post("/api/v1/auth/sign-in", headers={"Origin": ORIGIN}, json={"email": "User@Example.com", "password": "correct-password"})
             assert sign_in.status_code == 200
-            assert sign_in.json() == {"user": {"id": "user-1", "email": "user@example.com", "display_name": "홍길동"}}
+            assert sign_in.json() == {
+                "user": {"id": "user-1", "email": "user@example.com", "display_name": "홍길동"},
+                "access_token_expires_at": ACCESS_EXPIRES_AT_ISO,
+            }
             assert "secret" not in sign_in.text
             assert sign_in.headers["cache-control"] == "private, no-store"
             assert "Cookie" in sign_in.headers["vary"]
@@ -121,7 +139,10 @@ def test_sign_in_sets_http_only_cookies_and_me_uses_cookie_only() -> None:
 
             me = await api.get("/api/v1/auth/me", headers={"Authorization": "Bearer ignored-by-server"})
             assert me.status_code == 200
-            assert me.json() == {"user": {"id": "user-1", "email": "user@example.com", "display_name": "홍길동"}}
+            assert me.json() == {
+                "user": {"id": "user-1", "email": "user@example.com", "display_name": "홍길동"},
+                "access_token_expires_at": ACCESS_EXPIRES_AT_ISO,
+            }
 
     asyncio.run(run())
     assert len(requests) == 2
@@ -214,7 +235,7 @@ def test_display_name_falls_back_to_email_local_part_when_missing_or_invalid() -
 
             app = auth_app(httpx.MockTransport(provider))
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as api:
-                api.cookies.set("pre_review_access", "access-secret", domain="testserver.local", path="/")
+                api.cookies.set("pre_review_access", _access_token(), domain="testserver.local", path="/")
                 me = await api.get("/api/v1/auth/me")
                 assert me.status_code == 200
                 assert me.json()["user"]["display_name"] == "someone"
@@ -240,7 +261,7 @@ def test_display_name_is_nfc_normalized_and_trimmed() -> None:
     async def run() -> None:
         app = auth_app(httpx.MockTransport(provider))
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as api:
-            api.cookies.set("pre_review_access", "access-secret", domain="testserver.local", path="/")
+            api.cookies.set("pre_review_access", _access_token(), domain="testserver.local", path="/")
             me = await api.get("/api/v1/auth/me")
             assert me.status_code == 200
             assert me.json()["user"]["display_name"] == "가"
@@ -309,13 +330,20 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
             assert request.url.params["grant_type"] == "refresh_token"
             refresh_tokens.append(json.loads(request.content)["refresh_token"])
             ordinal = len(refresh_tokens)
-            return httpx.Response(200, json={"access_token": f"new-access-{ordinal}", "refresh_token": f"new-refresh-{ordinal}", "expires_in": 3600})
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": f"new-access-{ordinal}",
+                    "refresh_token": f"new-refresh-{ordinal}",
+                    "expires_in": 3600,
+                    "expires_at": ACCESS_EXPIRES_AT,
+                },
+            )
         assert request.url.path == "/auth/v1/recover"
-        assert request.url.params["redirect_to"] == "https://frontend.example.test/password-reset/update"
-        recovery = json.loads(request.content)
-        assert recovery["email"] == "nobody@example.com"
-        assert recovery["code_challenge_method"] == "s256"
-        assert len(recovery["code_challenge"]) == 43
+        assert request.url.params["redirect_to"] == (
+            "https://frontend.example.test/api/v1/auth/password-recovery/callback"
+        )
+        assert json.loads(request.content) == {"email": "nobody@example.com"}
         return httpx.Response(400, json={"message": "user not found"})
 
     async def run() -> None:
@@ -330,8 +358,8 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
             )
             assert request.headers["cookie"].count("pre_review_refresh=") == 2
             refreshed = await api.send(request)
-            assert refreshed.status_code == 204
-            assert refreshed.content == b""
+            assert refreshed.status_code == 200
+            assert refreshed.json() == {"access_token_expires_at": ACCESS_EXPIRES_AT_ISO}
             refreshed_headers = refreshed.headers.get_list("set-cookie")
             assert len(refreshed_headers) == 3
             assert "Max-Age=0" in _cookie(
@@ -344,7 +372,8 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
             refreshed_again = await api.post(
                 "/api/v1/auth/refresh", headers={"Origin": ORIGIN}
             )
-            assert refreshed_again.status_code == 204
+            assert refreshed_again.status_code == 200
+            assert refreshed_again.json() == {"access_token_expires_at": ACCESS_EXPIRES_AT_ISO}
             assert len(refreshed_again.headers.get_list("set-cookie")) == 3
             # The stale root credential cannot override the rotated scoped one
             # on the request after the migration response.
@@ -358,27 +387,24 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
     assert refresh_tokens == ["root-legacy", "new-refresh-1"]
 
 
-def test_password_recovery_pkce_code_is_exchanged_for_http_only_session() -> None:
-    challenge = ""
+def test_password_recovery_callback_works_in_a_fresh_browser() -> None:
+    requests: list[httpx.Request] = []
 
     def provider(request: httpx.Request) -> httpx.Response:
-        nonlocal challenge
+        requests.append(request)
         if request.url.path == "/auth/v1/recover":
-            payload = json.loads(request.content)
-            challenge = payload["code_challenge"]
-            assert payload["code_challenge_method"] == "s256"
-            assert request.url.params["redirect_to"].endswith("/password-reset/update")
+            assert request.url.params["redirect_to"] == (
+                "https://frontend.example.test/api/v1/auth/password-recovery/callback"
+            )
+            assert json.loads(request.content) == {"email": "user@example.com"}
             return httpx.Response(200, json={})
 
-        assert request.url.path == "/auth/v1/token"
-        assert request.url.params["grant_type"] == "pkce"
-        payload = json.loads(request.content)
-        assert payload["auth_code"] == "one-time-auth-code"
-        verifier = payload["code_verifier"]
-        expected = base64.urlsafe_b64encode(
-            hashlib.sha256(verifier.encode("ascii")).digest()
-        ).rstrip(b"=").decode("ascii")
-        assert expected == challenge
+        assert request.url.path == "/auth/v1/verify"
+        assert request.method == "POST"
+        assert json.loads(request.content) == {
+            "token_hash": "recovery-token-hash",
+            "type": "recovery",
+        }
         return httpx.Response(
             200,
             json={
@@ -389,40 +415,73 @@ def test_password_recovery_pkce_code_is_exchanged_for_http_only_session() -> Non
         )
 
     async def run() -> None:
+        app = auth_app(httpx.MockTransport(provider))
+        # The reset request and email click deliberately use separate cookie
+        # jars. The email token itself is sufficient proof, so another browser
+        # or device can complete recovery.
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(
-                app=auth_app(httpx.MockTransport(provider))
-            ),
-            base_url="http://testserver",
-        ) as api:
-            reset = await api.post(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://request-browser",
+        ) as requester:
+            reset = await requester.post(
                 "/api/v1/auth/password-reset",
                 headers={"Origin": ORIGIN},
                 json={"email": "user@example.com"},
             )
             assert reset.status_code == 200
-            verifier_cookie = _cookie(
-                reset.headers.get_list("set-cookie"),
-                "pre_review_recovery_verifier",
-                path="/api/v1/auth/password-recovery",
-            )
-            assert "HttpOnly" in verifier_cookie
-            assert "Max-Age=600" in verifier_cookie
+            assert "set-cookie" not in reset.headers
 
-            exchanged = await api.post(
-                "/api/v1/auth/password-recovery/exchange",
-                headers={"Origin": ORIGIN},
-                json={"code": "one-time-auth-code"},
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://email-browser",
+            follow_redirects=False,
+        ) as email_browser:
+            callback = await email_browser.get(
+                "/api/v1/auth/password-recovery/callback",
+                params={"token_hash": "recovery-token-hash"},
             )
-            assert exchanged.status_code == 204
-            assert api.cookies.get("pre_review_access") == "recovery-access"
-            assert api.cookies.get(
+            assert callback.status_code == 303
+            assert callback.headers["location"] == (
+                "https://frontend.example.test/password-reset/update"
+            )
+            assert callback.headers["cache-control"] == "private, no-store"
+            assert callback.headers["referrer-policy"] == "no-referrer"
+            assert email_browser.cookies.get("pre_review_access") == "recovery-access"
+            assert email_browser.cookies.get(
                 "pre_review_refresh", path="/api/v1/auth"
             ) == "recovery-refresh"
-            assert api.cookies.get(
-                "pre_review_recovery_verifier",
-                path="/api/v1/auth/password-recovery",
-            ) is None
+
+    asyncio.run(run())
+    assert [request.url.path for request in requests] == [
+        "/auth/v1/recover",
+        "/auth/v1/verify",
+    ]
+
+
+def test_password_recovery_callback_redirects_rejected_token_to_frontend_error() -> None:
+    def provider(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/auth/v1/verify"
+        return httpx.Response(403, json={"message": "expired or already used"})
+
+    async def run() -> None:
+        app = auth_app(httpx.MockTransport(provider))
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://email-browser",
+            follow_redirects=False,
+        ) as email_browser:
+            callback = await email_browser.get(
+                "/api/v1/auth/password-recovery/callback",
+                params={"token_hash": "expired-token-hash"},
+            )
+            assert callback.status_code == 303
+            assert callback.headers["location"] == (
+                "https://frontend.example.test/password-reset/update"
+                "?error=invalid_or_expired"
+            )
+            assert callback.headers["cache-control"] == "private, no-store"
+            assert callback.headers["referrer-policy"] == "no-referrer"
+            assert "set-cookie" not in callback.headers
 
     asyncio.run(run())
 
@@ -680,13 +739,22 @@ def test_openapi_exposes_typed_auth_success_models_and_write_only_passwords() ->
         "/PasswordResetResponse"
     )
     assert response_ref("/api/v1/auth/me", "200").endswith("/AuthUserEnvelope")
-    exchange = paths["/api/v1/auth/password-recovery/exchange"]["post"]
-    assert exchange["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith("/PasswordRecoveryExchangeRequest")
-    assert exchange["security"] == [{"PreReviewRecoveryVerifierCookie": []}]
-    assert "content" not in exchange["responses"]["204"]
+    assert response_ref("/api/v1/auth/refresh", "200").endswith(
+        "/AuthSessionResponse"
+    )
+    assert "/api/v1/auth/password-recovery/exchange" not in paths
+    callback = paths["/api/v1/auth/password-recovery/callback"]["get"]
+    assert callback["parameters"][0]["name"] == "token_hash"
+    assert callback["parameters"][0]["in"] == "query"
+    assert "303" in callback["responses"]
+    assert "PreReviewRecoveryVerifierCookie" not in schema["components"]["securitySchemes"]
 
     schemas = schema["components"]["schemas"]
     assert set(schemas["AuthUserResponse"]["required"]) == {"id", "email", "display_name"}
+    assert set(schemas["AuthUserEnvelope"]["required"]) == {
+        "user",
+        "access_token_expires_at",
+    }
 
     credentials = schemas["CredentialsRequest"]
     sign_up = schemas["SignUpRequest"]
@@ -701,7 +769,7 @@ def test_openapi_exposes_typed_auth_success_models_and_write_only_passwords() ->
         assert password["format"] == "password"
         assert password["writeOnly"] is True
 
-    # Cookie-mutating 204 operations deliberately have no success body.
-    for path in ("/api/v1/auth/refresh", "/api/v1/auth/sign-out", "/api/v1/auth/update-password"):
+    # Cookie-clearing 204 operations deliberately have no success body.
+    for path in ("/api/v1/auth/sign-out", "/api/v1/auth/update-password"):
         response = paths[path]["post"]["responses"]["204"]
         assert "content" not in response

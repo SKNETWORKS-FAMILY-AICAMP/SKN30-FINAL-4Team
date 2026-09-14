@@ -954,6 +954,7 @@ def test_frontend_response_examples_match_openapi_and_have_valid_evidence_joins(
     schema_pairs = {
         "auth_sign_in": "AuthUserEnvelope",
         "auth_me": "AuthUserEnvelope",
+        "auth_refresh": "AuthSessionResponse",
         "auth_sign_up": "SignUpResponse",
         "analysis_run_created": "AnalysisRunCreated",
         "analysis_run_status": "AnalysisRunView",

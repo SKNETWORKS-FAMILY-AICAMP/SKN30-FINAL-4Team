@@ -100,6 +100,12 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
     assert settings["VLLM_MAX_RESPONSE_BYTES"] == "1048576"
     assert settings["PREREVIEW_OFFLINE_MODE"] == "false"
     assert settings["PREREVIEW_API_BIND_ADDRESS"] == "127.0.0.1"
+    assert settings["PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL"] == (
+        "http://localhost:3000/api/v1/auth/password-recovery/callback"
+    )
+    assert settings["PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO"] == (
+        "http://localhost:3000/password-reset/update"
+    )
     assert settings["PREREVIEW_MODEL1_SERVING_HOST_DIR"] == "/srv/prereview/model1"
     assert settings["PREREVIEW_MODEL1_RUNTIME_UID"] == "1001"
     assert settings["PREREVIEW_MODEL1_RUNTIME_GID"] == "1002"
