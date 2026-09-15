@@ -238,6 +238,23 @@ Model 1 분류 migration을 포함하지 않았다.
 - Docker 이미지 build: 성공. 최신 이미지의 `--network none` 컨테이너에서 전체 회귀
   테스트와 합성 HWPX parser 5/5 성공
   (`rhwp-python` native runtime에 `libexpat1`, `libfreetype6` 필요)
+- 2026-09-15 의미 품질 회귀 보강:
+  - Request Profile pipeline `v0.1.5`, selector prompt `v0.1.4`에서 명시된 연차·내역사업
+    추진계획 구역, 수행방식 구역, 괄호형 수행주체 역할의 **선택 누락**을 성공 전에
+    결정적으로 거부한다. 이 검사는 구역별 exact span 존재를 보장하며 선택 문구의 의미적
+    충분성을 생성하거나 추론하지 않는다.
+  - 지원규모의 `기업 당`, `참여기업별`, `업체 당`, `개인별` 등 승인된 원문 단위 표기를
+    Request/Existing 공통 lexical policy로 정규화한다. 미승인 단위와 서로 충돌하는 단위는
+    추측하지 않는다.
+  - 행정적 `program_hierarchy`를 가짜 `support_component`로 복제하지 않는다. CPL-03·05는
+    component가 실제로 있으면 근거에 포함하되, component가 없다는 이유만으로 다른 확인된
+    필드를 `needs_confirmation`으로 내리지 않는다.
+  - FIT는 근거 양쪽이 실제로 존재할 때만 모델 상세 판단을 공개하고, 카드 `summary`와
+    `detail.reason`을 분리한다. 빈 원문 값이나 `INSUFFICIENT` 관계는 전체 분석을 실패시키거나
+    근거 없는 모델 문장을 노출하지 않는다.
+  - 최신 변경 기준 backend 전체 1,083개 테스트가 통과했다. 실제 `mockup_08` HWPX는
+    최신 Docker 이미지에서 `PREREVIEW_FREETYPE_LIB`를 parser subprocess에 주입하고
+    `--network none`으로 파싱·의미 누락 회귀 검사를 통과했다.
 - `cl100k_base` tokenizer cache를 이미지에 포함해 retrieval token 계산이 런타임
   인터넷 연결에 의존하지 않음
 - 최신 이미지로 API/worker 강제 재생성 후 확인: 두 컨테이너 `Up`, API는
@@ -279,7 +296,8 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 ## 남은 작업
 
-- 수정된 Request Profile v0.1.3으로 실제 Hancom HWP와 HWPX live E2E를 완전 재검증해 사업명,
+- 수정된 Request Profile pipeline v0.1.5(selector prompt v0.1.4)로 실제 Hancom HWP와
+  HWPX live E2E를 완전 재검증해 사업명,
   사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검
 - multipart part 수 제한과 streaming upload
 - `request-temp` 및 90일 만료 결과의 reference-aware cleanup/감사 작업. 현재 요청 경로의

@@ -1,6 +1,6 @@
 # Worker 연동 구현 현황
 
-마지막 확인일: 2026-09-13
+마지막 확인일: 2026-09-15
 적용 경로: `backend-rebuild`의 FastAPI + same-server polling worker
 
 ## 결론
@@ -70,6 +70,9 @@ feature 정의를 재정렬한다.
   reference 13 저장을 확인했다. analysis worker와 chat worker는 각각 한 번의 attempt로
   완료했다.
 - Docker build 및 network 없는 container의 전체 회귀·합성 parser 실행 성공
+- Request 의미 누락, 지원규모 단위 범위, CPL component 보조 근거, FIT 공개 근거 계약을
+  회귀 테스트로 고정했다. 최신 backend 1,083개 테스트가 통과했고, `mockup_08` HWPX는
+  최신 이미지의 network 없는 parser subprocess에서도 통과했다.
 
 기존 합성 fixture 5건은 양식을 흉내 낸 파일이며 당시 각 2개 텍스트 블록으로
 평탄화됐다. 위 live E2E의 `mockup_08`은 별도의 CPL 전항목 합성 fixture이고 Common IR
@@ -92,9 +95,11 @@ malformed/timeout 문서 E2E는 아직 별도 범위다.
 - `request-temp`·90일 만료 결과의 reference-aware cleanup 및 감사. 업로드 요청에 묶인
   stale lazy reaper는 별도 scheduler·cleanup lease로 분리
 - Request assembler는 검증된 `support_scale` Raw Fact에서 결정적으로
-  `support_scale_measures`를 생성한다(`request_profile_v0.1.4`,
+  `support_scale_measures`를 생성한다(`request_profile_v0.1.5`,
   `numeric_candidate_v2`). 각 숫자는 자기 Raw-Fact 내부의 exact locator와
-  candidate-local 한도·범위 문법으로 검증된다. 명시적인 COMPANY/PROJECT/TEAM
+  candidate-local 한도·범위 문법으로 검증된다. 원자적 금액 span 바로 앞의 같은
+  source block에 닫힌 문법의 `기업당/과제당/프로젝트당/팀당 ... 한도:` 라벨이
+  붙은 경우에만 그 범위를 보존한다. 명시적인 COMPANY/PROJECT/TEAM
   단위 상한만 Model 2의 원문 한도 표시에 사용하고, PERSON/TOTAL·그 외 값은
   Profile provenance에는 보존하되 해당 표시에는 승격하지 않는다
 - worker heartbeat/queue lag를 포함한 readiness
