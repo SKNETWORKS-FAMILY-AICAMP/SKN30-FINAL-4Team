@@ -1,5 +1,10 @@
 # PreReview backend
 
+운영자가 바로 실행할 수 있는 절차는 다음 문서에서 시작한다.
+
+- [현재 EC2 기동·중지 매뉴얼](../docs/operations/EC2_SERVER_OPERATIONS.md)
+- [새 환경 DB 구성·복구 매뉴얼](supabase/DATABASE_SETUP_GUIDE.md)
+
 현재 런타임의 공개 경계는 FastAPI다. 브라우저는 FastAPI만 호출하며, Supabase의
 Auth·PostgreSQL/pgvector·private Storage는 서버 내부 인프라로 사용한다.
 
