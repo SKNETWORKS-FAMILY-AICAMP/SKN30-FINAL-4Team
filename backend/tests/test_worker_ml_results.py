@@ -24,6 +24,7 @@ from worker.ml_reference import (
     build_ml_inputs,
     resolve_authoritative_request_limit,
 )
+from worker.ml_retry import RetryingMlModel
 from worker.contracts.sim_result import SimCommonProfile, SimComparisonResult
 from worker.result_payload import _public_ml_payload
 
@@ -345,7 +346,10 @@ def test_model2_profile_limit_preserves_company_project_and_team_scope() -> None
 class _SequencedMlModel:
     artifact_version = "test-model-3"
 
-    def __init__(self, failures: int, output: dict[str, Any]) -> None:
+    def __init__(
+        self, model_id: MlModelId, failures: int, output: dict[str, Any]
+    ) -> None:
+        self.model_id = model_id
         self.failures = failures
         self.output = output
         self.calls: list[dict[str, Any]] = []
@@ -353,7 +357,7 @@ class _SequencedMlModel:
     def predict(self, inputs: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(dict(inputs))
         if len(self.calls) <= self.failures:
-            raise RuntimeError("temporary model 3 failure")
+            raise RuntimeError("temporary model failure")
         return dict(self.output)
 
 
@@ -367,6 +371,7 @@ def _model_3_input() -> MlModelInput:
 
 def test_model3_execution_failure_is_retried_once_and_can_recover() -> None:
     model = _SequencedMlModel(
+        MlModelId.MODEL_3_ANOMALY,
         failures=1,
         output={"level": "확인 필요", "cause_axes": ["지원비율"]},
     )
@@ -374,7 +379,7 @@ def test_model3_execution_failure_is_retried_once_and_can_recover() -> None:
 
     result = _run_one(
         MlModelId.MODEL_3_ANOMALY,
-        model,
+        RetryingMlModel(model),
         _model_3_input(),
         diagnostics,
     )
@@ -387,6 +392,7 @@ def test_model3_execution_failure_is_retried_once_and_can_recover() -> None:
 
 def test_model3_exhausted_failure_keeps_internal_reason_but_hides_message() -> None:
     model = _SequencedMlModel(
+        MlModelId.MODEL_3_ANOMALY,
         failures=2,
         output={"level": "확인 필요", "cause_axes": ["지원비율"]},
     )
@@ -394,7 +400,7 @@ def test_model3_exhausted_failure_keeps_internal_reason_but_hides_message() -> N
 
     model_3 = _run_one(
         MlModelId.MODEL_3_ANOMALY,
-        model,
+        RetryingMlModel(model),
         _model_3_input(),
         diagnostics,
     )
@@ -422,7 +428,7 @@ def test_model3_exhausted_failure_keeps_internal_reason_but_hides_message() -> N
     assert model_3.status == "FAILED"
     assert model_3.reason_code == MODEL_EXECUTION_FAILED
     assert len(diagnostics) == 1
-    assert "attempts=2" in diagnostics[0].message
+    assert "temporary model failure" in diagnostics[0].message
     assert payload["model_1"]["message"] == "지원유형 참고 분류"
     assert payload["model_2"]["message"] == "예측 지원액 참고"
     assert payload["model_3"] == {
@@ -456,7 +462,11 @@ def _payload_with_model_1(model_1: MlModelResult) -> dict[str, Any]:
 
 
 def test_model1_failure_is_not_retried_and_public_message_is_null() -> None:
-    model = _SequencedMlModel(failures=2, output={})
+    model = _SequencedMlModel(
+        MlModelId.MODEL_1_SUPPORT_TYPE,
+        failures=2,
+        output={},
+    )
     diagnostics = []
 
     model_1 = _run_one(
@@ -526,6 +536,7 @@ def _payload_with_model_2(model_2: MlModelResult) -> dict[str, Any]:
 
 def test_model2_execution_failure_is_retried_once_and_can_recover() -> None:
     model = _SequencedMlModel(
+        MlModelId.MODEL_2_AMOUNT,
         failures=1,
         output={"pred_won": 5_000_000},
     )
@@ -533,7 +544,7 @@ def test_model2_execution_failure_is_retried_once_and_can_recover() -> None:
 
     model_2 = _run_one(
         MlModelId.MODEL_2_AMOUNT,
-        model,
+        RetryingMlModel(model),
         _model_2_input(),
         diagnostics,
     )
@@ -545,12 +556,16 @@ def test_model2_execution_failure_is_retried_once_and_can_recover() -> None:
 
 
 def test_model2_exhausted_failure_keeps_internal_reason_but_hides_message() -> None:
-    model = _SequencedMlModel(failures=2, output={})
+    model = _SequencedMlModel(
+        MlModelId.MODEL_2_AMOUNT,
+        failures=2,
+        output={},
+    )
     diagnostics = []
 
     model_2 = _run_one(
         MlModelId.MODEL_2_AMOUNT,
-        model,
+        RetryingMlModel(model),
         _model_2_input(),
         diagnostics,
     )
@@ -560,7 +575,7 @@ def test_model2_exhausted_failure_keeps_internal_reason_but_hides_message() -> N
     assert model_2.status == "FAILED"
     assert model_2.reason_code == MODEL_EXECUTION_FAILED
     assert len(diagnostics) == 1
-    assert "attempts=2" in diagnostics[0].message
+    assert "temporary model failure" in diagnostics[0].message
     assert payload["model_1"]["message"] == "지원유형 참고 분류"
     assert payload["model_2"]["message"] is None
     assert payload["model_3"]["message"] == "설계 이례성 참고"

@@ -43,6 +43,7 @@ from worker.ml_reference import (
     missing_artifact_model,
     missing_runtime_model,
 )
+from worker.ml_retry import RetryingMlModel
 from worker.ml_runtime_preflight import MlRuntimePreflightError, verify_ml_runtime
 from worker.postgres_analysis_store import PostgresAnalysisStore
 from worker.postgres_repository import PostgresJobRepository
@@ -357,11 +358,13 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
     if model2_missing is not None:
         models[model2_id] = missing_artifact_model(model2_id, model2_missing)
     else:
-        models[model2_id] = Model2SubprocessMlModel(
-            model2_command(python_executable=executable),
-            timeout_seconds=settings.ml_timeout_seconds,
-            environment=environment,
-            artifact_version="model2-p3-v1",
+        models[model2_id] = RetryingMlModel(
+            Model2SubprocessMlModel(
+                model2_command(python_executable=executable),
+                timeout_seconds=settings.ml_timeout_seconds,
+                environment=environment,
+                artifact_version="model2-p3-v1",
+            )
         )
 
     model3_id = MlModelId.MODEL_3_ANOMALY
@@ -377,11 +380,13 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
     if model3_missing is not None:
         models[model3_id] = missing_artifact_model(model3_id, model3_missing)
     else:
-        models[model3_id] = Model3SubprocessMlModel(
-            model3_command(python_executable=executable),
-            timeout_seconds=settings.ml_timeout_seconds,
-            environment=environment,
-            artifact_version="model3-design-v3",
+        models[model3_id] = RetryingMlModel(
+            Model3SubprocessMlModel(
+                model3_command(python_executable=executable),
+                timeout_seconds=settings.ml_timeout_seconds,
+                environment=environment,
+                artifact_version="model3-design-v3",
+            )
         )
 
     return models
