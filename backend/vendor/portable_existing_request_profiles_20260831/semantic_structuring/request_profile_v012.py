@@ -35,6 +35,7 @@ from .profile_v02 import (
     validate_common_ir_lineage,
     validate_support_scale_measure_shape,
 )
+from .request_completeness import request_semantic_completeness_failures
 from .source_selection import (
     build_numeric_candidates,
     derive_request_support_scale_measures_v012,
@@ -42,7 +43,7 @@ from .source_selection import (
 
 
 REQUEST_SCHEMA_VERSION = "pre_review_request_profile/v0.1"
-REQUEST_PIPELINE_VERSION = "request_profile_v0.1.4"
+REQUEST_PIPELINE_VERSION = "request_profile_v0.1.5"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
 # Names the value-span candidate generator, not the CandidatePack block
 # projection above it.  Bump both together whenever the span grammar
@@ -1572,7 +1573,7 @@ def resolve_request_type_from_candidate_pack(pack: CandidatePack) -> dict[str, A
 
 def assemble_request_profile_v012(
     document: dict[str, Any], pack: CandidatePack, selection: RequestSourceSelectionV012,
-    *, model_id: str = "not_called", prompt_version: str = "request_source_selection_v0.1.3",
+    *, model_id: str = "not_called", prompt_version: str = "request_source_selection_v0.1.4",
     enforce_completeness: bool = False,
 ) -> dict[str, Any]:
     """Materialize a validated Request profile without an LLM/API call."""
@@ -1951,6 +1952,13 @@ def assemble_request_profile_v012(
                 for block_id, candidate_id in period_candidate_refs
             )
         )
+    completeness_failures.extend(
+        request_semantic_completeness_failures(
+            pack,
+            request_context=request_context,
+            comparison_profile=comparison,
+        )
+    )
     if completeness_failures:
         raise RequestCompletenessError(
             "Request completeness failed: " + "; ".join(completeness_failures),

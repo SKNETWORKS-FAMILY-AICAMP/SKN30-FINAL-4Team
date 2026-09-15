@@ -85,6 +85,29 @@ def _table_pack(*cells: dict[str, object]) -> CandidatePack:
     return build_request_candidate_pack(document)
 
 
+def _same_cell_paragraph_pack(*texts: str) -> CandidatePack:
+    blocks: list[SourceBlock] = []
+    for index, text in enumerate(texts):
+        block = SourceBlock(
+            block_id=f"hwpx:t0#r0c0p{index}",
+            text=text,
+            relation=SourceRelation.CANDIDATE,
+            block_kind="table_cell",
+            source_order=index,
+            common_ir_block_id="hwpx:t0",
+            common_ir_cell_id="hwpx:t0:c0",
+            common_ir_occurrence_ids=(f"occ:p{index}",),
+        )
+        block._common_ir_cell_geometry = (0, 1, 0, 1)
+        blocks.append(block)
+    return CandidatePack(
+        pack_id="same-cell-pack",
+        notice_id="same-cell",
+        question="same-cell field ownership",
+        blocks=blocks,
+    )
+
+
 # 라벨과 값이 같은 블록에 있는 흔한 형태들.
 @pytest.mark.parametrize(
     ("text", "expected"),
@@ -137,6 +160,35 @@ def test_a_merged_table_label_exposes_every_exactly_tiled_right_cell() -> None:
     assert [(item.source_block_id, item.value_raw) for item in candidates] == [
         ("hwpx:field-region-table:t0#r1c1p0", "2024~2028년")
     ]
+
+
+def test_annual_plan_label_owns_all_same_cell_rows_until_the_next_form_label() -> None:
+    pack = _same_cell_paragraph_pack(
+        "○ (연차별·내역사업별 추진계획)",
+        "- 1단계(2026~2027년): 시제품 제작 중심 지원",
+        "- 2단계(2028년): 인증·판로 지원으로 전환",
+        "- 내역사업 「스마트 기술사업화 지원」: 3개 항목으로 구성",
+        "○ (지원대상) 부산광역시 소재 중소기업",
+        "뒤 항목의 값",
+    )
+
+    regions = build_field_regions(pack, field_name="implementation_plan")
+
+    assert [region.block_id for region in regions] == [
+        "hwpx:t0#r0c0p1",
+        "hwpx:t0#r0c0p2",
+        "hwpx:t0#r0c0p3",
+    ]
+
+
+def test_hyphen_prefixed_execution_method_is_an_exact_delivery_region() -> None:
+    pack = _same_cell_paragraph_pack(
+        "- 수행방식: 시 출연기관 위탁(보조)",
+    )
+
+    (region,) = build_field_regions(pack, field_name="delivery_methods")
+
+    assert region.content_text.strip() == "시 출연기관 위탁(보조)"
 
 
 @pytest.mark.parametrize(

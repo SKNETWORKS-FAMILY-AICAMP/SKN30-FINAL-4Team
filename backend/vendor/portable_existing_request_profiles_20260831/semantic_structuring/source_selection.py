@@ -32,6 +32,10 @@ from .profile_v02 import (
     materialize_value_source,
     validate_support_scale_measure_shape,
 )
+from .support_scale_policy import (
+    explicit_per_unit_scope,
+    per_unit_scope_occurrences,
+)
 
 
 class SelectionStatus(StrEnum):
@@ -582,8 +586,7 @@ def derive_support_scale_measures_v02(
 
 
 _REQUEST_MARKER_PATTERN = re.compile(
-    r"기업당|과제당|프로젝트당|팀당|1인당|인당|(?:총\s*|전체\s*)|"
-    r"최대|이내|한도|상한|내외|약|정도"
+    r"(?:총\s*|전체\s*)|최대|이내|한도|상한|내외|약|정도"
 )
 _REQUEST_LIMIT_PREFIX_MARKERS = frozenset({"최대"})
 _REQUEST_LIMIT_SUFFIX_MARKERS = frozenset({"이내"})
@@ -596,6 +599,12 @@ _REQUEST_APPROX_MARKERS = (
 # A period followed by a digit belongs to a decimal/date token; every other
 # period ends a source clause, including a dotted date's final ``.``.
 _REQUEST_CLAUSE_BOUNDARY = re.compile(r"[,，;；\n]|\.(?!\d)|。")
+_REQUEST_ADJACENT_SCOPE_LABEL = re.compile(
+    r"\s*(?:[-*○◦□■●▪‣ㅇ·]\s*)?"
+    r"(?P<scope>[0-9A-Za-z가-힣社\s]+?(?:당|별))\s*"
+    r"(?:(?:지원|보조|융자|보증)\s*)?"
+    r"(?:한도|상한|지원금|지원액|금액)?\s*[:：]?\s*"
+)
 
 
 def parse_support_scale_scope(
@@ -612,21 +621,20 @@ def parse_support_scale_scope(
     it needs a comparable per-recipient limit.
     """
 
-    if "기업당" in text:
-        return "COMPANY", AggregationScope.PER_UNIT
-    if "과제당" in text or "프로젝트당" in text:
-        return "PROJECT", AggregationScope.PER_UNIT
-    if "팀당" in text:
-        return "TEAM", AggregationScope.PER_UNIT
-    if allow_person and ("인당" in text or "1인당" in text):
-        return "PERSON", AggregationScope.PER_UNIT
+    per_unit_scope = explicit_per_unit_scope(text)
+    if per_unit_scope is not None:
+        if per_unit_scope == "PERSON" and not allow_person:
+            return None, None
+        return per_unit_scope, AggregationScope.PER_UNIT
     if allow_total and re.search(r"(?:총\s*|전체\s*)", text):
         return None, AggregationScope.TOTAL
     return None, None
 
 
 def _request_marker_assignment(
-    marker: re.Match[str],
+    marker_text: str,
+    marker_start: int,
+    marker_end: int,
     candidates: list[NumericCandidate],
     *,
     value_raw: str,
@@ -643,12 +651,12 @@ def _request_marker_assignment(
     from unselected context.
     """
 
-    marker_text = marker.group(0).strip()
+    marker_text = marker_text.strip()
     prefix_marker = marker_text in (
         _REQUEST_LIMIT_PREFIX_MARKERS | _REQUEST_APPROX_PREFIX_MARKERS
-    ) or marker_text in {
-        "기업당", "과제당", "프로젝트당", "팀당", "1인당", "인당",
-    } or marker_text.startswith(("총", "전체"))
+    ) or explicit_per_unit_scope(marker_text) is not None or marker_text.startswith(
+        ("총", "전체")
+    )
     suffix_marker = marker_text in (
         _REQUEST_LIMIT_SUFFIX_MARKERS | _REQUEST_APPROX_SUFFIX_MARKERS
     )
@@ -671,7 +679,7 @@ def _request_marker_assignment(
         for boundary in _REQUEST_CLAUSE_BOUNDARY.finditer(value_raw)
         if not any(start <= boundary.start() < end for start, end in candidate_spans)
     ]
-    marker_clause = sum(position < marker.start() for position in clause_boundaries)
+    marker_clause = sum(position < marker_start for position in clause_boundaries)
     ranked: list[tuple[int, int, int]] = []
     for index, candidate in enumerate(candidates):
         start = candidate.start_char - value_start_char
@@ -683,14 +691,14 @@ def _request_marker_assignment(
         # ``1억원 최대 지원비율 70%`` must bind 최대 to 70%, while
         # ``10% 이내`` must bind 이내 to 10%.  Only neutral terms (한도/상한)
         # use nearest-candidate resolution in either direction.
-        if prefix_marker and start < marker.end():
+        if prefix_marker and start < marker_end:
             continue
-        if suffix_marker and end > marker.start():
+        if suffix_marker and end > marker_start:
             continue
-        if end <= marker.start():
-            distance, direction = marker.start() - end, "preceding"
-        elif start >= marker.end():
-            distance, direction = start - marker.end(), "following"
+        if end <= marker_start:
+            distance, direction = marker_start - end, "preceding"
+        elif start >= marker_end:
+            distance, direction = start - marker_end, "following"
         else:
             distance, direction = 0, "overlap"
         direction_penalty = 0 if direction == tie_direction or direction == "overlap" else 1
@@ -709,15 +717,27 @@ def _request_candidate_numeric_semantics(
     """Return candidate-local comparator and literal scope metadata."""
 
     markers_by_candidate: dict[int, list[str]] = {index: [] for index in range(len(candidates))}
-    for marker in _REQUEST_MARKER_PATTERN.finditer(value_raw):
+    markers = [
+        (marker.group(0), marker.start(), marker.end())
+        for marker in _REQUEST_MARKER_PATTERN.finditer(value_raw)
+    ]
+    markers.extend(
+        (occurrence.text, occurrence.start, occurrence.end)
+        for occurrence in per_unit_scope_occurrences(value_raw)
+    )
+    for marker_text, marker_start, marker_end in sorted(
+        markers, key=lambda row: (row[1], row[2], row[0])
+    ):
         index = _request_marker_assignment(
-            marker,
+            marker_text,
+            marker_start,
+            marker_end,
             candidates,
             value_raw=value_raw,
             value_start_char=value_start_char,
         )
         if index is not None:
-            markers_by_candidate[index].append(marker.group(0).strip())
+            markers_by_candidate[index].append(marker_text.strip())
 
     semantics: dict[str, tuple[Comparator, str | None, AggregationScope | None]] = {}
     for index, candidate in enumerate(candidates):
@@ -738,6 +758,36 @@ def _request_candidate_numeric_semantics(
     return semantics
 
 
+def _adjacent_request_scope_label(
+    block_text: str,
+    *,
+    value_start_char: int,
+) -> tuple[str | None, AggregationScope | None]:
+    """Read one explicit scope label immediately before a selected value.
+
+    Request selectors intentionally keep ``value_raw`` atomic, so a source row
+    such as ``기업당 한도: 최대 5,000만원`` materializes only the amount
+    phrase.  The per-company scope is nevertheless explicit provenance in the
+    same block.  Accept it only when the delimiter-bounded prefix consists
+    entirely of one closed scope label plus known bridge words.  Arbitrary
+    earlier prose, multiple scopes, and cross-block context all fail closed.
+    """
+
+    prefix = block_text[:value_start_char]
+    boundaries = list(_REQUEST_CLAUSE_BOUNDARY.finditer(prefix))
+    clause = prefix[boundaries[-1].end() :] if boundaries else prefix
+    match = _REQUEST_ADJACENT_SCOPE_LABEL.fullmatch(clause)
+    if match is None:
+        return None, None
+    scope = explicit_per_unit_scope(
+        match.group("scope"),
+        require_full_text=True,
+    )
+    if scope is None:
+        return None, None
+    return scope, AggregationScope.PER_UNIT
+
+
 def derive_request_support_scale_measures_v012(
     support_scale_facts: list[dict[str, object]],
     candidates: list[NumericCandidate],
@@ -751,6 +801,9 @@ def derive_request_support_scale_measures_v012(
     exact Raw-Fact clause says ``최대``, ``이내``, ``한도``, or ``상한``.  In
     particular, this function never derives an amount by dividing a total
     budget by a selection count, and never reads an unselected context block.
+    It may preserve one literal per-unit scope from a closed, delimiter-bounded
+    label immediately before an otherwise atomic selected value in the same
+    verified source block.
 
     Each candidate must be an exact numeric span inside a validated
     ``value_source``.  Invalid or ambiguous caller data produces no projection
@@ -798,10 +851,20 @@ def derive_request_support_scale_measures_v012(
             fact_candidates,
             value_start_char=resolved.start_char,
         )
+        adjacent_scope = (
+            _adjacent_request_scope_label(
+                block_text,
+                value_start_char=resolved.start_char,
+            )
+            if len(fact_candidates) == 1
+            else (None, None)
+        )
         for candidate in fact_candidates:
             comparator, applies_per, aggregation_scope = candidate_semantics[
                 candidate.numeric_candidate_id
             ]
+            if (applies_per, aggregation_scope) == (None, None):
+                applies_per, aggregation_scope = adjacent_scope
             amount = _AMOUNT_PATTERN.fullmatch(candidate.anchor_text)
             rate = _RATE_PATTERN.fullmatch(candidate.anchor_text)
             count = _COUNT_PATTERN.fullmatch(candidate.anchor_text)

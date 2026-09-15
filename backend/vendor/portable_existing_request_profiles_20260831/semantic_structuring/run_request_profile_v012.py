@@ -34,7 +34,7 @@ from .request_profile_v012 import (
 )
 
 
-REQUEST_SELECTION_PROMPT_VERSION = "request_source_selection_v0.1.3"
+REQUEST_SELECTION_PROMPT_VERSION = "request_source_selection_v0.1.4"
 LifecycleObserver = Callable[[str, dict[str, Any]], None]
 
 
@@ -147,9 +147,11 @@ def request_selection_instructions() -> str:
         "states a concrete thing the recipient receives. For example, a grant/support fund is an item, whereas the act of paying it is not a "
         "recipient activity. When the component heading and an independently stated body occurrence are different exact spans, keep the heading "
         "as the component name and select the body occurrence as support_items. "
-        "Completeness is required, not one representative example. When explicit rows or sections divide the request into participation types, "
-        "support stages, years, or packages, create every explicitly named component and select every material target, eligibility, support-period, "
-        "support-scale, and budget value, linking each value to its component when the local table or section makes that scope explicit. Preserve "
+        "Completeness is required, not one representative example. Create components for every explicitly named participation type or support package. "
+        "A year or plan-stage row belongs to implementation_plan and its related values, not automatically to support_components. Create a stage "
+        "component only when the source names an internal package/menu or gives that stage its own recipient, eligibility, exclusion, or participation "
+        "boundary. Select every material target, eligibility, support-period, support-scale, and budget value, linking each value to a component only "
+        "when the local table or section makes that component scope explicit. Preserve "
         "differences such as M&A versus strategic alliance, consortium requirements, stage durations, per-year amounts, totals, and selected counts. "
         "support_activities means what the recipient is enabled to do (for example training, commercialization, demonstration, or employment), "
         "not the provider's payment/disbursement action. "
@@ -180,6 +182,12 @@ def request_selection_instructions() -> str:
         "In an explicit organisation or delivery table, enumerate every independently evidenced actor-to-role or actor-to-action relation rather than "
         "selecting one representative relation. Phrases describing work such as '정책수립 및 예산 지원', '사업 기획 및 평가관리', "
         "'R&D 과제수행', or '전문가 POOL 관리' are actions; never place them in role_anchor merely to fit a canonical role. "
+        "When a 수행기관 line explicitly pairs organisations with parenthesised roles such as 기관A(주관), 기관B(협력), select every actor-role pair "
+        "from that same paragraph. Actor-to-action relations stated in a separate 단계별 역할 line do not replace those explicit roles. "
+        "When an explicit 수행방식 label has a non-empty value, select that exact execution method as delivery_methods; do not confuse it with "
+        "beneficiary-facing support_methods. "
+        "When an explicit 연차별·내역사업별 추진계획 section is present, select material implementation_plan facts from every non-empty plan row "
+        "in source order. A separate 수행절차 workflow does not replace annual, stage, or sub-program plan rows. "
         "For implementation_plan, when an explicit table is headed exactly 추진절차 or 사업추진절차, select the meaningful named "
         "stages and their material actions in source order. Do not mark implementation_plan not_found merely because the procedure is spread across table cells. "
         "For a paragraph relation_container use source_block_id and anchor_text; "

@@ -23,14 +23,17 @@ from .models import CandidatePack, SourceBlock
 
 # 실문서 30 건의 줄머리 첫 글자를 세어 고른 것이다. ``ㅇ`` 는 한글 이응을
 # 글머리로 쓰는 서식(80 회), ``◦`` 는 흰 불릿(120 회), ``‣`` 는 삼각 불릿
-# (140 회)이다. ``-`` 와 ``*`` 는 본문에서도 흔해 글머리로 인정하지 않는다.
+# (140 회)이다. ``-`` 와 ``*`` 는 본문에서도 흔해 일반 경계로 인정하지 않는다.
+# 다만 줄머리 직후에 닫힌 목록의 **정확한 서식 라벨**이 오는 ``- 수행방식:``
+# 형태는 아래 라벨 문법에서만 허용한다.
 _LABEL_BULLETS = "○◦□■●▪‣ㅇ·"
 # 구역을 끊는 경계. 가운뎃점(``·``)은 ``제조·정보통신`` 처럼 본문 안에 있어서
 # 경계가 되면 구역이 단어 중간에서 잘린다. 시작 글머리로만 인정한다.
 _REGION_BOUNDARY = "○◦□■●▪‣ㅇ"
 
 _LABEL_GRAMMAR = (
-    rf"(?:^|\n|[{_LABEL_BULLETS}])\s*\(?\s*(?:{{label}})\s*\)?\s*[:：)]?"
+    rf"(?:^|\n|[{_LABEL_BULLETS}])\s*(?:[-*]\s*)?"
+    rf"\(?\s*(?:{{label}})\s*\)?\s*[:：)]?"
 )
 _NEXT_LABEL = re.compile(rf"[\n{_REGION_BOUNDARY}]")
 # 서식이 쓰는 다른 항목의 라벨. 여기서 구역을 만들지는 않지만, 만나면 앞 구역의
@@ -41,6 +44,7 @@ _BOUNDARY_WORD = (
     r"|사업\s*예산|전체\s*예산|총\s*사업비|사업\s*필요성"
     r"|지원\s*근거|연계\s*정책|지원\s*대상|지원\s*조건|지원\s*내용"
     r"|지원\s*규모|지원\s*분야|지원\s*기간|수행\s*기관|수행\s*방식"
+    r"|연차별\s*·\s*내역사업별\s*추진\s*계획"
     r"|사업\s*추진\s*체계|사업\s*추진\s*절차|추진\s*체계|추진\s*절차"
     r"|기대\s*효과|파급\s*효과|성과\s*지표|사업명"
 )
@@ -82,6 +86,9 @@ _MIN_REGION_CHARS = 2
 FIELD_LABELS: dict[str, tuple[str, ...]] = {
     "program_period": (r"사업\s*기간", r"사업\s*수행\s*기간", r"전체\s*추진\s*기간"),
     "purpose_goal": (r"사업\s*목적",),
+    "implementation_plan": (
+        r"연차별\s*·\s*내역사업별\s*추진\s*계획",
+    ),
     # 실제 문서에서 확인한 표기만 넣는다. 새 HWP 는 제목 블록 뒤에 체계도와
     # 절차표가 따로 온다(`□ 사업추진 체계 및 절차` / `ㅇ 사업추진체계` /
     # `ㅇ 사업추진절차`).
@@ -90,7 +97,12 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
     # 관계인데 절차표는 단계와 주요내용의 행 관계이고 기관이 없다. 절차는
     # `_BOUNDARY_WORD` 에 있어 체계 구역을 끝내는 경계로는 계속 동작한다.
     # 절차를 `delivery_methods` 같은 필드에 잇는 것은 별도 계약이다.
-    "delivery_relations": (r"사업\s*추진\s*체계", r"추진\s*체계"),
+    "delivery_relations": (
+        r"사업\s*추진\s*체계",
+        r"추진\s*체계",
+        r"수행\s*기관",
+    ),
+    "delivery_methods": (r"수행\s*방식",),
     # 새 HWP 는 기대효과를 두 곳에 싣는다. 요약표 셀의 ``◦(파급효과)`` 한 줄과
     # 본문 ``□ 기대효과`` 아래 독립 문단들이다. 둘 다 이 라벨로 잡는다.
     # ``성과지표`` 는 이미 ``_BOUNDARY_WORD`` 에 있어 구역을 끝낸다 — 수단·지표가
@@ -280,15 +292,21 @@ def _table_sibling_contents(
     # Separate paragraphs in the very same cell have unambiguous ownership.
     # Do not combine that representation with right-hand cells: seeing both is
     # structurally ambiguous and must not create two competing regions.
-    same_cell = [
-        following
-        for following in blocks[index + 1 :]
-        if following.common_ir_block_id == label.common_ir_block_id
-        and following.common_ir_cell_id == label.common_ir_cell_id
-        and (following.text or "").strip()
-    ]
-    if any(starts_with_form_label(item.text or "") for item in same_cell):
-        return []
+    same_cell: list[SourceBlock] = []
+    for following in blocks[index + 1 :]:
+        if (
+            following.common_ir_block_id != label.common_ir_block_id
+            or following.common_ir_cell_id != label.common_ir_cell_id
+            or not (following.text or "").strip()
+        ):
+            continue
+        # One Common-IR cell can contain many semantic paragraphs.  The
+        # label owns every paragraph up to, but never including, the next
+        # exact form label in that same cell.  Rejecting the whole cell when
+        # a later label existed caused an early annual-plan section to vanish.
+        if starts_with_form_label(following.text or ""):
+            break
+        same_cell.append(following)
 
     target_col = col + col_span
     by_cell: dict[

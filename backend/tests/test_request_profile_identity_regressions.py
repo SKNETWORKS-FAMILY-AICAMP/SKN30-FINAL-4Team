@@ -8,12 +8,15 @@ from pathlib import Path
 from worker import vendor  # noqa: F401 - installs vendored contract paths
 from worker.contracts.cpl_result import CplResult
 from worker.contracts.fit_result import FitResult, PurposeAxisClassification
+from worker.contracts.ml_result import MlModelId
 from worker.contracts.sim_result import SimComparisonResult
+from worker.ml_reference import _validate_reference, resolve_authoritative_request_limit
 from worker.result_payload import build_result_payload
 
 from semantic_structuring.models import CandidatePack, SourceBlock, SourceRelation
 from semantic_structuring.request_profile_v012 import (
     REQUEST_PIPELINE_VERSION,
+    RequestCompletenessError,
     RequestSourceSelectionV012,
     assemble_request_profile_v012,
     build_request_candidate_pack,
@@ -38,6 +41,52 @@ def _example_selection() -> dict:
     return json.loads(
         (_EXAMPLES / "source_selection_v012.json").read_text(encoding="utf-8")
     )["selection"]
+
+
+def _selection_with_labeled_program_period(pack: CandidatePack) -> dict:
+    """Return the checked-in selection with its now-required labelled period."""
+
+    raw_selection = _example_selection()
+    labelled_period = next(
+        candidate
+        for candidate in build_value_span_candidates(pack)
+        if candidate.candidate_kind == "program_period_date_range"
+        and candidate.source_block_id.endswith(":b10")
+    )
+    period_fact = next(
+        fact
+        for fact in raw_selection["facts"]
+        if fact["field_name"] == "program_period"
+    )
+    period_fact["value_anchor"] = {
+        "value_span_candidate_id": labelled_period.value_span_candidate_id,
+    }
+    return raw_selection
+
+
+def _append_same_cell_paragraphs(
+    pack: CandidatePack, *, prefix: str, texts: list[str]
+) -> CandidatePack:
+    """Mirror the one-cell/many-paragraph shape emitted by the HWPX parser."""
+
+    source_order = max(
+        (block.source_order or 0 for block in pack.blocks), default=0
+    ) + 1
+    added: list[SourceBlock] = []
+    for index, text in enumerate(texts):
+        block = SourceBlock(
+            block_id=f"{prefix}#r0c0p{index}",
+            text=text,
+            relation=SourceRelation.CANDIDATE,
+            block_kind="table_cell",
+            source_order=source_order + index,
+            common_ir_block_id=prefix,
+            common_ir_cell_id=f"{prefix}:c0",
+            common_ir_occurrence_ids=(f"occ:{prefix}:p{index}",),
+        )
+        block._common_ir_cell_geometry = (0, 1, 0, 1)
+        added.append(block)
+    return pack.model_copy(update={"blocks": [*pack.blocks, *added]})
 
 
 def test_marked_year_only_program_period_is_candidate_and_materializes() -> None:
@@ -352,3 +401,260 @@ def test_request_profile_derives_only_explicit_limit_and_never_divides_budget() 
         measure["lower_value"] == 5_000_000 or measure["upper_value"] == 5_000_000
         for measure in measures
     )
+
+
+def test_request_profile_recovers_per_company_scope_from_adjacent_limit_label() -> None:
+    """The exact amount span may rely on its bounded, same-block field label."""
+
+    document = _example_document()
+    original = build_request_candidate_pack(document)
+    cap_block = SourceBlock(
+        block_id="request:labelled-company-cap#p0",
+        text="- 기업당 한도: 최대 5,000만원 (단가 5,000만원)",
+        relation=SourceRelation.CANDIDATE,
+        common_ir_block_id="request:labelled-company-cap",
+    )
+    pack = original.model_copy(update={"blocks": [*original.blocks, cap_block]})
+    selection = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request:labelled-company-cap",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [{
+            "fact_id": "scale:company-cap",
+            "field_name": "support_scale",
+            # This is the source-selection shape observed in the live HWPX:
+            # the model correctly selects the amount, while the explicit
+            # per-company scope sits immediately before it in the same row.
+            "value_anchor": {
+                "source_block_id": cap_block.block_id,
+                "anchor_text": "최대 5,000만원",
+            },
+        }],
+    })
+
+    profile = assemble_request_profile_v012(document, pack, selection)
+    (measure,) = profile["derived_projections"][0]["measures"]
+
+    assert measure["measure_role"] == "support_limit"
+    assert measure["upper_value"] == 50_000_000
+    assert measure["applies_per"] == "COMPANY"
+    assert measure["aggregation_scope"] == "PER_UNIT"
+    authoritative = resolve_authoritative_request_limit(profile)
+    assert authoritative is not None
+    assert authoritative.amount_won == 50_000_000
+    assert authoritative.applies_per == "COMPANY"
+    assert _validate_reference(
+        MlModelId.MODEL_2_AMOUNT,
+        {"pred_won": 56_000_000},
+        authoritative_request_limit=authoritative,
+    ) == (
+        "사전협의안에 명시된 기업당 지원 한도는 5,000만원입니다. "
+        "조건이 비슷한 과거 사업들의 지원 단위당 예측 금액은 약 5,600만원입니다."
+    )
+
+
+def test_request_profile_does_not_guess_between_multiple_adjacent_scopes() -> None:
+    document = _example_document()
+    original = build_request_candidate_pack(document)
+    cap_block = SourceBlock(
+        block_id="request:ambiguous-cap#p0",
+        text="- 기업당 또는 과제당 한도: 최대 5,000만원",
+        relation=SourceRelation.CANDIDATE,
+        common_ir_block_id="request:ambiguous-cap",
+    )
+    pack = original.model_copy(update={"blocks": [*original.blocks, cap_block]})
+    selection = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request:ambiguous-cap",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [{
+            "fact_id": "scale:ambiguous-cap",
+            "field_name": "support_scale",
+            "value_anchor": {
+                "source_block_id": cap_block.block_id,
+                "anchor_text": "최대 5,000만원",
+            },
+        }],
+    })
+
+    profile = assemble_request_profile_v012(document, pack, selection)
+    (measure,) = profile["derived_projections"][0]["measures"]
+
+    assert measure["applies_per"] is None
+    assert measure["aggregation_scope"] is None
+    assert resolve_authoritative_request_limit(profile) is None
+
+
+def test_annual_plan_rows_are_required_in_addition_to_process_steps() -> None:
+    """A workflow must not satisfy an explicit annual/sub-program plan section."""
+
+    document = _example_document()
+    pack = _append_same_cell_paragraphs(
+        build_request_candidate_pack(document),
+        prefix="hwpx:semantic-plan:t0",
+        texts=[
+            "○ (연차별·내역사업별 추진계획)",
+            "- 1단계(2026~2027년): 시제품 제작 및 성능검증 중심 지원, 연 40개사",
+            "- 2단계(2028년): 인증·판로 연계 사업화 지원으로 전환, 40개사",
+            "- 내역사업 「스마트 기술사업화 지원」: 시제품 제작비, 시험인증비, 판로개척비 3개 항목으로 구성",
+            "○ (지원대상) 부산광역시 소재 중소기업",
+            "- 수행절차: 공고 → 신청·접수 → 평가 → 선정 → 협약 → 집행",
+        ],
+    )
+    raw_selection = _selection_with_labeled_program_period(pack)
+    raw_selection["profile_id"] = "request:annual-plan-completeness"
+    raw_selection["candidate_pack_id"] = pack.pack_id
+    process = next(block for block in pack.blocks if "수행절차:" in block.text)
+    raw_selection["facts"].append({
+        "fact_id": "plan:workflow-only",
+        "field_name": "implementation_plan",
+        "value_anchor": {
+            "source_block_id": process.block_id,
+            "anchor_text": "공고 → 신청·접수 → 평가 → 선정 → 협약 → 집행",
+        },
+    })
+
+    try:
+        assemble_request_profile_v012(
+            document,
+            pack,
+            RequestSourceSelectionV012.model_validate(raw_selection),
+            enforce_completeness=True,
+        )
+    except RequestCompletenessError as error:
+        message = str(error)
+        assert "implementation_plan" in message
+        assert "hwpx:semantic-plan:t0#r0c0p1" in message
+        assert "hwpx:semantic-plan:t0#r0c0p2" in message
+        assert "hwpx:semantic-plan:t0#r0c0p3" in message
+        assert "2026" not in message
+    else:
+        raise AssertionError("workflow-only selection must not cover annual plan rows")
+
+    for index in (1, 2, 3):
+        row = next(
+            block
+            for block in pack.blocks
+            if block.block_id == f"hwpx:semantic-plan:t0#r0c0p{index}"
+        )
+        raw_selection["facts"].append({
+            "fact_id": f"plan:annual:{index}",
+            "field_name": "implementation_plan",
+            "value_anchor": {
+                "source_block_id": row.block_id,
+                "anchor_text": row.text,
+            },
+        })
+    repaired = assemble_request_profile_v012(
+        document,
+        pack,
+        RequestSourceSelectionV012.model_validate(raw_selection),
+        enforce_completeness=True,
+    )
+    assert [
+        row["value_source"]["source_block_id"]
+        for row in repaired["request_context"]["implementation_plan"][-3:]
+    ] == [
+        "hwpx:semantic-plan:t0#r0c0p1",
+        "hwpx:semantic-plan:t0#r0c0p2",
+        "hwpx:semantic-plan:t0#r0c0p3",
+    ]
+
+
+def test_explicit_execution_method_and_actor_roles_are_required() -> None:
+    """Action relations elsewhere do not replace explicit method/role spans."""
+
+    document = _example_document()
+    pack = _append_same_cell_paragraphs(
+        build_request_candidate_pack(document),
+        prefix="hwpx:semantic-delivery:t0",
+        texts=[
+            "○ (수행기관) 부산테크노파크(주관), 부산상공회의소(협력)",
+            "- 수행방식: 시 출연기관 위탁(보조)",
+            "- 단계별 역할: 공고·선정은 부산광역시, 접수·평가는 부산테크노파크",
+        ],
+    )
+    raw_selection = _selection_with_labeled_program_period(pack)
+    raw_selection["profile_id"] = "request:delivery-completeness"
+    raw_selection["candidate_pack_id"] = pack.pack_id
+
+    try:
+        assemble_request_profile_v012(
+            document,
+            pack,
+            RequestSourceSelectionV012.model_validate(raw_selection),
+            enforce_completeness=True,
+        )
+    except RequestCompletenessError as error:
+        message = str(error)
+        assert "delivery_methods" in message
+        assert "delivery_relation_roles" in message
+        assert "hwpx:semantic-delivery:t0#r0c0p0" in message
+        assert "hwpx:semantic-delivery:t0#r0c0p1" in message
+        assert "부산" not in message
+    else:
+        raise AssertionError("explicit execution method and actor roles must be selected")
+
+    relation_block = next(
+        block
+        for block in pack.blocks
+        if block.block_id == "hwpx:semantic-delivery:t0#r0c0p0"
+    )
+    method_block = next(
+        block
+        for block in pack.blocks
+        if block.block_id == "hwpx:semantic-delivery:t0#r0c0p1"
+    )
+    raw_selection["delivery_relations"].extend([
+        {
+            "delivery_relation_id": "delivery:busan-techno-park-lead",
+            "actor_anchor": {
+                "source_block_id": relation_block.block_id,
+                "anchor_text": "부산테크노파크",
+            },
+            "role_anchor": {
+                "source_block_id": relation_block.block_id,
+                "anchor_text": "주관",
+            },
+            "relation_container": {
+                "kind": "paragraph",
+                "source_block_id": relation_block.block_id,
+                "anchor_text": relation_block.text,
+            },
+        },
+        {
+            "delivery_relation_id": "delivery:busan-chamber-partner",
+            "actor_anchor": {
+                "source_block_id": relation_block.block_id,
+                "anchor_text": "부산상공회의소",
+            },
+            "role_anchor": {
+                "source_block_id": relation_block.block_id,
+                "anchor_text": "협력",
+            },
+            "relation_container": {
+                "kind": "paragraph",
+                "source_block_id": relation_block.block_id,
+                "anchor_text": relation_block.text,
+            },
+        },
+    ])
+    raw_selection["delivery_methods"].append({
+        "fact_id": "delivery-method:delegated-subsidy",
+        "value_anchor": {
+            "source_block_id": method_block.block_id,
+            "anchor_text": "시 출연기관 위탁(보조)",
+        },
+    })
+
+    repaired = assemble_request_profile_v012(
+        document,
+        pack,
+        RequestSourceSelectionV012.model_validate(raw_selection),
+        enforce_completeness=True,
+    )
+    assert repaired["comparison_profile"]["delivery_methods"][-1]["value_raw"] == (
+        "시 출연기관 위탁(보조)"
+    )
+    assert [
+        relation["role"]["value_raw"]
+        for relation in repaired["comparison_profile"]["delivery_relations"][-2:]
+    ] == ["주관", "협력"]
