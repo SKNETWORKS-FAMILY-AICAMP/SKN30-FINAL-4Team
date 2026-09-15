@@ -189,18 +189,60 @@ def _suppressible_wrappers(document: dict[str, Any], occurrence_text: dict[str, 
     return wrappers
 
 
-def _sections(blocks: list[dict[str, Any]]) -> list[CommonIRSection]:
+def _structural_boundary_markers(
+    block: dict[str, Any], *, source_kind: str,
+) -> list[dict[str, Any]]:
+    """Return markers that can safely start an attachment section.
+
+    The HWP/HWPX adapters retain every bracketed marker occurrence in a
+    native paragraph or table unit.  A marker embedded inside such a unit is
+    an inline reference, not an attachment heading; treating it as a boundary
+    would incorrectly demote the following main-notice text to attachment
+    search-only.  For those formats, only a leading marker (with an optional
+    form-title bullet) can split the document.  PDF keeps its existing
+    occurrence-based behavior.
+    """
+
+    markers = [
+        marker
+        for marker in block.get("boundary_markers", [])
+        if isinstance(marker, dict)
+        and isinstance(marker.get("matched_text"), str)
+        and marker["matched_text"]
+    ]
+    if source_kind not in {"hwp", "hwpx"}:
+        return markers
+
+    text = block.get("text", "")
+    if not isinstance(text, str):
+        return []
+    return [
+        marker
+        for marker in markers
+        if re.match(
+            rf"^\s*(?:■\s*)?{re.escape(marker['matched_text'])}", text
+        )
+    ]
+
+
+def _sections(
+    blocks: list[dict[str, Any]], *, source_kind: str,
+) -> list[CommonIRSection]:
     ordered = sorted(blocks, key=lambda block: block["reading_order"])
-    starts = [index for index, block in enumerate(ordered) if block.get("boundary_markers")]
+    starts = [
+        (index, markers)
+        for index, block in enumerate(ordered)
+        if (markers := _structural_boundary_markers(block, source_kind=source_kind))
+    ]
     if not starts:
         return [CommonIRSection("main_notice", [block["block_id"] for block in ordered], "document_start", None)]
     sections: list[CommonIRSection] = []
-    if starts[0] > 0:
-        sections.append(CommonIRSection("main_notice", [block["block_id"] for block in ordered[: starts[0]]], "document_start", None))
-    for ordinal, start in enumerate(starts, start=1):
-        end = starts[ordinal] if ordinal < len(starts) else len(ordered)
+    if starts[0][0] > 0:
+        sections.append(CommonIRSection("main_notice", [block["block_id"] for block in ordered[: starts[0][0]]], "document_start", None))
+    for ordinal, (start, markers) in enumerate(starts, start=1):
+        end = starts[ordinal][0] if ordinal < len(starts) else len(ordered)
         part = ordered[start:end]
-        marker = part[0]["boundary_markers"][0]
+        marker = markers[0]
         sections.append(CommonIRSection(f"attachment_{ordinal}", [block["block_id"] for block in part], marker["marker"], marker["matched_text"]))
     # Do not let a form boundary swallow a later numbered notice body.  The
     # source remains immutable; only the preparation-time section partition is
@@ -286,7 +328,7 @@ def project_common_ir_v1(document: dict[str, Any]) -> CommonIRV1Projection:
     return CommonIRV1Projection(
         notice_id=notice_id, source_kind=metadata["source_kind"],
         common_ir_document_id=metadata["document_id"], blocks=blocks, table_cell_blocks=cells,
-        sections=_sections(document["blocks"]), selected_occurrence_ids=selected,
+        sections=_sections(document["blocks"], source_kind=metadata["source_kind"]), selected_occurrence_ids=selected,
         suppressed_wrapper_block_ids=sorted(suppressed),
     )
 

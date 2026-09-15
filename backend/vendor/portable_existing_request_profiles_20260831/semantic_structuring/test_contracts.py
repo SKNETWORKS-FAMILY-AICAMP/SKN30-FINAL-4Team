@@ -1613,7 +1613,10 @@ def main() -> None:
         "candidate_id", "anchor_text", "context_before", "context_after"
     }
     assert set(AnchorCorrectionRequest.model_fields) == {
-        "fact_id", "field_name", "source_block_id", "anchor_text", "candidates"
+        "fact_id", "field_name", "source_block_id", "anchor_text",
+        "primary_component_id", "applicability_component_ids",
+        "context_source_block_ids", "modifies_fact_ids", "recipient_fact_ids",
+        "basis_fact_ids", "candidates",
     }
     whitespace_pack = CandidatePack.model_validate({
         "pack_id": "whitespace-pack", "notice_id": "PBLN-whitespace", "question": "whitespace",
@@ -1768,9 +1771,9 @@ def main() -> None:
     else:
         raise AssertionError("a pack with no common_ir_document_id must fail fast")
 
-    # (7) Memoization: two correction requests for the same deterministic
-    # resolution (same source_block_id/anchor_text, whatever fact_id asked)
-    # invoke the underlying resolver only once.
+    # (7) Memoization is fact-specific: fallback re-validation of one fact is
+    # a cache hit, while another fact with equal text can select a distinct
+    # source occurrence.
     memo_calls: list[str] = []
 
     def _counting_resolver(request: AnchorCorrectionRequest) -> str:
@@ -1781,15 +1784,17 @@ def main() -> None:
     memo_request_a = build_anchor_correction_request("fact-a", FactField.SUPPORT_CONTENT, independent_resolution)
     memo_request_b = build_anchor_correction_request("fact-b", FactField.SUPPORT_CONTENT, independent_resolution)
     memo_result_a = memoized_resolver(memo_request_a)
+    memo_result_a_again = memoized_resolver(memo_request_a)
     memo_result_b = memoized_resolver(memo_request_b)
-    assert memo_calls == ["fact-a"]  # the second call was a cache hit
+    assert memo_calls == ["fact-a", "fact-b"]
+    assert memo_result_a_again == memo_result_a
     assert memo_result_a == memo_result_b
 
     # A different resolution (different source_block_id/anchor_text) is not
     # memoized against the first.
     memo_request_c = build_anchor_correction_request("fact-c", FactField.SUPPORT_CONTENT, order_resolution)
     memoized_resolver(memo_request_c)
-    assert memo_calls == ["fact-a", "fact-c"]
+    assert memo_calls == ["fact-a", "fact-b", "fact-c"]
 
     # (8) Audit metadata for corrected anchors only: fact_id, source_block_id,
     # candidate_count, and the final value_source -- never a candidate_id --

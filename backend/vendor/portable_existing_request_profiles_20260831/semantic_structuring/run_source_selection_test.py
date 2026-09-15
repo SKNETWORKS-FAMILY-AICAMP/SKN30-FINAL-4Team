@@ -17,26 +17,23 @@ from semantic_structuring.notice_preparation import SectionScopeDecision, prepar
 from semantic_structuring.common_ir_v1 import apply_common_ir_v1_section_scopes, common_ir_v1_identity, prepare_common_ir_v1
 from semantic_structuring.run_block_candidate_discovery_test import ROUTER_CONTRACT_VERSION
 from semantic_structuring.pipeline import _openai_schema
+from semantic_structuring.explicit_support_cap_candidates import (
+    EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
+)
 from semantic_structuring.source_selection import (
     AnchorCorrectionRequest,
     AnchorCorrectionResponse,
     SourceSelectionExtractionV02,
+    SupportCapCompletenessError,
+    SupportScaleFactRepairError,
     apply_finalize_with_fallback_v02,
+    build_explicit_support_cap_anchors,
     build_corrected_anchor_audit,
     build_numeric_candidates,
     classify_empty_repair_response_v02,
-    derive_support_scale_measures_v02,
-    materialize_components,
-    materialize_evidence,
+    finalize_source_selection_v02,
     memoize_anchor_correction_resolver,
-    normalize_explicit_condition_variant_relations_v02,
-    normalize_nested_support_scale_anchors_v02,
-    normalize_explicit_sequential_components_v02,
     preserve_prior_server_validated_facts_v02,
-    validate_component_structure_v02,
-    validate_scale_measure_candidates_v02,
-    validate_selection_quality_v02,
-    validate_support_cap_completeness_v02,
 )
 
 
@@ -65,8 +62,10 @@ def _correct_ambiguous_value_anchor(
                 "content": (
                     "The requested value_anchor is repeated more than once in its source block. "
                     "Choose the one candidate_id whose context_before/context_after matches the "
-                    "field this anchor was selected for. Decide only from anchor_text and context; "
-                    "no position or occurrence order is given."
+                    "field and the supplied component, applicability, relation, and context IDs for "
+                    "this fact. Decide only from these semantic bindings, anchor_text, and candidate "
+                    "context; no position or occurrence order is given. Distinct facts may need "
+                    "distinct candidates, and the server rejects duplicate source-span ownership."
                 ),
             },
             {"role": "user", "content": json.dumps(request.model_dump(mode="json"), ensure_ascii=False)},
@@ -325,6 +324,8 @@ def main() -> None:
         "candidate_pack_id": pack.pack_id,
         "source_blocks": [block.model_dump(mode="json") for block in pack.blocks],
         "numeric_candidates": [candidate.model_dump(mode="json") for candidate in numeric_candidates],
+        "explicit_support_cap_candidate_version": EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
+        "explicit_support_cap_anchors": build_explicit_support_cap_anchors(pack),
     }
     # Do not leave a batch run indefinitely ambiguous when a provider accepts
     # a request but never returns an HTTP response.  The default remains
@@ -333,6 +334,7 @@ def main() -> None:
     client = OpenAI(timeout=float(os.environ.get("OPENAI_REQUEST_TIMEOUT_SECONDS", "180")))
     usages = []
     last_error: str | None = None
+    last_validation_error: ValueError | None = None
     prior_selection: dict | None = None
     carry_forward_extraction: SourceSelectionExtractionV02 | None = None
     component_normalizations: list[dict[str, str]] = []
@@ -341,26 +343,21 @@ def main() -> None:
     preservation_fallback: dict[str, str] | None = None
     derived_scale_measures = []
 
-    def _required_support_scale_anchors(validation_error: str | None) -> list[dict[str, str]]:
-        """Expose only server-identified missing exact caps to a repair call."""
-        marker = "select it as its own atomic support_scale span: "
-        if not validation_error or marker not in validation_error:
-            return []
-        result = []
-        for item in validation_error.split(marker, 1)[1].split(", "):
-            block_id, separator, anchor_text = item.partition(": ")
-            if separator and block_id and anchor_text:
-                result.append({"source_block_id": block_id, "anchor_text": anchor_text})
-        return result
+    def _required_support_scale_anchors(error: ValueError | None) -> list[dict[str, str]]:
+        """Keep exact repair locators in memory instead of parsing error text."""
+
+        if isinstance(error, (SupportCapCompletenessError, SupportScaleFactRepairError)):
+            return error.required_support_scale_anchors()
+        return []
 
     # Correction-call bookkeeping, scoped to this whole runner execution (not
     # to one attempt or one _finalize call): correction_usages is folded into
     # the final usage totals; correction_audit records safe, candidate_id-free
     # per-fact metadata for build_corrected_anchor_audit. The resolver itself
-    # is memoized by (source_block_id, anchor_text) -- the deterministic
-    # resolution's own identity -- so apply_finalize_with_fallback_v02's
-    # merged/unmerged re-run can never call the correction model twice for
-    # what is otherwise the same repeated anchor.
+    # is memoized by fact identity plus (source_block_id, anchor_text), so
+    # apply_finalize_with_fallback_v02's merged/unmerged re-run cannot call
+    # the correction model twice for the same fact.  Distinct facts with the
+    # same literal remain free to bind distinct source occurrences.
     correction_usages: list = []
     correction_audit: dict[str, dict[str, object]] = {}
     _memoized_correction_resolver = memoize_anchor_correction_resolver(
@@ -375,40 +372,17 @@ def main() -> None:
         return _memoized_correction_resolver(request)
 
     def _finalize(candidate: SourceSelectionExtractionV02):
-        """Validate, normalize, and materialize one candidate selection."""
+        """Use the same canonical Existing finalizer as the server worker."""
 
-        validate_selection_quality_v02(candidate)
-        candidate, seq_normalizations = normalize_explicit_sequential_components_v02(candidate, pack)
-        candidate, nested_scale_normalizations = normalize_nested_support_scale_anchors_v02(candidate)
-        seq_normalizations.extend(nested_scale_normalizations)
-        validate_component_structure_v02(candidate, pack)
-        validate_support_cap_completeness_v02(candidate, pack)
-        candidate, variant_normalizations = normalize_explicit_condition_variant_relations_v02(candidate)
-        evidence = materialize_evidence(
+        return finalize_source_selection_v02(
             candidate,
             pack,
+            numeric_candidates,
             common_ir_source_sha256=common_ir_source_sha256,
             resolve_ambiguous_value_anchor=(
                 _resolve_ambiguous_value_anchor if common_ir_source_sha256 else None
             ),
         )
-        components = materialize_components(candidate, pack)
-        resolved_value_sources = {
-            row.fact_id: row.value_source for row in evidence if row.value_source is not None
-        }
-        measures = derive_support_scale_measures_v02(
-            candidate,
-            numeric_candidates,
-            resolved_value_sources,
-            source_block_texts={block.block_id: block.text for block in pack.blocks},
-        )
-        # Validation runs here, before this candidate can ever reach a
-        # written success artifact: it re-checks that every derived measure
-        # binds inside its fact's own resolved value_source span (never by
-        # anchor_text containment) and that no numerically-explicit
-        # support_scale fact was left unmeasured.
-        validate_scale_measure_candidates_v02(candidate, measures, numeric_candidates, resolved_value_sources)
-        return candidate, seq_normalizations, variant_normalizations, evidence, components, measures
 
     # A rejected output gets one repair attempt.  It receives its own prior
     # structured response plus server-side contract failures, not a hidden
@@ -428,7 +402,7 @@ def main() -> None:
             retry_instruction = ""
             is_repair_attempt = bool(last_error) and prior_selection is not None
             if is_repair_attempt:
-                required_caps = _required_support_scale_anchors(last_error)
+                required_caps = _required_support_scale_anchors(last_validation_error)
                 retry_instruction = (
                     " This is a repair attempt. The user payload contains previous_selection and "
                     "server_validation_errors. Return a complete revised selection. Preserve every valid "
@@ -472,6 +446,7 @@ def main() -> None:
             prior_selection = extraction.model_dump(mode="json")
             if extraction.notice_id != pack.notice_id or extraction.candidate_pack_id != pack.pack_id:
                 last_error = "source selection output belongs to a different candidate pack"
+                last_validation_error = None
                 continue
             # A first attempt returning zero facts is an ordinary validation
             # failure (below) and gets the one planned repair attempt.  A
@@ -499,6 +474,7 @@ def main() -> None:
                     "the routed A candidate pack contains substantive source blocks, but no fact was selected. "
                     "Return every supported A claim and omit only genuinely unsupported blocks"
                 )
+                last_validation_error = None
                 continue
             # `merged_extraction` is the raw, pre-server-normalization
             # candidate (this attempt's own facts plus whatever prior facts
@@ -507,7 +483,14 @@ def main() -> None:
             # normalization (e.g. an added modifies_fact_ids relation) is
             # never silently represented as a model-selected fact.
             merged_extraction, preserved_changes = preserve_prior_server_validated_facts_v02(
-                carry_forward_extraction, extraction, pack
+                carry_forward_extraction,
+                extraction,
+                pack,
+                do_not_restore_fact_ids=(
+                    last_validation_error.do_not_restore_fact_ids
+                    if isinstance(last_validation_error, SupportScaleFactRepairError)
+                    else None
+                ),
             )
             carry_forward_extraction = merged_extraction
             try:
@@ -523,6 +506,7 @@ def main() -> None:
                 break
             except ValueError as error:
                 last_error = str(error)
+                last_validation_error = error
                 diagnostic("selection_validation_failed", attempt=attempt + 1, error=last_error)
         else:
             raise RuntimeError(f"source selection failed one-call contract validation: {last_error}")
@@ -570,6 +554,7 @@ def main() -> None:
             measure.model_dump(mode="json") for measure in derived_scale_measures
         ],
         "numeric_candidates": [candidate.model_dump(mode="json") for candidate in numeric_candidates],
+        "explicit_support_cap_candidate_version": EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
         # v0.2 offset validation is defined against the exact CandidatePack
         # strings, including its table-cell projection convention.
         "source_block_texts": {block.block_id: block.text for block in pack.blocks},

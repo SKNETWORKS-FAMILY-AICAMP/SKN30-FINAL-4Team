@@ -21,7 +21,43 @@ _A_ROUTES = (
 )
 _TABLE_DISPOSITIONS = {"a_fact_candidate", "b_search_only", "c_exclude"}
 _CELL_ID = re.compile(r"r(\d+)c(\d+)p(\d+)$")
+# Package/row labels are a narrow structural reference, not a semantic
+# interpretation of either the prose or the table.  Keep the token grammar
+# deliberately closed: only an explicit ``①-1``/``1-1`` style label can bind
+# a prose reference to one native table.
+_CIRCLED_TABLE_REFERENCE_TOKEN = re.compile(
+    r"(?<![0-9A-Za-z가-힣])(?:[①-⑳]-\d+)(?![0-9A-Za-z가-힣-])"
+)
+_PLAIN_TABLE_REFERENCE_TOKEN = re.compile(
+    r"(?<![0-9A-Za-z가-힣])(?:\d{1,2}-\d{1,2})(?![0-9A-Za-z가-힣-])"
+)
+_PLAIN_TABLE_ROW_LABEL = re.compile(
+    r"(?m)^\s*(?P<label>\d{1,2}-\d{1,2})(?=\s|$)"
+)
+_EXPLICIT_REFERENCE_CONTEXT = re.compile(
+    r"^\s*(?:(?:번|번의|항목|세부\s*항목|지원\s*유형|유형)\s*)?"
+    r"(?:(?:을|를|의)\s*)?(?:참조|참고|확인|해당)"
+)
 MAX_A_TABLE_CELL_CANDIDATES = 300
+
+
+def _prose_table_reference_tokens(text: str) -> frozenset[str]:
+    """Return only labels used in explicit prose reference grammar."""
+
+    tokens = set(_CIRCLED_TABLE_REFERENCE_TOKEN.findall(text))
+    for match in _PLAIN_TABLE_REFERENCE_TOKEN.finditer(text):
+        if _EXPLICIT_REFERENCE_CONTEXT.match(text[match.end():match.end() + 32]):
+            tokens.add(match.group(0))
+    return frozenset(tokens)
+
+
+def _table_row_reference_tokens(text: str) -> frozenset[str]:
+    """Return circled labels or short numeric labels at a table-row start."""
+
+    return frozenset({
+        *_CIRCLED_TABLE_REFERENCE_TOKEN.findall(text),
+        *(match.group("label") for match in _PLAIN_TABLE_ROW_LABEL.finditer(text)),
+    })
 
 
 def _common_ir_pack_lineage(prepared) -> dict[str, str]:
@@ -114,9 +150,28 @@ def build_routed_a_pack(prepared: PreparedNotice, router_candidates: list[dict])
         if block_id in by_id:
             raise ValueError(f"router returned duplicate source block id: {block_id}")
         by_id[block_id] = item
-    expected = {block.block_id for block in prepared.router_pack().blocks}
+    router_blocks = {
+        block.block_id: block for block in prepared.router_pack().blocks
+    }
+    expected = set(router_blocks)
     missing = expected - set(by_id)
     unknown = set(by_id) - expected
+    # Persisted router artifacts produced before native partial-table
+    # companions existed cannot disposition those new wrappers.  Treat only
+    # the newly exposed structural wrapper as conservative B/search-only;
+    # missing prose and explicit native tables still fail closed.
+    implicit_b_table_ids = {
+        block_id
+        for block_id in missing
+        if router_blocks[block_id].block_kind == "table_candidate"
+    }
+    missing -= implicit_b_table_ids
+    for block_id in implicit_b_table_ids:
+        by_id[block_id] = {
+            "source_block_id": block_id,
+            "route_tags": [],
+            "table_disposition": "b_search_only",
+        }
     if missing or unknown:
         raise ValueError(f"router coverage mismatch: missing={sorted(missing)} unknown={sorted(unknown)}")
     # An adapter may retain attachment tables in B/search-only while omitting
@@ -130,6 +185,52 @@ def build_routed_a_pack(prepared: PreparedNotice, router_candidates: list[dict])
             raise ValueError(f"router table disposition invalid or missing: {block.block_id}")
     routes = {block_id: item["route_tags"] for block_id, item in by_id.items()}
     requested_table_a_ids = {block_id for block_id, item in by_id.items() if item.get("table_disposition") == "a_fact_candidate"}
+
+    # A prose package line may reference detailed support rows only by labels
+    # such as ``①-1``/``②-1``.  When an A-routed prose block does so and the
+    # label occurs in exactly one B/search-only native table, retain that
+    # table's original cells for selection.  This restores candidate coverage
+    # only: it neither promotes C/form tables nor invents a fact.
+    prose_reference_tokens = frozenset(
+        token
+        for block in prepared.fact_candidate_blocks
+        if set(routes.get(block.block_id, ())).intersection(_A_ROUTES)
+        for token in _prose_table_reference_tokens(block.text)
+    )
+    # Native table-cell blocks retain row/column coordinates.  Only a first-
+    # column cell can establish a plain numeric row label; date/version text
+    # elsewhere in a flattened table is not structural evidence.
+    table_reference_tokens: dict[str, set[str]] = {}
+    routable_table_ids = {block.block_id for block in routable_tables}
+    for cell in prepared.table_cell_candidate_blocks:
+        parent_id = table_parent_id(cell.block_id)
+        match = _CELL_ID.search(cell.block_id)
+        if parent_id not in routable_table_ids or match is None or int(match.group(2)) != 0:
+            continue
+        table_reference_tokens.setdefault(parent_id, set()).update(
+            _table_row_reference_tokens(cell.text)
+        )
+    table_ids_by_reference: dict[str, set[str]] = {}
+    for table_id, tokens in table_reference_tokens.items():
+        for token in tokens:
+            table_ids_by_reference.setdefault(token, set()).add(table_id)
+    uniquely_bound_reference_tokens = {
+        token
+        for token, table_ids in table_ids_by_reference.items()
+        if len(table_ids) == 1
+    }
+    reference_promoted_a_tables = {
+        block.block_id
+        for block in routable_tables
+        if by_id[block.block_id].get("table_disposition") == "b_search_only"
+        and (
+            prose_reference_tokens.intersection(
+                table_reference_tokens.get(block.block_id, set())
+            )
+            & uniquely_bound_reference_tokens
+        )
+    }
+    requested_table_a_ids.update(reference_promoted_a_tables)
     cell_parent_ids = {table_parent_id(block.block_id) for block in prepared.table_cell_candidate_blocks}
     cell_counts = {parent: sum(1 for block in prepared.table_cell_candidate_blocks if table_parent_id(block.block_id) == parent) for parent in requested_table_a_ids & cell_parent_ids}
     # Cell-less or oversized tables remain B rather than aborting the whole
@@ -166,7 +267,16 @@ def build_routed_a_pack(prepared: PreparedNotice, router_candidates: list[dict])
         table_cell_blocks=table_cells,
         include_whole_table_blocks=False,
     )
-    return pack, {"a_table_ids": sorted(table_a_ids), "a_table_cell_counts": {key: cell_counts[key] for key in table_a_ids}, "a_table_cell_total": len(table_cells), "downgraded_to_b_table_ids": downgraded_a_tables}
+    return pack, {
+        "a_table_ids": sorted(table_a_ids),
+        "a_table_cell_counts": {key: cell_counts[key] for key in table_a_ids},
+        "a_table_cell_total": len(table_cells),
+        "reference_promoted_a_table_ids": sorted(
+            reference_promoted_a_tables & table_a_ids
+        ),
+        "implicit_legacy_b_table_ids": sorted(implicit_b_table_ids),
+        "downgraded_to_b_table_ids": downgraded_a_tables,
+    }
 
 
 def build_a_candidate_packs(

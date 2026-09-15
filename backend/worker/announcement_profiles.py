@@ -49,6 +49,9 @@ from semantic_structuring.common_ir_v1 import (  # noqa: E402
 from semantic_structuring.final_profile_assembler import (  # noqa: E402
     assemble_final_profile_v02,
 )
+from semantic_structuring.explicit_support_cap_candidates import (  # noqa: E402
+    EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
+)
 from semantic_structuring.notice_preparation import (  # noqa: E402
     SectionScopeDecision,
     SectionScopeDiscovery,
@@ -65,22 +68,16 @@ from semantic_structuring.source_selection import (  # noqa: E402
     AmbiguousAnchorCorrectionError,
     CorrectionResolverError,
     SourceSelectionExtractionV02,
+    SupportCapCompletenessError,
+    SupportScaleFactRepairError,
     apply_finalize_with_fallback_v02,
+    build_explicit_support_cap_anchors,
     build_corrected_anchor_audit,
     build_numeric_candidates,
     classify_empty_repair_response_v02,
-    derive_support_scale_measures_v02,
-    materialize_components,
-    materialize_evidence,
     memoize_anchor_correction_resolver,
-    normalize_explicit_condition_variant_relations_v02,
-    normalize_explicit_sequential_components_v02,
-    normalize_nested_support_scale_anchors_v02,
+    finalize_source_selection_v02,
     preserve_prior_server_validated_facts_v02,
-    validate_component_structure_v02,
-    validate_scale_measure_candidates_v02,
-    validate_selection_quality_v02,
-    validate_support_cap_completeness_v02,
 )
 
 
@@ -199,8 +196,10 @@ def _source_selection_instructions() -> str:
 _ANCHOR_CORRECTION_INSTRUCTIONS = (
     "The requested value_anchor is repeated more than once in its source block. "
     "Choose the one candidate_id whose context_before/context_after matches the "
-    "field this anchor was selected for. Decide only from anchor_text and context; "
-    "no position or occurrence order is given."
+    "field and the supplied component, applicability, relation, and context IDs for "
+    "this fact. Decide only from these semantic bindings, anchor_text, and candidate "
+    "context; no position or occurrence order is given. Distinct facts may need "
+    "distinct candidates, and the server rejects duplicate source-span ownership."
 )
 _REPAIR_INSTRUCTIONS = (
     " This is a repair attempt. The user payload contains previous_selection and "
@@ -590,6 +589,7 @@ def _selection_artifact(
         "support_facets": [facet.model_dump(mode="json") for facet in extraction.support_facets],
         "support_scale_measures": [measure.model_dump(mode="json") for measure in measures],
         "numeric_candidates": [candidate.model_dump(mode="json") for candidate in numeric_candidates],
+        "explicit_support_cap_candidate_version": EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
         "source_block_texts": {block.block_id: block.text for block in pack.blocks},
         "attempt_count": attempt_count,
         "correction_call_count": correction_call_count,
@@ -626,6 +626,10 @@ def _select_and_assemble(
         "candidate_pack_id": pack.pack_id,
         "source_blocks": [block.model_dump(mode="json") for block in pack.blocks],
         "numeric_candidates": [candidate.model_dump(mode="json") for candidate in numeric_candidates],
+        "explicit_support_cap_candidate_version": EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
+        # Hints only: the model still selects facts, and the shared finalizer
+        # verifies exact materialized coordinates before accepting coverage.
+        "explicit_support_cap_anchors": build_explicit_support_cap_anchors(pack),
     }
     correction_audit: dict[str, dict[str, object]] = {}
     correction_call_count = 0
@@ -649,6 +653,7 @@ def _select_and_assemble(
 
     correction_resolver = memoize_anchor_correction_resolver(correction_once)
     last_error: str | None = None
+    last_validation_error: ValueError | None = None
     last_reason = REPAIR_BUDGET_EXHAUSTED
     prior_selection: dict[str, Any] | None = None
     carry_forward: SourceSelectionExtractionV02 | None = None
@@ -659,56 +664,28 @@ def _select_and_assemble(
     preserved_fact_normalizations: list[dict[str, Any]] = []
     preservation_fallback: dict[str, Any] | None = None
 
-    def required_support_scale_anchors(validation_error: str | None) -> list[dict[str, str]]:
-        """Expose only server-identified missing cap spans to the repair call."""
+    def required_support_scale_anchors(error: ValueError | None) -> list[dict[str, str]]:
+        """Keep raw cap locators in process; never parse persisted error text."""
 
-        marker = "select it as its own atomic support_scale span: "
-        if not validation_error or marker not in validation_error:
-            return []
-        result: list[dict[str, str]] = []
-        for item in validation_error.split(marker, 1)[1].split(", "):
-            block_id, separator, anchor_text = item.partition(": ")
-            if separator and block_id and anchor_text:
-                result.append({"source_block_id": block_id, "anchor_text": anchor_text})
-        return result
+        if isinstance(error, (SupportCapCompletenessError, SupportScaleFactRepairError)):
+            return error.required_support_scale_anchors()
+        return []
 
     def finalize(candidate: SourceSelectionExtractionV02):
-        validate_selection_quality_v02(candidate)
-        candidate, sequential = normalize_explicit_sequential_components_v02(candidate, pack)
-        candidate, nested = normalize_nested_support_scale_anchors_v02(candidate)
-        sequential.extend(nested)
-        validate_component_structure_v02(candidate, pack)
-        validate_support_cap_completeness_v02(candidate, pack)
-        candidate, variants = normalize_explicit_condition_variant_relations_v02(candidate)
-        evidence = materialize_evidence(
+        return finalize_source_selection_v02(
             candidate,
             pack,
+            numeric_candidates,
             common_ir_source_sha256=common_ir_source_sha256,
             resolve_ambiguous_value_anchor=correction_resolver,
         )
-        components = materialize_components(candidate, pack)
-        resolved_value_sources = {
-            row.fact_id: row.value_source
-            for row in evidence
-            if row.value_source is not None
-        }
-        measures = derive_support_scale_measures_v02(
-            candidate,
-            numeric_candidates,
-            resolved_value_sources,
-            source_block_texts={block.block_id: block.text for block in pack.blocks},
-        )
-        validate_scale_measure_candidates_v02(
-            candidate, measures, numeric_candidates, resolved_value_sources
-        )
-        return candidate, sequential, variants, evidence, components, measures
 
     for attempt in range(2):
         is_repair = bool(last_error) and prior_selection is not None
         instructions = _source_selection_instructions() + (_REPAIR_INSTRUCTIONS if is_repair else "")
         request = base_request
         if is_repair:
-            required_caps = required_support_scale_anchors(last_error)
+            required_caps = required_support_scale_anchors(last_validation_error)
             if required_caps:
                 instructions += (
                     " The payload's required_support_scale_anchors were deterministically found in "
@@ -736,6 +713,7 @@ def _select_and_assemble(
         prior_selection = extraction.model_dump(mode="json")
         if extraction.notice_id != pack.notice_id or extraction.candidate_pack_id != pack.pack_id:
             last_error = "source selection output belongs to a different candidate pack"
+            last_validation_error = None
             last_reason = LLM_INVALID_RESPONSE
             continue
         empty_error = classify_empty_repair_response_v02(
@@ -756,10 +734,18 @@ def _select_and_assemble(
             last_error = (
                 "the routed A candidate pack contains substantive source blocks, but no fact was selected"
             )
+            last_validation_error = None
             last_reason = LLM_INVALID_RESPONSE
             continue
         merged, preserved_changes = preserve_prior_server_validated_facts_v02(
-            carry_forward, extraction, pack
+            carry_forward,
+            extraction,
+            pack,
+            do_not_restore_fact_ids=(
+                last_validation_error.do_not_restore_fact_ids
+                if isinstance(last_validation_error, SupportScaleFactRepairError)
+                else None
+            ),
         )
         carry_forward = merged
         try:
@@ -787,6 +773,7 @@ def _select_and_assemble(
             ) from error
         except ValueError as error:
             last_error = str(error)
+            last_validation_error = error
             last_reason = MATERIALIZATION_FAILED
     else:
         raise _stage_error(
@@ -841,6 +828,7 @@ def _select_and_assemble(
     profile.setdefault("processing_metadata", {})["generation_lineage"] = {
         "model_profile": model_profile,
         "prompt_bundle_version": PROMPT_BUNDLE_VERSION,
+        "explicit_support_cap_candidate_version": EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
         "source_sha256_hex": common_ir_source_sha256,
     }
     # The KB store needs the exact routed pack that produced this profile, not

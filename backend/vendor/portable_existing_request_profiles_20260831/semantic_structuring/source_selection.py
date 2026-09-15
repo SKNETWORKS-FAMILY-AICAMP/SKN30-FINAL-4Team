@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+import unicodedata
+from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -16,6 +18,10 @@ from .anchor_occurrence_resolver import (
     AnchorOccurrenceResolution,
     materialize_selected_anchor_candidate,
     resolve_anchor_occurrences,
+)
+from .explicit_support_cap_candidates import (
+    explicit_support_cap_spans_by_block,
+    extract_explicit_support_cap_candidates,
 )
 from .models import CandidatePack, ComponentKind, FactField
 from .profile_v02 import (
@@ -36,6 +42,172 @@ from .support_scale_policy import (
     explicit_per_unit_scope,
     per_unit_scope_occurrences,
 )
+
+
+# These are public, compact failure-stage identifiers.  They are deliberately
+# stable because the worker retains only the string error in a retry artifact.
+FINALIZE_STAGE_CODES = frozenset({
+    "selection_quality_validation",
+    "sequential_component_normalization",
+    "semantic_duplicate_normalization",
+    "nested_support_scale_anchor_normalization",
+    "component_structure_validation",
+    "condition_variant_relation_normalization",
+    "evidence_materialization",
+    "value_source_uniqueness_validation",
+    "component_materialization",
+    "support_scale_semantics_validation",
+    "support_cap_completeness_validation",
+    "support_scale_measure_derivation",
+    "scale_measure_validation",
+})
+
+
+class DuplicateResolvedValueSourceSpanError(ValueError):
+    """Two facts attempted to own one already-materialized source span."""
+
+    def __init__(self, conflicts: list[dict[str, str]]) -> None:
+        self.conflicts = [
+            {"fact_id": conflict["fact_id"], "field_name": conflict["field_name"]}
+            for conflict in conflicts
+        ]
+        labels = ", ".join(
+            f"{item['fact_id']} ({item['field_name']})" for item in self.conflicts
+        )
+        super().__init__(f"duplicate resolved ValueSource span across facts: {labels}")
+
+
+@contextmanager
+def annotate_finalize_stage(code: str):
+    """Add an allowlisted finalization stage without hiding the root error."""
+
+    if code not in FINALIZE_STAGE_CODES:
+        raise ValueError("unsupported finalize stage code")
+    try:
+        yield
+    except ValueError as error:
+        if not hasattr(error, "finalize_stage"):
+            error.finalize_stage = code
+        raise
+
+
+def finalize_source_selection_v02(
+    candidate: "SourceSelectionExtractionV02",
+    pack: CandidatePack,
+    numeric_candidates: list["NumericCandidate"],
+    *,
+    common_ir_source_sha256: str | None = None,
+    resolve_ambiguous_value_anchor: "AnchorCorrectionResolver | None" = None,
+    normalize_sequential_components=None,
+    require_support_cap_completeness: bool = True,
+    value_source_overrides: Mapping[str, ValueSource | Mapping[str, object]] | None = None,
+):
+    """Run the single Existing Profile v0.2 finalization boundary.
+
+    Model selection, deterministic repair, and the worker must all reach this
+    function rather than carrying subtly different local finalize sequences.
+    Request-profile construction has its own v0.1.5 path and is intentionally
+    not invoked here.
+    """
+
+    normalize_sequential_components = (
+        normalize_sequential_components or normalize_explicit_sequential_components_v02
+    )
+    with annotate_finalize_stage("selection_quality_validation"):
+        validate_selection_quality_v02(candidate, pack=pack)
+    with annotate_finalize_stage("sequential_component_normalization"):
+        candidate, sequential_normalizations = normalize_sequential_components(candidate, pack)
+    with annotate_finalize_stage("semantic_duplicate_normalization"):
+        candidate, semantic_normalizations = normalize_semantic_duplicate_facts_v02(candidate, pack)
+    sequential_normalizations.extend(semantic_normalizations)
+    with annotate_finalize_stage("nested_support_scale_anchor_normalization"):
+        candidate, nested_normalizations = normalize_nested_support_scale_anchors_v02(candidate)
+    sequential_normalizations.extend(nested_normalizations)
+    with annotate_finalize_stage("component_structure_validation"):
+        validate_component_structure_v02(candidate, pack)
+    with annotate_finalize_stage("condition_variant_relation_normalization"):
+        candidate, variant_normalizations = normalize_explicit_condition_variant_relations_v02(candidate)
+    with annotate_finalize_stage("evidence_materialization"):
+        evidence = materialize_evidence(
+            candidate,
+            pack,
+            common_ir_source_sha256=common_ir_source_sha256,
+            resolve_ambiguous_value_anchor=resolve_ambiguous_value_anchor,
+            value_source_overrides=value_source_overrides,
+        )
+    with annotate_finalize_stage("value_source_uniqueness_validation"):
+        validate_materialized_value_source_uniqueness_v02(evidence)
+    with annotate_finalize_stage("component_materialization"):
+        components = materialize_components(candidate, pack)
+    with annotate_finalize_stage("support_scale_semantics_validation"):
+        scale_repair_error = validate_materialized_support_scale_semantics_v02(
+            candidate, pack, evidence, raise_error=False,
+        )
+    cap_error: SupportCapCompletenessError | None = None
+    support_cap_check_state = "complete" if require_support_cap_completeness else "not_checked"
+    if require_support_cap_completeness:
+        try:
+            with annotate_finalize_stage("support_cap_completeness_validation"):
+                validate_support_cap_completeness_v02(
+                    candidate, pack, materialized_evidence=evidence,
+                )
+        except SupportCapCompletenessError as error:
+            cap_error = error
+    if scale_repair_error is not None:
+        with annotate_finalize_stage("support_scale_semantics_validation"):
+            if cap_error is not None:
+                raise scale_repair_error.with_missing_support_cap_anchors(
+                    cap_error.required_support_scale_anchors()
+                )
+            raise scale_repair_error.with_support_cap_check_state(support_cap_check_state)
+    if cap_error is not None:
+        raise cap_error
+    resolved_value_sources = {
+        row.fact_id: row.value_source
+        for row in evidence
+        if row.value_source is not None
+    }
+    with annotate_finalize_stage("support_scale_measure_derivation"):
+        measures = derive_support_scale_measures_v02(
+            candidate,
+            numeric_candidates,
+            resolved_value_sources,
+            source_block_texts={block.block_id: block.text for block in pack.blocks},
+        )
+    with annotate_finalize_stage("scale_measure_validation"):
+        validate_scale_measure_candidates_v02(
+            candidate,
+            measures,
+            numeric_candidates,
+            resolved_value_sources,
+            support_cap_check_state=support_cap_check_state,
+        )
+    return (
+        candidate,
+        sequential_normalizations,
+        variant_normalizations,
+        evidence,
+        components,
+        measures,
+    )
+
+
+def validate_materialized_value_source_uniqueness_v02(
+    evidence: list["MaterializedEvidence"],
+) -> None:
+    """Enforce exact `(block, start, end)` Raw Fact ownership once resolved."""
+
+    by_span: dict[tuple[str, int, int], list[dict[str, str]]] = {}
+    for row in evidence:
+        source = row.value_source
+        if source is None:
+            continue
+        by_span.setdefault(
+            (source.source_block_id, source.start_char, source.end_char), []
+        ).append({"fact_id": row.fact_id, "field_name": row.field_name.value})
+    conflicts = [item for rows in by_span.values() if len(rows) > 1 for item in rows]
+    if conflicts:
+        raise DuplicateResolvedValueSourceSpanError(conflicts)
 
 
 class SelectionStatus(StrEnum):
@@ -111,6 +283,12 @@ class AnchorCorrectionRequest(StrictModel):
     field_name: FactField
     source_block_id: str = Field(min_length=1)
     anchor_text: str = Field(min_length=1)
+    primary_component_id: str | None = None
+    applicability_component_ids: tuple[str, ...] = ()
+    context_source_block_ids: tuple[str, ...] = ()
+    modifies_fact_ids: tuple[str, ...] = ()
+    recipient_fact_ids: tuple[str, ...] = ()
+    basis_fact_ids: tuple[str, ...] = ()
     candidates: list[AnchorCorrectionCandidatePrompt] = Field(min_length=2)
 
 
@@ -183,7 +361,16 @@ class CorrectionResolverError(RuntimeError):
 
 
 def build_anchor_correction_request(
-    fact_id: str, field_name: FactField, resolution: AnchorOccurrenceResolution
+    fact_id: str,
+    field_name: FactField,
+    resolution: AnchorOccurrenceResolution,
+    *,
+    primary_component_id: str | None = None,
+    applicability_component_ids: tuple[str, ...] = (),
+    context_source_block_ids: tuple[str, ...] = (),
+    modifies_fact_ids: tuple[str, ...] = (),
+    recipient_fact_ids: tuple[str, ...] = (),
+    basis_fact_ids: tuple[str, ...] = (),
 ) -> AnchorCorrectionRequest:
     """Turn an ambiguous resolution into the compact, offset-free correction call.
 
@@ -200,6 +387,12 @@ def build_anchor_correction_request(
         field_name=field_name,
         source_block_id=resolution.request.source_block_id,
         anchor_text=resolution.request.anchor_text,
+        primary_component_id=primary_component_id,
+        applicability_component_ids=applicability_component_ids,
+        context_source_block_ids=context_source_block_ids,
+        modifies_fact_ids=modifies_fact_ids,
+        recipient_fact_ids=recipient_fact_ids,
+        basis_fact_ids=basis_fact_ids,
         candidates=sorted(
             (
                 AnchorCorrectionCandidatePrompt(
@@ -215,12 +408,67 @@ def build_anchor_correction_request(
     )
 
 
+def _local_source_unit(text: str, start: int, end: int) -> tuple[int, int]:
+    """Return a conservative newline/semicolon-bounded ownership unit."""
+
+    starts = [text.rfind(delimiter, 0, start) + 1 for delimiter in ("\n", ";", "；")]
+    unit_start = max(starts)
+    ends = [
+        position
+        for delimiter in ("\n", ";", "；")
+        if (position := text.find(delimiter, end)) >= 0
+    ]
+    return unit_start, min(ends, default=len(text))
+
+
+def _objectively_bound_candidate_ids(
+    resolution: AnchorOccurrenceResolution,
+    pack: CandidatePack,
+    semantic_binding_sources: tuple[ValueSource, ...],
+) -> frozenset[str]:
+    """Find occurrence candidates bound to an independently exact semantic anchor.
+
+    Candidate context alone is a model hint, not proof of component ownership.
+    A correction is locally verifiable only when a unique component-name or
+    related-fact anchor shares the candidate's conservative source unit.  If
+    no such anchor exists, or several occurrences share those units, callers
+    must fail closed instead of accepting a merely distinct position.
+    """
+
+    if resolution.status != "ambiguous":
+        return frozenset()
+    block = next(
+        (
+            item
+            for item in pack.blocks
+            if item.block_id == resolution.request.source_block_id
+        ),
+        None,
+    )
+    if block is None:
+        return frozenset()
+    binding_units = {
+        _local_source_unit(block.text, source.start_char, source.end_char)
+        for source in semantic_binding_sources
+        if source.source_block_id == block.block_id
+    }
+    return frozenset(
+        candidate.candidate_id
+        for candidate in resolution.candidates
+        if _local_source_unit(
+            block.text, candidate.start_char, candidate.end_char
+        ) in binding_units
+    )
+
+
 def resolve_value_anchor_with_occurrence_resolver(
     fact: "SourceSelectedFact | SourceSelectedFactV02",
     pack: CandidatePack,
     *,
     common_ir_source_sha256: str,
     correction_resolver: AnchorCorrectionResolver,
+    semantic_binding_sources: tuple[ValueSource, ...] = (),
+    require_objective_semantic_binding: bool = False,
 ) -> tuple[str, "ValueSource"]:
     """Resolve one fact's value_anchor through Anchor Occurrence Resolver v1.
 
@@ -253,7 +501,17 @@ def resolve_value_anchor_with_occurrence_resolver(
         block_text = {block.block_id: block.text for block in pack.blocks}[source.source_block_id]
         return block_text[source.start_char : source.end_char], source
 
-    correction_request = build_anchor_correction_request(fact.fact_id, fact.field_name, resolution)
+    correction_request = build_anchor_correction_request(
+        fact.fact_id,
+        fact.field_name,
+        resolution,
+        primary_component_id=fact.primary_component_id,
+        applicability_component_ids=tuple(fact.applicability_component_ids),
+        context_source_block_ids=tuple(fact.context_source_block_ids),
+        modifies_fact_ids=tuple(fact.modifies_fact_ids),
+        recipient_fact_ids=tuple(fact.recipient_fact_ids),
+        basis_fact_ids=tuple(fact.basis_fact_ids),
+    )
     try:
         selected_candidate_id = correction_resolver(correction_request)
     except Exception as error:
@@ -272,7 +530,9 @@ def resolve_value_anchor_with_occurrence_resolver(
             error_type=type(error).__name__,
         ) from error
     try:
-        return materialize_selected_anchor_candidate(resolution, selected_candidate_id)
+        materialized = materialize_selected_anchor_candidate(
+            resolution, selected_candidate_id
+        )
     except ValueError as error:
         raise AmbiguousAnchorCorrectionError(
             fact_id=fact.fact_id,
@@ -281,27 +541,50 @@ def resolve_value_anchor_with_occurrence_resolver(
             candidate_count=len(resolution.candidates),
             reason=str(error),
         ) from error
+    if require_objective_semantic_binding:
+        objectively_bound_ids = _objectively_bound_candidate_ids(
+            resolution, pack, semantic_binding_sources
+        )
+        if objectively_bound_ids != frozenset({selected_candidate_id}):
+            raise AmbiguousAnchorCorrectionError(
+                fact_id=fact.fact_id,
+                source_block_id=anchor.source_block_id,
+                anchor_text=anchor.anchor_text,
+                candidate_count=len(resolution.candidates),
+                reason="selected occurrence is not uniquely bound to local semantic evidence",
+            )
+    return materialized
 
 
 def memoize_anchor_correction_resolver(resolver: AnchorCorrectionResolver) -> AnchorCorrectionResolver:
-    """Cache one correction choice per deterministic resolution.
+    """Cache one correction choice per fact-specific deterministic resolution.
 
-    Two correction requests are the same deterministic resolution exactly
-    when they share ``(source_block_id, anchor_text)``: the resolver's own
-    candidate set (ids, text, context) depends only on those two values plus
-    the fixed CandidatePack/Common IR lineage already validated upstream, and
-    is otherwise identical regardless of which fact_id asked for it.  This
-    matters because ``apply_finalize_with_fallback_v02`` can run
+    The same fact can reach finalization more than once because
+    ``apply_finalize_with_fallback_v02`` can run
     ``materialize_evidence`` twice for what is otherwise the very same
     ambiguous anchor -- once for its merged attempt, once for its unmerged
     fallback -- and a repeat call for an unchanged resolution must reuse the
     first server-issued choice rather than asking the correction model again.
+    Distinct facts are *not* interchangeable, even if their literal anchor is
+    identical: two support-cap occurrences must be able to select two distinct
+    server candidates and the uniqueness guard then verifies that they did.
     """
 
-    cache: dict[tuple[str, str], str] = {}
+    cache: dict[tuple[object, ...], str] = {}
 
     def resolve(request: AnchorCorrectionRequest) -> str:
-        key = (request.source_block_id, request.anchor_text)
+        key = (
+            request.fact_id,
+            request.field_name,
+            request.source_block_id,
+            request.anchor_text,
+            request.primary_component_id,
+            request.applicability_component_ids,
+            request.context_source_block_ids,
+            request.modifies_fact_ids,
+            request.recipient_fact_ids,
+            request.basis_fact_ids,
+        )
         if key not in cache:
             cache[key] = resolver(request)
         return cache[key]
@@ -441,6 +724,24 @@ def build_numeric_candidates(pack: CandidatePack) -> list[NumericCandidate]:
                 end_char=match.end(),
             ))
     return candidates
+
+
+def build_explicit_support_cap_anchors(pack: CandidatePack) -> list[dict[str, str]]:
+    """Expose exact cap spans as untrusted selection/repair hints.
+
+    They are not Raw Facts and do not bypass materialization.  Position is
+    deliberately retained only in the private candidate catalog; the model
+    receives the existing public locator shape and must still select one fact
+    per exact occurrence through the finalizer.
+    """
+
+    return [
+        {"source_block_id": item.source_block_id, "anchor_text": item.anchor_text}
+        for item in sorted(
+            extract_explicit_support_cap_candidates(pack),
+            key=lambda item: (item.source_block_id, item.start_char, item.end_char),
+        )
+    ]
 
 
 def _numeric_candidate_within_value_source(candidate: NumericCandidate, resolved: ValueSource) -> bool:
@@ -1037,7 +1338,135 @@ class SourceSelectedFactV02(StrictModel):
         return self
 
 
-def validate_selection_quality_v02(extraction: "SourceSelectionExtractionV02") -> None:
+_LAYOUT_OR_ENUMERATION_PREFIX = re.compile(
+    r"^\s*(?:(?:[-·◦□○●▪•※])|(?:[①-⑳])|(?:\d+[.)]))\s*"
+)
+_STANDALONE_LAYOUT_OR_REFERENCE = re.compile(
+    r"^\s*(?:(?:[-·◦□○●▪•※])|(?:[①-⑳](?:-\d+)?)|(?:\d+[.)]))\s*$"
+)
+_PAYMENT_OR_SETTLEMENT = re.compile(r"(?:지급|입금|정산|지불|송금|납부|결제|계좌)")
+_SUPPORT_SEMANTIC_FIELDS = frozenset({
+    FactField.SUPPORT_ACTIVITIES,
+    FactField.SUPPORT_METHODS,
+    FactField.SUPPORT_ITEMS,
+    FactField.SUPPORT_CONTENT,
+})
+
+
+def _semantic_value_key(value: str) -> str:
+    """Normalize visual list decoration, not semantic source content."""
+
+    value = _LAYOUT_OR_ENUMERATION_PREFIX.sub("", value)
+    value = unicodedata.normalize("NFKC", value)
+    return re.sub(r"[\s*]+", "", value).casefold()
+
+
+def normalize_semantic_duplicate_facts_v02(
+    extraction: "SourceSelectionExtractionV02",
+    pack: CandidatePack,
+) -> tuple["SourceSelectionExtractionV02", list[dict[str, str]]]:
+    """Remove layout-only support duplicates in the same explicit scope.
+
+    This is intentionally narrower than text deduplication: equal-looking
+    content in different support components or applicability scopes can be a
+    real distinct benefit and remains untouched.  Existing CandidatePack v1
+    has no rich composite-span rank; retain the most specific/non-bullet and
+    longest literal source anchor deterministically.
+    """
+
+    pack_blocks = {block.block_id: block for block in pack.blocks}
+    grouped: dict[tuple[object, ...], list[SourceSelectedFactV02]] = {}
+    for fact in extraction.facts:
+        if fact.field_name not in _SUPPORT_SEMANTIC_FIELDS:
+            continue
+        block = pack_blocks.get(fact.value_anchor.source_block_id)
+        if block is None:
+            continue
+        occurrence_ids = tuple(
+            block.common_ir_occurrence_ids or tuple(block.source_occurrence_ids)
+        )
+        # Without immutable shared-occurrence provenance, equal text can be
+        # two legitimate facts at different places.  Leave it untouched and
+        # let ordinary exact-span validation handle it.
+        if not occurrence_ids:
+            continue
+        semantic_key = _semantic_value_key(fact.value_anchor.anchor_text)
+        if not semantic_key:
+            continue
+        grouped.setdefault(
+            (
+                fact.field_name,
+                pack.common_ir_document_id,
+                occurrence_ids,
+                fact.primary_component_id,
+                tuple(sorted(fact.applicability_component_ids)),
+                fact.status,
+                fact.semantic_role,
+                tuple(sorted(fact.modifies_fact_ids)),
+                tuple(sorted(fact.recipient_fact_ids)),
+                tuple(sorted(fact.basis_fact_ids)),
+                semantic_key,
+            ),
+            [],
+        ).append(fact)
+
+    replacement: dict[str, str] = {}
+    changes: list[dict[str, str]] = []
+    for facts in grouped.values():
+        if len(facts) < 2:
+            continue
+        # Equal literal anchors may denote repeated real occurrences.  This
+        # normalization is only for two differently decorated projections of
+        # the *same immutable occurrence* (for example a wrapper bullet plus
+        # an atomic item), never for positional deduplication.
+        if len({fact.value_anchor.anchor_text for fact in facts}) < 2:
+            continue
+
+        def rank(fact: SourceSelectedFactV02) -> tuple[int, int, int, str]:
+            raw = fact.value_anchor.anchor_text
+            meaningful_enumeration = int(bool(re.match(r"^\s*(?:[①-⑳]|\d+[.)])", raw)))
+            layout_bullet = int(bool(re.match(r"^\s*[-·◦□○●▪•※]", raw)))
+            specific_field = int(fact.field_name != FactField.SUPPORT_CONTENT)
+            return (meaningful_enumeration - layout_bullet, len(raw), specific_field, fact.fact_id)
+
+        retained = max(facts, key=rank)
+        for fact in facts:
+            if fact.fact_id == retained.fact_id:
+                continue
+            replacement[fact.fact_id] = retained.fact_id
+            changes.append({
+                "kind": "layout_equivalent_support_fact_removed",
+                "removed_fact_id": fact.fact_id,
+                "retained_fact_id": retained.fact_id,
+            })
+    if not replacement:
+        return extraction, []
+
+    payload = extraction.model_dump(mode="json")
+    payload["facts"] = [
+        row for row in payload["facts"] if row["fact_id"] not in replacement
+    ]
+    for row in payload["facts"]:
+        for relation_key in ("modifies_fact_ids", "recipient_fact_ids", "basis_fact_ids"):
+            row[relation_key] = list(dict.fromkeys(
+                replacement.get(value, value) for value in row[relation_key]
+            ))
+    for projection in (
+        *payload.get("support_facets", []),
+        *payload.get("support_scale_measures", []),
+    ):
+        if "source_fact_ids" in projection:
+            projection["source_fact_ids"] = list(dict.fromkeys(
+                replacement.get(value, value) for value in projection["source_fact_ids"]
+            ))
+    return SourceSelectionExtractionV02.model_validate(payload), changes
+
+
+def validate_selection_quality_v02(
+    extraction: "SourceSelectionExtractionV02",
+    *,
+    pack: CandidatePack | None = None,
+) -> None:
     """Reject contract-invalid composite numeric anchors before assembly.
 
     This is deliberately a narrow provenance guard, not a semantic classifier:
@@ -1047,18 +1476,40 @@ def validate_selection_quality_v02(extraction: "SourceSelectionExtractionV02") -
     one-retry runner a concrete, non-answer-bearing correction signal.
     """
 
-    duration_pattern = re.compile(r"(?:\d|[일이삼사오육칠팔구십])\s*(?:개월|개월간|년|년간|주|주간|일간)")
+    standalone_facts = [
+        fact.fact_id for fact in extraction.facts
+        if _STANDALONE_LAYOUT_OR_REFERENCE.fullmatch(fact.value_anchor.anchor_text)
+    ]
+    if standalone_facts:
+        raise ValueError(
+            "standalone layout markers or reference labels cannot become active facts: "
+            f"{sorted(standalone_facts)}"
+        )
+
+    # A duration must be an atomic one-to-three digit quantity.  Without the
+    # digit boundaries, the tail of a calendar year (for example ``2025년``
+    # in a programme title) is incorrectly read as a five-year duration.
+    duration_pattern = re.compile(
+        r"(?<!\d)(?:\d{1,3}|[일이삼사오육칠팔구십]+)(?!\d)"
+        r"\s*(?:개월|개월간|년|년간|주|주간|일간)"
+    )
     invalid = [
-        fact.fact_id
+        fact
         for fact in extraction.facts
         if fact.field_name == FactField.SUPPORT_SCALE
         and duration_pattern.search(fact.value_anchor.anchor_text)
     ]
     if invalid:
-        raise ValueError(
-            "support_scale anchors must not contain a duration; select separate atomic spans "
-            f"for these fact ids: {', '.join(invalid)}"
-        )
+        raise SupportScaleFactRepairError([
+            {
+                "fact_id": fact.fact_id,
+                "source_block_id": fact.value_anchor.source_block_id,
+                "reason": "duration_bearing_anchor",
+                "numeric_candidate_count": 0,
+                "derived_measure_count": 0,
+            }
+            for fact in invalid
+        ])
 
     # A support scale count denotes how many recipients/projects are selected
     # or supported.  A count of classes, mentoring sessions, or other
@@ -1105,7 +1556,7 @@ def validate_selection_quality_v02(extraction: "SourceSelectionExtractionV02") -
             f"{', '.join(invalid_beneficiaries)}"
         )
 
-    generic_exclusion_result = re.compile(r"^\s*(?:지원\s*)?(?:대상에서\s*)?(?:제외됨|제외|불가|제한됨)\s*[.。]?$" )
+    generic_exclusion_result = re.compile(r"^\s*(?:지원\s*)?(?:대상에서\s*)?(?:제외됨|제외|불가|제한됨)\s*[.。]?$")
     invalid_exclusions = [
         fact.fact_id for fact in extraction.facts
         if fact.field_name == FactField.EXCLUSIONS
@@ -1117,20 +1568,9 @@ def validate_selection_quality_v02(extraction: "SourceSelectionExtractionV02") -
             f"{', '.join(invalid_exclusions)}"
         )
 
-    # One exact raw span has one Raw Fact identity.  If it has several
-    # possible semantic facets, retain it in one field and defer additional
-    # interpretation to a derived projection; never duplicate it across A
-    # fields and leave discovery of the clash to final assembly.
-    span_claims: dict[tuple[str, str], list[str]] = {}
-    for fact in extraction.facts:
-        key = (fact.value_anchor.source_block_id, fact.value_anchor.anchor_text)
-        span_claims.setdefault(key, []).append(f"{fact.fact_id} ({fact.field_name.value})")
-    duplicate_claims = [", ".join(claims) for claims in span_claims.values() if len(claims) > 1]
-    if duplicate_claims:
-        raise ValueError(
-            "one exact value anchor must not be claimed by multiple Raw Facts; choose one field and preserve "
-            f"other meaning only as a derived facet: {'; '.join(duplicate_claims)}"
-        )
+    # Do not compare anchors by literal text here.  The same text may occur
+    # at two legitimate source positions.  The canonical finalizer checks
+    # ownership only after each fact has an exact materialized ValueSource.
 
     # A notice can have participation types and, independently, multiple
     # beneficiary-and-benefit packages.  If the model has already found two
@@ -1164,62 +1604,265 @@ def validate_selection_quality_v02(extraction: "SourceSelectionExtractionV02") -
         )
 
 
+class SupportCapCompletenessError(ValueError):
+    """A safe missing-cap failure with in-memory-only repair anchors."""
+
+    error_classification = "missing_explicit_support_cap"
+    field_name = FactField.SUPPORT_SCALE
+
+    def __init__(self, missing_cap_anchors: list[tuple[str, str]]) -> None:
+        self._missing_cap_anchors = tuple(missing_cap_anchors)
+        source_block_ids = sorted({block_id for block_id, _ in self._missing_cap_anchors})
+        super().__init__(
+            "support cap completeness failed: "
+            f"field_name={self.field_name.value} "
+            f"classification={self.error_classification} "
+            f"source_block_ids={source_block_ids} "
+            f"missing_cap_count={len(self._missing_cap_anchors)}"
+        )
+
+    def required_support_scale_anchors(self) -> list[dict[str, str]]:
+        return [
+            {"source_block_id": block_id, "anchor_text": anchor_text}
+            for block_id, anchor_text in self._missing_cap_anchors
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class _SupportScaleFactRepairRecord:
+    fact_id: str
+    source_block_id: str
+    reason: str
+    numeric_candidate_count: int
+    derived_measure_count: int
+
+    def repair_payload(self) -> dict[str, object]:
+        return {
+            "fact_id": self.fact_id,
+            "source_block_id": self.source_block_id,
+            "reason": self.reason,
+            "numeric_candidate_count": self.numeric_candidate_count,
+            "derived_measure_count": self.derived_measure_count,
+        }
+
+
+class SupportScaleFactRepairError(ValueError):
+    """Typed, source-text-free repair signal for a false scale Raw Fact."""
+
+    error_classification = "support_scale_fact_requires_repair"
+    _ALLOWED_REASONS = frozenset({
+        "no_supported_measure_derived",
+        "applicant_financial_eligibility_threshold",
+        "duration_bearing_anchor",
+    })
+    _CAP_CHECK_STATES = frozenset({"not_checked", "complete", "missing"})
+
+    def __init__(
+        self,
+        facts: list[dict[str, object]],
+        *,
+        missing_cap_anchors: list[dict[str, str]] | None = None,
+        support_cap_check_state: str = "not_checked",
+    ) -> None:
+        safe_facts: list[_SupportScaleFactRepairRecord] = []
+        for item in facts:
+            fact_id = item.get("fact_id")
+            source_block_id = item.get("source_block_id")
+            reason = item.get("reason")
+            numeric_candidate_count = item.get("numeric_candidate_count")
+            derived_measure_count = item.get("derived_measure_count")
+            if (
+                not isinstance(fact_id, str) or not fact_id
+                or not isinstance(source_block_id, str) or not source_block_id
+                or reason not in self._ALLOWED_REASONS
+                or not isinstance(numeric_candidate_count, int) or isinstance(numeric_candidate_count, bool)
+                or numeric_candidate_count < 0
+                or not isinstance(derived_measure_count, int) or isinstance(derived_measure_count, bool)
+                or derived_measure_count < 0
+            ):
+                raise ValueError("invalid support-scale repair classification")
+            safe_facts.append(_SupportScaleFactRepairRecord(
+                fact_id=fact_id,
+                source_block_id=source_block_id,
+                reason=reason,
+                numeric_candidate_count=numeric_candidate_count,
+                derived_measure_count=derived_measure_count,
+            ))
+        if not safe_facts:
+            raise ValueError("support-scale repair classification requires a fact")
+        if support_cap_check_state not in self._CAP_CHECK_STATES:
+            raise ValueError("invalid support-cap check state")
+        raw_missing_cap_anchors = missing_cap_anchors or []
+        if support_cap_check_state == "missing" and not raw_missing_cap_anchors:
+            raise ValueError("missing support-cap state requires anchors")
+        if support_cap_check_state != "missing" and raw_missing_cap_anchors:
+            raise ValueError("support-cap anchors require missing state")
+        safe_missing: list[tuple[str, str]] = []
+        for anchor in raw_missing_cap_anchors:
+            source_block_id = anchor.get("source_block_id")
+            anchor_text = anchor.get("anchor_text")
+            if not isinstance(source_block_id, str) or not source_block_id or not isinstance(anchor_text, str) or not anchor_text:
+                raise ValueError("invalid missing support-cap anchor")
+            safe_missing.append((source_block_id, anchor_text))
+        self._facts = tuple(sorted(
+            safe_facts, key=lambda item: (item.fact_id, item.source_block_id, item.reason)
+        ))
+        self._missing_cap_anchors = tuple(safe_missing)
+        self._support_cap_check_state = support_cap_check_state
+        super().__init__(
+            "support_scale fact repair required: "
+            f"classification={self.error_classification} fact_count={len(self._facts)}"
+        )
+
+    @property
+    def do_not_restore_fact_ids(self) -> frozenset[str]:
+        return frozenset(item.fact_id for item in self._facts)
+
+    @property
+    def support_cap_check_state(self) -> str:
+        return self._support_cap_check_state
+
+    def required_support_scale_anchors(self) -> list[dict[str, str]]:
+        return [
+            {"source_block_id": block_id, "anchor_text": anchor_text}
+            for block_id, anchor_text in self._missing_cap_anchors
+        ]
+
+    def with_missing_support_cap_anchors(
+        self, missing_cap_anchors: list[dict[str, str]],
+    ) -> "SupportScaleFactRepairError":
+        return type(self)(
+            self.repair_payload(),
+            missing_cap_anchors=missing_cap_anchors,
+            support_cap_check_state="missing",
+        )
+
+    def with_support_cap_check_state(self, state: str) -> "SupportScaleFactRepairError":
+        return type(self)(self.repair_payload(), support_cap_check_state=state)
+
+    def repair_payload(self) -> list[dict[str, object]]:
+        return [item.repair_payload() for item in self._facts]
+
+
+_SUPPORT_SCALE_ELIGIBILITY_METRIC = re.compile(
+    r"(?:연\s*매출|매출(?:액)?|자산(?:액)?|자본(?:금)?|투자(?:금|액)|출자|재무)"
+)
+_SUPPORT_SCALE_BENEFIT_SIGNAL = re.compile(
+    r"(?:추가\s*지원|지원(?:금|비|율|한도|금액|규모)|"
+    r"지원(?!\s*(?:대상|자격|사업|분야|요건|조건))|지급|보조(?:금)?|융자|보증)"
+)
+
+
+def _bounded_source_segment(text: str, start: int, end: int) -> str:
+    """Return the literal line/semicolon unit that owns one source span."""
+
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end < 0:
+        line_end = len(text)
+    segment_start = max(
+        line_start,
+        text.rfind(";", line_start, start) + 1,
+        text.rfind("；", line_start, start) + 1,
+    )
+    stops = [position for position in (text.find(";", end, line_end), text.find("；", end, line_end), line_end) if position >= 0]
+    return text[segment_start:min(stops)]
+
+
+def validate_materialized_support_scale_semantics_v02(
+    extraction: "SourceSelectionExtractionV02",
+    pack: CandidatePack,
+    evidence: list["MaterializedEvidence"],
+    *,
+    raise_error: bool = True,
+) -> SupportScaleFactRepairError | None:
+    """Fail closed when applicant financial eligibility becomes support scale."""
+
+    del extraction
+    block_texts = {block.block_id: block.text for block in pack.blocks}
+    confirmed_caps = explicit_support_cap_spans_by_block(pack)
+    invalid: list[str] = []
+    evidence_by_fact_id = {row.fact_id: row for row in evidence}
+    for row in evidence:
+        if row.field_name != FactField.SUPPORT_SCALE or row.value_source is None:
+            continue
+        source = row.value_source
+        text = block_texts.get(source.source_block_id)
+        if isinstance(text, str):
+            segment = _bounded_source_segment(text, source.start_char, source.end_char)
+            selected_text = text[source.start_char:source.end_char]
+            owns_confirmed_cap = any(
+                source.start_char <= cap_start and cap_end <= source.end_char
+                for cap_start, cap_end in confirmed_caps.get(source.source_block_id, set())
+            )
+            if (
+                _SUPPORT_SCALE_ELIGIBILITY_METRIC.search(segment)
+                and not _SUPPORT_SCALE_BENEFIT_SIGNAL.search(selected_text)
+                and not owns_confirmed_cap
+            ):
+                invalid.append(row.fact_id)
+    if not invalid:
+        return None
+    error = SupportScaleFactRepairError([
+        {
+            "fact_id": fact_id,
+            "source_block_id": evidence_by_fact_id[fact_id].value_source.source_block_id,
+            "reason": "applicant_financial_eligibility_threshold",
+            "numeric_candidate_count": 0,
+            "derived_measure_count": 0,
+        }
+        for fact_id in sorted(invalid)
+    ])
+    if raise_error:
+        raise error
+    return error
+
+
 def validate_support_cap_completeness_v02(
     extraction: "SourceSelectionExtractionV02",
     pack: CandidatePack,
+    *,
+    materialized_evidence: list["MaterializedEvidence"] | None = None,
 ) -> None:
-    """Reject a selection that leaves an explicit support-scale cap unselected.
+    """Require one exactly materialized scale fact per cap occurrence.
 
-    This is a narrow completeness guard, not a semantic classifier: it fires
-    only when a block the model has *already* selected as evidence -- a
-    component's source/table block, or some fact's value or context block --
-    contains an explicit "최대/한도/상한 + amount or rate" cap expression that
-    no selected ``support_scale`` fact anchors *in full, including its bound
-    marker*.  A cap embedded in a block the model never referenced is left
-    untouched; this never scans undiscovered text, and it never invents the
-    missing fact itself -- it only forces a one-retry runner to select it.
-    A headcount cap (e.g. 최대 2명) is a personnel/eligibility limit, not a
-    support-scale amount gate, and is intentionally not checked here.
+    Literal text is not an identifier: two equal caps at different offsets
+    need two independently materialized facts.  Conversely, one oversized
+    fact cannot discharge more than one cap occurrence.
     """
 
-    block_texts = {block.block_id: block.text for block in pack.blocks}
-    evidence_block_ids: set[str] = set()
-    for component in extraction.support_components:
-        evidence_block_ids.update(component.source_block_ids)
-        evidence_block_ids.update(component.table_block_ids)
-    for fact in extraction.facts:
-        if fact.value_anchor is not None:
-            evidence_block_ids.add(fact.value_anchor.source_block_id)
-        evidence_block_ids.update(fact.context_source_block_ids)
-
-    captured_spans: dict[str, list[str]] = {}
-    for fact in extraction.facts:
-        if fact.field_name == FactField.SUPPORT_SCALE and fact.value_anchor is not None:
-            captured_spans.setdefault(fact.value_anchor.source_block_id, []).append(
-                fact.value_anchor.anchor_text
+    if materialized_evidence is None:
+        materialized_evidence = materialize_evidence(extraction, pack)
+    captured_spans: dict[str, list[tuple[str, ValueSource]]] = {}
+    for row in materialized_evidence:
+        if row.field_name == FactField.SUPPORT_SCALE and row.value_source is not None:
+            captured_spans.setdefault(row.value_source.source_block_id, []).append(
+                (row.fact_id, row.value_source)
             )
 
-    missing: list[str] = []
-    for block_id in sorted(evidence_block_ids):
-        text = block_texts.get(block_id)
-        if text is None:
-            continue
-        for match in _EXPLICIT_CAP_PATTERN.finditer(text):
-            # The selected anchor must contain the whole bound expression --
-            # marker and amount/rate together -- not merely the bare numeral,
-            # so a selected support_scale fact preserves deterministic
-            # support_limit semantics (comparator=lte) rather than looking
-            # like a plain support_amount/support_rate value.
-            cap_text = match.group(0).strip()
-            if any(cap_text in span for span in captured_spans.get(block_id, [])):
-                continue
-            missing.append(f"{block_id}: {cap_text}")
+    # ``pack`` is the trusted, routed A-candidate scope.  Completeness must
+    # cover every scanner-confirmed native cap in that whole scope, not just
+    # blocks the model happened to cite.  Otherwise an omitted A block can
+    # hide its cap simply by receiving no fact/context/component reference.
+    # B/search-only blocks are absent from an A pack by construction; the
+    # scanner itself continues to reject unsafe PDF table/layout/OCR blocks.
+    candidates = extract_explicit_support_cap_candidates(pack)
+    claims_by_fact: dict[str, list[tuple[str, int, int]]] = {}
+    claims_by_cap: dict[tuple[str, int, int], list[str]] = {}
+    for candidate in candidates:
+        cap_key = (candidate.source_block_id, candidate.start_char, candidate.end_char)
+        for fact_id, source in captured_spans.get(candidate.source_block_id, []):
+            if source.start_char <= candidate.start_char and candidate.end_char <= source.end_char:
+                claims_by_fact.setdefault(fact_id, []).append(cap_key)
+                claims_by_cap.setdefault(cap_key, []).append(fact_id)
+    missing: list[tuple[str, str]] = []
+    for candidate in candidates:
+        cap_key = (candidate.source_block_id, candidate.start_char, candidate.end_char)
+        claimants = claims_by_cap.get(cap_key, [])
+        if len(claimants) != 1 or len(claims_by_fact.get(claimants[0], [])) != 1:
+            missing.append((candidate.source_block_id, candidate.anchor_text))
     if missing:
-        raise ValueError(
-            "an explicit support cap (최대/한도/상한 + an amount or rate) appears in already-selected evidence "
-            "but no support_scale fact anchors the full bound expression (marker and amount/rate together); "
-            f"select it as its own atomic support_scale span: {', '.join(sorted(set(missing)))}"
-        )
+        raise SupportCapCompletenessError(missing)
 
 
 def normalize_nested_support_scale_anchors_v02(
@@ -1478,6 +2121,8 @@ def preserve_prior_server_validated_facts_v02(
     previous: "SourceSelectionExtractionV02 | None",
     current: "SourceSelectionExtractionV02",
     pack: CandidatePack,
+    *,
+    do_not_restore_fact_ids: set[str] | frozenset[str] | None = None,
 ) -> tuple["SourceSelectionExtractionV02", list[dict[str, str]]]:
     """Carry forward a prior attempt's facts a repair attempt silently dropped.
 
@@ -1535,6 +2180,10 @@ def preserve_prior_server_validated_facts_v02(
 
     if previous is None or not previous.facts:
         return current, []
+
+    blocked_fact_ids = set() if do_not_restore_fact_ids is None else set(do_not_restore_fact_ids)
+    if any(not isinstance(fact_id, str) or not fact_id for fact_id in blocked_fact_ids):
+        raise ValueError("do_not_restore_fact_ids must contain non-empty fact IDs")
 
     pack_blocks = {block.block_id: block.text for block in pack.blocks}
 
@@ -1599,6 +2248,8 @@ def preserve_prior_server_validated_facts_v02(
     # narrower, so a cross-field reference is dropped, not retargeted.
     id_remap: dict[str, str] = {}
     for fact in previous.facts:
+        if fact.fact_id in blocked_fact_ids:
+            continue  # a typed repair intentionally omitted/reclassified it
         anchor_key = (fact.value_anchor.source_block_id, fact.value_anchor.anchor_text)
         superseding = current_anchor_index.get(anchor_key)
         if superseding is not None:
@@ -1929,6 +2580,8 @@ def validate_scale_measure_candidates_v02(
     measures_projections: list[SupportScaleMeasuresProjection],
     candidates: list[NumericCandidate],
     resolved_value_sources: dict[str, ValueSource],
+    *,
+    support_cap_check_state: str = "not_checked",
 ) -> None:
     """Ensure each derived measure binds to its fact's own resolved span.
 
@@ -1976,11 +2629,26 @@ def validate_scale_measure_candidates_v02(
     }
     missing_fact_ids = required_fact_ids - measured_fact_ids
     if missing_fact_ids:
-        raise ValueError(
-            "every selected numeric support_scale fact must have at least one "
-            "support_scale_measure; missing source_fact_id values: "
-            f"{sorted(missing_fact_ids)}"
-        )
+        candidates_by_fact_id = {
+            fact_id: sum(
+                1
+                for candidate in candidates
+                if _numeric_candidate_within_value_source(
+                    candidate, resolved_value_sources[fact_id]
+                )
+            )
+            for fact_id in missing_fact_ids
+        }
+        raise SupportScaleFactRepairError([
+            {
+                "fact_id": fact_id,
+                "source_block_id": resolved_value_sources[fact_id].source_block_id,
+                "reason": "no_supported_measure_derived",
+                "numeric_candidate_count": candidates_by_fact_id[fact_id],
+                "derived_measure_count": 0,
+            }
+            for fact_id in sorted(missing_fact_ids)
+        ], support_cap_check_state=support_cap_check_state)
 
 
 @dataclass(frozen=True)
@@ -2045,12 +2713,187 @@ def _materialized_source_block(
     return materialized
 
 
+def _project_unique_semantic_anchor_to_value_block(
+    *,
+    anchor_text: str,
+    anchor_block,
+    value_block,
+) -> ValueSource | None:
+    """Project one exact semantic anchor onto the selected value block.
+
+    Same-block anchors are directly positional.  A sibling Common IR
+    projection may also bind when it shares immutable occurrence provenance
+    and its literal anchor occurs exactly once in the value block.  No
+    cross-block text match is trusted without that provenance intersection.
+    """
+
+    if not anchor_text or len(find_all_occurrences(anchor_block.text, anchor_text)) != 1:
+        return None
+    if anchor_block.block_id != value_block.block_id:
+        anchor_occurrences = set(anchor_block.common_ir_occurrence_ids)
+        value_occurrences = set(value_block.common_ir_occurrence_ids)
+        if not anchor_occurrences or not anchor_occurrences.intersection(value_occurrences):
+            return None
+    value_starts = find_all_occurrences(value_block.text, anchor_text)
+    if len(value_starts) != 1:
+        return None
+    start = value_starts[0]
+    return ValueSource(
+        source_block_id=value_block.block_id,
+        start_char=start,
+        end_char=start + len(anchor_text),
+    )
+
+
+def _semantic_binding_sources_for_fact(
+    fact,
+    extraction: SourceSelectionExtraction,
+    by_id: Mapping[str, object],
+    *,
+    value_block,
+) -> tuple[ValueSource, ...]:
+    """Recover only server-verifiable anchors that identify a fact's locality."""
+
+    sources: list[ValueSource] = []
+
+    def add_anchor(anchor: SourceTextAnchor | None) -> None:
+        if anchor is None:
+            return
+        anchor_block = by_id.get(anchor.source_block_id)
+        if anchor_block is None:
+            return
+        source = _project_unique_semantic_anchor_to_value_block(
+            anchor_text=anchor.anchor_text,
+            anchor_block=anchor_block,
+            value_block=value_block,
+        )
+        if source is not None:
+            sources.append(source)
+
+    components = {
+        component.support_component_id: component
+        for component in extraction.support_components
+    }
+    component_ids = [
+        component_id
+        for component_id in (
+            fact.primary_component_id,
+            fact.support_component_id,
+            *fact.applicability_component_ids,
+        )
+        if component_id
+    ]
+    for component_id in component_ids:
+        component = components.get(component_id)
+        if component is None:
+            continue
+        add_anchor(component.name_anchor)
+        for block_id in (*component.source_block_ids, *component.table_block_ids):
+            source_block = by_id.get(block_id)
+            if source_block is None:
+                continue
+            projected = _project_unique_semantic_anchor_to_value_block(
+                anchor_text=source_block.text,
+                anchor_block=source_block,
+                value_block=value_block,
+            )
+            if projected is not None:
+                sources.append(projected)
+
+    for block_id in fact.context_source_block_ids:
+        context_block = by_id.get(block_id)
+        if context_block is None:
+            continue
+        projected = _project_unique_semantic_anchor_to_value_block(
+            anchor_text=context_block.text,
+            anchor_block=context_block,
+            value_block=value_block,
+        )
+        if projected is not None:
+            sources.append(projected)
+
+    facts = {item.fact_id: item for item in extraction.facts}
+    for fact_id in (
+        *fact.modifies_fact_ids,
+        *fact.recipient_fact_ids,
+        *fact.basis_fact_ids,
+    ):
+        related = facts.get(fact_id)
+        if related is not None:
+            add_anchor(related.value_anchor)
+    for anchor in (*fact.organization_anchors, fact.role_anchor):
+        add_anchor(anchor)
+
+    unique_sources = {
+        (source.source_block_id, source.start_char, source.end_char): source
+        for source in sources
+    }
+    return tuple(unique_sources.values())
+
+
+def _fact_occurrence_binding_signature(
+    fact,
+    extraction: SourceSelectionExtraction,
+) -> tuple[object, ...]:
+    """Return the semantic bindings that make repeated facts non-interchangeable."""
+
+    incoming_relations = tuple(sorted(
+        (other.fact_id, relation_key)
+        for other in extraction.facts
+        for relation_key in (
+            "modifies_fact_ids",
+            "recipient_fact_ids",
+            "basis_fact_ids",
+        )
+        if fact.fact_id in getattr(other, relation_key)
+    ))
+    projection_membership = tuple(
+        (projection.projection_type, index)
+        for index, projection in enumerate(
+            (
+                *getattr(extraction, "support_facets", ()),
+                *getattr(extraction, "support_scale_measures", ()),
+            )
+        )
+        if fact.fact_id in projection.source_fact_ids
+    )
+    return (
+        fact.field_name,
+        fact.status,
+        fact.semantic_role,
+        fact.subject_role,
+        fact.primary_component_id,
+        fact.support_component_id,
+        tuple(sorted(fact.applicability_component_ids)),
+        tuple(sorted(fact.context_source_block_ids)),
+        tuple(sorted(fact.modifies_fact_ids)),
+        tuple(sorted(fact.recipient_fact_ids)),
+        tuple(sorted(fact.basis_fact_ids)),
+        tuple(
+            sorted(
+                (anchor.source_block_id, anchor.anchor_text)
+                for anchor in fact.organization_anchors
+            )
+        ),
+        (
+            fact.role_anchor.source_block_id,
+            fact.role_anchor.anchor_text,
+        )
+        if fact.role_anchor is not None
+        else None,
+        fact.canonical_role,
+        incoming_relations,
+        projection_membership,
+    )
+
+
 def materialize_evidence(
     extraction: SourceSelectionExtraction,
     pack: CandidatePack,
     *,
     common_ir_source_sha256: str | None = None,
     resolve_ambiguous_value_anchor: AnchorCorrectionResolver | None = None,
+    value_source_overrides: Mapping[str, ValueSource | Mapping[str, object]] | None = None,
 ) -> list[MaterializedEvidence]:
     """Resolve selected ids against canonical pack text and reject unknown ids.
 
@@ -2074,6 +2917,27 @@ def materialize_evidence(
                 f"{component.support_component_id} references blocks outside the candidate pack: "
                 f"{sorted(unknown)}"
             )
+    repeated_groups: dict[tuple[str, str], list[object]] = {}
+    for fact in extraction.facts:
+        if fact.value_anchor is not None:
+            repeated_groups.setdefault(
+                (
+                    fact.value_anchor.source_block_id,
+                    fact.value_anchor.anchor_text,
+                ),
+                [],
+            ).append(fact)
+    objective_binding_fact_ids = {
+        fact.fact_id
+        for facts in repeated_groups.values()
+        if len(facts) > 1
+        and len({
+            _fact_occurrence_binding_signature(fact, extraction)
+            for fact in facts
+        }) > 1
+        for fact in facts
+    }
+
     rows: list[MaterializedEvidence] = []
     for fact in extraction.facts:
         if fact.source_block_ids and fact.value_source_block_ids:
@@ -2087,19 +2951,52 @@ def materialize_evidence(
         value_blocks: list[dict[str, object]]
         if fact.value_anchor is not None:
             value_block = by_id[fact.value_anchor.source_block_id]
-            try:
-                value_raw, value_source = materialize_value_source(
-                    value_block.block_id, value_block.text, fact.value_anchor.anchor_text
+            override = (value_source_overrides or {}).get(fact.fact_id)
+            if override is not None:
+                # An occurrence sidecar is allowed only after every coordinate
+                # is rechecked against this immutable CandidatePack.  It is
+                # therefore an exact-position disambiguation, never a fuzzy
+                # occurrence preference or model-authored value.
+                value_source = (
+                    override
+                    if isinstance(override, ValueSource)
+                    else ValueSource.model_validate(override)
                 )
-            except ValueError:
-                if common_ir_source_sha256 is None or resolve_ambiguous_value_anchor is None:
-                    raise
-                value_raw, value_source = resolve_value_anchor_with_occurrence_resolver(
-                    fact,
-                    pack,
-                    common_ir_source_sha256=common_ir_source_sha256,
-                    correction_resolver=resolve_ambiguous_value_anchor,
-                )
+                if (
+                    value_source.source_block_id != value_block.block_id
+                    or value_source.start_char < 0
+                    or value_source.end_char <= value_source.start_char
+                    or value_source.end_char > len(value_block.text)
+                    or value_block.text[value_source.start_char:value_source.end_char]
+                    != fact.value_anchor.anchor_text
+                ):
+                    raise ValueError(
+                        "value_source override must match the selected exact anchor in its source block"
+                    )
+                value_raw = fact.value_anchor.anchor_text
+            else:
+                try:
+                    value_raw, value_source = materialize_value_source(
+                        value_block.block_id, value_block.text, fact.value_anchor.anchor_text
+                    )
+                except ValueError:
+                    if common_ir_source_sha256 is None or resolve_ambiguous_value_anchor is None:
+                        raise
+                    value_raw, value_source = resolve_value_anchor_with_occurrence_resolver(
+                        fact,
+                        pack,
+                        common_ir_source_sha256=common_ir_source_sha256,
+                        correction_resolver=resolve_ambiguous_value_anchor,
+                        semantic_binding_sources=_semantic_binding_sources_for_fact(
+                            fact,
+                            extraction,
+                            by_id,
+                            value_block=value_block,
+                        ),
+                        require_objective_semantic_binding=(
+                            fact.fact_id in objective_binding_fact_ids
+                        ),
+                    )
             value_blocks = [
                 _materialized_source_block(pack, value_block, text=value_raw)
             ]
