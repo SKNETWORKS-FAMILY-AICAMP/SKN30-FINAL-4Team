@@ -11,9 +11,12 @@ from __future__ import annotations
 import ast
 from functools import cache
 import hashlib
+import json
+import logging
+import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .ports.llm import (
     LLMInvalidResponseError,
@@ -45,6 +48,10 @@ from semantic_structuring.common_ir_v1 import (  # noqa: E402
     common_ir_v1_identity,
     common_ir_v1_metadata,
     prepare_common_ir_v1,
+)
+from semantic_structuring.composite_candidates import (  # noqa: E402
+    COMPOSITE_CANDIDATE_GENERATOR_VERSION,
+    generate_composite_candidates,
 )
 from semantic_structuring.final_profile_assembler import (  # noqa: E402
     assemble_final_profile_v02,
@@ -81,10 +88,67 @@ from semantic_structuring.source_selection import (  # noqa: E402
 )
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 SECTION_SCOPE_TASK = "announcement_section_scope_v1"
 BLOCK_ROUTER_TASK = "announcement_block_router_v03"
 SOURCE_SELECTION_TASK = "announcement_source_selection_v02"
 ANCHOR_CORRECTION_TASK = "announcement_anchor_correction_v1"
+
+# Composite candidates are an experimental diagnostic input only.  They are
+# deliberately never sent to a model or materialized into Profile v0.2 in the
+# first rollout: that keeps the established source-selection request and
+# Profile bytes stable while we measure where explicit Common IR geometry can
+# safely add context.
+EXISTING_COMPOSITE_CANDIDATE_MODE_ENV = "PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE"
+EXISTING_COMPOSITE_CANDIDATE_MODE_OFF = "off"
+EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW = "shadow"
+_EXISTING_COMPOSITE_CANDIDATE_MODES = frozenset(
+    {
+        EXISTING_COMPOSITE_CANDIDATE_MODE_OFF,
+        EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW,
+    }
+)
+
+
+class CompositeCandidateModeError(ValueError):
+    """Raised before a pipeline run when the composite rollout mode is invalid."""
+
+
+def existing_composite_candidate_mode_from_env(
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Read the opt-in composite diagnostic mode without exposing env values.
+
+    The pipeline's public function also accepts an explicit mode.  This helper
+    is only the deployment boundary for callers that choose environment-driven
+    composition; unit tests and future orchestrators can pass the mode without
+    mutating process state.
+    """
+
+    values = os.environ if env is None else env
+    return normalize_existing_composite_candidate_mode(
+        values.get(EXISTING_COMPOSITE_CANDIDATE_MODE_ENV)
+    )
+
+
+def normalize_existing_composite_candidate_mode(value: str | None) -> str:
+    """Validate the two supported rollout modes, defaulting an absent value off."""
+
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return EXISTING_COMPOSITE_CANDIDATE_MODE_OFF
+    if not isinstance(value, str):
+        raise CompositeCandidateModeError(
+            f"{EXISTING_COMPOSITE_CANDIDATE_MODE_ENV} must be a string mode"
+        )
+    mode = value.strip().lower()
+    if mode not in _EXISTING_COMPOSITE_CANDIDATE_MODES:
+        accepted = ", ".join(sorted(_EXISTING_COMPOSITE_CANDIDATE_MODES))
+        raise CompositeCandidateModeError(
+            f"{EXISTING_COMPOSITE_CANDIDATE_MODE_ENV} must be one of {accepted}"
+        )
+    return mode
 
 
 _PROMPT_SHA256 = {
@@ -485,6 +549,91 @@ def _route_blocks(prepared, llm_client: LLMClient, model_profile: str):
     return pack, metrics
 
 
+def _composite_shadow_metrics(document: dict[str, Any], pack) -> dict[str, Any]:
+    """Return aggregate-only composite diagnostics for a routed A pack.
+
+    This intentionally contains neither source atom IDs nor source text.  The
+    candidate generator is independent of the model path, so a generator bug
+    must not turn an otherwise valid Existing Profile run into a failure while
+    the feature is in shadow mode.  A bounded diagnostic code is sufficient
+    for operators to spot a faulty fixture or implementation without leaking
+    a notice fragment into a persisted diagnostic artifact.
+    """
+
+    try:
+        generation = generate_composite_candidates(document, pack)
+        candidate_kind_counts: dict[str, int] = {}
+        for candidate in generation.candidates:
+            candidate_kind_counts[candidate.kind] = (
+                candidate_kind_counts.get(candidate.kind, 0) + 1
+            )
+        diagnostic_code_counts: dict[str, int] = {}
+        for diagnostic in generation.diagnostics:
+            diagnostic_code_counts[diagnostic.code] = (
+                diagnostic_code_counts.get(diagnostic.code, 0) + 1
+            )
+    except Exception:  # noqa: BLE001 - all shadow work is best-effort
+        return {
+            "mode": EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW,
+            "generator_version": COMPOSITE_CANDIDATE_GENERATOR_VERSION,
+            "candidate_count": 0,
+            "candidate_kind_counts": {},
+            "diagnostic_code_counts": {"GENERATION_FAILED": 1},
+        }
+
+    return {
+        "mode": EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW,
+        "generator_version": COMPOSITE_CANDIDATE_GENERATOR_VERSION,
+        "candidate_count": len(generation.candidates),
+        "candidate_kind_counts": dict(sorted(candidate_kind_counts.items())),
+        "diagnostic_code_counts": dict(sorted(diagnostic_code_counts.items())),
+    }
+
+
+def _with_composite_shadow_metrics(
+    document: dict[str, Any],
+    pack,
+    pack_metrics: Mapping[str, Any],
+    *,
+    mode: str,
+) -> dict[str, Any]:
+    """Emit and attach shadow-only aggregate diagnostics after routing.
+
+    The log event is the operational observability surface for this prepared
+    seam.  It intentionally has no notice id, source text, candidate id, or
+    atom id, and it is emitted before source selection solely from aggregate
+    counts.  The attached metrics stay transient in the selection artifact;
+    neither route reaches the Profile or an LLM request.
+    """
+
+    if mode == EXISTING_COMPOSITE_CANDIDATE_MODE_OFF:
+        # No composite generator work is performed in the default path.
+        return dict(pack_metrics)
+    if mode != EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW:  # pragma: no cover
+        raise CompositeCandidateModeError(f"unsupported composite candidate mode: {mode}")
+    metrics = dict(pack_metrics)
+    shadow_metrics = _composite_shadow_metrics(document, pack)
+    metrics["composite_candidate_shadow"] = shadow_metrics
+    # Keep a single parseable JSON event.  Never interpolate the exception or
+    # document because Common IR text and identifiers are not log-safe here.
+    try:
+        LOGGER.info(
+            "%s",
+            json.dumps(
+                {
+                    "event": "existing_composite_candidate_shadow",
+                    **shadow_metrics,
+                },
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
+    except Exception:  # noqa: BLE001 - telemetry must never fail the profile run
+        pass
+    return metrics
+
+
 def _trusted_source_sha256(document: dict[str, Any], pack) -> str:
     identity = common_ir_v1_identity(document)
     if pack.common_ir_document_id is None:
@@ -840,21 +989,49 @@ def _select_and_assemble(
 
 
 def structure_announcement_profile(
-    document: dict[str, Any], llm_client: LLMClient, *, model_profile: str
+    document: dict[str, Any],
+    llm_client: LLMClient,
+    *,
+    model_profile: str,
+    composite_candidate_mode: str | None = None,
 ) -> dict[str, Any]:
-    """Run the production Common IR v1 → Existing Profile v0.2 chain."""
+    """Run the production Common IR v1 → Existing Profile v0.2 chain.
 
+    ``composite_candidate_mode`` is intentionally explicit for in-process
+    callers.  This is a prepared integration seam: the polling worker does
+    not invoke this Existing-profile producer yet, so setting the environment
+    variable alone does not enable a live worker path.  Passing ``None``
+    selects the deployment default from
+    :data:`PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE`; both an absent value
+    and ``off`` retain the historical pipeline exactly.  ``shadow`` only
+    emits aggregate-only structured diagnostics and keeps matching transient
+    metrics in the source-selection artifact; it must not affect model
+    requests or Profile v0.2.
+    """
+
+    mode = (
+        existing_composite_candidate_mode_from_env()
+        if composite_candidate_mode is None
+        else normalize_existing_composite_candidate_mode(composite_candidate_mode)
+    )
     prepared = _prepare_scoped_notice(document, llm_client, model_profile)
     pack, metrics = _route_blocks(prepared, llm_client, model_profile)
+    metrics = _with_composite_shadow_metrics(document, pack, metrics, mode=mode)
     return _select_and_assemble(document, pack, metrics, llm_client, model_profile)
 
 
 __all__ = [
     "ANCHOR_CORRECTION_TASK",
     "BLOCK_ROUTER_TASK",
+    "CompositeCandidateModeError",
+    "EXISTING_COMPOSITE_CANDIDATE_MODE_ENV",
+    "EXISTING_COMPOSITE_CANDIDATE_MODE_OFF",
+    "EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW",
     "PROMPT_BUNDLE_VERSION",
     "SECTION_SCOPE_TASK",
     "SOURCE_SELECTION_TASK",
+    "existing_composite_candidate_mode_from_env",
+    "normalize_existing_composite_candidate_mode",
     "structure_announcement_profile",
     "verified_common_ir_source_sha256",
 ]

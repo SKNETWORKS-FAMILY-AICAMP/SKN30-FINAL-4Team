@@ -145,3 +145,53 @@ uv run --project backend pytest -q backend/tests/test_existing_profile_gold_comp
 pipeline을 실제로 100건 재실행하고 ID 변화에 안전한 field/relationship 단위 의미 diff를 내는
 runner는 다음 구현 단계다. OpenAI를 호출하는 경우 별도 승인·모델 pin·prompt bundle·
 token/latency 기록이 필요하다. strict canonical 94/6 기준은 향후 의미 diff 지표로 덮어쓰지 않는다.
+
+## 6. Composite 후보의 오프라인 shadow 검사
+
+표 값에 행·열 문맥을 결속하거나 같은 셀 안의 잘린 문장을 보존하는
+`CompositeCandidate`는 아직 Profile 입력이 아니다. 기본 모드는 `off`이며 `shadow`도
+기존 LLM payload, Profile v0.2, DB/API/retrieval 계약을 바꾸지 않고 원문 없는 집계 진단만
+남긴다.
+
+현재 polling worker에는 Existing Profile producer 호출점이 없으므로 환경변수를 `shadow`로
+바꾸는 것만으로 운영 로그가 생성되지는 않는다. 지금 구현은 향후 producer 연결을 위한
+prepared/dormant seam이며, 실제 연결과 활성화는 별도 변경으로 다룬다.
+
+아래 검사는 Gold를 수정하거나 OpenAI·DB·Storage를 호출하지 않는다. 동결 Common IR의
+모든 exact native occurrence를 합성 A pack으로 투영하므로 실제 LLM A routing 결과가 아니라
+구조 후보의 **상한선**을 보는 검사다.
+
+먼저 3절의 무결성 검증을 통과해야 한다. 이 검사기는 `freeze_manifest.json`을 trust root로
+삼아 그 안의 `profile_manifest_sha256`과 각 선택 Common IR의 manifest SHA-256을 다시
+확인하지만, freeze manifest 자체의 외부 고정 SHA까지 pin하지는 않는다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend python backend/scripts/evaluate_existing_composite_shadow.py \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
+  --expected-notice-count 100
+```
+
+공고별 집계까지 필요할 때만 `--include-notices`를 추가한다. 출력에는 원문,
+Candidate/atom ID가 포함되지 않는다. 반드시 확인할 불변식은
+`invariants.cross_common_ir_block_candidate_count == 0`과
+`invariants.fatal_diagnostic_notice_count == 0`이다. 잘못된 Common IR identity나
+문서·CandidatePack 전체 자원 상한 위반처럼 결과 전체를 신뢰할 수 없는 진단이 한 건이라도
+있으면 검사는 `status: invalid`와 종료 코드 1을 반환한다.
+
+현재 표의 행·열 영역은 explicit cell geometry 위에서 좌상단 셀의 span을 사용하는 shadow
+가설이다. Common IR v1에는 semantic header 표시가 없으므로, 이 가설은 Gold 의미 평가나
+upstream의 명시적 header-region 계약 없이 Profile evidence로 승격하면 안 된다. 검사 결과의
+candidate 수가 많다는 사실도 의미 품질 향상을 뜻하지 않는다.
+
+검사기 자체 테스트:
+
+```bash
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend pytest -q \
+  backend/tests/test_existing_composite_shadow_evaluator.py \
+  backend/tests/test_existing_composite_candidates.py \
+  backend/tests/test_existing_composite_shadow_integration.py
+```

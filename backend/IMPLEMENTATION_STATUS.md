@@ -255,6 +255,15 @@ Model 1 분류 migration을 포함하지 않았다.
   - 최신 변경 기준 backend 전체 1,083개 테스트가 통과했다. 실제 `mockup_08` HWPX는
     최신 Docker 이미지에서 `PREREVIEW_FREETYPE_LIB`를 parser subprocess에 주입하고
     `--network none`으로 파싱·의미 누락 회귀 검사를 통과했다.
+  - Existing Common IR의 exact occurrence를 보존하면서 표 값과 행·열 축을 연결하는
+    CompositeCandidate generator v2를 추가했다. 중복 block/occurrence, pack kind 변조,
+    불완전한 A header chain, 모호한 geometry와 cross-block 문장 결합은 fail-closed한다.
+    기본값은 `off`; `shadow`도 LLM payload·Profile v0.2·DB/API/retrieval을 바꾸지 않고
+    원문·후보 ID 없는 집계 로그만 남긴다. 현재 polling worker에는 Existing Profile producer
+    호출 지점이 없어 환경변수만 켠다고 live 경로가 활성화되지는 않는다.
+  - 검토 Gold 100건의 all-native upper-bound 오프라인 canary는 100건을 모두 읽고
+    cross-Common-IR-block 후보 0건, fatal 진단 공고 0건으로 통과했다. 이 결과는 실제 LLM A
+    routing이나 Profile 의미 정확도를 측정한 값이 아니다.
 - `cl100k_base` tokenizer cache를 이미지에 포함해 retrieval token 계산이 런타임
   인터넷 연결에 의존하지 않음
 - 최신 이미지로 API/worker 강제 재생성 후 확인: 두 컨테이너 `Up`, API는
@@ -296,6 +305,9 @@ Git에 포함되지 않으므로 [운영 가이드](fastapi/docs/FASTAPI_WORKER_
 
 ## 남은 작업
 
+- Composite 후보를 실제 A-routing shadow에 연결해 공고별 의미 표본을 판정하고, 좌상단 cell
+  span 기반 header-band 가설을 upstream의 명시적 header-region 계약 또는 검토 Gold로
+  승인하기 전에는 Profile/LLM 입력으로 승격하지 않기
 - 수정된 Request Profile pipeline v0.1.5(selector prompt v0.1.4)로 실제 Hancom HWP와
   HWPX live E2E를 완전 재검증해 사업명,
   사업기간, 추진절차, 목적·지원 컴포넌트·delivery relation의 의미 완전성을 재점검

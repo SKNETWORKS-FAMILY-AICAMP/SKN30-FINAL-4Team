@@ -432,6 +432,9 @@ def build_settings(
         ("PREREVIEW_WORKER_LEASE_SECONDS", "120"),
         ("PREREVIEW_WORKER_IDLE_POLL_SECONDS", "1"),
         ("PREREVIEW_WORKER_TOP_K", "5"),
+        # Prepared Existing-profile diagnostic seam; a generated local worker
+        # environment must retain the production-safe disabled default.
+        ("PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE", "off"),
         ("PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS", "30"),
         ("PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS", "10"),
         ("PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS", "120"),

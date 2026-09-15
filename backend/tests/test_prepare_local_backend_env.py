@@ -109,6 +109,7 @@ def test_build_settings_uses_container_gateway_pooler_and_url_encoding() -> None
     assert settings["PREREVIEW_MODEL1_SERVING_HOST_DIR"] == "/srv/prereview/model1"
     assert settings["PREREVIEW_MODEL1_RUNTIME_UID"] == "1001"
     assert settings["PREREVIEW_MODEL1_RUNTIME_GID"] == "1002"
+    assert settings["PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE"] == "off"
     assert "http://192.168.0.67:3000" in settings[
         "PREREVIEW_AUTH_ALLOWED_ORIGINS"
     ].split(",")

@@ -357,6 +357,11 @@ def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
     assert 'OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-120}"' in worker_section
     assert 'OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-2}"' in worker_section
     assert (
+        'PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE: '
+        '"${PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE:-off}"'
+        in worker_section
+    )
+    assert (
         'OPENAI_REQUEST_PROFILE_MODEL: '
         '"${OPENAI_REQUEST_PROFILE_MODEL:-gpt-5.6-terra}"'
         in worker_section
