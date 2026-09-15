@@ -432,3 +432,135 @@ def test_model3_exhausted_failure_keeps_internal_reason_but_hides_message() -> N
         "anomaly_level": None,
         "cause_axes": [],
     }
+
+def _payload_with_model_1(model_1: MlModelResult) -> dict[str, Any]:
+    return _public_ml_payload(
+        MlReferenceResult(
+            results=[
+                model_1,
+                MlModelResult(
+                    model_id=MlModelId.MODEL_2_AMOUNT,
+                    status="OK",
+                    reason_code=None,
+                    reference_text="예측 지원액 참고",
+                ),
+                MlModelResult(
+                    model_id=MlModelId.MODEL_3_ANOMALY,
+                    status="OK",
+                    reason_code=None,
+                    reference_text="설계 이례성 참고",
+                ),
+            ]
+        )
+    )
+
+
+def test_model1_failure_is_not_retried_and_public_message_is_null() -> None:
+    model = _SequencedMlModel(failures=2, output={})
+    diagnostics = []
+
+    model_1 = _run_one(
+        MlModelId.MODEL_1_SUPPORT_TYPE,
+        model,
+        MlModelInput(
+            model_id=MlModelId.MODEL_1_SUPPORT_TYPE,
+            payload={"title": "테스트 사업", "evidence_text": "지원 사업 원문"},
+            sources=["common_ir:evidence_text"],
+        ),
+        diagnostics,
+    )
+    payload = _payload_with_model_1(model_1)
+
+    assert len(model.calls) == 1
+    assert model_1.status == "FAILED"
+    assert model_1.reason_code == MODEL_EXECUTION_FAILED
+    assert len(diagnostics) == 1
+    assert payload["model_1"]["message"] is None
+    assert payload["model_2"]["message"] == "예측 지원액 참고"
+    assert payload["model_3"]["message"] == "설계 이례성 참고"
+
+
+def test_model1_unavailable_reason_is_internal_and_public_message_is_null() -> None:
+    model_1 = MlModelResult(
+        model_id=MlModelId.MODEL_1_SUPPORT_TYPE,
+        status="UNAVAILABLE",
+        reason_code="PREDICTION_WITHHELD",
+        reference_text=None,
+    )
+
+    payload = _payload_with_model_1(model_1)
+
+    assert payload["model_1"]["status"] == "UNAVAILABLE"
+    assert payload["model_1"]["reason_code"] == "PREDICTION_WITHHELD"
+    assert payload["model_1"]["message"] is None
+
+def _model_2_input() -> MlModelInput:
+    return MlModelInput(
+        model_id=MlModelId.MODEL_2_AMOUNT,
+        payload={"evidence_text": "기업당 500만원을 지원한다."},
+        sources=["common_ir:evidence_text"],
+    )
+
+
+def _payload_with_model_2(model_2: MlModelResult) -> dict[str, Any]:
+    return _public_ml_payload(
+        MlReferenceResult(
+            results=[
+                MlModelResult(
+                    model_id=MlModelId.MODEL_1_SUPPORT_TYPE,
+                    status="OK",
+                    reason_code=None,
+                    reference_text="지원유형 참고 분류",
+                ),
+                model_2,
+                MlModelResult(
+                    model_id=MlModelId.MODEL_3_ANOMALY,
+                    status="OK",
+                    reason_code=None,
+                    reference_text="설계 이례성 참고",
+                ),
+            ]
+        )
+    )
+
+
+def test_model2_execution_failure_is_retried_once_and_can_recover() -> None:
+    model = _SequencedMlModel(
+        failures=1,
+        output={"pred_won": 5_000_000},
+    )
+    diagnostics = []
+
+    model_2 = _run_one(
+        MlModelId.MODEL_2_AMOUNT,
+        model,
+        _model_2_input(),
+        diagnostics,
+    )
+
+    assert len(model.calls) == 2
+    assert model_2.status == "OK"
+    assert model_2.reference_text is not None
+    assert diagnostics == []
+
+
+def test_model2_exhausted_failure_keeps_internal_reason_but_hides_message() -> None:
+    model = _SequencedMlModel(failures=2, output={})
+    diagnostics = []
+
+    model_2 = _run_one(
+        MlModelId.MODEL_2_AMOUNT,
+        model,
+        _model_2_input(),
+        diagnostics,
+    )
+    payload = _payload_with_model_2(model_2)
+
+    assert len(model.calls) == 2
+    assert model_2.status == "FAILED"
+    assert model_2.reason_code == MODEL_EXECUTION_FAILED
+    assert len(diagnostics) == 1
+    assert "attempts=2" in diagnostics[0].message
+    assert payload["model_1"]["message"] == "지원유형 참고 분류"
+    assert payload["model_2"]["message"] is None
+    assert payload["model_3"]["message"] == "설계 이례성 참고"

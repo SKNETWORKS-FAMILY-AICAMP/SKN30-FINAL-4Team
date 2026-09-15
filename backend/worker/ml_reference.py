@@ -1007,7 +1007,11 @@ def _run_one(
             model_input=model_input,
             artifact_version=artifact_version,
         )
-    max_attempts = 2 if model_id is MlModelId.MODEL_3_ANOMALY else 1
+    retryable_models = {
+        MlModelId.MODEL_2_AMOUNT,
+        MlModelId.MODEL_3_ANOMALY,
+    }
+    max_attempts = 2 if model_id in retryable_models else 1
     for attempt in range(1, max_attempts + 1):
         try:
             output = model.predict(model_input.payload)

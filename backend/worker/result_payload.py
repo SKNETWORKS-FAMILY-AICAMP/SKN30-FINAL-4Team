@@ -131,6 +131,16 @@ def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
         cause_axes = []
     cause_axes = [axis for axis in cause_axes if isinstance(axis, str)]
 
+    model_1_common = _ml_common(model_1)
+    if model_1.status != "OK":
+        # 모델 1의 실패·미제공 사유는 내부에 보존하고 공개 카드는 숨긴다.
+        model_1_common["message"] = None
+
+    model_2_common = _ml_common(model_2)
+    if model_2.status != "OK":
+        # 모델 2도 재시도 소진·미제공 사유를 노출하지 않고 카드를 숨긴다.
+        model_2_common["message"] = None
+
     model_3_common = _ml_common(model_3)
     if model_3.status == "FAILED":
         # 모델 3은 한 번 재시도한 뒤에도 실행에 실패하면 내부 진단과 상태만
@@ -138,9 +148,9 @@ def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
         model_3_common["message"] = None
 
     return {
-        "model_1": {**_ml_common(model_1), "support_type": support_type},
+        "model_1": {**model_1_common, "support_type": support_type},
         "model_2": {
-            **_ml_common(model_2),
+            **model_2_common,
             "predicted_amount_won": predicted_amount_won,
         },
         "model_3": {
