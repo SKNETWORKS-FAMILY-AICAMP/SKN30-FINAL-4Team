@@ -20,11 +20,21 @@ from .anchor_occurrence_resolver import (
     resolve_anchor_occurrences,
 )
 from .explicit_support_cap_candidates import (
+    KOREAN_KRW_MONEY_SOURCE,
     explicit_support_cap_spans_by_block,
     extract_explicit_support_cap_candidates,
+    is_historical_support_cap_context,
+)
+from .explicit_list_completeness import (
+    ExplicitListCompletenessError,
+    explicit_list_repair_has_invalid_overlaps_v02,
+    validate_explicit_list_completeness_v02,
 )
 from .models import CandidatePack, ComponentKind, FactField
-from .native_provenance import native_block_provenance
+from .native_provenance import (
+    native_block_provenance,
+    project_value_source_to_atomic_ranges,
+)
 from .profile_v02 import (
     AggregationScope,
     CalculationBasis,
@@ -56,6 +66,8 @@ FINALIZE_STAGE_CODES = frozenset({
     "condition_variant_relation_normalization",
     "evidence_materialization",
     "value_source_uniqueness_validation",
+    "explicit_list_completeness_validation",
+    "repair_issue_aggregation",
     "component_materialization",
     "support_scale_semantics_validation",
     "support_cap_completeness_validation",
@@ -102,6 +114,7 @@ def finalize_source_selection_v02(
     normalize_sequential_components=None,
     require_support_cap_completeness: bool = True,
     value_source_overrides: Mapping[str, ValueSource | Mapping[str, object]] | None = None,
+    typed_repair_error: ValueError | None = None,
 ):
     """Run the single Existing Profile v0.2 finalization boundary.
 
@@ -114,8 +127,15 @@ def finalize_source_selection_v02(
     normalize_sequential_components = (
         normalize_sequential_components or normalize_explicit_sequential_components_v02
     )
-    with annotate_finalize_stage("selection_quality_validation"):
-        validate_selection_quality_v02(candidate, pack=pack)
+    selection_quality_repair_error: SupportScaleFactRepairError | None = None
+    try:
+        with annotate_finalize_stage("selection_quality_validation"):
+            validate_selection_quality_v02(candidate, pack=pack)
+    except SupportScaleFactRepairError as error:
+        # This typed defect is safe to carry through the remaining
+        # deterministic audits. Doing so lets the worker repair it together
+        # with list/cap omissions inside its one bounded retry.
+        selection_quality_repair_error = error
     with annotate_finalize_stage("sequential_component_normalization"):
         candidate, sequential_normalizations = normalize_sequential_components(candidate, pack)
     with annotate_finalize_stage("semantic_duplicate_normalization"):
@@ -138,6 +158,15 @@ def finalize_source_selection_v02(
         )
     with annotate_finalize_stage("value_source_uniqueness_validation"):
         validate_materialized_value_source_uniqueness_v02(evidence)
+    validate_materialized_typed_repair_replacements_v02(
+        pack, evidence, typed_repair_error
+    )
+    list_error: ExplicitListCompletenessError | None = None
+    try:
+        with annotate_finalize_stage("explicit_list_completeness_validation"):
+            validate_explicit_list_completeness_v02(pack, evidence)
+    except ExplicitListCompletenessError as error:
+        list_error = error
     with annotate_finalize_stage("component_materialization"):
         components = materialize_components(candidate, pack)
     with annotate_finalize_stage("support_scale_semantics_validation"):
@@ -154,15 +183,52 @@ def finalize_source_selection_v02(
                 )
         except SupportCapCompletenessError as error:
             cap_error = error
-    if scale_repair_error is not None:
+    scale_errors = [
+        error
+        for error in (selection_quality_repair_error, scale_repair_error)
+        if error is not None
+    ]
+    if not scale_errors:
+        combined_scale_error = None
+    elif len(scale_errors) == 1:
+        combined_scale_error = scale_errors[0]
+    else:
+        combined_payload = {
+            (
+                item["fact_id"],
+                item["source_block_id"],
+                item["reason"],
+            ): item
+            for error in scale_errors
+            for item in error.repair_payload()
+        }
+        combined_scale_error = SupportScaleFactRepairError(
+            [combined_payload[key] for key in sorted(combined_payload)]
+        )
+    if combined_scale_error is not None:
+        if cap_error is not None:
+            combined_scale_error = combined_scale_error.with_missing_support_cap_anchors(
+                cap_error.required_support_scale_anchors(),
+                additional_do_not_restore_fact_ids=cap_error.do_not_restore_fact_ids,
+            )
+        else:
+            combined_scale_error = combined_scale_error.with_support_cap_check_state(
+                support_cap_check_state
+            )
+    scale_or_cap_error: ValueError | None = combined_scale_error or cap_error
+    if list_error is not None and scale_or_cap_error is not None:
+        with annotate_finalize_stage("repair_issue_aggregation"):
+            raise SourceSelectionRepairIssuesError(
+                [list_error, scale_or_cap_error]
+            )
+    if list_error is not None:
+        raise list_error
+    if combined_scale_error is not None:
         with annotate_finalize_stage("support_scale_semantics_validation"):
-            if cap_error is not None:
-                raise scale_repair_error.with_missing_support_cap_anchors(
-                    cap_error.required_support_scale_anchors()
-                )
-            raise scale_repair_error.with_support_cap_check_state(support_cap_check_state)
+            raise combined_scale_error
     if cap_error is not None:
-        raise cap_error
+        with annotate_finalize_stage("support_cap_completeness_validation"):
+            raise cap_error
     resolved_value_sources = {
         row.fact_id: row.value_source
         for row in evidence
@@ -642,16 +708,80 @@ class NumericCandidate(StrictModel):
 
 
 _GROUPED_DECIMAL_NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+_GROUPED_INTEGER_NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)"
+_POSITIONAL_COUNT_NUMBER = (
+    rf"(?:{_GROUPED_INTEGER_NUMBER}[ \t]*만"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER}[ \t]*천)?"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER}[ \t]*백)?"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER}[ \t]*십)?"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER})?"
+    rf"|{_GROUPED_INTEGER_NUMBER}[ \t]*천"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER}[ \t]*백)?"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER}[ \t]*십)?"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER})?"
+    rf"|{_GROUPED_INTEGER_NUMBER}[ \t]*백"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER}[ \t]*십)?"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER})?"
+    rf"|{_GROUPED_INTEGER_NUMBER}[ \t]*십"
+    rf"(?:[ \t]*{_GROUPED_INTEGER_NUMBER})?"
+    rf"|{_GROUPED_INTEGER_NUMBER})"
+)
+_COUNT_SOURCE = rf"(?P<number>{_POSITIONAL_COUNT_NUMBER})[ \t]*(?P<unit>개사|개팀|개[ \t]*과제|명|팀|사)"
 _NUMERIC_TOKEN_PREFIX = r"(?<![\d.])(?<!\d,)(?<!\d，)(?<![,，][,，])"
-_NUMERIC_TOKEN_SUFFIX = r"(?!\d|[,，]\d|\.\d)"
+_NUMERIC_TOKEN_SUFFIX = (
+    r"(?!\d|[,，]\d|\.\d)"
+    # Do not let the regex backtrack from a malformed/foreign-currency large
+    # amount and emit a valid-looking prefix such as ``5억`` from
+    # ``5억원달러`` or ``1억`` from ``1억 5000만원 USD``.
+    r"(?![ \t]*(?:원|만[ \t]*원))"
+    rf"(?![ \t]*{_GROUPED_DECIMAL_NUMBER}[ \t]*(?:천|백)?[ \t]*만(?:[ \t]*원)?)"
+)
 _NUMERIC_CANDIDATE_PATTERN = re.compile(
-    rf"{_NUMERIC_TOKEN_PREFIX}(?:{_GROUPED_DECIMAL_NUMBER}\s*(?:천|만|억)?\s*원|"
-    rf"\d+(?:\.\d+)?\s*%|\d+\s*(?:개사|개팀|개 과제|개과제|명|팀|사)){_NUMERIC_TOKEN_SUFFIX}"
+    rf"{_NUMERIC_TOKEN_PREFIX}(?:{_COUNT_SOURCE}|"
+    rf"{KOREAN_KRW_MONEY_SOURCE}|"
+    rf"{_GROUPED_DECIMAL_NUMBER}[ \t]*%){_NUMERIC_TOKEN_SUFFIX}"
 )
 
-_AMOUNT_PATTERN = re.compile(rf"(?P<number>{_GROUPED_DECIMAL_NUMBER})\s*(?P<suffix>천|만|억)?\s*원")
-_RATE_PATTERN = re.compile(r"(?P<number>\d+(?:\.\d+)?)\s*%")
-_COUNT_PATTERN = re.compile(r"(?P<number>\d+)\s*(?P<unit>개사|개팀|개 과제|개과제|명|팀|사)")
+_AMOUNT_PATTERN = re.compile(KOREAN_KRW_MONEY_SOURCE)
+_RATE_PATTERN = re.compile(
+    rf"(?P<number>{_GROUPED_DECIMAL_NUMBER})[ \t]*%"
+)
+_COUNT_PATTERN = re.compile(_COUNT_SOURCE)
+_GROUPED_NUMBER_WITH_COMMA = re.compile(
+    r"(?<![\d,，])(?P<number>\d[\d,，]*[,，][\d,，]*(?:\.\d+)?)"
+    r"(?![\d,，])(?=[ \t]*(?:억|천|백|만|원))"
+)
+_PRECEDING_MALFORMED_MONEY_FRAGMENT = re.compile(
+    r"(?:"
+    r"[0-9,，.]+(?:[ \t]*[억천백십만원][ \t]*[0-9,，.]*)*"
+    r"[억천백십만원][ \t]*"
+    r"|[0-9,，.]+[ \t]*[천백십][ \t]*[,，]+[ \t]*"
+    r"|[0-9][0-9,，.]*[,，][ \t]+"
+    r"|[0-9][0-9,，.]*[ \t]+"
+    r"|[0-9][0-9,，.]*[/_][ \t]*"
+    r")$"
+)
+_PRECEDING_MALFORMED_COUNT_FRAGMENT = re.compile(
+    r"(?:"
+    r"[0-9][0-9,，.]*[,，][ \t]+"
+    r"|[0-9][0-9,，.]*[ \t]+"
+    r"|[0-9][0-9,，.]*[/_][ \t]*"
+    r"|[0-9][0-9,，.]*(?:[ \t]*(?:만|천|백|십)[ \t]*[0-9,，.]*)*"
+    r"[ \t]*(?:만|천|백|십)[ \t]*"
+    r")$"
+)
+_FOLLOWING_LINE_MONEY_AMOUNT = re.compile(
+    rf"^\r?\n[ \t]*(?:{KOREAN_KRW_MONEY_SOURCE})"
+)
+
+
+def _has_line_broken_compound_money(text: str) -> bool:
+    """Detect an ambiguous large-unit amount split at a physical line."""
+
+    return any(
+        _FOLLOWING_LINE_MONEY_AMOUNT.match(text[match.end():])
+        for match in _AMOUNT_PATTERN.finditer(text)
+    )
 
 
 def _decimal_to_int(value: Decimal) -> int | None:
@@ -665,9 +795,56 @@ def _decimal_to_int(value: Decimal) -> int | None:
 def _amount_krw(match: re.Match[str]) -> int | None:
     """Normalize a Korean won amount without binary floating-point arithmetic."""
 
-    factor = {None: 1, "천": 1_000, "만": 10_000, "억": 100_000_000}[match.group("suffix")]
     try:
-        value = Decimal(match.group("number").replace(",", "")) * factor
+        token = re.sub(r"[ \t]", "", match.group(0))
+        if token.endswith("원"):
+            token = token[:-1]
+        has_large_unit = "억" in token or "만" in token
+
+        value = Decimal(0)
+        if "억" in token:
+            eok_number, token = token.split("억", 1)
+            value = Decimal(eok_number.replace(",", "")) * 100_000_000
+
+        def positional_coefficient(text: str) -> Decimal | None:
+            if not text:
+                return None
+            cursor = 0
+            coefficient = Decimal(0)
+            unit_factors = {"천": 1_000, "백": 100, "십": 10, None: 1}
+            for term in re.finditer(
+                rf"(?P<number>{_GROUPED_DECIMAL_NUMBER})(?P<unit>천|백|십)?",
+                text,
+            ):
+                if term.start() != cursor:
+                    return None
+                coefficient += Decimal(
+                    term.group("number").replace(",", "")
+                ) * unit_factors[term.group("unit")]
+                cursor = term.end()
+            return coefficient if cursor == len(text) else None
+
+        if "만" in token:
+            man_text, token = token.split("만", 1)
+            man_coefficient = positional_coefficient(man_text)
+            if man_coefficient is None:
+                return None
+            value += man_coefficient * 10_000
+            # ``3억 2천만원 500원`` may retain the first explicit 원 as a
+            # delimiter before its smaller won remainder.
+            if token.startswith("원"):
+                token = token[1:]
+
+        if token:
+            won_coefficient = positional_coefficient(token)
+            if won_coefficient is None:
+                return None
+            value += won_coefficient
+        elif not has_large_unit:
+            # A bare ``N억`` legitimately has no remainder. Any other empty
+            # token would violate the shared amount grammar and fails closed.
+            if "억" not in match.group(0):
+                return None
     except InvalidOperation:
         return None
     return _decimal_to_int(value)
@@ -677,10 +854,32 @@ def _rate_bps(match: re.Match[str]) -> int | None:
     """Normalize a percent expression to exact basis points."""
 
     try:
-        value = Decimal(match.group("number")) * 100
+        value = Decimal(match.group("number").replace(",", "")) * 100
     except InvalidOperation:
         return None
     return _decimal_to_int(value)
+
+
+def _count_value(match: re.Match[str]) -> int | None:
+    """Normalize a source-visible Korean positional recipient count."""
+
+    token = re.sub(r"[ \t,]", "", match.group("number"))
+    if token.isdigit():
+        return int(token)
+    cursor = 0
+    value = 0
+    last_factor = 100_000
+    factors = {"만": 10_000, "천": 1_000, "백": 100, "십": 10, None: 1}
+    for term in re.finditer(r"(?P<number>\d+)(?P<unit>만|천|백|십)?", token):
+        if term.start() != cursor:
+            return None
+        factor = factors[term.group("unit")]
+        if factor >= last_factor:
+            return None
+        value += int(term.group("number")) * factor
+        last_factor = factor
+        cursor = term.end()
+    return value if cursor == len(token) else None
 
 # A package/type/stage's own support facts: the fields a support component can
 # own and that an explicit employment-condition variant can modify.  Shared by
@@ -697,33 +896,48 @@ _PACKAGE_SUPPORT_FIELDS = {
     FactField.COST_SHARING,
 }
 
-# An explicit support-scale cap: a bound marker directly followed by the
-# amount or rate it bounds.  A count/headcount (e.g. "최대 2명") is a
-# personnel/eligibility limit, not a support-scale amount gate, and a
-# duration (개월/년/...) is support_period, not support_scale -- neither
-# belongs in this pattern.
-_AMOUNT_OR_RATE_CANDIDATE_PATTERN = re.compile(
-    rf"{_NUMERIC_TOKEN_PREFIX}(?:{_GROUPED_DECIMAL_NUMBER}\s*(?:천|만|억)?\s*원|"
-    rf"\d+(?:\.\d+)?\s*%){_NUMERIC_TOKEN_SUFFIX}"
-)
-_EXPLICIT_CAP_PATTERN = re.compile(
-    rf"(?:최대|한도|상한)\s*[:：]?\s*{_AMOUNT_OR_RATE_CANDIDATE_PATTERN.pattern}"
-)
-
-
 def build_numeric_candidates(pack: CandidatePack) -> list[NumericCandidate]:
     """Enumerate exact numeric expressions; semantics remain model-selected."""
 
     candidates: list[NumericCandidate] = []
     for block in pack.blocks:
-        for index, match in enumerate(_NUMERIC_CANDIDATE_PATTERN.finditer(block.text)):
+        index = 0
+        for match in _NUMERIC_CANDIDATE_PATTERN.finditer(block.text):
+            anchor_text = match.group(0)
+            # The shared cap scanner accepts source-faithful comma runs and
+            # leaves semantic rejection to its callers. Numeric candidates
+            # have a stricter contract: every emitted token must also be
+            # exactly normalizable, so malformed grouping can never survive
+            # as a whole match or a valid-looking suffix/prefix.
+            amount = _AMOUNT_PATTERN.fullmatch(anchor_text)
+            rate = _RATE_PATTERN.fullmatch(anchor_text)
+            count = _COUNT_PATTERN.fullmatch(anchor_text)
+            if not any((amount, rate, count)):
+                continue
+            # A malformed compound can contain a valid-looking inner amount,
+            # including after source spacing (``... 십 4백만원``).  Reject an
+            # amount preceded only by a numeric money fragment; it is a
+            # suffix of that larger token, not an independent candidate.
+            if amount is not None and _PRECEDING_MALFORMED_MONEY_FRAGMENT.search(
+                block.text[:match.start()]
+            ):
+                continue
+            if count is not None and _PRECEDING_MALFORMED_COUNT_FRAGMENT.search(
+                block.text[:match.start()]
+            ):
+                continue
+            if amount is not None and _FOLLOWING_LINE_MONEY_AMOUNT.match(
+                block.text[match.end():]
+            ):
+                continue
             candidates.append(NumericCandidate(
                 numeric_candidate_id=f"{block.block_id}#num[{index}]",
                 source_block_id=block.block_id,
-                anchor_text=match.group(0),
+                anchor_text=anchor_text,
                 start_char=match.start(),
                 end_char=match.end(),
             ))
+            index += 1
     return candidates
 
 
@@ -758,6 +972,159 @@ def _numeric_candidate_within_value_source(candidate: NumericCandidate, resolved
         and candidate.start_char >= resolved.start_char
         and candidate.end_char <= resolved.end_char
     )
+
+
+def _numeric_candidate_is_per_unit_scope_label(
+    candidate: NumericCandidate,
+    text: str,
+    *,
+    text_start_char: int = 0,
+) -> bool:
+    """Keep a scope cardinality out of selection-capacity projections.
+
+    In ``1명당 최대 5천만원`` the literal ``1명`` belongs to the PERSON
+    scope marker.  It is not a promise to select one person.  The same closed
+    vocabulary that derives ``applies_per`` owns this decision for both
+    Existing and Request profiles.
+    """
+
+    return any(
+        text_start_char + occurrence.start <= candidate.start_char
+        and candidate.end_char <= text_start_char + occurrence.end
+        for occurrence in per_unit_scope_occurrences(text)
+    )
+
+
+_LOCAL_NUMERIC_CONTEXT_BOUNDARY = re.compile(r"[,，;；:：\n。]|\.(?!\d)")
+_LOCAL_LIMIT_PREFIX = re.compile(r"(?:최대|한도|상한)\s*$")
+_LOCAL_MINIMUM_PREFIX = re.compile(r"(?:최소|하한)\s*$")
+_LOCAL_APPROX_PREFIX = re.compile(r"약\s*$")
+_LOCAL_LIMIT_SUFFIX = re.compile(r"^\s*(?:이내|이하|한도|상한)")
+_LOCAL_STRICT_LIMIT_SUFFIX = re.compile(r"^\s*미만")
+_LOCAL_MINIMUM_SUFFIX = re.compile(r"^\s*(?:이상|하한)")
+_LOCAL_STRICT_MINIMUM_SUFFIX = re.compile(r"^\s*초과")
+_LOCAL_APPROX_SUFFIX = re.compile(r"^\s*(?:내외|정도)")
+
+
+def _numeric_candidate_local_context_v02(
+    value_raw: str,
+    candidates: list[NumericCandidate],
+    index: int,
+    *,
+    value_start_char: int,
+) -> tuple[str, str]:
+    """Return the candidate's nearest non-numeric, delimiter-bounded context.
+
+    A selected Raw Fact may faithfully retain both an eligibility threshold
+    and the resulting benefit.  Context for one numeral therefore stops at a
+    delimiter *or the neighbouring numeral*, whichever comes first.  This
+    prevents ``10% 이상 감소기업: 1% 추가 지원`` from lending ``이상`` to the
+    actual 1% benefit, and prevents the 10% eligibility threshold from being
+    materialised as a support rate.
+    """
+
+    candidate = candidates[index]
+    relative_start = candidate.start_char - value_start_char
+    relative_end = candidate.end_char - value_start_char
+    previous_end = (
+        candidates[index - 1].end_char - value_start_char
+        if index > 0 else 0
+    )
+    next_start = (
+        candidates[index + 1].start_char - value_start_char
+        if index + 1 < len(candidates) else len(value_raw)
+    )
+    boundaries = list(_LOCAL_NUMERIC_CONTEXT_BOUNDARY.finditer(value_raw))
+    preceding_boundary = max(
+        (match.end() for match in boundaries if match.end() <= relative_start),
+        default=0,
+    )
+    following_boundary = min(
+        (match.start() for match in boundaries if match.start() >= relative_end),
+        default=len(value_raw),
+    )
+    context_start = max(previous_end, preceding_boundary)
+    context_end = min(next_start, following_boundary)
+    return (
+        value_raw[context_start:relative_start],
+        value_raw[relative_end:context_end],
+    )
+
+
+def _local_numeric_comparator_v02(prefix: str, suffix: str) -> Comparator:
+    """Bind a literal comparator only to its adjacent numeric candidate."""
+
+    if _LOCAL_STRICT_LIMIT_SUFFIX.match(suffix):
+        return Comparator.LT
+    if _LOCAL_LIMIT_SUFFIX.match(suffix):
+        return Comparator.LTE
+    if _LOCAL_STRICT_MINIMUM_SUFFIX.match(suffix):
+        return Comparator.GT
+    if _LOCAL_MINIMUM_SUFFIX.match(suffix):
+        return Comparator.GTE
+    if _LOCAL_APPROX_SUFFIX.match(suffix):
+        return Comparator.APPROX
+    if _LOCAL_LIMIT_PREFIX.search(prefix):
+        return Comparator.LTE
+    if _LOCAL_MINIMUM_PREFIX.search(prefix):
+        return Comparator.GTE
+    if _LOCAL_APPROX_PREFIX.search(prefix):
+        return Comparator.APPROX
+    return Comparator.EQ
+
+
+_DIRECT_POST_NUMERIC_BENEFIT = re.compile(
+    r"^\s*(?:(?:을|를|로|까지)\s*)?"
+    r"(?:추가\s*지원|"
+    r"지원(?!\s*(?:대상|자격|사업|분야|요건|조건|실적|이력))|"
+    r"지급|보조|융자|보증)"
+)
+_SUPPORT_BASIS_PREFIX = re.compile(
+    r"(?:지원(?:금|비|율|액)|보조(?:금)?|융자|보증).*?"
+    r"(?:연\s*매출|매출(?:액)?|영업\s*이익)\s*(?:의|대비)\s*"
+    r"(?:최대|한도|상한|약)?\s*$"
+)
+
+
+def _is_financial_eligibility_numeric_v02(
+    value_raw: str,
+    candidate: NumericCandidate,
+    *,
+    value_start_char: int,
+    local_suffix: str,
+) -> bool:
+    """Separate applicant thresholds from a benefit in one faithful fact."""
+
+    relative_start = candidate.start_char - value_start_char
+    relative_end = candidate.end_char - value_start_char
+    prefix = value_raw[:relative_start]
+    suffix = value_raw[relative_end:]
+    if _DIRECT_POST_NUMERIC_BENEFIT.match(suffix):
+        return False
+
+    benefit_owners = list(_SUPPORT_SCALE_BENEFIT_SIGNAL.finditer(prefix))
+    eligibility_roles = list(_SUPPORT_SCALE_ELIGIBILITY_ROLE.finditer(prefix))
+    latest_benefit_end = max(
+        (match.end() for match in benefit_owners),
+        default=-1,
+    )
+    latest_role_end = max(
+        (match.end() for match in eligibility_roles),
+        default=-1,
+    )
+    if (
+        _SUPPORT_BASIS_PREFIX.search(prefix)
+        and latest_benefit_end > latest_role_end
+    ):
+        return False
+
+    eligibility = list(_SUPPORT_SCALE_ELIGIBILITY_METRIC.finditer(prefix))
+    if not eligibility and _SUPPORT_SCALE_ELIGIBILITY_METRIC.search(local_suffix):
+        return True
+    if not eligibility:
+        return False
+    latest_eligibility_end = eligibility[-1].end()
+    return latest_benefit_end <= latest_eligibility_end
 
 
 def derive_support_scale_measures_v02(
@@ -795,7 +1162,15 @@ def derive_support_scale_measures_v02(
         resolved = resolved_value_sources.get(fact.fact_id)
         if resolved is None:
             continue
-        text = fact.value_anchor.anchor_text
+        source_text = (
+            source_block_texts.get(resolved.source_block_id)
+            if source_block_texts else None
+        )
+        text = (
+            source_text[resolved.start_char:resolved.end_char]
+            if isinstance(source_text, str)
+            else fact.value_anchor.anchor_text
+        )
         # Table cells often contain only ``18억원`` while their row/column
         # header explicitly says ``업체당 지원한도``.  A support cap is then a
         # structural fact, not a guess from the numeric cell.  The runner
@@ -804,22 +1179,47 @@ def derive_support_scale_measures_v02(
             source_block_texts.get(block_id, "")
             for block_id in fact.context_source_block_ids
         ) if source_block_texts else ""
+        scope_text = source_text if isinstance(source_text, str) else text
+        scope_text_start = 0 if isinstance(source_text, str) else resolved.start_char
         has_limit_context = bool(re.search(r"(?:지원|융자|보증)?\s*한도|상한", context_text))
-        for candidate in candidates_by_block.get(resolved.source_block_id, []):
-            if not _numeric_candidate_within_value_source(candidate, resolved):
+        fact_candidates = sorted(
+            (
+                candidate
+                for candidate in candidates_by_block.get(resolved.source_block_id, [])
+                if _numeric_candidate_within_value_source(candidate, resolved)
+            ),
+            key=lambda candidate: (candidate.start_char, candidate.end_char),
+        )
+        for index, candidate in enumerate(fact_candidates):
+            local_prefix, local_suffix = _numeric_candidate_local_context_v02(
+                text,
+                fact_candidates,
+                index,
+                value_start_char=resolved.start_char,
+            )
+            if _is_financial_eligibility_numeric_v02(
+                text,
+                candidate,
+                value_start_char=resolved.start_char,
+                local_suffix=local_suffix,
+            ):
                 continue
             amount = _AMOUNT_PATTERN.fullmatch(candidate.anchor_text)
             rate = _RATE_PATTERN.fullmatch(candidate.anchor_text)
             count = _COUNT_PATTERN.fullmatch(candidate.anchor_text)
-            comparator = Comparator.EQ
+            if count and _numeric_candidate_is_per_unit_scope_label(
+                candidate,
+                scope_text,
+                text_start_char=scope_text_start,
+            ):
+                continue
+            comparator = _local_numeric_comparator_v02(local_prefix, local_suffix)
             lower_value: int | None
             upper_value: int | None
-            if re.search(r"(?:최대|이내|한도|상한)", text):
-                comparator, lower_value, upper_value = Comparator.LTE, None, 0
-            elif re.search(r"(?:최소|이상|하한)", text):
-                comparator, lower_value, upper_value = Comparator.GTE, 0, None
-            elif re.search(r"(?:내외|약|정도)", text):
-                comparator, lower_value, upper_value = Comparator.APPROX, 0, 0
+            if comparator in {Comparator.LTE, Comparator.LT}:
+                lower_value, upper_value = None, 0
+            elif comparator in {Comparator.GTE, Comparator.GT}:
+                lower_value, upper_value = 0, None
             else:
                 lower_value = upper_value = 0
 
@@ -849,7 +1249,9 @@ def derive_support_scale_measures_v02(
                     continue
                 measure_type, role, unit = MeasureType.RATE, MeasureRole.SUPPORT_RATE, "BPS"
             elif count:
-                value = int(count.group("number"))
+                value = _count_value(count)
+                if value is None:
+                    continue
                 measure_type, role, unit = MeasureType.COUNT, MeasureRole.SELECTION_CAPACITY, count.group("unit")
             else:
                 continue
@@ -1170,6 +1572,11 @@ def derive_request_support_scale_measures_v012(
             amount = _AMOUNT_PATTERN.fullmatch(candidate.anchor_text)
             rate = _RATE_PATTERN.fullmatch(candidate.anchor_text)
             count = _COUNT_PATTERN.fullmatch(candidate.anchor_text)
+            if count and _numeric_candidate_is_per_unit_scope_label(
+                candidate,
+                block_text,
+            ):
+                continue
             if amount:
                 value = _amount_krw(amount)
                 if value is None:
@@ -1189,7 +1596,9 @@ def derive_request_support_scale_measures_v012(
                 measure_role = MeasureRole.SUPPORT_RATE
                 unit = "BPS"
             elif count:
-                value = int(count.group("number"))
+                value = _count_value(count)
+                if value is None:
+                    continue
                 measure_type = MeasureType.COUNT
                 measure_role = MeasureRole.SELECTION_CAPACITY
                 unit = count.group("unit")
@@ -1500,17 +1909,16 @@ def validate_selection_quality_v02(
         if fact.field_name == FactField.SUPPORT_SCALE
         and duration_pattern.search(fact.value_anchor.anchor_text)
     ]
-    if invalid:
-        raise SupportScaleFactRepairError([
-            {
-                "fact_id": fact.fact_id,
-                "source_block_id": fact.value_anchor.source_block_id,
-                "reason": "duration_bearing_anchor",
-                "numeric_candidate_count": 0,
-                "derived_measure_count": 0,
-            }
-            for fact in invalid
-        ])
+    scale_repair_records: dict[str, dict[str, object]] = {
+        fact.fact_id: {
+            "fact_id": fact.fact_id,
+            "source_block_id": fact.value_anchor.source_block_id,
+            "reason": "duration_bearing_anchor",
+            "numeric_candidate_count": 0,
+            "derived_measure_count": 0,
+        }
+        for fact in invalid
+    }
 
     # A support scale count denotes how many recipients/projects are selected
     # or supported.  A count of classes, mentoring sessions, or other
@@ -1522,7 +1930,7 @@ def validate_selection_quality_v02(
         r"[^\n]{0,24}?\d+\s*(?:회|회차)"
     )
     activity_count = [
-        fact.fact_id
+        fact
         for fact in extraction.facts
         if fact.field_name == FactField.SUPPORT_SCALE
         and (
@@ -1533,12 +1941,14 @@ def validate_selection_quality_v02(
             or activity_count_pattern.search(fact.value_anchor.anchor_text)
         )
     ]
-    if activity_count:
-        raise ValueError(
-            "support_scale is limited to beneficiary count, amount, rate, or limit; "
-            "an activity/session count such as N회 must not be emitted as support_scale: "
-            f"{', '.join(activity_count)}"
-        )
+    for fact in activity_count:
+        scale_repair_records.setdefault(fact.fact_id, {
+            "fact_id": fact.fact_id,
+            "source_block_id": fact.value_anchor.source_block_id,
+            "reason": "activity_count_not_support_scale",
+            "numeric_candidate_count": 0,
+            "derived_measure_count": 0,
+        })
 
     # A beneficiary must be an actual person, organization, or enterprise.
     # Calculation units and payment channels can describe a benefit but cannot
@@ -1604,6 +2014,13 @@ def validate_selection_quality_v02(
             "create the explicit beneficiary-and-benefit support packages and assign their facts with primary_component_id"
         )
 
+    # Typed support-scale defects are deferred until every non-repairable
+    # selection-quality guard above has completed. The canonical finalizer can
+    # then carry this safe defect through the independent list/cap audits and
+    # expose all requirements in one bounded repair call.
+    if scale_repair_records:
+        raise SupportScaleFactRepairError(list(scale_repair_records.values()))
+
 
 class SupportCapCompletenessError(ValueError):
     """A safe missing-cap failure with in-memory-only repair anchors."""
@@ -1611,8 +2028,14 @@ class SupportCapCompletenessError(ValueError):
     error_classification = "missing_explicit_support_cap"
     field_name = FactField.SUPPORT_SCALE
 
-    def __init__(self, missing_cap_anchors: list[tuple[str, str]]) -> None:
+    def __init__(
+        self,
+        missing_cap_anchors: list[tuple[str, str]],
+        *,
+        do_not_restore_fact_ids: set[str] | frozenset[str] = frozenset(),
+    ) -> None:
         self._missing_cap_anchors = tuple(missing_cap_anchors)
+        self._do_not_restore_fact_ids = frozenset(do_not_restore_fact_ids)
         source_block_ids = sorted({block_id for block_id, _ in self._missing_cap_anchors})
         super().__init__(
             "support cap completeness failed: "
@@ -1627,6 +2050,10 @@ class SupportCapCompletenessError(ValueError):
             {"source_block_id": block_id, "anchor_text": anchor_text}
             for block_id, anchor_text in self._missing_cap_anchors
         ]
+
+    @property
+    def do_not_restore_fact_ids(self) -> frozenset[str]:
+        return self._do_not_restore_fact_ids
 
 
 @dataclass(frozen=True, slots=True)
@@ -1655,6 +2082,12 @@ class SupportScaleFactRepairError(ValueError):
         "no_supported_measure_derived",
         "applicant_financial_eligibility_threshold",
         "duration_bearing_anchor",
+        "cross_atomic_support_cap_span",
+        "support_cap_span_contains_unrelated_numeric",
+        "malformed_numeric_grouping",
+        "ambiguous_line_broken_amount",
+        "activity_count_not_support_scale",
+        "historical_support_cap_context",
     })
     _CAP_CHECK_STATES = frozenset({"not_checked", "complete", "missing"})
 
@@ -1664,6 +2097,7 @@ class SupportScaleFactRepairError(ValueError):
         *,
         missing_cap_anchors: list[dict[str, str]] | None = None,
         support_cap_check_state: str = "not_checked",
+        additional_do_not_restore_fact_ids: set[str] | frozenset[str] = frozenset(),
     ) -> None:
         safe_facts: list[_SupportScaleFactRepairRecord] = []
         for item in facts:
@@ -1710,6 +2144,9 @@ class SupportScaleFactRepairError(ValueError):
         ))
         self._missing_cap_anchors = tuple(safe_missing)
         self._support_cap_check_state = support_cap_check_state
+        self._do_not_restore_fact_ids = frozenset(additional_do_not_restore_fact_ids) | {
+            item.fact_id for item in self._facts
+        }
         super().__init__(
             "support_scale fact repair required: "
             f"classification={self.error_classification} fact_count={len(self._facts)}"
@@ -1717,7 +2154,7 @@ class SupportScaleFactRepairError(ValueError):
 
     @property
     def do_not_restore_fact_ids(self) -> frozenset[str]:
-        return frozenset(item.fact_id for item in self._facts)
+        return self._do_not_restore_fact_ids
 
     @property
     def support_cap_check_state(self) -> str:
@@ -1730,23 +2167,249 @@ class SupportScaleFactRepairError(ValueError):
         ]
 
     def with_missing_support_cap_anchors(
-        self, missing_cap_anchors: list[dict[str, str]],
+        self,
+        missing_cap_anchors: list[dict[str, str]],
+        *,
+        additional_do_not_restore_fact_ids: set[str] | frozenset[str] = frozenset(),
     ) -> "SupportScaleFactRepairError":
         return type(self)(
             self.repair_payload(),
             missing_cap_anchors=missing_cap_anchors,
             support_cap_check_state="missing",
+            additional_do_not_restore_fact_ids=(
+                self.do_not_restore_fact_ids | frozenset(additional_do_not_restore_fact_ids)
+            ),
         )
 
     def with_support_cap_check_state(self, state: str) -> "SupportScaleFactRepairError":
-        return type(self)(self.repair_payload(), support_cap_check_state=state)
+        return type(self)(
+            self.repair_payload(),
+            support_cap_check_state=state,
+            additional_do_not_restore_fact_ids=self.do_not_restore_fact_ids,
+        )
 
     def repair_payload(self) -> list[dict[str, object]]:
         return [item.repair_payload() for item in self._facts]
 
 
+class SourceSelectionRepairIssuesError(ValueError):
+    """Aggregate independent typed defects into the one bounded repair call."""
+
+    error_classification = "multiple_source_selection_repairs"
+
+    def __init__(self, issues: list[ValueError]) -> None:
+        supported = (
+            ExplicitListCompletenessError,
+            SupportCapCompletenessError,
+            SupportScaleFactRepairError,
+        )
+        if len(issues) < 2 or any(not isinstance(issue, supported) for issue in issues):
+            raise ValueError("combined source-selection repair requires typed issues")
+        self._issues = tuple(issues)
+        classifications = sorted(
+            str(getattr(issue, "error_classification")) for issue in self._issues
+        )
+        super().__init__(
+            "source-selection repair issues detected: "
+            f"classification={self.error_classification} "
+            f"issue_count={len(self._issues)} issue_classifications={classifications}"
+        )
+
+    @property
+    def do_not_restore_fact_ids(self) -> frozenset[str]:
+        blocked: set[str] = set()
+        for issue in self._issues:
+            if isinstance(issue, (
+                ExplicitListCompletenessError,
+                SupportCapCompletenessError,
+                SupportScaleFactRepairError,
+            )):
+                blocked.update(issue.do_not_restore_fact_ids)
+        return frozenset(blocked)
+
+    def required_support_scale_anchors(self) -> list[dict[str, str]]:
+        anchors: dict[tuple[str, str], dict[str, str]] = {}
+        for issue in self._issues:
+            if isinstance(issue, (SupportCapCompletenessError, SupportScaleFactRepairError)):
+                for anchor in issue.required_support_scale_anchors():
+                    anchors[(anchor["source_block_id"], anchor["anchor_text"])] = anchor
+        return [anchors[key] for key in sorted(anchors)]
+
+    def required_support_scale_fact_repairs(self) -> list[dict[str, object]]:
+        repairs: dict[tuple[str, str, str], dict[str, object]] = {}
+        for issue in self._issues:
+            if isinstance(issue, SupportScaleFactRepairError):
+                for repair in issue.repair_payload():
+                    key = (
+                        str(repair["fact_id"]),
+                        str(repair["source_block_id"]),
+                        str(repair["reason"]),
+                    )
+                    repairs[key] = repair
+        return [repairs[key] for key in sorted(repairs)]
+
+    @property
+    def required_list_item_regions(self) -> list[dict[str, object]]:
+        regions: list[dict[str, object]] = []
+        for issue in self._issues:
+            if isinstance(issue, ExplicitListCompletenessError):
+                regions.extend(issue.required_list_item_regions)
+        return regions
+
+
+def do_not_restore_fact_ids_for_typed_repair_v02(
+    error: ValueError | None,
+) -> frozenset[str]:
+    """Return preservation exclusions only for known, typed repair errors.
+
+    Do not inspect arbitrary ``ValueError`` attributes: retry preservation is
+    an audit boundary and an unrelated validation error must not gain a new
+    preservation policy merely by carrying a similarly named attribute.
+    """
+
+    if isinstance(error, (
+        SupportCapCompletenessError,
+        SupportScaleFactRepairError,
+        ExplicitListCompletenessError,
+        SourceSelectionRepairIssuesError,
+    )):
+        return error.do_not_restore_fact_ids
+    return frozenset()
+
+
+def required_explicit_list_item_regions_for_typed_repair_v02(
+    error: ValueError | None,
+) -> list[dict[str, object]]:
+    """Expose exact list text/coordinates only in the typed in-memory repair."""
+
+    if isinstance(error, (ExplicitListCompletenessError, SourceSelectionRepairIssuesError)):
+        return error.required_list_item_regions
+    return []
+
+
+def required_support_scale_anchors_for_typed_repair_v02(
+    error: ValueError | None,
+) -> list[dict[str, str]]:
+    """Expose support-cap locators only for reviewed typed repair errors."""
+
+    if isinstance(error, (
+        SupportCapCompletenessError,
+        SupportScaleFactRepairError,
+        SourceSelectionRepairIssuesError,
+    )):
+        return error.required_support_scale_anchors()
+    return []
+
+
+def required_support_scale_fact_repairs_for_typed_repair_v02(
+    error: ValueError | None,
+) -> list[dict[str, object]]:
+    """Expose source-text-free invalid scale records for one repair call."""
+
+    if isinstance(error, SupportScaleFactRepairError):
+        return error.repair_payload()
+    if isinstance(error, SourceSelectionRepairIssuesError):
+        return error.required_support_scale_fact_repairs()
+    return []
+
+
+def typed_repair_requirements_v02(
+    error: ValueError | None,
+) -> dict[str, object]:
+    """Build the one canonical worker/CLI repair payload fragment."""
+
+    return {
+        "required_support_scale_anchors": (
+            required_support_scale_anchors_for_typed_repair_v02(error)
+        ),
+        "required_support_scale_fact_repairs": (
+            required_support_scale_fact_repairs_for_typed_repair_v02(error)
+        ),
+        "required_list_item_regions": (
+            required_explicit_list_item_regions_for_typed_repair_v02(error)
+        ),
+        "do_not_restore_fact_ids": sorted(
+            do_not_restore_fact_ids_for_typed_repair_v02(error)
+        ),
+    }
+
+
+def validate_typed_repair_replacements_v02(
+    previous: "SourceSelectionExtractionV02 | None",
+    current: "SourceSelectionExtractionV02",
+    error: ValueError | None,
+) -> None:
+    """Reject an unchanged fact which a typed repair explicitly invalidated.
+
+    ``do_not_restore_fact_ids`` prevents the preservation layer from bringing
+    a rejected prior fact back after the model omitted it.  It cannot by
+    itself stop a repair response from repeating that same bad fact (possibly
+    under a new id) and merely adding another fact beside it.  Compare the
+    source-visible fact fingerprint here and re-raise the original typed error
+    when that happens.  A genuine repair remains allowed to reuse the id after
+    changing either the field or exact anchor; normal finalization then checks
+    the changed fact in full.
+    """
+
+    if previous is None:
+        return
+    blocked_ids = do_not_restore_fact_ids_for_typed_repair_v02(error)
+    if not blocked_ids:
+        return
+    blocked_fingerprints = {
+        (
+            fact.field_name,
+            fact.value_anchor.source_block_id,
+            fact.value_anchor.anchor_text,
+        )
+        for fact in previous.facts
+        if fact.fact_id in blocked_ids
+    }
+    if not blocked_fingerprints:
+        return
+    if any(
+        (
+            fact.field_name,
+            fact.value_anchor.source_block_id,
+            fact.value_anchor.anchor_text,
+        ) in blocked_fingerprints
+        for fact in current.facts
+    ):
+        if error is None:  # pragma: no cover - blocked ids imply a typed error
+            raise ValueError("typed repair repeated a rejected prior fact")
+        raise error
+
+
+def validate_materialized_typed_repair_replacements_v02(
+    pack: CandidatePack,
+    materialized_evidence: list["MaterializedEvidence"],
+    error: ValueError | None,
+) -> None:
+    """Recheck typed list repairs using canonical original coordinates."""
+
+    required_regions = required_explicit_list_item_regions_for_typed_repair_v02(
+        error
+    )
+    if not required_regions:
+        return
+    if explicit_list_repair_has_invalid_overlaps_v02(
+        pack, materialized_evidence, required_regions
+    ):
+        if error is None:  # pragma: no cover - regions imply a typed error
+            raise ValueError("typed list repair retained an invalid fact")
+        raise error
+
+
 _SUPPORT_SCALE_ELIGIBILITY_METRIC = re.compile(
-    r"(?:연\s*매출|매출(?:액)?|자산(?:액)?|자본(?:금)?|투자(?:금|액)|출자|재무)"
+    r"(?:연\s*매출|매출(?:액)?|영업\s*이익|자산(?:액)?|자본(?:금)?|"
+    r"부채(?:액|비율)?|투자(?:금|액)|출자|재무|고용\s*(?:인원|인력)|"
+    r"종업원\s*수|상시\s*근로자\s*수|근로자\s*수)"
+)
+_SUPPORT_SCALE_ELIGIBILITY_ROLE = re.compile(
+    r"(?:신청\s*(?:자격|대상)|지원\s*(?:자격|대상)|모집\s*대상|참가\s*자격)"
+)
+_SUPPORT_SCALE_THRESHOLD_COMPARATOR = re.compile(
+    r"(?:이하|이상|미만|초과|보유)"
 )
 _SUPPORT_SCALE_BENEFIT_SIGNAL = re.compile(
     r"(?:추가\s*지원|지원(?:금|비|율|한도|금액|규모)|"
@@ -1770,6 +2433,129 @@ def _bounded_source_segment(text: str, start: int, end: int) -> str:
     return text[segment_start:min(stops)]
 
 
+def _projection_has_only_whitespace_gaps_v02(
+    pack: CandidatePack,
+    source: ValueSource,
+    projected: list[tuple[str, int, int]],
+    fully_projected: bool,
+) -> bool:
+    """Allow a native composite's inserted whitespace, never synthetic text."""
+
+    if fully_projected:
+        return True
+    block = next(
+        (item for item in pack.blocks if item.block_id == source.source_block_id),
+        None,
+    )
+    if block is None or not block.source_spans:
+        return False
+    gap_text: list[str] = []
+    cursor = 0
+    for span in block.source_spans:
+        cursor += len(span.exact_text)
+        separator_end = cursor + len(span.separator_after)
+        overlap_start = max(source.start_char, cursor)
+        overlap_end = min(source.end_char, separator_end)
+        if overlap_end > overlap_start:
+            gap_text.append(block.text[overlap_start:overlap_end])
+        cursor = separator_end
+    covered_length = sum(end - start for _, start, end in projected)
+    gaps = "".join(gap_text)
+    return (
+        covered_length + len(gaps) == source.end_char - source.start_char
+        and bool(gaps)
+        and gaps.isspace()
+    )
+
+
+def _valid_support_cap_claims_v02(
+    pack: CandidatePack,
+    source: ValueSource,
+    projected: list[tuple[str, int, int]],
+    fully_projected: bool,
+    confirmed_caps: Mapping[str, set[tuple[int, int]]],
+    numeric_candidates: list[NumericCandidate],
+) -> set[tuple[str, int, int]]:
+    """Return cap claims whose evidence contains no unrelated numeral."""
+
+    if not projected or not _projection_has_only_whitespace_gaps_v02(
+        pack, source, projected, fully_projected
+    ):
+        return set()
+    def claims_in_coordinate_space(
+        ranges: list[tuple[str, int, int]],
+    ) -> set[tuple[str, int, int]]:
+        selected_numeric_spans = [
+            (candidate.source_block_id, candidate.start_char, candidate.end_char)
+            for candidate in numeric_candidates
+            if any(
+                block_id == candidate.source_block_id
+                and selected_start < candidate.end_char
+                and candidate.start_char < selected_end
+                for block_id, selected_start, selected_end in ranges
+            )
+        ]
+        contained_caps: set[tuple[str, int, int]] = set()
+        claims: set[tuple[str, int, int]] = set()
+        for block_id, selected_start, selected_end in ranges:
+            for cap_start, cap_end in confirmed_caps.get(block_id, set()):
+                if not (
+                    selected_start <= cap_start
+                    and cap_end <= selected_end
+                ):
+                    continue
+                contained_caps.add((block_id, cap_start, cap_end))
+                if selected_numeric_spans and all(
+                    numeric_block_id == block_id
+                    and cap_start <= numeric_start
+                    and numeric_end <= cap_end
+                    for numeric_block_id, numeric_start, numeric_end in selected_numeric_spans
+                ):
+                    claims.add((block_id, cap_start, cap_end))
+        # A partially valid broad selection is still broad. If any contained
+        # cap has another selected numeral outside its own bounds, none of
+        # this fact's claims may discharge completeness.
+        return claims if claims == contained_caps else set()
+
+    # Native composites normally compare in projected atomic coordinates.
+    # A cap whose marker and amount straddle an immutable composite boundary
+    # exists only in the composite coordinate space, so retain that exact
+    # coordinate as an additional (not replacement) completeness identity.
+    direct = [(source.source_block_id, source.start_char, source.end_char)]
+    return claims_in_coordinate_space(projected) | claims_in_coordinate_space(direct)
+
+
+def _projected_selection_has_financial_threshold_v02(
+    projected: list[tuple[str, int, int]],
+    selected_text: str,
+    numeric_candidates: list[NumericCandidate],
+) -> bool:
+    """Recognize a financial eligibility threshold across native spans."""
+
+    # Native composition can join an eligibility predicate to its explicit
+    # benefit (for example ``매출액 ... 감소기업: 1% 추가 지원``).  Treating
+    # that complete selected value as eligibility-only makes its validity
+    # depend on whether the same immutable text happened to remain atomic.
+    # A broad/cross-atomic cap remains subject to the independent cap checks
+    # below; this guard only declines the eligibility-only classification.
+    if _SUPPORT_SCALE_BENEFIT_SIGNAL.search(selected_text):
+        return False
+    if not _SUPPORT_SCALE_ELIGIBILITY_METRIC.search(selected_text):
+        return False
+    if not (
+        _SUPPORT_SCALE_ELIGIBILITY_ROLE.search(selected_text)
+        or _SUPPORT_SCALE_THRESHOLD_COMPARATOR.search(selected_text)
+    ):
+        return False
+    return any(
+        block_id == candidate.source_block_id
+        and selected_start <= candidate.start_char
+        and candidate.end_char <= selected_end
+        for block_id, selected_start, selected_end in projected
+        for candidate in numeric_candidates
+    )
+
+
 def validate_materialized_support_scale_semantics_v02(
     extraction: "SourceSelectionExtractionV02",
     pack: CandidatePack,
@@ -1782,7 +2568,8 @@ def validate_materialized_support_scale_semantics_v02(
     del extraction
     block_texts = {block.block_id: block.text for block in pack.blocks}
     confirmed_caps = explicit_support_cap_spans_by_block(pack)
-    invalid: list[str] = []
+    numeric_candidates = build_numeric_candidates(pack)
+    invalid: dict[str, str] = {}
     evidence_by_fact_id = {row.fact_id: row for row in evidence}
     for row in evidence:
         if row.field_name != FactField.SUPPORT_SCALE or row.value_source is None:
@@ -1792,23 +2579,71 @@ def validate_materialized_support_scale_semantics_v02(
         if isinstance(text, str):
             segment = _bounded_source_segment(text, source.start_char, source.end_char)
             selected_text = text[source.start_char:source.end_char]
-            owns_confirmed_cap = any(
-                source.start_char <= cap_start and cap_end <= source.end_char
-                for cap_start, cap_end in confirmed_caps.get(source.source_block_id, set())
+            projected, fully_projected = project_value_source_to_atomic_ranges(
+                pack, source
             )
-            if (
+            valid_cap_claims = _valid_support_cap_claims_v02(
+                pack,
+                source,
+                projected,
+                fully_projected,
+                confirmed_caps,
+                numeric_candidates,
+            )
+            owns_confirmed_cap = bool(valid_cap_claims)
+            overlapping_cap_keys = {
+                (projected_block_id, cap_start, cap_end)
+                for projected_block_id, projected_start, projected_end in projected
+                for cap_start, cap_end in confirmed_caps.get(projected_block_id, set())
+                if projected_start < cap_end and projected_end > cap_start
+            }
+            overlapping_cap_keys.update({
+                (source.source_block_id, cap_start, cap_end)
+                for cap_start, cap_end in confirmed_caps.get(
+                    source.source_block_id, set()
+                )
+                if source.start_char < cap_end and source.end_char > cap_start
+            })
+            overlaps_confirmed_cap = bool(overlapping_cap_keys)
+            is_single_atomic_selection = fully_projected and len(projected) == 1
+            malformed_grouping = any(
+                re.fullmatch(_GROUPED_DECIMAL_NUMBER, match.group("number")) is None
+                for match in _GROUPED_NUMBER_WITH_COMMA.finditer(selected_text)
+            )
+            if _has_line_broken_compound_money(selected_text):
+                invalid[row.fact_id] = "ambiguous_line_broken_amount"
+            elif is_historical_support_cap_context(segment):
+                invalid[row.fact_id] = "historical_support_cap_context"
+            elif malformed_grouping:
+                invalid[row.fact_id] = "malformed_numeric_grouping"
+            elif (
+                not is_single_atomic_selection
+                and _projected_selection_has_financial_threshold_v02(
+                    projected, selected_text, numeric_candidates
+                )
+            ):
+                invalid[row.fact_id] = "applicant_financial_eligibility_threshold"
+            elif (
+                overlaps_confirmed_cap
+                and not is_single_atomic_selection
+                and overlapping_cap_keys != valid_cap_claims
+            ):
+                invalid[row.fact_id] = "cross_atomic_support_cap_span"
+            elif overlaps_confirmed_cap and not owns_confirmed_cap:
+                invalid[row.fact_id] = "support_cap_span_contains_unrelated_numeric"
+            elif (
                 _SUPPORT_SCALE_ELIGIBILITY_METRIC.search(segment)
                 and not _SUPPORT_SCALE_BENEFIT_SIGNAL.search(selected_text)
                 and not owns_confirmed_cap
             ):
-                invalid.append(row.fact_id)
+                invalid[row.fact_id] = "applicant_financial_eligibility_threshold"
     if not invalid:
         return None
     error = SupportScaleFactRepairError([
         {
             "fact_id": fact_id,
             "source_block_id": evidence_by_fact_id[fact_id].value_source.source_block_id,
-            "reason": "applicant_financial_eligibility_threshold",
+            "reason": invalid[fact_id],
             "numeric_candidate_count": 0,
             "derived_measure_count": 0,
         }
@@ -1834,12 +2669,38 @@ def validate_support_cap_completeness_v02(
 
     if materialized_evidence is None:
         materialized_evidence = materialize_evidence(extraction, pack)
-    captured_spans: dict[str, list[tuple[str, ValueSource]]] = {}
+    captured_ranges: list[
+        tuple[
+            str,
+            list[tuple[str, int, int]],
+            tuple[str, int, int],
+            set[tuple[str, int, int]],
+        ]
+    ] = []
+    confirmed_caps = explicit_support_cap_spans_by_block(pack)
+    numeric_candidates = build_numeric_candidates(pack)
     for row in materialized_evidence:
         if row.field_name == FactField.SUPPORT_SCALE and row.value_source is not None:
-            captured_spans.setdefault(row.value_source.source_block_id, []).append(
-                (row.fact_id, row.value_source)
+            projected, fully_projected = project_value_source_to_atomic_ranges(
+                pack, row.value_source
             )
+            captured_ranges.append((
+                row.fact_id,
+                projected,
+                (
+                    row.value_source.source_block_id,
+                    row.value_source.start_char,
+                    row.value_source.end_char,
+                ),
+                _valid_support_cap_claims_v02(
+                    pack,
+                    row.value_source,
+                    projected,
+                    fully_projected,
+                    confirmed_caps,
+                    numeric_candidates,
+                ),
+            ))
 
     # ``pack`` is the trusted, routed A-candidate scope.  Completeness must
     # cover every scanner-confirmed native cap in that whole scope, not just
@@ -1850,20 +2711,39 @@ def validate_support_cap_completeness_v02(
     candidates = extract_explicit_support_cap_candidates(pack)
     claims_by_fact: dict[str, list[tuple[str, int, int]]] = {}
     claims_by_cap: dict[tuple[str, int, int], list[str]] = {}
+    invalid_claimant_fact_ids: set[str] = set()
     for candidate in candidates:
         cap_key = (candidate.source_block_id, candidate.start_char, candidate.end_char)
-        for fact_id, source in captured_spans.get(candidate.source_block_id, []):
-            if source.start_char <= candidate.start_char and candidate.end_char <= source.end_char:
+        for fact_id, projected, direct, valid_cap_claims in captured_ranges:
+            overlaps = any(
+                block_id == candidate.source_block_id
+                and projected_start <= candidate.start_char
+                and candidate.end_char <= projected_end
+                for block_id, projected_start, projected_end in projected
+            )
+            direct_block_id, direct_start, direct_end = direct
+            overlaps = overlaps or (
+                direct_block_id == candidate.source_block_id
+                and direct_start <= candidate.start_char
+                and candidate.end_char <= direct_end
+            )
+            if cap_key in valid_cap_claims:
                 claims_by_fact.setdefault(fact_id, []).append(cap_key)
                 claims_by_cap.setdefault(cap_key, []).append(fact_id)
+            elif overlaps:
+                invalid_claimant_fact_ids.add(fact_id)
     missing: list[tuple[str, str]] = []
     for candidate in candidates:
         cap_key = (candidate.source_block_id, candidate.start_char, candidate.end_char)
         claimants = claims_by_cap.get(cap_key, [])
         if len(claimants) != 1 or len(claims_by_fact.get(claimants[0], [])) != 1:
             missing.append((candidate.source_block_id, candidate.anchor_text))
+            invalid_claimant_fact_ids.update(claimants)
     if missing:
-        raise SupportCapCompletenessError(missing)
+        raise SupportCapCompletenessError(
+            missing,
+            do_not_restore_fact_ids=invalid_claimant_fact_ids,
+        )
 
 
 def normalize_nested_support_scale_anchors_v02(

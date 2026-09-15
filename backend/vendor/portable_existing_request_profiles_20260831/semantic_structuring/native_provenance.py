@@ -167,6 +167,49 @@ def native_block_provenance(
     return {}
 
 
+def project_value_source_to_atomic_ranges(
+    pack: CandidatePack,
+    source: Any,
+) -> tuple[list[tuple[str, int, int]], bool]:
+    """Project one materialized ValueSource onto immutable atomic blocks.
+
+    The boolean is true only when every selected character has an original
+    atomic coordinate. Composite-inserted separators deliberately make it
+    false, while the returned ranges still identify exact constituent text.
+    """
+
+    by_id = {block.block_id: block for block in pack.blocks}
+    block = by_id.get(source.source_block_id)
+    if block is None:
+        return [], False
+    if block.native_parent_block_id is not None:
+        if block.native_start_char is None or block.native_end_char is None:
+            return [], False
+        return [(
+            block.native_parent_block_id,
+            block.native_start_char + source.start_char,
+            block.native_start_char + source.end_char,
+        )], True
+    if block.source_spans:
+        projected: list[tuple[str, int, int]] = []
+        covered = 0
+        cursor = 0
+        for span in block.source_spans:
+            span_end = cursor + len(span.exact_text)
+            overlap_start = max(source.start_char, cursor)
+            overlap_end = min(source.end_char, span_end)
+            if overlap_end > overlap_start:
+                covered += overlap_end - overlap_start
+                projected.append((
+                    span.source_block_id,
+                    span.start_char + overlap_start - cursor,
+                    span.start_char + overlap_end - cursor,
+                ))
+            cursor = span_end + len(span.separator_after)
+        return projected, covered == source.end_char - source.start_char
+    return [(block.block_id, source.start_char, source.end_char)], True
+
+
 def candidate_pack_block_index(pack: CandidatePack) -> dict[str, SourceBlock]:
     """Build one duplicate-safe block index for pack-level serialization."""
 

@@ -81,8 +81,6 @@ from semantic_structuring.source_selection import (  # noqa: E402
     AmbiguousAnchorCorrectionError,
     CorrectionResolverError,
     SourceSelectionExtractionV02,
-    SupportCapCompletenessError,
-    SupportScaleFactRepairError,
     apply_finalize_with_fallback_v02,
     build_explicit_support_cap_anchors,
     build_corrected_anchor_audit,
@@ -90,7 +88,10 @@ from semantic_structuring.source_selection import (  # noqa: E402
     classify_empty_repair_response_v02,
     memoize_anchor_correction_resolver,
     finalize_source_selection_v02,
+    do_not_restore_fact_ids_for_typed_repair_v02,
     preserve_prior_server_validated_facts_v02,
+    typed_repair_requirements_v02,
+    validate_typed_repair_replacements_v02,
 )
 
 
@@ -339,18 +340,32 @@ _REPAIR_INSTRUCTIONS = (
     "server_validation_errors. Return a complete revised selection. Preserve every valid "
     "component, fact, exact anchor, and relationship from previous_selection. Change only "
     "what is necessary to resolve the listed errors; do not re-extract the notice from scratch, "
-    "invent a business answer, or use any Gold/expected output."
+    "invent a business answer, or use any Gold/expected output. Every fact id in "
+    "do_not_restore_fact_ids was rejected by a deterministic validator: remove it or return "
+    "a genuinely corrected replacement, never the unchanged prior fact."
 )
 _SUPPORT_SCALE_REPAIR_INSTRUCTIONS = (
-    " The payload's required_support_scale_anchors were deterministically found in "
-    "your own selected evidence. Include each one as a separate support_scale fact using "
-    "exactly its supplied source_block_id and anchor_text."
+    " The payload's required_support_scale_fact_repairs identifies prior support_scale "
+    "facts which the deterministic validator rejected. Remove or reclassify each listed "
+    "fact according to its controlled reason; these records intentionally contain no "
+    "source text. The required_support_scale_anchors were deterministically found in the "
+    "trusted routed candidate pack. Include each supplied anchor as a separate support_scale fact "
+    "using exactly its source_block_id and anchor_text."
+)
+_EXPLICIT_LIST_REPAIR_INSTRUCTIONS = (
+    " The persistent validation error omits source text. Its in-memory "
+    "required_list_item_regions payload includes each exact item_text, coordinates, "
+    "allowed_field_names, and replace_fact_ids. Remove or replace every listed prior "
+    "fact, then select an exact anchor within that one region using only an allowed "
+    "field. A compatible fact must cover the full substantive item text; it may omit "
+    "only the bullet marker and leading whitespace. Do not use one parent span to "
+    "cover multiple list items."
 )
 
 
-# The bundle is the cache/reproducibility key for this producer.  The three
-# vendored values are checked against their source at call time; the two local
-# instructions are hashed here so changing either one creates a new lineage.
+# The bundle is the cache/reproducibility key for this producer. Vendored
+# values are checked against their source at call time; local instructions are
+# hashed here so changing any one creates a new lineage.
 _PROMPT_BUNDLE_COMPONENT_HASHES = {
     "section_scope": _PROMPT_SHA256[
         ("semantic_structuring.common_ir_v1", "classify_common_ir_v1_attachment_scopes")
@@ -367,6 +382,9 @@ _PROMPT_BUNDLE_COMPONENT_HASHES = {
     "repair": hashlib.sha256(_REPAIR_INSTRUCTIONS.encode("utf-8")).hexdigest(),
     "support_scale_repair": hashlib.sha256(
         _SUPPORT_SCALE_REPAIR_INSTRUCTIONS.encode("utf-8")
+    ).hexdigest(),
+    "explicit_list_repair": hashlib.sha256(
+        _EXPLICIT_LIST_REPAIR_INSTRUCTIONS.encode("utf-8")
     ).hexdigest(),
 }
 PROMPT_BUNDLE_VERSION = (
@@ -946,13 +964,6 @@ def _select_and_assemble(
     preserved_fact_normalizations: list[dict[str, Any]] = []
     preservation_fallback: dict[str, Any] | None = None
 
-    def required_support_scale_anchors(error: ValueError | None) -> list[dict[str, str]]:
-        """Keep raw cap locators in process; never parse persisted error text."""
-
-        if isinstance(error, (SupportCapCompletenessError, SupportScaleFactRepairError)):
-            return error.required_support_scale_anchors()
-        return []
-
     def finalize(candidate: SourceSelectionExtractionV02):
         return finalize_source_selection_v02(
             candidate,
@@ -960,6 +971,7 @@ def _select_and_assemble(
             numeric_candidates,
             common_ir_source_sha256=common_ir_source_sha256,
             resolve_ambiguous_value_anchor=correction_resolver,
+            typed_repair_error=last_validation_error,
         )
 
     for attempt in range(source_selection_attempts):
@@ -967,14 +979,23 @@ def _select_and_assemble(
         instructions = _source_selection_instructions() + (_REPAIR_INSTRUCTIONS if is_repair else "")
         request = base_request
         if is_repair:
-            required_caps = required_support_scale_anchors(last_validation_error)
-            if required_caps:
+            repair_requirements = typed_repair_requirements_v02(
+                last_validation_error
+            )
+            required_caps = repair_requirements["required_support_scale_anchors"]
+            required_scale_repairs = repair_requirements[
+                "required_support_scale_fact_repairs"
+            ]
+            required_list_items = repair_requirements["required_list_item_regions"]
+            if required_caps or required_scale_repairs:
                 instructions += _SUPPORT_SCALE_REPAIR_INSTRUCTIONS
+            if required_list_items:
+                instructions += _EXPLICIT_LIST_REPAIR_INSTRUCTIONS
             request = {
                 **base_request,
                 "previous_selection": prior_selection,
                 "server_validation_errors": [last_error],
-                "required_support_scale_anchors": required_caps,
+                **repair_requirements,
             }
         selection_call_count += 1
         extraction = _call_llm(
@@ -1015,14 +1036,21 @@ def _select_and_assemble(
             last_validation_error = None
             last_reason = LLM_INVALID_RESPONSE
             continue
+        try:
+            validate_typed_repair_replacements_v02(
+                carry_forward, extraction, last_validation_error
+            )
+        except ValueError as error:
+            last_error = str(error)
+            last_validation_error = error
+            last_reason = MATERIALIZATION_FAILED
+            continue
         merged, preserved_changes = preserve_prior_server_validated_facts_v02(
             carry_forward,
             extraction,
             pack,
             do_not_restore_fact_ids=(
-                last_validation_error.do_not_restore_fact_ids
-                if isinstance(last_validation_error, SupportScaleFactRepairError)
-                else None
+                do_not_restore_fact_ids_for_typed_repair_v02(last_validation_error)
             ),
         )
         carry_forward = merged

@@ -6,6 +6,8 @@ from copy import deepcopy
 import json
 from pathlib import Path
 
+import pytest
+
 from worker import vendor  # noqa: F401 - installs vendored contract paths
 
 from semantic_structuring.models import CandidatePack
@@ -73,6 +75,96 @@ def test_existing_projection_adds_project_scope_without_changing_derivation_rule
     assert measure.applies_per == "PROJECT"
     assert measure.aggregation_scope is not None
     assert measure.aggregation_scope.value == "PER_UNIT"
+
+
+@pytest.mark.parametrize(
+    ("text", "scope"),
+    [
+        ("1명당 최대 5천만원 지원", "PERSON"),
+        ("1팀당 최대 5천만원 지원", "TEAM"),
+        ("1개사당 최대 5천만원 지원", "COMPANY"),
+    ],
+)
+def test_per_unit_scope_cardinality_is_not_a_selection_capacity(
+    text: str, scope: str,
+) -> None:
+    pack = CandidatePack.model_validate({
+        "pack_id": "scope-cardinality-pack",
+        "notice_id": "PBLN-scope-cardinality",
+        "question": "scope cardinality",
+        "blocks": [{"block_id": "body[0]", "text": text, "relation": "candidate"}],
+    })
+    extraction = SourceSelectionExtractionV02.model_validate({
+        "notice_id": pack.notice_id,
+        "candidate_pack_id": pack.pack_id,
+        "component_decision": {"mode": "none", "no_component_reason": "one item"},
+        "support_components": [],
+        "facts": [{
+            "fact_id": "scale",
+            "field_name": "support_scale",
+            "status": "identified",
+            "value_anchor": {"source_block_id": "body[0]", "anchor_text": text},
+        }],
+    })
+    evidence = materialize_evidence(extraction, pack)
+    sources = {row.fact_id: row.value_source for row in evidence if row.value_source}
+
+    existing = derive_support_scale_measures_v02(
+        extraction,
+        build_numeric_candidates(pack),
+        sources,
+        source_block_texts={"body[0]": text},
+    )[0].measures
+    request = derive_request_support_scale_measures_v012(
+        [{
+            "fact_id": "scale",
+            "value_raw": text,
+            "value_source": {
+                "source_block_id": "body[0]",
+                "start_char": 0,
+                "end_char": len(text),
+                "text_basis": "common_ir_v1_candidate_pack",
+            },
+        }],
+        build_numeric_candidates(pack),
+        source_block_texts={"body[0]": text},
+    )[0].measures
+
+    for measures in (existing, request):
+        assert len(measures) == 1
+        assert measures[0].measure_type.value == "amount"
+        assert measures[0].upper_value == 50_000_000
+        assert measures[0].applies_per == scope
+
+
+@pytest.mark.parametrize(
+    ("text", "anchor", "expected_count"),
+    [
+        ("선정규모 최대 5천명 내외", "5천명", 5_000),
+        ("선정규모 최대 1만명 내외", "1만명", 10_000),
+        ("선정규모 최대 2천개사 내외", "2천개사", 2_000),
+        ("선정규모 최대 1만2천5백명 내외", "1만2천5백명", 12_500),
+    ],
+)
+def test_korean_positional_recipient_count_is_one_count_measure(
+    text: str,
+    anchor: str,
+    expected_count: int,
+) -> None:
+    pack = CandidatePack.model_validate({
+        "pack_id": "positional-count-pack",
+        "notice_id": "PBLN-positional-count",
+        "question": "positional recipient count",
+        "blocks": [{"block_id": "body[0]", "text": text, "relation": "candidate"}],
+    })
+
+    assert [
+        candidate.anchor_text for candidate in build_numeric_candidates(pack)
+    ] == [anchor]
+    measures = _request_measures_for_text(text)
+    assert len(measures) == 1
+    assert measures[0].measure_type.value == "count"
+    assert measures[0].upper_value == expected_count
 
 
 def test_request_projection_rejects_invalid_raw_fact_locator() -> None:

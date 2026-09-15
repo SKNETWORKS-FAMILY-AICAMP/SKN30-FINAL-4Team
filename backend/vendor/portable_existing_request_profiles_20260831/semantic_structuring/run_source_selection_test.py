@@ -24,16 +24,17 @@ from semantic_structuring.source_selection import (
     AnchorCorrectionRequest,
     AnchorCorrectionResponse,
     SourceSelectionExtractionV02,
-    SupportCapCompletenessError,
-    SupportScaleFactRepairError,
     apply_finalize_with_fallback_v02,
     build_explicit_support_cap_anchors,
     build_corrected_anchor_audit,
     build_numeric_candidates,
     classify_empty_repair_response_v02,
     finalize_source_selection_v02,
+    do_not_restore_fact_ids_for_typed_repair_v02,
     memoize_anchor_correction_resolver,
     preserve_prior_server_validated_facts_v02,
+    typed_repair_requirements_v02,
+    validate_typed_repair_replacements_v02,
 )
 
 
@@ -343,13 +344,6 @@ def main() -> None:
     preservation_fallback: dict[str, str] | None = None
     derived_scale_measures = []
 
-    def _required_support_scale_anchors(error: ValueError | None) -> list[dict[str, str]]:
-        """Keep exact repair locators in memory instead of parsing error text."""
-
-        if isinstance(error, (SupportCapCompletenessError, SupportScaleFactRepairError)):
-            return error.required_support_scale_anchors()
-        return []
-
     # Correction-call bookkeeping, scoped to this whole runner execution (not
     # to one attempt or one _finalize call): correction_usages is folded into
     # the final usage totals; correction_audit records safe, candidate_id-free
@@ -382,6 +376,7 @@ def main() -> None:
             resolve_ambiguous_value_anchor=(
                 _resolve_ambiguous_value_anchor if common_ir_source_sha256 else None
             ),
+            typed_repair_error=last_validation_error,
         )
 
     # A rejected output gets one repair attempt.  It receives its own prior
@@ -402,25 +397,47 @@ def main() -> None:
             retry_instruction = ""
             is_repair_attempt = bool(last_error) and prior_selection is not None
             if is_repair_attempt:
-                required_caps = _required_support_scale_anchors(last_validation_error)
+                repair_requirements = typed_repair_requirements_v02(
+                    last_validation_error
+                )
+                required_caps = repair_requirements["required_support_scale_anchors"]
+                required_scale_repairs = repair_requirements[
+                    "required_support_scale_fact_repairs"
+                ]
+                required_list_items = repair_requirements["required_list_item_regions"]
                 retry_instruction = (
                     " This is a repair attempt. The user payload contains previous_selection and "
                     "server_validation_errors. Return a complete revised selection. Preserve every valid "
                     "component, fact, exact anchor, and relationship from previous_selection. Change only "
                     "what is necessary to resolve the listed errors; do not re-extract the notice from scratch, "
-                    "invent a business answer, or use any Gold/expected output."
+                    "invent a business answer, or use any Gold/expected output. Every fact id in "
+                    "do_not_restore_fact_ids was rejected by a deterministic validator: remove it or return "
+                    "a genuinely corrected replacement, never the unchanged prior fact."
                 )
-                if required_caps:
+                if required_caps or required_scale_repairs:
                     retry_instruction += (
-                        " The payload's required_support_scale_anchors were deterministically found in "
-                        "your own selected evidence. Include each one as a separate support_scale fact using "
-                        "exactly its supplied source_block_id and anchor_text."
+                        " The payload's required_support_scale_fact_repairs identifies prior support_scale "
+                        "facts which the deterministic validator rejected. Remove or reclassify each listed "
+                        "fact according to its controlled reason; these records intentionally contain no "
+                        "source text. The required_support_scale_anchors were deterministically found in the "
+                        "trusted routed candidate pack. Include each supplied anchor as a separate support_scale fact "
+                        "using exactly its source_block_id and anchor_text."
+                    )
+                if required_list_items:
+                    retry_instruction += (
+                        " The persistent validation error omits source text. Its in-memory "
+                        "required_list_item_regions payload includes each exact item_text, coordinates, "
+                        "allowed_field_names, and replace_fact_ids. Remove or replace every listed prior "
+                        "fact, then select an exact anchor within that one region using only an allowed "
+                        "field. A compatible fact must cover the full substantive item text; it may omit "
+                        "only the bullet marker and leading whitespace. Do not use one parent span to "
+                        "cover multiple list items."
                     )
                 request_payload = {
                     **request,
                     "previous_selection": prior_selection,
                     "server_validation_errors": [last_error],
-                    "required_support_scale_anchors": required_caps,
+                    **repair_requirements,
                 }
             diagnostic("selection_request_started", attempt=attempt + 1, repair=is_repair_attempt)
             response = client.responses.create(
@@ -476,6 +493,19 @@ def main() -> None:
                 )
                 last_validation_error = None
                 continue
+            try:
+                validate_typed_repair_replacements_v02(
+                    carry_forward_extraction, extraction, last_validation_error
+                )
+            except ValueError as error:
+                last_error = str(error)
+                last_validation_error = error
+                diagnostic(
+                    "selection_validation_failed",
+                    attempt=attempt + 1,
+                    error=last_error,
+                )
+                continue
             # `merged_extraction` is the raw, pre-server-normalization
             # candidate (this attempt's own facts plus whatever prior facts
             # were carried forward).  It -- not a post-normalization result
@@ -487,9 +517,7 @@ def main() -> None:
                 extraction,
                 pack,
                 do_not_restore_fact_ids=(
-                    last_validation_error.do_not_restore_fact_ids
-                    if isinstance(last_validation_error, SupportScaleFactRepairError)
-                    else None
+                    do_not_restore_fact_ids_for_typed_repair_v02(last_validation_error)
                 ),
             )
             carry_forward_extraction = merged_extraction

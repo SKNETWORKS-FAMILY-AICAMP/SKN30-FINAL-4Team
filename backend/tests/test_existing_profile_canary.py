@@ -101,6 +101,23 @@ def test_prompt_preflight_pins_conditional_support_scale_repair(
         canary._verify_prompt_pins()
 
 
+def test_reviewed_prompt_pins_match_current_worker_bundle() -> None:
+    canary._verify_prompt_pins()
+
+
+def test_prompt_preflight_pins_conditional_explicit_list_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_EXPLICIT_LIST_REPAIR_INSTRUCTIONS",
+        "drifted explicit-list repair prompt",
+    )
+
+    with pytest.raises(canary.ExistingProfileCanaryError, match="prompt hash pin"):
+        canary._verify_prompt_pins()
+
+
 def test_plan_preserves_safe_shared_baseline_rejection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

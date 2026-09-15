@@ -32,6 +32,7 @@ from semantic_structuring.source_selection import (
     CorrectionResolverError,
     DeliveryRoleCanonical,
     EmptyRepairResponseError,
+    SupportScaleFactRepairError,
     SourceSelectionExtraction,
     SourceSelectionExtractionV02,
     apply_finalize_with_fallback_v02,
@@ -519,8 +520,8 @@ def main() -> None:
     })
     try:
         validate_selection_quality_v02(activity_frequency_quality_extraction)
-    except ValueError as error:
-        assert "activity/session count" in str(error)
+    except SupportScaleFactRepairError as error:
+        assert error.repair_payload()[0]["reason"] == "activity_count_not_support_scale"
     else:
         raise AssertionError("an activity frequency must not be emitted as support_scale")
 
@@ -539,8 +540,8 @@ def main() -> None:
     })
     try:
         validate_selection_quality_v02(abbreviated_activity_frequency)
-    except ValueError as error:
-        assert "activity/session count" in str(error)
+    except SupportScaleFactRepairError as error:
+        assert error.repair_payload()[0]["reason"] == "activity_count_not_support_scale"
     else:
         raise AssertionError("an abbreviated activity frequency must not be emitted as support_scale")
 

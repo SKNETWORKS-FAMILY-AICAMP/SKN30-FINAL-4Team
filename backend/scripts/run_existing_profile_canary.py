@@ -85,8 +85,9 @@ PROMPT_HASHES = {
     "block_router": "9ff379ff0a6f2a1f4b152bcbf034b4d9e53ef44fab8aa1331dcab86230a676e9",
     "source_selection": "dd9c1e030e83e1339d2f626e07e5b10300caa920a3f2bdde86fbaf54bbd7d0c3",
     "anchor_correction": "488a429af775d9d56507b98e4c0970bf31d7ab636bbe450c6a190dcb5d0c2e28",
-    "repair": "8096b56f4614f9637452e871c8cbb2168127ba80322d9cc0406eb7eb0703adaa",
-    "support_scale_repair": "62e018220d6b2c468e80f8fef3e7b16171ad23fa9a07134272926558ca6fffc2",
+    "repair": "9a525ba9a63e2846bcd42fbcafc6beaa725d210b436c178d00b56c8c5ea98401",
+    "support_scale_repair": "e52af99973b58ec94f13e0718613b5c0cfd550dd2bc94cc9f0cb150902c9453a",
+    "explicit_list_repair": "7c6cf996748237f2449d53ab6866e78803652110b6bfe266209516122d085e2b",
 }
 _SAFE_STAGE_CODES = frozenset({
     "common_ir_v1_preparation", "section_scope_discovery", "section_scope_apply",
@@ -122,6 +123,9 @@ def _verify_prompt_pins() -> None:
         "repair": sha256(announcement_profiles._REPAIR_INSTRUCTIONS.encode("utf-8")).hexdigest(),
         "support_scale_repair": sha256(
             announcement_profiles._SUPPORT_SCALE_REPAIR_INSTRUCTIONS.encode("utf-8")
+        ).hexdigest(),
+        "explicit_list_repair": sha256(
+            announcement_profiles._EXPLICIT_LIST_REPAIR_INSTRUCTIONS.encode("utf-8")
         ).hexdigest(),
     }
     _require(actual == PROMPT_HASHES, "announcement profile prompt hash pin mismatch")
