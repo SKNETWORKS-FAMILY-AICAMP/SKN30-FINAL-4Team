@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { authService } from '../services/authService'
+import { useAuth } from '../providers/AuthProvider'
 
 // Layouts
 import PublicLayout from '../components/layout/PublicLayout'
@@ -11,28 +10,13 @@ import LandingPage from '../pages/LandingPage'
 import LoginPage from '../pages/LoginPage'
 import PasswordResetPage from '../pages/PasswordResetPage'
 import PasswordChangePage from '../pages/PasswordChangePage'
-
 import MainPage from '../pages/MainPage'
 import MyPage from '../pages/MyPage'
 
 export default function AppRoutes() {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-    const [displayName, setDisplayName] = useState<string>('')
+    const { displayName, isAuthenticated } = useAuth()
 
-    useEffect(() => {
-        authService.getCurrentUser()
-            .then((res) => {
-                setIsAuthenticated(!!res?.user.id)
-                
-                if (res?.user?.display_name) {
-                    setDisplayName(res.user.display_name)
-                }
-            })
-            .catch(() => {
-                setIsAuthenticated(false)
-            })
-    }, [])
-
+    // 세션 확인 중일 때 로딩 처리
     if (isAuthenticated === null) {
         return null
     }
@@ -44,6 +28,7 @@ export default function AppRoutes() {
                 <Route element={<AppLayout displayName={displayName} />}>
                     <Route path="/" element={<MainPage />} />
                     <Route path="/mypage" element={<MyPage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
             ) : (
                 // --- 미로그인 상태 ---
@@ -52,10 +37,9 @@ export default function AppRoutes() {
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/password-reset" element={<PasswordResetPage />} />
                     <Route path="/password-reset/update" element={<PasswordChangePage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
             )}
-
-            <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     )
 }

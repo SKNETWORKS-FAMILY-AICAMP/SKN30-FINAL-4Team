@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
-import { resultService } from '../../services/resultService'
 import ResultView from './ResultView'
+import { resultService } from '../../services/resultService'
 
 interface ResultProps {
     caseId: string | null
-    onBackToUpload?: () => void
     readOnlyChat?: boolean
+    onBackToUpload?: () => void
 }
 
-export default function Result({ caseId, onBackToUpload, readOnlyChat = false }: ResultProps) {
+export default function Result({ caseId, readOnlyChat = false, onBackToUpload }: ResultProps) {
     const [reportData, setReportData] = useState<any>(null)
     const [isLoading, setIsLoading] = useState<boolean>(true)
     const [error, setError] = useState<string | null>(null)
@@ -73,26 +73,13 @@ export default function Result({ caseId, onBackToUpload, readOnlyChat = false }:
     }
 
     if (error) {
-        return (
-            <div className="flex-1 flex flex-col items-center justify-center h-screen gap-md">
-                <p className="text-body-md text-error">{error}</p>
-                {onBackToUpload && (
-                    <button 
-                        onClick={onBackToUpload}
-                        className="px-md py-sm bg-primary text-on-primary rounded font-label-caps"
-                    >
-                        돌아가기
-                    </button>
-                )}
-            </div>
-        )
+        onBackToUpload
     }
 
     return (
         <ResultView 
             reportData={reportData}
             onExportPDF={handleExportPDF}
-            onBackToUpload={onBackToUpload}
             readOnlyChat={readOnlyChat}
             onOpenCandidateDetail={handleOpenCandidateDetail}
             selectedItem={selectedItem}

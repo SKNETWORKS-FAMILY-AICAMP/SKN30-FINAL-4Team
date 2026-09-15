@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { authService } from '../../services/authService'
+import { useState, useCallback, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../../providers/AuthProvider'
+import { analysisService } from '../../services/analysisService'
 import AppLayoutView from './AppLayoutView'
 
 interface AppLayoutProps {
@@ -9,49 +10,58 @@ interface AppLayoutProps {
 
 export default function AppLayout({ displayName }: AppLayoutProps) {
     const navigate = useNavigate()
+    const location = useLocation() // URL 변경 감지를 위해 추가
+    const { expireTime, refreshSession, logout } = useAuth()
+    
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null)
-
-    // 세션 만료 시간 관리 (기본 1시간)
-    const [expireTime, setExpireTime] = useState<number>(() => {
-        const saved = sessionStorage.getItem('expire_time')
-        if (saved) return Number(saved)
-        const defaultExpire = Date.now() + 60 * 60 * 1000
-        sessionStorage.setItem('expire_time', String(defaultExpire))
-        return defaultExpire
-    })
+    const [sessionId, setSessionId] = useState<string | null>(null)
 
     const [remainingMinutes, setRemainingMinutes] = useState<number>(5)
     const [showImminentAlert, setShowImminentAlert] = useState(false)
 
-    // 세션 연장 함수 (이미 구현된 authService 활용)
+    // [핵심] URL이 바뀔 때마다 화면에 떠 있던 모달이나 사이드 패널 등 UI 상태를 일괄 초기화
+    useEffect(() => {
+        setSelectedHistoryId(null)
+        setShowImminentAlert(false)
+    }, [location.pathname])
+
+    // [중복 제거] 열린 세션이 있다면 안전하게 닫는 공통 함수
+    const closeActiveSession = useCallback(async (targetSessionId: string | null) => {
+        if (!targetSessionId) return
+        try {
+            await analysisService.closeSession(targetSessionId)
+        } catch (error) {
+            console.error('세션 종료 실패:', error)
+        }
+    }, [])
+
     const handleRefreshSession = async () => {
         try {
-            await authService.extendSession()
-            
-            const newExpire = Date.now() + 60 * 60 * 1000
-            sessionStorage.setItem('expire_time', String(newExpire))
-            setExpireTime(newExpire)
+            await refreshSession()
             setShowImminentAlert(false)
         } catch (error) {
             handleLogout()
         }
     }
 
-    // 로그아웃 함수 (이미 구현된 authService 활용)
     const handleLogout = async () => {
         try {
-            await authService.logout()
+            await closeActiveSession(sessionId)
+            await logout()
         } catch (e) {
-            // 에러가 나도 로컬 세션 정보는 정리 후 이동
-        } finally {
-            sessionStorage.removeItem('expire_time')
-            window.location.href = '/'
+            // 에러 무시 후 정리
         }
     }
 
-    const handleNewAnalysis = () => {
+    const handleNewAnalysis = async () => {
+        await closeActiveSession(sessionId)
+        setSessionId(null)
         setSelectedHistoryId(null)
-        navigate('/')
+        setShowImminentAlert(false)
+
+        if (location.pathname !== '/') {
+            navigate('/')
+        }
     }
 
     const handleHistoryClick = (id: string) => {
@@ -81,6 +91,7 @@ export default function AppLayout({ displayName }: AppLayoutProps) {
             onCloseHistory={handleCloseHistory}
             onImminent={handleImminent}
             onCloseImminentAlert={() => setShowImminentAlert(false)}
+            setSessionId={setSessionId}
         />
     )
 }
