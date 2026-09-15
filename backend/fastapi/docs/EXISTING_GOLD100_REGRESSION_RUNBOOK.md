@@ -321,10 +321,15 @@ PBLN_<15자리>/pipeline/common_ir_v1/<한 개의 JSON>
 `document.provenance.source_location`만 달라질 수 있으며, 나머지 입력이 baseline과 다르면
 의미 비교 전에 실패한다.
 
-후보의 출처 정보도 후보가 스스로 주장한 문자열만으로 신뢰하지 않는다. baseline Common IR에서
-기본 projection → PDF inspector의 native table occurrence → native line atom → 최대 3개 native
-continuation composite 순으로 **결정적 source universe**를 다시 만들며, 후보는 그 ID·본문이
-정확히 같은 block의 부분집합만 쓸 수 있다. baseline 전용 legacy block이나 Gold 수동 교정
+후보의 출처 정보도 후보가 스스로 주장한 문자열만으로 신뢰하지 않는다. parent lineage가 없는
+RunPod `0.1.4` 호환 후보는 baseline Common IR에서 기본 projection → PDF inspector의 native
+table occurrence → native line atom → 최대 3개 native continuation composite 순으로
+**결정적 source universe**를 다시 만들며, 후보는 그 ID·본문이 정확히 같은 block의 부분집합만
+쓸 수 있다. 반면 `semantic_structuring.native_exact_transform`의 parent lineage가 기록된 현재
+worker 후보는 source-selection의 atomic ID 집합만 라우팅 결과로 받아들이고, 각 block의
+본문·locator를 Common IR에서 다시 만든 production A-pack에 같은 transform variant를 적용한다.
+이 경우 current/parent pack identity와 전체 `source_block_texts` map까지 정확히 일치해야 한다.
+baseline 전용 legacy block이나 Gold 수동 교정
 `adj:*` block을 후보가 복사하는 것은 허용하지 않는다. source-selection의 선택값, materialized
 evidence, Profile fact/component도 서로 일치해야 한다. 지원 규모 수치는 locator의 원문 토큰을
 다시 해석해 measure 종류·단위·역할·값과 맞는지 확인한다. 새 후보의 component 이름은 해당
@@ -332,10 +337,12 @@ component source block 안에 정확히 한 번 존재해야 하며, 숫자 loca
 아니라 서버의 complete-token 규칙으로 독립 재열거된 span이어야 한다. 과거 B/G의 검토 delta는
 별도 calibration으로 읽되 이 새 후보 admission 규칙을 우회해 후보 합격으로 취급하지 않는다.
 
-이 source universe는 RunPod `0.1.4`의 section-scope·block-router 선택을 그대로 재현하는
-CandidatePack parity 검사가 아니다. 실제 router가 어떤 block을 노출했는지는 별도의 production
-parity 테스트 대상이다. 여기서는 후보가 사용한 값과 근거가 고정 Common IR에서 결정적으로
-재생성 가능한지만 fail-closed로 검증한다. 보고서의
+parent lineage가 없는 RunPod `0.1.4` 호환 source universe는 그 파이프라인의
+section-scope·block-router 선택을 그대로 재현하는 CandidatePack parity 검사가 아니다. 실제
+router가 어떤 block을 노출했는지는 별도의 production parity 테스트 대상이다. 여기서는 후보가
+사용한 값과 근거가 고정 Common IR에서 결정적으로 재생성 가능한지만 fail-closed로 검증한다.
+parent lineage가 있는 현재 worker 후보는 위 production A-pack replay 규칙이 추가 적용된다.
+보고서의
 `normalization.candidate_source_admission.scope`도 이 범위를 명시한다.
 
 의미 비교에서 원문 위치의 공통 식별자는 `source_sha256 + occurrence_ids`다. 수동 교정 Gold가

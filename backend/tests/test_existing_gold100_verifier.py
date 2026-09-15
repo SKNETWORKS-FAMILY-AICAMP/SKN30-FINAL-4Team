@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import csv
 from hashlib import sha256
 import json
@@ -84,7 +85,7 @@ def _write_gold(root: Path) -> str:
     pblanc_id = "PBLN_SYNTHETIC_001"
     document_id = f"pdf:{pblanc_id}"
     source_sha = "a" * 64
-    source_text = "명시적 지원 내용"
+    source_text = "명시적 지원\n내용"
     fact = {
         "fact_id": "fact-support-content",
         "field_name": "support_content",
@@ -145,6 +146,7 @@ def _write_gold(root: Path) -> str:
         "selection_contract": verifier.SELECTION_CONTRACT,
         "selection": {
             "notice_id": pblanc_id,
+            "candidate_pack_id": "synthetic-pack",
             "facts": [
                 {
                     "fact_id": fact["fact_id"],
@@ -212,7 +214,15 @@ def _write_gold(root: Path) -> str:
             "source_kind": "pdf",
             "provenance": {"source_sha256": source_sha, "source_location": "external/source.pdf"},
         },
-        "blocks": [{"block_id": "block-1", "text": source_text, "text_occurrence_ids": ["occ-1"]}],
+        "blocks": [{
+            "block_id": "block-1",
+            "text": source_text,
+            "kind": "paragraph",
+            "reading_order": 0,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-1"],
+            "occurrences": [{"occurrence_id": "occ-1", "text": source_text}],
+        }],
     }
     notice = root / "notices" / pblanc_id
     _write_json(notice / "existing_profile.v0.2.json", profile)
@@ -288,6 +298,95 @@ def _read_notice_triple(
             "common_ir_v1.json",
         )
     )  # type: ignore[return-value]
+
+
+def _install_native_line_atom(
+    profile: dict[str, object],
+    selection: dict[str, object],
+    common_ir: dict[str, object],
+) -> None:
+    """Turn the synthetic atomic fact into one lossless native line atom."""
+
+    base_pack = verifier._existing_a_base_candidate_pack(
+        common_ir, {"block-1"}, label="synthetic native line"
+    )
+    transformed = verifier.augment_pack_with_native_exact_transforms(
+        base_pack,
+        options=verifier.NativeExactTransformOptions(
+            enabled=True, include_line_atoms=True, include_continuations=False,
+        ),
+    )
+    line = next(block for block in transformed.blocks if block.native_parent_block_id is not None)
+    derived_id = line.block_id
+    value = line.text
+    native_payload = verifier._native_block_payload(line)
+    parent_span = native_payload["native_parent_span"]
+    profile_fact = profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    profile_fact["value_source"] = {  # type: ignore[index]
+        "source_block_id": derived_id,
+        "start_char": 0,
+        "end_char": len(value),
+        "text_basis": verifier.TEXT_BASIS,
+    }
+    profile_fact["value_raw"] = value  # type: ignore[index]
+    profile_fact["evidence"][0].update(native_payload)  # type: ignore[index]
+    selected = selection["selection"]["facts"][0]  # type: ignore[index]
+    selected["value_anchor"] = {"source_block_id": derived_id, "anchor_text": value}
+    selection["source_block_texts"] = {  # type: ignore[index]
+        block.block_id: block.text for block in transformed.blocks
+    }
+    materialized = selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["value_source"] = profile_fact["value_source"]  # type: ignore[index]
+    materialized["source_blocks"][0].update(native_payload)  # type: ignore[index]
+    materialized["source_blocks"][0]["text"] = value  # type: ignore[index]
+    for lineage in (
+        selection["candidate_pack_lineage"],  # type: ignore[index]
+        profile["processing_metadata"]["candidate_pack"],  # type: ignore[index]
+    ):
+        lineage.update({
+            "candidate_pack_id": transformed.pack_id,
+            "candidate_pack_generator": transformed.generator,
+            "candidate_pack_generator_version": transformed.generator_version,
+            "parent_pack_id": transformed.parent_pack_id,
+            "parent_generator": transformed.parent_generator,
+            "parent_generator_version": transformed.parent_generator_version,
+        })
+    selection["selection"]["candidate_pack_id"] = transformed.pack_id  # type: ignore[index]
+
+
+def _install_second_native_line_as_context(
+    profile: dict[str, object],
+    selection: dict[str, object],
+    common_ir: dict[str, object],
+) -> None:
+    lineage = selection["candidate_pack_lineage"]  # type: ignore[index]
+    transformed = verifier.regenerate_existing_native_candidate_pack(
+        common_ir,
+        selection["source_block_texts"],  # type: ignore[index]
+        lineage,
+        label="synthetic native context",
+    )
+    assert transformed is not None
+    primary_id = profile["comparison_profile"]["support_content"][0]["value_source"][  # type: ignore[index]
+        "source_block_id"
+    ]
+    context_block = next(
+        block
+        for block in transformed.blocks
+        if block.native_parent_block_id is not None and block.block_id != primary_id
+    )
+    context = {
+        **verifier._native_block_payload(context_block),
+        "common_ir_document_id": transformed.common_ir_document_id,
+        "text": context_block.text,
+    }
+    selection["selection"]["facts"][0]["context_source_block_ids"] = [  # type: ignore[index]
+        context_block.block_id
+    ]
+    selection["materialized_evidence"][0]["context_blocks"] = [deepcopy(context)]  # type: ignore[index]
+    profile["comparison_profile"]["support_content"][0]["context_evidence"] = [  # type: ignore[index]
+        deepcopy(context)
+    ]
 
 
 def _install_named_component(
@@ -635,12 +734,44 @@ def test_rejects_ambiguous_component_name_anchor(tmp_path: Path) -> None:
     profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
     _install_named_component(profile, selection)
     selection["source_block_texts"]["block-1"] = (  # type: ignore[index]
-        "명시적 지원 내용 / 명시적 지원 내용"
+        "명시적 지원\n내용 / 명시적 지원\n내용"
     )
 
     with pytest.raises(
         verifier.GoldVerificationError,
         match="name anchor must occur exactly once",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_missing_selection_candidate_pack_id(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    selection["selection"].pop("candidate_pack_id")  # type: ignore[index]
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="selection.candidate_pack_id must be a non-empty string",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_selection_candidate_pack_id_that_differs_from_lineage(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    selection["selection"]["candidate_pack_id"] = "forged-pack"  # type: ignore[index]
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="selection.candidate_pack_id does not match CandidatePack lineage",
     ):
         verifier.verify_profile_artifact_triple(
             profile, selection, common_ir, pblanc_id=pblanc_id
@@ -653,6 +784,288 @@ def test_requires_the_explicit_expected_notice_count(tmp_path: Path) -> None:
 
     with pytest.raises(verifier.GoldVerificationError, match="expected notice count"):
         verifier.verify_gold_root(root)
+
+
+def test_accepts_lossless_native_line_final_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+
+    verifier.verify_profile_artifact_triple(profile, selection, common_ir, pblanc_id=pblanc_id)
+
+
+def test_accepts_lossless_native_line_context_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+    _install_second_native_line_as_context(profile, selection, common_ir)
+
+    verifier.verify_profile_artifact_triple(
+        profile, selection, common_ir, pblanc_id=pblanc_id
+    )
+
+
+def test_rejects_matching_tampered_native_context_in_profile_and_materialization(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+    _install_second_native_line_as_context(profile, selection, common_ir)
+    profile_context = profile["comparison_profile"]["support_content"][0]["context_evidence"][0]  # type: ignore[index]
+    materialized_context = selection["materialized_evidence"][0]["context_blocks"][0]  # type: ignore[index]
+    profile_context["native_parent_span"]["end_char"] = 1
+    materialized_context["native_parent_span"]["end_char"] = 1
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="differs from the regenerated native CandidatePack block",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+@pytest.mark.parametrize("location", ["value", "context"])
+def test_rejects_forged_cell_locator_on_non_cell_native_source(
+    tmp_path: Path,
+    location: str,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+    if location == "context":
+        _install_second_native_line_as_context(profile, selection, common_ir)
+        profile_source = profile["comparison_profile"]["support_content"][0]["context_evidence"][0]  # type: ignore[index]
+        materialized_source = selection["materialized_evidence"][0]["context_blocks"][0]  # type: ignore[index]
+    else:
+        profile_source = profile["comparison_profile"]["support_content"][0]["evidence"][0]  # type: ignore[index]
+        materialized_source = selection["materialized_evidence"][0]["source_blocks"][0]  # type: ignore[index]
+    profile_source["common_ir_cell_id"] = "forged-cell"
+    materialized_source["common_ir_cell_id"] = "forged-cell"
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="locator fields differ from the regenerated native CandidatePack block",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "mutation", "match"),
+    [
+        (
+            "profile",
+            lambda profile, selection: profile["comparison_profile"]["support_content"][0]["evidence"][0].pop("native_parent_span"),  # type: ignore[index]
+            "removed native provenance",
+        ),
+        (
+            "both",
+            lambda profile, selection: (
+                profile["comparison_profile"]["support_content"][0]["evidence"][0]["native_parent_span"].update({"end_char": 1}),  # type: ignore[index]
+                selection["materialized_evidence"][0]["source_blocks"][0]["native_parent_span"].update({"end_char": 1}),  # type: ignore[index]
+            ),
+            "differs from the regenerated native CandidatePack block",
+        ),
+    ],
+)
+def test_rejects_tampered_or_missing_native_line_final_evidence(
+    tmp_path: Path,
+    target: str,
+    mutation,
+    match: str,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+    mutation(profile, selection)
+
+    with pytest.raises(verifier.GoldVerificationError, match=match):
+        verifier.verify_profile_artifact_triple(profile, selection, common_ir, pblanc_id=pblanc_id)
+
+
+def test_rejects_native_line_with_invalid_transform_lineage(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+    selection["candidate_pack_lineage"]["candidate_pack_generator_version"] = "1:off"  # type: ignore[index]
+    profile["processing_metadata"]["candidate_pack"]["candidate_pack_generator_version"] = "1:off"  # type: ignore[index]
+
+    with pytest.raises(verifier.GoldVerificationError, match="unsupported transform version"):
+        verifier.verify_profile_artifact_triple(profile, selection, common_ir, pblanc_id=pblanc_id)
+
+
+@pytest.mark.parametrize("mutation", ["invented", "self_parent", "forged_occurrence"])
+def test_native_line_replay_rejects_invented_ids_lineage_and_occurrences(
+    tmp_path: Path, mutation: str
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+    if mutation == "invented":
+        selection["source_block_texts"]["line:invented"] = "위조"  # type: ignore[index]
+    elif mutation == "self_parent":
+        for lineage in (selection["candidate_pack_lineage"], profile["processing_metadata"]["candidate_pack"]):  # type: ignore[index]
+            lineage["parent_pack_id"] = lineage["candidate_pack_id"]
+    else:
+        for evidence in (
+            profile["comparison_profile"]["support_content"][0]["evidence"][0],  # type: ignore[index]
+            selection["materialized_evidence"][0]["source_blocks"][0],  # type: ignore[index]
+        ):
+            evidence["common_ir_occurrence_ids"] = ["forged-occurrence"]
+            evidence["source_occurrence_ids"] = ["forged-occurrence"]
+    with pytest.raises(verifier.GoldVerificationError):
+        verifier.verify_profile_artifact_triple(profile, selection, common_ir, pblanc_id=pblanc_id)
+
+
+def test_rejects_native_source_id_when_provenance_and_parent_lineage_are_stripped(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(profile, selection, common_ir)
+
+    profile["comparison_profile"]["support_content"][0]["evidence"][0].pop(  # type: ignore[index]
+        "native_parent_span"
+    )
+    selection["materialized_evidence"][0]["source_blocks"][0].pop(  # type: ignore[index]
+        "native_parent_span"
+    )
+    base = verifier._existing_a_base_candidate_pack(
+        common_ir, {"block-1"}, label="synthetic stripped native line"
+    )
+    for lineage in (
+        selection["candidate_pack_lineage"],  # type: ignore[index]
+        profile["processing_metadata"]["candidate_pack"],  # type: ignore[index]
+    ):
+        lineage.update({
+            "candidate_pack_id": base.pack_id,
+            "candidate_pack_generator": base.generator,
+            "candidate_pack_generator_version": base.generator_version,
+        })
+        for key in ("parent_pack_id", "parent_generator", "parent_generator_version"):
+            lineage.pop(key)
+    selection["selection"]["candidate_pack_id"] = base.pack_id  # type: ignore[index]
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="native evidence requires complete CandidatePack parent lineage",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_native_replay_rejects_attachment_only_atomic_source(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    _profile, _selection, common_ir = _read_notice_triple(root, pblanc_id)
+    common_ir["blocks"][0]["boundary_markers"] = [  # type: ignore[index]
+        {"marker": "attachment_bracket", "matched_text": "[서식 1]"}
+    ]
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="no trusted atomic A-pack source ids",
+    ):
+        verifier._existing_a_base_candidate_pack(
+            common_ir, {"block-1"}, label="synthetic attachment-only native source"
+        )
+
+
+def test_native_replay_rejects_attachment_table_cells() -> None:
+    common_ir = _explicit_table_common_ir(1)
+    common_ir["blocks"][0]["boundary_markers"] = [  # type: ignore[index]
+        {"marker": "attachment_bracket", "matched_text": "[서식 1]"}
+    ]
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="no trusted atomic A-pack source ids",
+    ):
+        verifier._existing_a_base_candidate_pack(
+            common_ir,
+            {"table-1#r0c0p0"},
+            label="synthetic attachment-table native source",
+        )
+
+
+def _explicit_table_common_ir(cell_count: int) -> dict[str, object]:
+    occurrences = [
+        {"occurrence_id": f"occ-{index}", "text": f"셀 {index}"}
+        for index in range(cell_count)
+    ]
+    cells = [
+        {
+            "cell_id": f"cell-{index}",
+            "row_index": index,
+            "col_index": 0,
+            "row_span": 1,
+            "col_span": 1,
+            "text_occurrence_ids": [f"occ-{index}"],
+        }
+        for index in range(cell_count)
+    ]
+    return {
+        "schema_version": verifier.COMMON_IR_SCHEMA,
+        "document": {
+            "document_id": "pdf:PBLN_TABLE_REPLAY",
+            "source_kind": "pdf",
+            "provenance": {"source_sha256": "b" * 64},
+        },
+        "blocks": [{
+            "block_id": "table-1",
+            "text": "\n".join(row["text"] for row in occurrences),
+            "kind": "table",
+            "reading_order": 0,
+            "structure_status": "explicit",
+            "text_occurrence_ids": [row["occurrence_id"] for row in occurrences],
+            "occurrences": occurrences,
+            "cells": cells,
+        }],
+    }
+
+
+def test_native_replay_rejects_partial_table_cell_group() -> None:
+    common_ir = _explicit_table_common_ir(2)
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="partial production A-table cell group",
+    ):
+        verifier._existing_a_base_candidate_pack(
+            common_ir,
+            {"table-1#r0c0p0"},
+            label="synthetic partial table replay",
+        )
+
+
+def test_native_replay_rejects_table_cell_total_over_production_cap() -> None:
+    cell_count = verifier.MAX_A_TABLE_CELL_CANDIDATES + 1
+    common_ir = _explicit_table_common_ir(cell_count)
+    source_ids = {
+        f"table-1#r{index}c0p0" for index in range(cell_count)
+    }
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="exceeds the production A-table cell cap",
+    ):
+        verifier._existing_a_base_candidate_pack(
+            common_ir,
+            source_ids,
+            label="synthetic oversized table replay",
+        )
 
 
 def test_rejects_an_oversized_json_before_decoding(

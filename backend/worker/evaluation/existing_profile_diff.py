@@ -421,15 +421,65 @@ def _read_regular_json_snapshot(path: Path, *, label: str) -> _JsonSnapshot:
 
 
 def _assert_snapshot_is_current(path: Path, snapshot: _JsonSnapshot, *, label: str) -> None:
+    descriptor: int | None = None
     try:
         current = path.stat(follow_symlinks=False)
+        _require(not stat.S_ISLNK(current.st_mode), f"{label} became a symlink")
+        _require(stat.S_ISREG(current.st_mode), f"{label} is no longer a regular file")
+        _require(
+            _stat_identity(current) == snapshot.identity,
+            f"{label} changed after it was read",
+        )
+        _require(snapshot.size >= 0, f"{label} has an invalid snapshot size")
+        _require(
+            snapshot.size <= MAX_PROFILE_BYTES,
+            f"{label} exceeds {MAX_PROFILE_BYTES} bytes",
+        )
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = None
+            opened = os.fstat(stream.fileno())
+            _require(stat.S_ISREG(opened.st_mode), f"{label} is no longer a regular file")
+            _require(
+                _stat_identity(opened) == snapshot.identity,
+                f"{label} changed after it was read",
+            )
+            digest = sha256()
+            remaining = snapshot.size
+            while remaining:
+                chunk = stream.read(min(1024 * 1024, remaining))
+                _require(bool(chunk), f"{label} changed after it was read")
+                digest.update(chunk)
+                remaining -= len(chunk)
+            _require(not stream.read(1), f"{label} changed after it was read")
+            final_descriptor = os.fstat(stream.fileno())
+        final_path = path.stat(follow_symlinks=False)
+        _require(not stat.S_ISLNK(final_path.st_mode), f"{label} became a symlink")
+        _require(stat.S_ISREG(final_path.st_mode), f"{label} is no longer a regular file")
+        _require(
+            _stat_identity(final_descriptor) == snapshot.identity
+            and _stat_identity(final_path) == snapshot.identity,
+            f"{label} changed after it was read",
+        )
+        _require(
+            digest.hexdigest() == snapshot.digest,
+            f"{label} contents changed after it was read",
+        )
+    except ExistingProfileComparisonError:
+        raise
     except OSError as error:
         raise ExistingProfileComparisonError(f"cannot recheck {label}: {error}") from error
-    _require(not stat.S_ISLNK(current.st_mode), f"{label} became a symlink")
-    _require(
-        _stat_identity(current) == snapshot.identity,
-        f"{label} changed after it was read",
-    )
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 def _verify_gold(root: Path, *, expected_profile_count: int) -> _GoldVerificationReport:

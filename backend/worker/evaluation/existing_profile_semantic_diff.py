@@ -52,6 +52,7 @@ from scripts.verify_existing_gold100 import (
     COMMON_IR_SCHEMA,
     GoldVerificationError,
     PROFILE_SCHEMA,
+    regenerate_existing_native_candidate_pack,
     verify_gold_root,
     verify_profile_artifact_triple,
 )
@@ -95,7 +96,7 @@ _COMPONENT_KINDS = frozenset({"support_package", "participation_type", "stage_su
 _EVIDENCE_KEYS = frozenset({
     "source_block_id", "source_occurrence_ids", "common_ir_document_id",
     "common_ir_block_id", "common_ir_cell_id", "common_ir_occurrence_ids",
-    "section_id", "text", "source_spans",
+    "section_id", "text", "source_spans", "native_parent_span",
 })
 _EVIDENCE_REQUIRED_KEYS = frozenset({
     "source_block_id", "source_occurrence_ids", "common_ir_document_id",
@@ -221,6 +222,64 @@ class _NumericLocator:
     anchor_text: str
 
 
+def _contracts_from_candidate_pack(pack: CandidatePack) -> dict[str, _NativeSourceContract]:
+    """Convert a server-regenerated pack into resolver-only contracts."""
+
+    return {
+        block.block_id: _NativeSourceContract(
+            text=block.text,
+            block_kind=block.block_kind,
+            source_order=block.source_order,
+            common_ir_block_id=block.common_ir_block_id or "",
+            common_ir_cell_id=block.common_ir_cell_id,
+            common_ir_occurrence_ids=tuple(block.common_ir_occurrence_ids),
+            source_occurrence_ids=tuple(block.source_occurrence_ids),
+            section_id=block.section_id,
+            native_parent_block_id=block.native_parent_block_id,
+            native_start_char=block.native_start_char,
+            native_end_char=block.native_end_char,
+            source_spans=tuple(
+                _NativeSourceSpanContract(
+                    source_block_id=span.source_block_id,
+                    exact_text=span.exact_text,
+                    start_char=span.start_char,
+                    end_char=span.end_char,
+                    separator_after=span.separator_after,
+                    source_order=span.source_order,
+                    section_id=span.section_id,
+                    common_ir_block_id=span.common_ir_block_id,
+                    common_ir_cell_id=span.common_ir_cell_id,
+                    common_ir_occurrence_ids=tuple(span.common_ir_occurrence_ids),
+                )
+                for span in block.source_spans
+            ),
+        )
+        for block in pack.blocks
+    }
+
+
+def _replayed_native_sources(
+    source_selection: Mapping[str, Any], common_ir: Mapping[str, Any], *, label: str
+) -> dict[str, _NativeSourceContract] | None:
+    """Return production-A replay contracts when this artifact is native."""
+
+    lineage = source_selection.get("candidate_pack_lineage")
+    source_texts = source_selection.get("source_block_texts")
+    if not isinstance(lineage, Mapping) or not isinstance(source_texts, Mapping):
+        return None
+    parent_keys = ("parent_pack_id", "parent_generator", "parent_generator_version")
+    if not any(key in lineage for key in parent_keys):
+        return None
+    try:
+        pack = regenerate_existing_native_candidate_pack(
+            _plain_json(common_ir), source_texts, lineage, label=label
+        )
+    except GoldVerificationError as error:
+        raise ExistingProfileSemanticError(str(error)) from error
+    _require(pack is not None, f"{label} native CandidatePack was not regenerated")
+    return _contracts_from_candidate_pack(pack)
+
+
 def _native_span_payload(span: _NativeSourceSpanContract) -> dict[str, Any]:
     """Return the exact JSON wire contract for one trusted composite span."""
 
@@ -320,6 +379,11 @@ def _validate_artifact_triple(artifact: SemanticArtifact, *, label: str) -> None
             _plain_json(artifact.common_ir),
             pblanc_id=artifact.notice_id,
             allow_unnamespaced_notice_id=True,
+            # RunPod 0.1.4 augmented a canonical pack in place, before parent
+            # lineage became durable.  This comparator immediately replays its
+            # broad deterministic source universe in ``_ProvenanceResolver``;
+            # no other verifier caller receives this compatibility allowance.
+            allow_legacy_native_without_parent=True,
         )
     except (GoldVerificationError, ValueError, TypeError) as error:
         raise ExistingProfileSemanticError(f"{label} artifact triple is invalid: {error}") from error
@@ -924,7 +988,16 @@ class _ProvenanceResolver:
             f"{label}.source_selection.source_block_texts must map strings to strings",
         )
         self.source_texts = dict(source_texts)
-        self.native_sources = _native_source_contracts(common_ir, label=label)
+        replayed_native_sources = _replayed_native_sources(
+            source_selection,
+            common_ir,
+            label=label,
+        )
+        self.native_sources = (
+            replayed_native_sources
+            if replayed_native_sources is not None
+            else _native_source_contracts(common_ir, label=label)
+        )
         self.blocks: dict[str, frozenset[str]] = {}
         self.occurrences: set[str] = set()
         self.occurrence_blocks: dict[str, set[str]] = {}
@@ -1082,6 +1155,23 @@ class _ProvenanceResolver:
                     "source_spans" not in evidence,
                     f"{label}.source_spans are not valid for an atomic CandidatePack block",
                 )
+            if native.native_parent_block_id is not None:
+                expected_parent_span = {
+                    "source_block_id": native.native_parent_block_id,
+                    "start_char": native.native_start_char,
+                    "end_char": native.native_end_char,
+                    "exact_text": native.text,
+                }
+                _require(
+                    _canonical_bytes(evidence.get("native_parent_span"))
+                    == _canonical_bytes(expected_parent_span),
+                    f"{label}.native_parent_span does not match the trusted line atom",
+                )
+            else:
+                _require(
+                    "native_parent_span" not in evidence,
+                    f"{label}.native_parent_span is not valid for an atomic or composite CandidatePack block",
+                )
             allowed_occurrences = (
                 set(native.common_ir_occurrence_ids)
                 if native.source_spans
@@ -1232,7 +1322,19 @@ def _validate_candidate_source_basis(
 
     candidate_texts = candidate.source_selection.get("source_block_texts")
     _require(isinstance(candidate_texts, Mapping), f"{label} candidate source_block_texts must be an object")
-    trusted = _native_source_contracts(candidate.common_ir, label=label)
+    replayed = _replayed_native_sources(
+        candidate.source_selection,
+        candidate.common_ir,
+        label=label,
+    )
+    # Native artifacts are restricted to the exact production A-pack replay.
+    # Legacy artifacts have no parent tuple and retain the historical broad
+    # source-universe admission needed by the frozen corpus.
+    trusted = (
+        replayed
+        if replayed is not None
+        else _native_source_contracts(candidate.common_ir, label=label)
+    )
     for source_block_id, text in candidate_texts.items():
         _require(
             isinstance(source_block_id, str) and source_block_id and isinstance(text, str) and text,

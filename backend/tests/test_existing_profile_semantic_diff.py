@@ -11,6 +11,7 @@ from typing import Mapping
 import pytest
 
 from scripts import compare_existing_profile_semantics as cli
+from scripts import verify_existing_gold100 as verifier
 from worker.evaluation import existing_profile_semantic_diff as semantic_diff
 from worker.evaluation.existing_profile_semantic_diff import (
     ExistingProfileSemanticError,
@@ -39,6 +40,7 @@ SIX = [
 ]
 NOTICE_ID = "PBLN_000000000000001"
 DOCUMENT_ID = f"pdf:{NOTICE_ID}"
+PACK_ID = f"{NOTICE_ID}-a-profile-v0.2"
 SOURCE_SHA = "a" * 64
 SOURCE_TEXT = "기존 값\n교정 값"
 
@@ -87,7 +89,9 @@ def _artifact(
 ) -> SemanticArtifact:
     fact = _fact(fact_id=fact_id, value=value, occurrence_id=occurrence_id)
     lineage = {
-        "candidate_pack_id": "pack-1",
+        "candidate_pack_id": PACK_ID,
+        "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+        "candidate_pack_generator_version": "1",
         "common_ir_document_id": DOCUMENT_ID,
         "common_ir_source_sha256": SOURCE_SHA,
         "text_basis": "common_ir_v1_candidate_pack",
@@ -131,7 +135,7 @@ def _artifact(
         "selection_contract": "v0.2_anchor",
         "selection": {
             "notice_id": NOTICE_ID,
-            "candidate_pack_id": "pack-1",
+            "candidate_pack_id": PACK_ID,
             "facts": [
                 {
                     "fact_id": fact_id,
@@ -270,16 +274,16 @@ def _configured_real_corpora_paths() -> tuple[Path, Path] | None:
     return baseline, gold
 
 
-def _native_composite_artifact() -> SemanticArtifact:
+def _native_composite_artifact(
+    *, with_unrouted_middle_block: bool = False
+) -> SemanticArtifact:
     artifact = _artifact()
     left_id = "block-left"
     right_id = "block-right"
     left_text = "사업 목적 및"
     right_text = "지원 내용"
-    composite_text = f"{left_text} {right_text}"
-    composite_digest = sha256(f"{left_id}\0{right_id}".encode()).hexdigest()
-    composite_id = f"composite:{composite_digest[:20]}"
-    artifact.common_ir["blocks"] = [  # type: ignore[index]
+    right_order = 2 if with_unrouted_middle_block else 1
+    blocks = [
         {
             "block_id": left_id,
             "text": left_text,
@@ -293,77 +297,31 @@ def _native_composite_artifact() -> SemanticArtifact:
             "block_id": right_id,
             "text": right_text,
             "kind": "paragraph",
-            "reading_order": 1,
+            "reading_order": right_order,
             "structure_status": "explicit",
             "text_occurrence_ids": ["occ-right"],
             "occurrences": [{"occurrence_id": "occ-right", "text": right_text}],
         },
     ]
-    spans = [
-        {
-            "source_block_id": left_id,
-            "exact_text": left_text,
-            "start_char": 0,
-            "end_char": len(left_text),
-            "separator_after": " ",
-            "source_order": 0,
-            "section_id": "main_notice",
-            "common_ir_block_id": left_id,
-            "common_ir_occurrence_ids": ["occ-left"],
-            "common_ir_cell_id": None,
-        },
-        {
-            "source_block_id": right_id,
-            "exact_text": right_text,
-            "start_char": 0,
-            "end_char": len(right_text),
-            "separator_after": "",
-            "source_order": 1,
-            "section_id": "main_notice",
-            "common_ir_block_id": right_id,
-            "common_ir_occurrence_ids": ["occ-right"],
-            "common_ir_cell_id": None,
-        },
-    ]
-    fact = artifact.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
-    fact.update(
-        {
-            "value_raw": composite_text,
-            "value_source": {
-                "source_block_id": composite_id,
-                "start_char": 0,
-                "end_char": len(composite_text),
-                "text_basis": "common_ir_v1_candidate_pack",
-            },
-            "evidence": [
-                {
-                    "source_block_id": composite_id,
-                    "section_id": "main_notice",
-                    "source_occurrence_ids": ["occ-left", "occ-right"],
-                    "common_ir_document_id": DOCUMENT_ID,
-                    "common_ir_block_id": left_id,
-                    "common_ir_occurrence_ids": ["occ-left", "occ-right"],
-                    "source_spans": deepcopy(spans),
-                }
-            ],
-        }
+    if with_unrouted_middle_block:
+        blocks.insert(1, {
+            "block_id": "block-middle",
+            "text": "라우팅되지 않은 중간 문단",
+            "kind": "paragraph",
+            "reading_order": 1,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-middle"],
+            "occurrences": [{
+                "occurrence_id": "occ-middle",
+                "text": "라우팅되지 않은 중간 문단",
+            }],
+        })
+    artifact.common_ir["blocks"] = blocks  # type: ignore[index]
+    artifact.source_selection["source_block_texts"] = {left_id: left_text, right_id: right_text}  # type: ignore[index]
+    _install_regenerated_native_source(
+        artifact, include_continuations=True,
+        predicate=lambda block: bool(block.source_spans) and block.text == f"{left_text} {right_text}",
     )
-    selected = artifact.source_selection["selection"]["facts"][0]  # type: ignore[index]
-    selected["value_anchor"] = {
-        "source_block_id": composite_id,
-        "anchor_text": composite_text,
-    }
-    artifact.source_selection["source_block_texts"] = {  # type: ignore[index]
-        composite_id: composite_text
-    }
-    materialized = artifact.source_selection["materialized_evidence"][0]  # type: ignore[index]
-    materialized["value_source"] = fact["value_source"]
-    materialized["source_blocks"] = [
-        {
-            **deepcopy(fact["evidence"][0]),
-            "text": composite_text,
-        }
-    ]
     return artifact
 
 
@@ -1044,34 +1002,156 @@ def test_candidate_cannot_reuse_a_baseline_only_legacy_block() -> None:
         compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
 
 
-def test_candidate_can_use_a_server_regenerated_native_line_atom() -> None:
+def _install_regenerated_native_source(
+    artifact: SemanticArtifact,
+    *,
+    include_continuations: bool,
+    predicate,
+) -> None:
+    """Convert one synthetic fact to a real production-A transformed source."""
+
+    source_ids = set(artifact.source_selection["source_block_texts"])  # type: ignore[index]
+    base = verifier._existing_a_base_candidate_pack(
+        artifact.common_ir, source_ids, label="semantic synthetic native"
+    )
+    transformed = verifier.augment_pack_with_native_exact_transforms(
+        base,
+        options=verifier.NativeExactTransformOptions(
+            enabled=True, include_line_atoms=True,
+            include_continuations=include_continuations,
+        ),
+    )
+    target = next(block for block in transformed.blocks if predicate(block))
+    payload = verifier._native_block_payload(target)
+    artifact.source_selection["source_block_texts"] = {  # type: ignore[index]
+        block.block_id: block.text for block in transformed.blocks
+    }
+    for lineage in (
+        artifact.source_selection["candidate_pack_lineage"],  # type: ignore[index]
+        artifact.profile["processing_metadata"]["candidate_pack"],  # type: ignore[index]
+    ):
+        lineage.update({
+            "candidate_pack_id": transformed.pack_id,
+            "candidate_pack_generator": transformed.generator,
+            "candidate_pack_generator_version": transformed.generator_version,
+            "parent_pack_id": transformed.parent_pack_id,
+            "parent_generator": transformed.parent_generator,
+            "parent_generator_version": transformed.parent_generator_version,
+        })
+    artifact.source_selection["selection"]["candidate_pack_id"] = transformed.pack_id  # type: ignore[index]
+    fact = artifact.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    fact["value_source"] = {
+        "source_block_id": target.block_id,
+        "start_char": 0,
+        "end_char": len(target.text),
+        "text_basis": "common_ir_v1_candidate_pack",
+    }
+    fact["value_raw"] = target.text
+    fact["evidence"][0].update(payload)  # type: ignore[index]
+    selected = artifact.source_selection["selection"]["facts"][0]  # type: ignore[index]
+    selected["value_anchor"] = {"source_block_id": target.block_id, "anchor_text": target.text}
+    materialized = artifact.source_selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["value_source"] = fact["value_source"]
+    materialized["source_blocks"][0].update(payload)
+    materialized["source_blocks"][0]["text"] = target.text
+
+
+def _as_runpod_014_no_parent_native(artifact: SemanticArtifact) -> None:
+    """Rewrite current native lineage to the in-place RunPod 0.1.4 shape."""
+
+    source_ids = set(artifact.source_selection["source_block_texts"])  # type: ignore[index]
+    base = verifier._existing_a_base_candidate_pack(
+        artifact.common_ir, source_ids, label="semantic legacy native"
+    )
+    for lineage in (
+        artifact.source_selection["candidate_pack_lineage"],  # type: ignore[index]
+        artifact.profile["processing_metadata"]["candidate_pack"],  # type: ignore[index]
+    ):
+        lineage.update({
+            "candidate_pack_id": base.pack_id,
+            "candidate_pack_generator": base.generator,
+            "candidate_pack_generator_version": base.generator_version,
+        })
+        for key in ("parent_pack_id", "parent_generator", "parent_generator_version"):
+            lineage.pop(key, None)
+    artifact.source_selection["selection"]["candidate_pack_id"] = base.pack_id  # type: ignore[index]
+
+
+def _native_line_artifacts() -> tuple[SemanticArtifact, SemanticArtifact, SemanticArtifact]:
     baseline = _artifact(value="기존 값", occurrence_id="occ-old")
     gold = deepcopy(baseline)
     candidate = deepcopy(gold)
-    line_id = f"line:{sha256(b'block-1\0' + b'0\0' + str(len('기존 값')).encode()).hexdigest()[:20]}"
-    candidate.source_selection["source_block_texts"] = {line_id: "기존 값"}  # type: ignore[index]
-    fact = candidate.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
-    fact["value_source"] = {
-        "source_block_id": line_id,
-        "start_char": 0,
-        "end_char": len("기존 값"),
-        "text_basis": "common_ir_v1_candidate_pack",
-    }
-    fact["evidence"][0]["source_block_id"] = line_id  # type: ignore[index]
-    selected = candidate.source_selection["selection"]["facts"][0]  # type: ignore[index]
-    selected["value_anchor"]["source_block_id"] = line_id
-    materialized = candidate.source_selection["materialized_evidence"][0]  # type: ignore[index]
-    materialized["value_source"] = fact["value_source"]
-    materialized["source_blocks"][0]["source_block_id"] = line_id
-    materialized["source_blocks"][0]["native_parent_span"] = {
-        "source_block_id": "block-1",
-        "start_char": 0,
-        "end_char": len("기존 값"),
-        "exact_text": "기존 값",
-    }
+    _install_regenerated_native_source(
+        candidate, include_continuations=False,
+        predicate=lambda block: block.native_parent_block_id is not None and block.text == "기존 값",
+    )
 
+    return baseline, gold, candidate
+
+
+def test_candidate_can_use_a_server_regenerated_native_line_atom() -> None:
+    baseline, gold, candidate = _native_line_artifacts()
     report = compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
     assert report["semantic_gate_status"] == "passed"
+
+
+def test_candidate_can_use_a_runpod_014_no_parent_native_line_atom() -> None:
+    baseline, gold, candidate = _native_line_artifacts()
+    _as_runpod_014_no_parent_native(candidate)
+
+    report = compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+    assert report["semantic_gate_status"] == "passed"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("candidate_pack_generator", "unrelated.generator"),
+        ("candidate_pack_generator_version", "999"),
+        ("candidate_pack_id", f"{NOTICE_ID}-unrelated-pack"),
+    ],
+)
+def test_runpod_014_no_parent_native_rejects_unrelated_lineage(
+    field: str,
+    value: str,
+) -> None:
+    baseline, gold, candidate = _native_line_artifacts()
+    _as_runpod_014_no_parent_native(candidate)
+    for lineage in (
+        candidate.source_selection["candidate_pack_lineage"],  # type: ignore[index]
+        candidate.profile["processing_metadata"]["candidate_pack"],  # type: ignore[index]
+    ):
+        lineage[field] = value
+    if field == "candidate_pack_id":
+        candidate.source_selection["selection"]["candidate_pack_id"] = value  # type: ignore[index]
+
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="not a reviewed RunPod 0.1.4 CandidatePack",
+    ):
+        compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "tampered", "invalid_lineage"])
+def test_native_line_final_evidence_and_lineage_fail_closed(mutation: str) -> None:
+    baseline, gold, candidate = _native_line_artifacts()
+    evidence = candidate.profile["comparison_profile"]["support_content"][0]["evidence"][0]  # type: ignore[index]
+    materialized = candidate.source_selection["materialized_evidence"][0]["source_blocks"][0]  # type: ignore[index]
+    if mutation == "missing":
+        evidence.pop("native_parent_span")
+    elif mutation == "tampered":
+        evidence["native_parent_span"]["exact_text"] = "위조된 값"
+        materialized["native_parent_span"]["exact_text"] = "위조된 값"
+    else:
+        for lineage in (
+            candidate.source_selection["candidate_pack_lineage"],  # type: ignore[index]
+            candidate.profile["processing_metadata"]["candidate_pack"],  # type: ignore[index]
+        ):
+            lineage["candidate_pack_generator_version"] = "1:off"
+
+    with pytest.raises(ExistingProfileSemanticError):
+        compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
 
 
 def test_native_source_projection_normalizes_collision_errors_without_raw_source() -> None:
@@ -1268,6 +1348,27 @@ def test_candidate_can_use_a_server_regenerated_native_composite() -> None:
     assert report["semantic_gate_status"] == "passed"
 
 
+def test_candidate_can_use_a_runpod_014_no_parent_native_composite() -> None:
+    baseline = _native_composite_artifact()
+    gold = deepcopy(baseline)
+    candidate = deepcopy(gold)
+    _as_runpod_014_no_parent_native(candidate)
+
+    report = compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+    assert report["semantic_gate_status"] == "passed"
+
+
+def test_routed_native_composite_ignores_unselected_common_ir_middle_block() -> None:
+    baseline = _native_composite_artifact(with_unrouted_middle_block=True)
+    gold = deepcopy(baseline)
+    candidate = deepcopy(gold)
+
+    report = compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+    assert report["semantic_gate_status"] == "passed"
+
+
 def test_candidate_can_use_a_server_regenerated_pdf_table_occurrence() -> None:
     baseline = _artifact()
     baseline.common_ir["blocks"][0].update(  # type: ignore[index]
@@ -1312,7 +1413,20 @@ def test_candidate_composite_span_tampering_fails_closed() -> None:
         "source_spans"
     ][0]["separator_after"] = "\n"
 
-    with pytest.raises(ExistingProfileSemanticError, match="source_spans"):
+    with pytest.raises(ExistingProfileSemanticError, match="regenerated native CandidatePack block"):
+        compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+
+def test_candidate_composite_extra_span_key_fails_closed() -> None:
+    baseline = _native_composite_artifact()
+    gold = deepcopy(baseline)
+    candidate = deepcopy(gold)
+    for source in (
+        candidate.source_selection["materialized_evidence"][0]["source_blocks"][0],  # type: ignore[index]
+        candidate.profile["comparison_profile"]["support_content"][0]["evidence"][0],  # type: ignore[index]
+    ):
+        source["source_spans"][0]["forged_key"] = "nope"
+    with pytest.raises(ExistingProfileSemanticError):
         compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
 
 

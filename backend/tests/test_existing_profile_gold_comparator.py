@@ -228,6 +228,7 @@ def _write_verified_gold(root: Path) -> str:
         "selection_contract": gold_verifier.SELECTION_CONTRACT,
         "selection": {
             "notice_id": notice_id,
+            "candidate_pack_id": "synthetic-pack",
             "facts": [
                 {
                     "fact_id": fact["fact_id"],
@@ -573,6 +574,30 @@ def test_excessive_json_nesting_is_reported_as_a_comparison_error() -> None:
 
     with pytest.raises(comparison.ExistingProfileComparisonError, match="cannot read UTF-8 JSON"):
         comparison._json_object(raw, label="deep profile")
+
+
+def test_snapshot_recheck_compares_digest_even_when_file_identity_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "snapshot.json"
+    path.write_text('{"value":"same-size"}\n', encoding="utf-8")
+    captured = comparison._read_regular_json_snapshot(path, label="snapshot")
+    mismatched_digest = comparison._JsonSnapshot(
+        value=captured.value,
+        digest="0" * 64,
+        identity=captured.identity,
+        size=captured.size,
+    )
+
+    with pytest.raises(
+        comparison.ExistingProfileComparisonError,
+        match="contents changed after it was read",
+    ):
+        comparison._assert_snapshot_is_current(
+            path,
+            mismatched_digest,
+            label="snapshot",
+        )
 
 
 def test_comparison_report_is_deterministic_across_mapping_insertion_order() -> None:

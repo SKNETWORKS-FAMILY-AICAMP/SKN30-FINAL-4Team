@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Read-only, offline verifier for an Existing Profile Gold-100 freeze.
 
-The Gold corpus is an external, post-run oracle.  This module deliberately
-does not import application code, connect to a runtime, or materialize data.
-It verifies the frozen corpus itself only; it does not compare a candidate
-runtime result to Gold (and therefore cannot accidentally turn Gold examples
-into production inputs).
+The Gold corpus is an external, post-run oracle.  This module has no runtime,
+network, database, object-storage, or LLM I/O.  It imports the vendored
+Common-IR/CandidatePack contracts solely to replay deterministic source
+projections; it does not compare a candidate runtime result to Gold (and
+therefore cannot accidentally turn Gold examples into production inputs).
 """
 
 from __future__ import annotations
@@ -23,6 +23,15 @@ import stat
 import sys
 from typing import Any, BinaryIO, Iterable, Iterator, Mapping, Sequence
 
+from worker import vendor as _vendor  # noqa: F401 - install vendored contracts only
+from semantic_structuring.candidate_assembly import MAX_A_TABLE_CELL_CANDIDATES
+from semantic_structuring.common_ir_v1 import prepare_common_ir_v1
+from semantic_structuring.native_exact_transform import (
+    NativeExactTransformOptions,
+    augment_pack_with_native_exact_transforms,
+)
+from semantic_structuring.models import CandidatePack, SourceBlock
+
 
 FREEZE_CONTRACT = "existing_profile_gold_100_freeze/v1"
 ARTIFACT_INDEX_SCHEMA = "gold_100_artifact_index/v1"
@@ -32,6 +41,12 @@ COMMON_IR_SCHEMA = "common_ir_v1"
 SELECTION_CONTRACT = "v0.2_anchor"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
 DEFAULT_EXPECTED_NOTICE_COUNT = 100
+NATIVE_EXACT_TRANSFORM_GENERATOR = "semantic_structuring.native_exact_transform"
+_NATIVE_EXACT_TRANSFORM_VERSIONS = frozenset({"1:lines", "1:lines+continuations"})
+_NATIVE_DERIVED_BLOCK_PREFIXES = ("line:", "composite:")
+_LEGACY_RUNPOD_014_CANDIDATE_PACK_GENERATOR = "semantic_structuring.common_ir_v1"
+_LEGACY_RUNPOD_014_CANDIDATE_PACK_GENERATOR_VERSION = "1"
+_EXISTING_A_CANDIDATE_PACK_SUFFIX = "-a-profile-v0.2"
 
 # The reviewed Gold-100 freeze is about 74 MiB and its largest known file
 # (reserve_pool.csv) is about 17 MiB.  Keep the verifier deliberately below a
@@ -716,6 +731,7 @@ def _verify_common_ir_identity(
     lineage_keys = ("candidate_pack_id", "common_ir_document_id", "common_ir_source_sha256", "text_basis")
     lineage_optional_keys = {
         "candidate_pack_generator", "candidate_pack_generator_version", "recovery_source",
+        "parent_pack_id", "parent_generator", "parent_generator_version",
     }
     _require_exact_keys(selection_lineage, lineage_keys, f"{label}.selection.candidate_pack_lineage")
     _require_exact_keys(profile_lineage, lineage_keys, f"{label}.profile.processing_metadata.candidate_pack")
@@ -730,6 +746,321 @@ def _verify_common_ir_identity(
         _fail(f"{label} candidate-pack lineage source SHA-256 does not match Common IR")
     if selection_lineage["text_basis"] != TEXT_BASIS:
         _fail(f"{label} candidate-pack lineage must declare {TEXT_BASIS!r}")
+    _validate_native_candidate_pack_lineage(selection_lineage, label=label)
+
+
+def _validate_native_candidate_pack_lineage(
+    lineage: Mapping[str, Any],
+    *,
+    label: str,
+) -> None:
+    """Validate optional native-transform ancestry without changing legacy packs.
+
+    An atomic/legacy CandidatePack has no parent tuple (the equivalent of the
+    ``off`` transform mode).  Once any parent field appears, the exact-native
+    transform identity and its complete three-field parent identity become a
+    durable part of the frozen artifact contract.
+    """
+
+    parent_keys = (
+        "parent_pack_id",
+        "parent_generator",
+        "parent_generator_version",
+    )
+    present = [key for key in parent_keys if key in lineage]
+    if present and len(present) != len(parent_keys):
+        _fail(f"{label} native CandidatePack parent lineage must be all-or-none")
+    generator = lineage.get("candidate_pack_generator")
+    version = lineage.get("candidate_pack_generator_version")
+    if not present:
+        if generator == NATIVE_EXACT_TRANSFORM_GENERATOR:
+            _fail(f"{label} native CandidatePack transform requires parent lineage")
+        return
+    for key in parent_keys:
+        _nonempty_string(lineage.get(key), f"{label}.{key}")
+    if generator != NATIVE_EXACT_TRANSFORM_GENERATOR:
+        _fail(f"{label} native CandidatePack has an unsupported generator")
+    if version not in _NATIVE_EXACT_TRANSFORM_VERSIONS:
+        _fail(f"{label} native CandidatePack has an unsupported transform version")
+
+
+def _validate_legacy_runpod_014_native_lineage(
+    lineage: Mapping[str, Any],
+    *,
+    pblanc_id: str,
+    label: str,
+) -> None:
+    """Restrict the no-parent seam to the reviewed RunPod 0.1.4 base pack."""
+
+    expected = {
+        "candidate_pack_id": f"{pblanc_id}{_EXISTING_A_CANDIDATE_PACK_SUFFIX}",
+        "candidate_pack_generator": _LEGACY_RUNPOD_014_CANDIDATE_PACK_GENERATOR,
+        "candidate_pack_generator_version": (
+            _LEGACY_RUNPOD_014_CANDIDATE_PACK_GENERATOR_VERSION
+        ),
+    }
+    for key, value in expected.items():
+        if lineage.get(key) != value:
+            _fail(
+                f"{label} no-parent native evidence is not a reviewed RunPod "
+                f"0.1.4 CandidatePack: {key}"
+            )
+
+
+def _is_legacy_native_source_id(block_id: str) -> bool:
+    return block_id.startswith(_NATIVE_DERIVED_BLOCK_PREFIXES) or "#native:" in block_id
+
+
+def _existing_a_block_order(block: SourceBlock) -> tuple[int, int, int, int, int]:
+    """Match ``build_combined_a_candidate_pack`` ordering without router I/O."""
+
+    import re
+
+    body, _, cell = block.block_id.partition("#")
+    base_order = block.source_order
+    if base_order is None:
+        try:
+            base_order = int(body.removeprefix("body[").removesuffix("]"))
+        except ValueError:
+            base_order = 0
+    match = re.fullmatch(r"r(\d+)c(\d+)p(\d+)", cell) if cell else None
+    if not cell:
+        return (base_order, 0, 0, 0, 0)
+    if match is not None:
+        row, column, paragraph = (int(value) for value in match.groups())
+        return (base_order, 1, row, column, paragraph)
+    return (base_order, 2, 0, 0, 0)
+
+
+def _is_existing_a_section(section_id: str | None) -> bool:
+    return section_id == "main_notice" or bool(
+        section_id and section_id.startswith("main_notice_resume_")
+    )
+
+
+def _existing_a_base_candidate_pack(
+    common_ir: Mapping[str, Any],
+    source_block_ids: Iterable[str],
+    *,
+    label: str,
+) -> CandidatePack:
+    """Rebuild the production A-pack from canonical Common IR atoms only.
+
+    The production router decides *which* A sources to retain, but that LLM
+    decision is not reconstructible from Common IR alone.  Its persisted
+    source id set is therefore used strictly as a set membership witness.  A
+    source's text, locator, occurrence and cell metadata are always taken
+    from a fresh Common-IR projection, never from ``source_block_texts``.
+    Whole tables are deliberately absent: the production combined A-pack uses
+    routed prose plus native table-cell candidates.
+    """
+
+    try:
+        prepared, _projection = prepare_common_ir_v1(dict(common_ir))
+    except Exception as error:  # noqa: BLE001 - normalize vendored input errors
+        _fail(f"{label} native CandidatePack Common IR projection failed: {type(error).__name__}")
+
+    main_source_block_ids = {
+        block_id
+        for section in prepared.sections
+        if _is_existing_a_section(section.section_id)
+        for block_id in section.source_block_ids
+    }
+
+    def belongs_to_main_notice(block: SourceBlock) -> bool:
+        # A table-cell id contains ``#r…`` and is not itself present in the
+        # section projection.  Production scopes cells through their parent
+        # table id, so replay must do the same instead of trusting the cell's
+        # defaulted ``section_id``.
+        common_ir_block_id = block.common_ir_block_id or block.block_id.split("#", 1)[0]
+        return common_ir_block_id in main_source_block_ids
+
+    canonical_blocks = [
+        block
+        for block in [
+            *prepared.fact_candidate_blocks,
+            *prepared.table_cell_candidate_blocks,
+        ]
+        if belongs_to_main_notice(block)
+    ]
+    canonical = {
+        block.block_id: block
+        for block in canonical_blocks
+    }
+    requested = set(source_block_ids)
+    base_blocks = [canonical[block_id] for block_id in requested if block_id in canonical]
+    if not base_blocks:
+        _fail(f"{label} native CandidatePack has no trusted atomic A-pack source ids")
+    selected_table_cells = [
+        block for block in base_blocks if block.block_kind == "table_cell"
+    ]
+    if len(selected_table_cells) > MAX_A_TABLE_CELL_CANDIDATES:
+        _fail(f"{label} native CandidatePack exceeds the production A-table cell cap")
+    selected_cell_ids = {block.block_id for block in selected_table_cells}
+    selected_table_ids = {
+        block.common_ir_block_id for block in selected_table_cells
+    }
+    for table_id in selected_table_ids:
+        expected_cell_ids = {
+            block.block_id
+            for block in canonical_blocks
+            if block.block_kind == "table_cell"
+            and block.common_ir_block_id == table_id
+        }
+        if not expected_cell_ids.issubset(selected_cell_ids):
+            _fail(
+                f"{label} native CandidatePack contains a partial production A-table cell group"
+            )
+    return CandidatePack(
+        pack_id=f"{prepared.notice_id}-a-profile-v0.2",
+        notice_id=prepared.notice_id,
+        extraction_scope="candidate_pack",
+        question="A comparison-profile extraction only; never sent to the model.",
+        blocks=sorted(base_blocks, key=_existing_a_block_order),
+        generator=prepared.candidate_pack_generator,
+        generator_version=prepared.candidate_pack_generator_version,
+        common_ir_document_id=prepared.common_ir_document_id,
+    )
+
+
+def regenerate_existing_native_candidate_pack(
+    common_ir: Mapping[str, Any],
+    source_block_texts: Mapping[str, Any],
+    lineage: Mapping[str, Any],
+    *,
+    label: str,
+) -> CandidatePack | None:
+    """Regenerate and bind the production exact-native A pack.
+
+    ``source_block_texts`` supplies only the routed atomic-id subset.  It is
+    then required to be the complete, byte-exact map of the regenerated
+    transformed pack, so an invented derived id/text or a removed provenance
+    block cannot be presented as an ordinary atomic candidate.
+    """
+
+    parent_keys = ("parent_pack_id", "parent_generator", "parent_generator_version")
+    if not any(key in lineage for key in parent_keys):
+        return None
+    try:
+        base_pack = _existing_a_base_candidate_pack(
+            common_ir, source_block_texts.keys(), label=label
+        )
+        _require_native_base_identity(base_pack, lineage, label=label)
+        version = lineage["candidate_pack_generator_version"]
+        options = NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=version == "1:lines+continuations",
+        )
+        transformed = augment_pack_with_native_exact_transforms(base_pack, options=options)
+    except GoldVerificationError:
+        raise
+    except Exception as error:  # noqa: BLE001 - normalize vendored input errors
+        _fail(f"{label} native CandidatePack cannot be regenerated: {type(error).__name__}")
+    current = {
+        "candidate_pack_id": transformed.pack_id,
+        "candidate_pack_generator": transformed.generator,
+        "candidate_pack_generator_version": transformed.generator_version,
+        "common_ir_document_id": transformed.common_ir_document_id,
+        "parent_pack_id": transformed.parent_pack_id,
+        "parent_generator": transformed.parent_generator,
+        "parent_generator_version": transformed.parent_generator_version,
+    }
+    for key, expected in current.items():
+        if lineage.get(key) != expected:
+            _fail(f"{label} native CandidatePack lineage does not match the regenerated pack: {key}")
+    expected_texts = {block.block_id: block.text for block in transformed.blocks}
+    if set(source_block_texts) != set(expected_texts):
+        _fail(f"{label} native CandidatePack source_block_texts must be the complete regenerated pack map")
+    for block_id, expected_text in expected_texts.items():
+        if source_block_texts.get(block_id) != expected_text:
+            _fail(f"{label} native CandidatePack source_block_texts differs from regenerated Common IR text: {block_id}")
+    return transformed
+
+
+def _require_native_base_identity(
+    base_pack: CandidatePack,
+    lineage: Mapping[str, Any],
+    *,
+    label: str,
+) -> None:
+    if lineage.get("parent_pack_id") == lineage.get("candidate_pack_id"):
+        _fail(f"{label} native CandidatePack parent_pack_id must differ from candidate_pack_id")
+    expected = {
+        "parent_pack_id": base_pack.pack_id,
+        "parent_generator": base_pack.generator,
+        "parent_generator_version": base_pack.generator_version,
+    }
+    for key, value in expected.items():
+        if lineage.get(key) != value:
+            _fail(f"{label} native CandidatePack parent lineage does not match regenerated base pack: {key}")
+
+
+def _native_block_payload(block: SourceBlock) -> dict[str, Any]:
+    """Exact persisted provenance fields expected for a regenerated block."""
+
+    payload = {
+        "source_block_id": block.block_id,
+        "section_id": block.section_id,
+        "source_occurrence_ids": list(block.source_occurrence_ids),
+        "common_ir_block_id": block.common_ir_block_id,
+        "common_ir_occurrence_ids": list(block.common_ir_occurrence_ids),
+    }
+    if block.common_ir_cell_id is not None:
+        payload["common_ir_cell_id"] = block.common_ir_cell_id
+    if block.native_parent_block_id is not None:
+        payload["native_parent_span"] = {
+            "source_block_id": block.native_parent_block_id,
+            "start_char": block.native_start_char,
+            "end_char": block.native_end_char,
+            "exact_text": block.text,
+        }
+    if block.source_spans:
+        payload["source_spans"] = [span.model_dump(mode="json") for span in block.source_spans]
+    return payload
+
+
+def _require_native_lineage_when_used(
+    *,
+    profile: Mapping[str, Any],
+    materialized: Sequence[Any],
+    selection: Mapping[str, Any],
+    label: str,
+    allow_legacy_native_without_parent: bool,
+) -> None:
+    """A final native line/composite reference cannot lose its pack ancestry."""
+
+    def has_native_provenance(source: object) -> bool:
+        return isinstance(source, Mapping) and (
+            "native_parent_span" in source or "source_spans" in source
+        )
+
+    used = any(
+        has_native_provenance(raw_evidence)
+        for raw_fact in _facts_from_profile(profile, label)[0].values()
+        for raw_evidence in _list(raw_fact.get("evidence"), f"{label}.evidence")
+    ) or any(
+        has_native_provenance(raw_source)
+        for raw_row in materialized
+        if isinstance(raw_row, Mapping)
+        for key in ("source_blocks", "context_blocks")
+        for raw_source in (
+            raw_row.get(key, []) if isinstance(raw_row.get(key, []), list) else []
+        )
+    )
+    if not used:
+        return
+    if allow_legacy_native_without_parent:
+        return
+    lineage = _mapping(
+        selection.get("candidate_pack_lineage"),
+        f"{label}.selection.candidate_pack_lineage",
+    )
+    if not all(
+        isinstance(lineage.get(key), str) and lineage[key]
+        for key in ("parent_pack_id", "parent_generator", "parent_generator_version")
+    ):
+        _fail(f"{label} native evidence requires complete CandidatePack parent lineage")
 
 
 def _validate_value_source(
@@ -765,7 +1096,10 @@ def _validate_evidence(
     source_block_texts: Mapping[str, Any],
     common_ir_document_id: str,
     block_occurrences: Mapping[str, set[str]],
+    trusted_native_blocks: Mapping[str, SourceBlock] | None,
     label: str,
+    *,
+    allow_legacy_native_without_parent: bool,
 ) -> None:
     evidence = _list(fact.get("evidence"), f"{label}.evidence")
     if not evidence:
@@ -773,6 +1107,14 @@ def _validate_evidence(
     for index, raw_evidence in enumerate(evidence):
         evidence_label = f"{label}.evidence[{index}]"
         item = _mapping(raw_evidence, evidence_label)
+        allowed_evidence_keys = {
+            "source_block_id", "common_ir_document_id", "common_ir_block_id",
+            "common_ir_occurrence_ids", "source_occurrence_ids", "section_id",
+            "common_ir_cell_id", "text", "source_spans", "native_parent_span",
+        }
+        unknown_evidence_keys = set(item) - allowed_evidence_keys
+        if unknown_evidence_keys:
+            _fail(f"{evidence_label} has unsupported fields: {sorted(unknown_evidence_keys)}")
         _require_exact_keys(
             item,
             ("source_block_id", "common_ir_document_id", "common_ir_block_id", "common_ir_occurrence_ids"),
@@ -787,8 +1129,74 @@ def _validate_evidence(
         if common_ir_block_id not in block_occurrences:
             _fail(f"{evidence_label}.common_ir_block_id is absent from Common IR")
         occurrence_ids = _require_string_list(item["common_ir_occurrence_ids"], f"{evidence_label}.common_ir_occurrence_ids")
+        if not occurrence_ids or len(occurrence_ids) != len(set(occurrence_ids)):
+            _fail(f"{evidence_label}.common_ir_occurrence_ids must be non-empty and unique")
+        source_occurrence_ids = item.get("source_occurrence_ids", occurrence_ids)
+        source_occurrences = _require_string_list(
+            source_occurrence_ids, f"{evidence_label}.source_occurrence_ids"
+        )
+        if not source_occurrences or len(source_occurrences) != len(set(source_occurrences)):
+            _fail(f"{evidence_label}.source_occurrence_ids must be non-empty and unique")
+        source_text = source_block_texts[source_block_id]
         source_spans = item.get("source_spans")
-        if source_spans is None:
+        native_parent_span = item.get("native_parent_span")
+        if source_spans is not None and native_parent_span is not None:
+            _fail(f"{evidence_label} cannot mix native line and composite provenance")
+        trusted_block = (
+            trusted_native_blocks.get(source_block_id)
+            if trusted_native_blocks is not None
+            else None
+        )
+        if trusted_native_blocks is not None and trusted_block is not None:
+            expected = _native_block_payload(trusted_block)
+            is_derived = (
+                trusted_block.native_parent_block_id is not None
+                or bool(trusted_block.source_spans)
+            )
+            if is_derived and source_spans is None and native_parent_span is None:
+                _fail(f"{evidence_label} removed native provenance from a regenerated derived block")
+            persisted_locator_keys = allowed_evidence_keys - {
+                "common_ir_document_id",
+                "text",
+            }
+            if set(item).intersection(persisted_locator_keys) != set(expected):
+                _fail(
+                    f"{evidence_label} locator fields differ from the regenerated "
+                    "native CandidatePack block"
+                )
+            if not set(expected).issubset(item):
+                _fail(f"{evidence_label} is missing regenerated native CandidatePack locators")
+            if any(item[key] != value for key, value in expected.items()):
+                _fail(f"{evidence_label} differs from the regenerated native CandidatePack block")
+            if source_text != trusted_block.text:
+                _fail(f"{evidence_label} CandidatePack text differs from the regenerated block")
+        elif (
+            source_spans is not None or native_parent_span is not None
+        ) and not allow_legacy_native_without_parent:
+            _fail(f"{evidence_label} native provenance has no regenerated CandidatePack block")
+        if native_parent_span is not None:
+            parent = _mapping(native_parent_span, f"{evidence_label}.native_parent_span")
+            expected_parent_keys = {"source_block_id", "start_char", "end_char", "exact_text"}
+            if set(parent) != expected_parent_keys:
+                _fail(f"{evidence_label}.native_parent_span must use the exact line-slice contract")
+            parent_block_id = _nonempty_string(
+                parent.get("source_block_id"), f"{evidence_label}.native_parent_span.source_block_id"
+            )
+            parent_text = source_block_texts.get(parent_block_id)
+            if not isinstance(parent_text, str):
+                _fail(f"{evidence_label}.native_parent_span references an unknown parent source block")
+            start = parent.get("start_char")
+            end = parent.get("end_char")
+            exact_text = _nonempty_string(
+                parent.get("exact_text"), f"{evidence_label}.native_parent_span.exact_text"
+            )
+            if not _is_int(start) or not _is_int(end) or start < 0 or end <= start:
+                _fail(f"{evidence_label}.native_parent_span must use ordered non-negative character offsets")
+            if end > len(parent_text) or parent_text[start:end] != exact_text:
+                _fail(f"{evidence_label}.native_parent_span does not exactly match its parent text")
+            if source_text != exact_text:
+                _fail(f"{evidence_label}.native_parent_span does not match its derived CandidatePack text")
+        elif source_spans is None:
             if not occurrence_ids or not set(occurrence_ids).issubset(block_occurrences[common_ir_block_id]):
                 _fail(f"{evidence_label} has unknown Common IR occurrence provenance")
         else:
@@ -801,6 +1209,13 @@ def _validate_evidence(
             for span_index, raw_span in enumerate(spans):
                 span_label = f"{evidence_label}.source_spans[{span_index}]"
                 span = _mapping(raw_span, span_label)
+                allowed_span_keys = {
+                    "source_block_id", "exact_text", "start_char", "end_char",
+                    "separator_after", "source_order", "section_id",
+                    "common_ir_block_id", "common_ir_occurrence_ids", "common_ir_cell_id",
+                }
+                if set(span) - allowed_span_keys:
+                    _fail(f"{span_label} has unsupported fields")
                 _require_exact_keys(
                     span,
                     (
@@ -811,12 +1226,20 @@ def _validate_evidence(
                     span_label,
                 )
                 _nonempty_string(span.get("source_block_id"), f"{span_label}.source_block_id")
-                _nonempty_string(span.get("exact_text"), f"{span_label}.exact_text")
+                span_source_block_id = _nonempty_string(
+                    span.get("source_block_id"), f"{span_label}.source_block_id"
+                )
+                exact_text = _nonempty_string(span.get("exact_text"), f"{span_label}.exact_text")
                 start = span.get("start_char")
                 end = span.get("end_char")
                 if not _is_int(start) or not _is_int(end) or start < 0 or end <= start:
                     _fail(f"{span_label} has invalid character offsets")
-                if span.get("separator_after") not in {"", " ", "\n"}:
+                parent_text = source_block_texts.get(span_source_block_id)
+                if not isinstance(parent_text, str):
+                    _fail(f"{span_label}.source_block_id references an unknown source block")
+                if end > len(parent_text) or parent_text[start:end] != exact_text:
+                    _fail(f"{span_label} does not exactly match its parent source block")
+                if span.get("separator_after") not in {"", " "}:
                     _fail(f"{span_label}.separator_after is unsupported")
                 source_order = span.get("source_order")
                 if not _is_int(source_order) or source_order < 0:
@@ -835,7 +1258,11 @@ def _validate_evidence(
                     span.get("common_ir_occurrence_ids"),
                     f"{span_label}.common_ir_occurrence_ids",
                 )
-                if not span_ids or not set(span_ids).issubset(block_occurrences[span_block_id]):
+                if (
+                    not span_ids
+                    or len(span_ids) != len(set(span_ids))
+                    or not set(span_ids).issubset(block_occurrences[span_block_id])
+                ):
                     _fail(f"{span_label} has unknown Common IR occurrence provenance")
                 span_occurrences.extend(span_ids)
             if len(span_sections) != 1:
@@ -846,6 +1273,11 @@ def _validate_evidence(
                 _fail(f"{evidence_label}.common_ir_block_id is not the first composite span")
             if occurrence_ids != span_occurrences:
                 _fail(f"{evidence_label} composite occurrence provenance is incomplete")
+            if source_text != "".join(
+                str(span["exact_text"]) + str(span["separator_after"])
+                for span in spans
+            ):
+                _fail(f"{evidence_label}.source_spans do not losslessly reconstruct derived CandidatePack text")
     for relation_name in ("modifies_fact_ids", "recipient_fact_ids", "basis_fact_ids"):
         for relation_id in _require_string_list(fact.get(relation_name, []), f"{label}.{relation_name}"):
             if relation_id not in facts:
@@ -885,6 +1317,8 @@ def _profile_evidence_reference(
         reference["common_ir_cell_id"] = source["common_ir_cell_id"]
     if source.get("source_spans") is not None:
         reference["source_spans"] = source["source_spans"]
+    if source.get("native_parent_span") is not None:
+        reference["native_parent_span"] = source["native_parent_span"]
     return reference
 
 
@@ -895,6 +1329,10 @@ def _validate_selection_profile_materialization(
     component_ids: set[str],
     materialized_by_id: Mapping[str, Mapping[str, Any]],
     *,
+    common_ir_document_id: str,
+    block_occurrences: Mapping[str, set[str]],
+    trusted_native_blocks: Mapping[str, SourceBlock] | None,
+    allow_legacy_native_without_parent: bool,
     label: str,
 ) -> None:
     """Require selection, server materialization, and Profile to agree exactly."""
@@ -990,6 +1428,24 @@ def _validate_selection_profile_materialization(
             _fail(f"{fact_label} materialized source_blocks/profile evidence differ")
 
         context_blocks = _list(item.get("context_blocks"), f"{fact_label} materialized context_blocks")
+        for context_index, raw_context in enumerate(context_blocks):
+            context_label = f"{fact_label} materialized context_blocks[{context_index}]"
+            context = _mapping(raw_context, context_label)
+            context_block_id = _nonempty_string(
+                context.get("source_block_id"), f"{context_label}.source_block_id"
+            )
+            if context.get("text") != source_block_texts.get(context_block_id):
+                _fail(f"{context_label}.text differs from its CandidatePack source")
+            _validate_evidence(
+                facts,
+                {**fact, "evidence": [context]},
+                source_block_texts,
+                common_ir_document_id,
+                block_occurrences,
+                trusted_native_blocks,
+                context_label,
+                allow_legacy_native_without_parent=allow_legacy_native_without_parent,
+            )
         if _unordered_unique_strings(
             [block.get("source_block_id") for block in context_blocks],
             f"{fact_label} materialized context block ids",
@@ -1227,6 +1683,7 @@ def verify_profile_artifact_triple(
     *,
     pblanc_id: str,
     allow_unnamespaced_notice_id: bool = False,
+    allow_legacy_native_without_parent: bool = False,
 ) -> tuple[int, Counter[str]]:
     """Validate one in-memory Profile/selection/Common-IR artifact triple.
 
@@ -1234,7 +1691,10 @@ def verify_profile_artifact_triple(
     public so offline candidate evaluators can apply the same provenance and
     exact-span checks to baseline and candidate artifacts before comparing
     their meaning.  The function is read-only and performs no network or
-    filesystem I/O.
+    filesystem I/O.  ``allow_legacy_native_without_parent`` is a narrow
+    compatibility seam for the semantic comparator, which subsequently binds
+    RunPod 0.1.4 line/composite provenance to its deterministic broad source
+    universe.  Standalone verification remains strict by default.
     """
 
     label = f"notice {pblanc_id}"
@@ -1263,12 +1723,65 @@ def verify_profile_artifact_triple(
     document, block_occurrences = _common_ir_blocks(common_ir, f"{label} Common IR")
     _verify_common_ir_identity(profile, selection, document, label=label)
     facts, component_ids = _facts_from_profile(profile, label)
+    selection_lineage = _mapping(
+        selection.get("candidate_pack_lineage"),
+        f"{label}.selection.candidate_pack_lineage",
+    )
+    selection_candidate_pack_id = _nonempty_string(
+        selection_payload.get("candidate_pack_id"),
+        f"{label}.selection.candidate_pack_id",
+    )
+    if selection_candidate_pack_id != selection_lineage.get("candidate_pack_id"):
+        _fail(
+            f"{label}.selection.candidate_pack_id does not match CandidatePack lineage"
+        )
+    has_native_profile_evidence = any(
+        isinstance(raw_evidence, Mapping)
+        and ("native_parent_span" in raw_evidence or "source_spans" in raw_evidence)
+        for fact in facts.values()
+        for raw_evidence in _list(fact.get("evidence"), f"{label}.fact evidence")
+    )
+    has_parent_lineage = any(
+        key in selection_lineage
+        for key in ("parent_pack_id", "parent_generator", "parent_generator_version")
+    )
+    has_native_source_id = any(
+        _is_legacy_native_source_id(block_id)
+        for block_id in source_block_texts
+    )
+    has_no_parent_native = (
+        has_native_profile_evidence or has_native_source_id
+    ) and not has_parent_lineage
+    if has_no_parent_native:
+        if not allow_legacy_native_without_parent:
+            _fail(f"{label} native evidence requires complete CandidatePack parent lineage")
+        _validate_legacy_runpod_014_native_lineage(
+            selection_lineage,
+            pblanc_id=pblanc_id,
+            label=label,
+        )
+    regenerated_pack = (
+        regenerate_existing_native_candidate_pack(
+            common_ir, source_block_texts, selection_lineage, label=label
+        )
+        if has_parent_lineage
+        else None
+    )
+    trusted_native_blocks = (
+        {block.block_id: block for block in regenerated_pack.blocks}
+        if regenerated_pack is not None
+        else None
+    )
     used_spans: set[tuple[str, int, int]] = set()
     common_ir_document_id = str(document["document_id"])
     for fact_id, fact in facts.items():
         fact_label = f"{label} fact {fact_id}"
         _validate_value_source(fact, source_block_texts, used_spans, fact_label)
-        _validate_evidence(facts, fact, source_block_texts, common_ir_document_id, block_occurrences, fact_label)
+        _validate_evidence(
+            facts, fact, source_block_texts, common_ir_document_id,
+            block_occurrences, trusted_native_blocks, fact_label,
+            allow_legacy_native_without_parent=allow_legacy_native_without_parent,
+        )
         for component_id in _require_string_list(fact.get("applicability_component_ids", []), f"{fact_label}.applicability_component_ids"):
             if component_id not in component_ids:
                 _fail(f"{fact_label}.applicability_component_ids contains a dangling component id: {component_id}")
@@ -1300,12 +1813,24 @@ def verify_profile_artifact_triple(
     if materialized_component_ids != component_ids:
         _fail(f"{label} materialized component ids do not match profile components")
 
+    _require_native_lineage_when_used(
+        profile=profile,
+        materialized=materialized,
+        selection=selection,
+        label=label,
+        allow_legacy_native_without_parent=allow_legacy_native_without_parent,
+    )
+
     _validate_selection_profile_materialization(
         profile,
         selection,
         facts,
         component_ids,
         materialized_by_id,
+        common_ir_document_id=common_ir_document_id,
+        block_occurrences=block_occurrences,
+        trusted_native_blocks=trusted_native_blocks,
+        allow_legacy_native_without_parent=allow_legacy_native_without_parent,
         label=label,
     )
 
