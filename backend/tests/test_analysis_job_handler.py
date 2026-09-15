@@ -981,6 +981,34 @@ def test_parser_subprocess_does_not_receive_worker_secrets(
     assert "SUPABASE_SERVICE_ROLE_KEY" not in parser_env
 
 
+@pytest.mark.parametrize("source_kind", ["pdf", "docx", "HWPX", ""])
+def test_request_parser_rejects_unsupported_source_kind_before_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    from worker.contracts.profile_snapshot import PARSE_FAILED
+    from worker.profiles import StageError, parse_to_common_ir
+
+    def unexpected_popen(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unsupported request input must not start a subprocess")
+
+    monkeypatch.setattr(subprocess, "Popen", unexpected_popen)
+
+    with pytest.raises(StageError) as caught:
+        parse_to_common_ir(
+            input_path=tmp_path / "request.pdf",
+            notice_id="unsupported-source-kind",
+            source_kind=source_kind,
+            run_dir=tmp_path / "run",
+        )
+
+    assert caught.value.diagnostic.stage == "parse_to_common_ir"
+    assert caught.value.diagnostic.reason_code == PARSE_FAILED
+    assert "unsupported request parser source_kind" in caught.value.diagnostic.message
+    assert "hwp, hwpx" in caught.value.diagnostic.message
+
+
 def test_parser_deadline_kills_and_reaps_the_process_group(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

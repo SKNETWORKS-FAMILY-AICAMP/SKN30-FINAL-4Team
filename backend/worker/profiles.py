@@ -92,6 +92,7 @@ _REQUEST_NATIVE_EXACT_CANDIDATE_MODES = frozenset(
 DEFAULT_PARSE_TIMEOUT_SECONDS = 120.0
 MAX_HWPX_MEMBERS = 10_000
 MAX_HWPX_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
+REQUEST_PARSE_SOURCE_KINDS = frozenset({"hwp", "hwpx"})
 
 
 def _ensure_request_type_checked_glyph_compatibility() -> None:
@@ -143,6 +144,19 @@ def parse_to_common_ir(
 
     input_path = Path(input_path)
     run_dir = Path(run_dir)
+    if source_kind not in REQUEST_PARSE_SOURCE_KINDS:
+        allowed = ", ".join(sorted(REQUEST_PARSE_SOURCE_KINDS))
+        raise StageError(
+            StageDiagnostic(
+                stage="parse_to_common_ir",
+                unit=str(input_path),
+                reason_code=PARSE_FAILED,
+                message=(
+                    f"unsupported request parser source_kind {source_kind!r}; "
+                    f"expected one of: {allowed}"
+                ),
+            )
+        )
     if (
         not isinstance(timeout_seconds, (int, float))
         or not math.isfinite(float(timeout_seconds))
