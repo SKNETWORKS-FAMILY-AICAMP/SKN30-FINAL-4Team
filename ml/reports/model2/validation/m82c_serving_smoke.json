@@ -1,0 +1,55 @@
+{
+  "purpose": "P3 canonical 확정 전 end-to-end 추론 경로 smoke",
+  "covers": "masking -> proximity regex -> explicit feature -> masked proximity TF-IDF/SVD -> structured/title/body -> ordinal soft routing",
+  "not_covers": "HWP/PDF -> 텍스트 추출 -> F06 스키마 (M82 가 바꾸지 않은 기존 경로)",
+  "dataset": {
+    "path": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877
+  },
+  "synthetic_doc": {
+    "title": "2026년 지역 중소제조기업 스마트공장 고도화 지원사업 모집 공고",
+    "proximity_extracted": {
+      "prox_support_rate": 60.0,
+      "prox_self_burden_rate": 40.0,
+      "prox_selected_count": 25.0,
+      "prox_duration_months": 10.0
+    },
+    "context_digit_residue": false,
+    "pred_log10": 7.1169,
+    "pred_won": 13088319,
+    "bucket_proba": [
+      0.4289,
+      0.5622,
+      0.0089
+    ],
+    "bucket_edges_won": [
+      20000000,
+      120000000
+    ]
+  },
+  "real_row": {
+    "row_id": "PBLN_000000000039623",
+    "pred_log10": 8.8921,
+    "true_log10": 9.0,
+    "abs_err": 0.1079,
+    "pred_won": 780029688,
+    "true_won": 1000000000
+  },
+  "feature_dims": {
+    "train": 211,
+    "infer": 211
+  },
+  "checks": {
+    "1. 신규 문서가 크래시 없이 예측까지 도달": true,
+    "2. 합성 문서 proximity 가 실제로 추출됨": true,
+    "3. masking 후 문맥에 숫자 잔존 없음": true,
+    "4. 합성 예측이 학습 타깃 1~99 분위 안": true,
+    "5. 실제 행 예측 오차가 OOF MAE 의 3배 이내(0.3518×3)": true,
+    "6. feature 차원 일치": true,
+    "7. feature 순서 일치": true,
+    "8. 구간확률이 정상 분포(합 1, 음수 없음)": true
+  },
+  "verdict": "PASS — serving 경로 정상",
+  "seconds": 53.6
+}

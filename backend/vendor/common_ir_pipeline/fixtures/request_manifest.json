@@ -1,0 +1,11 @@
+{
+  "corpus_version": "example",
+  "documents": [
+    {
+      "doc_id": "PREREVIEW-EXAMPLE-01",
+      "input_file": "request_example.input.md",
+      "reference_notice_id": "bizinfo:PBLN_EXAMPLE",
+      "is_synthetic_fixture": true
+    }
+  ]
+}

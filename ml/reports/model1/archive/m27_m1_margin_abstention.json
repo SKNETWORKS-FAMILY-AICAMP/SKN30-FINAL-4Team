@@ -1,0 +1,687 @@
+{
+  "n_rows": 1404,
+  "n_classes": 19,
+  "n_groups": 1203,
+  "folds": 5,
+  "seed": 42,
+  "cv": "StratifiedGroupKFold (program_stem)",
+  "target_coverage": 0.707,
+  "lr_external_accuracy": 0.7931,
+  "no_abstention": {
+    "LinearSVM (판단보류 없음)": {
+      "macro_f1": 0.7953,
+      "accuracy": 0.8362
+    },
+    "LogisticRegression (판단보류 없음)": {
+      "macro_f1": 0.7833,
+      "accuracy": 0.8269
+    }
+  },
+  "at_target_coverage": {
+    "max_score": {
+      "coverage": 0.7073,
+      "threshold": -0.1975,
+      "accuracy": 0.9305,
+      "macro_f1": 0.8935
+    },
+    "top2_gap": {
+      "coverage": 0.7073,
+      "threshold": 0.3792,
+      "accuracy": 0.9396,
+      "macro_f1": 0.9015
+    },
+    "LR proba (비교)": {
+      "coverage": 0.7073,
+      "threshold": 0.3475,
+      "accuracy": 0.9194,
+      "macro_f1": 0.8928
+    }
+  },
+  "curves": {
+    "max_score": [
+      {
+        "coverage": 0.2001,
+        "threshold": 0.4151,
+        "accuracy": 0.9929,
+        "macro_f1": 0.9925
+      },
+      {
+        "coverage": 0.2336,
+        "threshold": 0.3437,
+        "accuracy": 0.9909,
+        "macro_f1": 0.9749
+      },
+      {
+        "coverage": 0.2664,
+        "threshold": 0.2925,
+        "accuracy": 0.984,
+        "macro_f1": 0.9718
+      },
+      {
+        "coverage": 0.2999,
+        "threshold": 0.2424,
+        "accuracy": 0.9834,
+        "macro_f1": 0.9678
+      },
+      {
+        "coverage": 0.3333,
+        "threshold": 0.2052,
+        "accuracy": 0.9765,
+        "macro_f1": 0.9553
+      },
+      {
+        "coverage": 0.3668,
+        "threshold": 0.1626,
+        "accuracy": 0.9728,
+        "macro_f1": 0.9546
+      },
+      {
+        "coverage": 0.4003,
+        "threshold": 0.1239,
+        "accuracy": 0.9733,
+        "macro_f1": 0.9545
+      },
+      {
+        "coverage": 0.433,
+        "threshold": 0.0797,
+        "accuracy": 0.9688,
+        "macro_f1": 0.9406
+      },
+      {
+        "coverage": 0.4665,
+        "threshold": 0.044,
+        "accuracy": 0.9679,
+        "macro_f1": 0.9415
+      },
+      {
+        "coverage": 0.5,
+        "threshold": 0.0077,
+        "accuracy": 0.9672,
+        "macro_f1": 0.9321
+      },
+      {
+        "coverage": 0.5335,
+        "threshold": -0.0232,
+        "accuracy": 0.9653,
+        "macro_f1": 0.9297
+      },
+      {
+        "coverage": 0.567,
+        "threshold": -0.0532,
+        "accuracy": 0.9585,
+        "macro_f1": 0.9334
+      },
+      {
+        "coverage": 0.5997,
+        "threshold": -0.0943,
+        "accuracy": 0.9489,
+        "macro_f1": 0.9259
+      },
+      {
+        "coverage": 0.6332,
+        "threshold": -0.1306,
+        "accuracy": 0.9415,
+        "macro_f1": 0.9113
+      },
+      {
+        "coverage": 0.6667,
+        "threshold": -0.1637,
+        "accuracy": 0.938,
+        "macro_f1": 0.9077
+      },
+      {
+        "coverage": 0.7001,
+        "threshold": -0.1924,
+        "accuracy": 0.9329,
+        "macro_f1": 0.9015
+      },
+      {
+        "coverage": 0.7336,
+        "threshold": -0.2267,
+        "accuracy": 0.9223,
+        "macro_f1": 0.8806
+      },
+      {
+        "coverage": 0.7664,
+        "threshold": -0.2492,
+        "accuracy": 0.9164,
+        "macro_f1": 0.8758
+      },
+      {
+        "coverage": 0.7999,
+        "threshold": -0.2878,
+        "accuracy": 0.9092,
+        "macro_f1": 0.8716
+      },
+      {
+        "coverage": 0.8333,
+        "threshold": -0.3292,
+        "accuracy": 0.8957,
+        "macro_f1": 0.8607
+      },
+      {
+        "coverage": 0.8668,
+        "threshold": -0.3637,
+        "accuracy": 0.8874,
+        "macro_f1": 0.8471
+      },
+      {
+        "coverage": 0.9003,
+        "threshold": -0.4097,
+        "accuracy": 0.8782,
+        "macro_f1": 0.8368
+      },
+      {
+        "coverage": 0.933,
+        "threshold": -0.4657,
+        "accuracy": 0.8634,
+        "macro_f1": 0.8253
+      },
+      {
+        "coverage": 0.9665,
+        "threshold": -0.5224,
+        "accuracy": 0.8504,
+        "macro_f1": 0.8148
+      },
+      {
+        "coverage": 1.0,
+        "threshold": -0.6839,
+        "accuracy": 0.8362,
+        "macro_f1": 0.7953
+      }
+    ],
+    "top2_gap": [
+      {
+        "coverage": 0.2001,
+        "threshold": 1.1648,
+        "accuracy": 0.9929,
+        "macro_f1": 0.9931
+      },
+      {
+        "coverage": 0.2336,
+        "threshold": 1.0926,
+        "accuracy": 0.9909,
+        "macro_f1": 0.9924
+      },
+      {
+        "coverage": 0.2664,
+        "threshold": 1.0225,
+        "accuracy": 0.9866,
+        "macro_f1": 0.9894
+      },
+      {
+        "coverage": 0.2999,
+        "threshold": 0.9698,
+        "accuracy": 0.9857,
+        "macro_f1": 0.9889
+      },
+      {
+        "coverage": 0.3333,
+        "threshold": 0.9165,
+        "accuracy": 0.9829,
+        "macro_f1": 0.9843
+      },
+      {
+        "coverage": 0.3668,
+        "threshold": 0.8682,
+        "accuracy": 0.9806,
+        "macro_f1": 0.9588
+      },
+      {
+        "coverage": 0.4003,
+        "threshold": 0.8193,
+        "accuracy": 0.9804,
+        "macro_f1": 0.9594
+      },
+      {
+        "coverage": 0.433,
+        "threshold": 0.7583,
+        "accuracy": 0.9803,
+        "macro_f1": 0.9683
+      },
+      {
+        "coverage": 0.4665,
+        "threshold": 0.7104,
+        "accuracy": 0.9771,
+        "macro_f1": 0.9681
+      },
+      {
+        "coverage": 0.5,
+        "threshold": 0.6582,
+        "accuracy": 0.9744,
+        "macro_f1": 0.9663
+      },
+      {
+        "coverage": 0.5335,
+        "threshold": 0.6096,
+        "accuracy": 0.9693,
+        "macro_f1": 0.9556
+      },
+      {
+        "coverage": 0.567,
+        "threshold": 0.5601,
+        "accuracy": 0.9648,
+        "macro_f1": 0.9502
+      },
+      {
+        "coverage": 0.5997,
+        "threshold": 0.531,
+        "accuracy": 0.9572,
+        "macro_f1": 0.9283
+      },
+      {
+        "coverage": 0.6332,
+        "threshold": 0.4913,
+        "accuracy": 0.9539,
+        "macro_f1": 0.9153
+      },
+      {
+        "coverage": 0.6667,
+        "threshold": 0.4357,
+        "accuracy": 0.9466,
+        "macro_f1": 0.9023
+      },
+      {
+        "coverage": 0.7001,
+        "threshold": 0.3872,
+        "accuracy": 0.94,
+        "macro_f1": 0.9013
+      },
+      {
+        "coverage": 0.7336,
+        "threshold": 0.3424,
+        "accuracy": 0.935,
+        "macro_f1": 0.8965
+      },
+      {
+        "coverage": 0.7664,
+        "threshold": 0.305,
+        "accuracy": 0.9229,
+        "macro_f1": 0.8898
+      },
+      {
+        "coverage": 0.7999,
+        "threshold": 0.2518,
+        "accuracy": 0.9154,
+        "macro_f1": 0.8855
+      },
+      {
+        "coverage": 0.8333,
+        "threshold": 0.2121,
+        "accuracy": 0.9051,
+        "macro_f1": 0.875
+      },
+      {
+        "coverage": 0.8668,
+        "threshold": 0.1751,
+        "accuracy": 0.8932,
+        "macro_f1": 0.8563
+      },
+      {
+        "coverage": 0.9003,
+        "threshold": 0.1293,
+        "accuracy": 0.8782,
+        "macro_f1": 0.8437
+      },
+      {
+        "coverage": 0.933,
+        "threshold": 0.0844,
+        "accuracy": 0.8672,
+        "macro_f1": 0.8294
+      },
+      {
+        "coverage": 0.9665,
+        "threshold": 0.0432,
+        "accuracy": 0.8504,
+        "macro_f1": 0.809
+      },
+      {
+        "coverage": 1.0,
+        "threshold": 0.0061,
+        "accuracy": 0.8362,
+        "macro_f1": 0.7953
+      }
+    ],
+    "LR proba (비교)": [
+      {
+        "coverage": 0.2001,
+        "threshold": 0.6754,
+        "accuracy": 0.9822,
+        "macro_f1": 0.9812
+      },
+      {
+        "coverage": 0.2336,
+        "threshold": 0.6396,
+        "accuracy": 0.9787,
+        "macro_f1": 0.9728
+      },
+      {
+        "coverage": 0.2664,
+        "threshold": 0.61,
+        "accuracy": 0.9733,
+        "macro_f1": 0.9533
+      },
+      {
+        "coverage": 0.2999,
+        "threshold": 0.5834,
+        "accuracy": 0.9762,
+        "macro_f1": 0.9565
+      },
+      {
+        "coverage": 0.3333,
+        "threshold": 0.5601,
+        "accuracy": 0.9744,
+        "macro_f1": 0.956
+      },
+      {
+        "coverage": 0.3668,
+        "threshold": 0.5411,
+        "accuracy": 0.9748,
+        "macro_f1": 0.9591
+      },
+      {
+        "coverage": 0.4003,
+        "threshold": 0.514,
+        "accuracy": 0.9715,
+        "macro_f1": 0.9508
+      },
+      {
+        "coverage": 0.433,
+        "threshold": 0.4927,
+        "accuracy": 0.9671,
+        "macro_f1": 0.9488
+      },
+      {
+        "coverage": 0.4665,
+        "threshold": 0.4719,
+        "accuracy": 0.9679,
+        "macro_f1": 0.9499
+      },
+      {
+        "coverage": 0.5,
+        "threshold": 0.452,
+        "accuracy": 0.9615,
+        "macro_f1": 0.9461
+      },
+      {
+        "coverage": 0.5335,
+        "threshold": 0.4361,
+        "accuracy": 0.9559,
+        "macro_f1": 0.9393
+      },
+      {
+        "coverage": 0.567,
+        "threshold": 0.419,
+        "accuracy": 0.951,
+        "macro_f1": 0.929
+      },
+      {
+        "coverage": 0.5997,
+        "threshold": 0.4027,
+        "accuracy": 0.9418,
+        "macro_f1": 0.9143
+      },
+      {
+        "coverage": 0.6332,
+        "threshold": 0.3855,
+        "accuracy": 0.9359,
+        "macro_f1": 0.9148
+      },
+      {
+        "coverage": 0.6667,
+        "threshold": 0.3667,
+        "accuracy": 0.9295,
+        "macro_f1": 0.9029
+      },
+      {
+        "coverage": 0.7001,
+        "threshold": 0.3512,
+        "accuracy": 0.9196,
+        "macro_f1": 0.8928
+      },
+      {
+        "coverage": 0.7336,
+        "threshold": 0.334,
+        "accuracy": 0.9146,
+        "macro_f1": 0.8903
+      },
+      {
+        "coverage": 0.7664,
+        "threshold": 0.3155,
+        "accuracy": 0.9071,
+        "macro_f1": 0.878
+      },
+      {
+        "coverage": 0.7999,
+        "threshold": 0.2996,
+        "accuracy": 0.9003,
+        "macro_f1": 0.8697
+      },
+      {
+        "coverage": 0.8333,
+        "threshold": 0.2789,
+        "accuracy": 0.8932,
+        "macro_f1": 0.8597
+      },
+      {
+        "coverage": 0.8668,
+        "threshold": 0.2587,
+        "accuracy": 0.8841,
+        "macro_f1": 0.8553
+      },
+      {
+        "coverage": 0.9003,
+        "threshold": 0.2389,
+        "accuracy": 0.871,
+        "macro_f1": 0.837
+      },
+      {
+        "coverage": 0.933,
+        "threshold": 0.2206,
+        "accuracy": 0.8573,
+        "macro_f1": 0.8181
+      },
+      {
+        "coverage": 0.9665,
+        "threshold": 0.1937,
+        "accuracy": 0.8445,
+        "macro_f1": 0.7999
+      },
+      {
+        "coverage": 1.0,
+        "threshold": 0.1106,
+        "accuracy": 0.8269,
+        "macro_f1": 0.7833
+      }
+    ]
+  },
+  "class_recall": {
+    "전체": {
+      "SW·솔루션": {
+        "n": 20,
+        "recall": 0.65
+      },
+      "경진대회": {
+        "n": 15,
+        "recall": 0.9333
+      },
+      "고용보조": {
+        "n": 52,
+        "recall": 0.8654
+      },
+      "교육훈련": {
+        "n": 55,
+        "recall": 0.8364
+      },
+      "기술·IP평가": {
+        "n": 10,
+        "recall": 0.8
+      },
+      "보증": {
+        "n": 10,
+        "recall": 0.8
+      },
+      "사업화": {
+        "n": 438,
+        "recall": 0.8402
+      },
+      "상담": {
+        "n": 14,
+        "recall": 0.4286
+      },
+      "설비": {
+        "n": 77,
+        "recall": 0.7662
+      },
+      "성능인증": {
+        "n": 21,
+        "recall": 0.4286
+      },
+      "수출물류": {
+        "n": 14,
+        "recall": 0.8571
+      },
+      "수출통관": {
+        "n": 14,
+        "recall": 0.8571
+      },
+      "연구개발": {
+        "n": 154,
+        "recall": 0.9351
+      },
+      "융자": {
+        "n": 95,
+        "recall": 0.9684
+      },
+      "창업보육": {
+        "n": 27,
+        "recall": 0.6296
+      },
+      "컨설팅": {
+        "n": 172,
+        "recall": 0.7384
+      },
+      "판로": {
+        "n": 168,
+        "recall": 0.9286
+      },
+      "해외수주·실증": {
+        "n": 29,
+        "recall": 0.7586
+      },
+      "해외인증": {
+        "n": 19,
+        "recall": 0.8421
+      }
+    },
+    "판단보류 적용(top2_gap)": {
+      "SW·솔루션": {
+        "n": 12,
+        "recall": 0.8333
+      },
+      "경진대회": {
+        "n": 11,
+        "recall": 0.9091
+      },
+      "고용보조": {
+        "n": 38,
+        "recall": 0.9474
+      },
+      "교육훈련": {
+        "n": 39,
+        "recall": 0.8974
+      },
+      "기술·IP평가": {
+        "n": 7,
+        "recall": 0.8571
+      },
+      "보증": {
+        "n": 8,
+        "recall": 1.0
+      },
+      "사업화": {
+        "n": 293,
+        "recall": 0.9522
+      },
+      "상담": {
+        "n": 10,
+        "recall": 0.4
+      },
+      "설비": {
+        "n": 47,
+        "recall": 0.9574
+      },
+      "성능인증": {
+        "n": 6,
+        "recall": 0.8333
+      },
+      "수출물류": {
+        "n": 11,
+        "recall": 1.0
+      },
+      "수출통관": {
+        "n": 10,
+        "recall": 0.9
+      },
+      "연구개발": {
+        "n": 124,
+        "recall": 0.9758
+      },
+      "융자": {
+        "n": 85,
+        "recall": 0.9882
+      },
+      "창업보육": {
+        "n": 19,
+        "recall": 0.8421
+      },
+      "컨설팅": {
+        "n": 99,
+        "recall": 0.8687
+      },
+      "판로": {
+        "n": 138,
+        "recall": 0.9855
+      },
+      "해외수주·실증": {
+        "n": 20,
+        "recall": 0.9
+      },
+      "해외인증": {
+        "n": 15,
+        "recall": 0.8667
+      }
+    }
+  },
+  "best_signal": "top2_gap",
+  "external": {
+    "n_labeled": 41,
+    "all": {
+      "n": 41,
+      "accuracy": 0.1463
+    },
+    "max_score": {
+      "threshold": -0.1975,
+      "coverage": 0.0,
+      "n_kept": 0,
+      "accuracy": null
+    },
+    "top2_gap": {
+      "threshold": 0.3792,
+      "coverage": 0.0,
+      "n_kept": 0,
+      "accuracy": null
+    }
+  },
+  "verdict": {
+    "verdict": "채택 검토",
+    "reasons": [
+      "판단보류 없이 — LinearSVM macroF1 0.7953 vs LR 0.7833. 확률로 바꾸지 않으니 M24 에서 보정 때문에 잃었던 성능(0.7293)이 그대로 돌아왔다",
+      "커버리지 71% 에서 max_score 0.9305 (LR 0.9194, +0.0111)",
+      "커버리지 71% 에서 top2_gap 0.9396 (LR 0.9194, +0.0202)",
+      "두 margin 중 top2_gap 가 낫다",
+      "확률 보정을 하지 않으므로 사용자에게 '확신도 N%' 를 보여줄 수 없다. 기획서가 그 요구를 하지 않으므로 문제되지 않는다"
+    ]
+  },
+  "runtime_min": 0.48
+}

@@ -1,0 +1,78 @@
+{
+  "목적": "합성은 최종 성능 증명이 아니라 가중치 선택과 robustness 검사용이다 (계획서 §13)",
+  "n_train": 1948,
+  "n_synthetic": 117,
+  "generator_old": "m13.inject_synthetic — 4개 고정 패턴, 분포 밖으로 고정 이동",
+  "generator_new": "1~3개 축 무작위 선택, 증가·감소 양방향, 배수표에서 추첨",
+  "n_rules": {
+    "old": 4,
+    "new": 77
+  },
+  "n_changed_dist": {
+    "1": 63,
+    "2": 41,
+    "3": 13
+  },
+  "clumping": {
+    "old": {
+      "knn_purity": 0.9867,
+      "knn_purity_note": "합성 점의 이웃 10개 중 합성 비율. 무작위면 0.06 근처, 1.0 이면 완전히 뭉친 것",
+      "baseline_purity": 0.058,
+      "dist_real_real_median": 3.4881,
+      "dist_syn_syn_median": 13.7238,
+      "syn_over_real_spread": 3.9345,
+      "rule_silhouette": 0.5273,
+      "rule_silhouette_note": "생성 규칙별 실루엣. 0.5 이상이면 규칙끼리 군집을 이뤄 모델이 규칙을 외울 수 있다",
+      "n_unique_rules": 4
+    },
+    "new": {
+      "knn_purity": 0.2094,
+      "knn_purity_note": "합성 점의 이웃 10개 중 합성 비율. 무작위면 0.06 근처, 1.0 이면 완전히 뭉친 것",
+      "baseline_purity": 0.0567,
+      "dist_real_real_median": 3.4881,
+      "dist_syn_syn_median": 3.7069,
+      "syn_over_real_spread": 1.0627,
+      "rule_silhouette": -0.2511,
+      "rule_silhouette_note": "생성 규칙별 실루엣. 0.5 이상이면 규칙끼리 군집을 이뤄 모델이 규칙을 외울 수 있다",
+      "n_unique_rules": 77
+    }
+  },
+  "detection": {
+    "old": {
+      "OneClassSVM": {
+        "recall_at_k": 1.0,
+        "recall_at_2k": 0.5,
+        "median_rank_pct": 2.88
+      },
+      "IsolationForest": {
+        "recall_at_k": 0.3917,
+        "recall_at_2k": 0.2833,
+        "median_rank_pct": 6.41
+      },
+      "LocalOutlierFactor": {
+        "recall_at_k": 0.7583,
+        "recall_at_2k": 0.5,
+        "median_rank_pct": 3.36
+      }
+    },
+    "new": {
+      "OneClassSVM": {
+        "recall_at_k": 0.4444,
+        "recall_at_2k": 0.2265,
+        "median_rank_pct": 23.54
+      },
+      "IsolationForest": {
+        "recall_at_k": 0.1026,
+        "recall_at_2k": 0.1068,
+        "median_rank_pct": 25.38
+      },
+      "LocalOutlierFactor": {
+        "recall_at_k": 0.1368,
+        "recall_at_2k": 0.1624,
+        "median_rank_pct": 21.94
+      }
+    }
+  },
+  "figure": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\figures\\m37_synthetic_pca.png",
+  "data": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed\\m37_synthetic.parquet"
+}

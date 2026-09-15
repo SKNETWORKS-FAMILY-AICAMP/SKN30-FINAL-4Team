@@ -1,0 +1,12 @@
+{
+  "sample": 5000,
+  "attempted": 5000,
+  "ok": 4757,
+  "no_doc": 243,
+  "fail": 0,
+  "success_rate": 0.9514,
+  "elapsed_min": 192.5,
+  "delay_sec": 1.0,
+  "out_dir": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\raw\\attachments\\list",
+  "manifest": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\d03_manifest_list.csv"
+}

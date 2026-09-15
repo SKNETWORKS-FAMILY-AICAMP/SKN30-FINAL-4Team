@@ -1,0 +1,267 @@
+{
+  "n_rows": 2339,
+  "n_input_axes": 13,
+  "base_config": {
+    "latent": 4,
+    "hidden": 64,
+    "epochs": 500,
+    "lr": 0.001,
+    "dropout": 0.1,
+    "denoising": 0.1
+  },
+  "base_result": {
+    "n_synthetic": 60,
+    "recall_at_k": 0.7333,
+    "recall_at_2k": 0.4583,
+    "median_rank_pct": 1.31
+  },
+  "ablation": {
+    "latent": {
+      "2": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.85,
+        "recall_at_2k": 0.4667,
+        "median_rank_pct": 1.35
+      },
+      "4": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.31,
+        "note": "기준 설정"
+      },
+      "8": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.6667,
+        "recall_at_2k": 0.4083,
+        "median_rank_pct": 1.52
+      },
+      "16": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.6,
+        "recall_at_2k": 0.3917,
+        "median_rank_pct": 1.27
+      }
+    },
+    "hidden": {
+      "32": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.6833,
+        "recall_at_2k": 0.4417,
+        "median_rank_pct": 1.69
+      },
+      "64": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.31,
+        "note": "기준 설정"
+      },
+      "128": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4,
+        "median_rank_pct": 1.23
+      }
+    },
+    "epochs": {
+      "200": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.6833,
+        "recall_at_2k": 0.4167,
+        "median_rank_pct": 1.42
+      },
+      "500": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.31,
+        "note": "기준 설정"
+      },
+      "1000": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.8333,
+        "recall_at_2k": 0.45,
+        "median_rank_pct": 1.23
+      }
+    },
+    "lr": {
+      "0.0003": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.65,
+        "recall_at_2k": 0.4,
+        "median_rank_pct": 1.6
+      },
+      "0.001": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.31,
+        "note": "기준 설정"
+      },
+      "0.003": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7667,
+        "recall_at_2k": 0.45,
+        "median_rank_pct": 1.23
+      }
+    },
+    "dropout": {
+      "0.0": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.8,
+        "recall_at_2k": 0.45,
+        "median_rank_pct": 1.23
+      },
+      "0.1": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.31,
+        "note": "기준 설정"
+      },
+      "0.3": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7167,
+        "recall_at_2k": 0.4417,
+        "median_rank_pct": 1.44
+      }
+    },
+    "denoising": {
+      "0.0": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.75,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.23
+      },
+      "0.1": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.7333,
+        "recall_at_2k": 0.4583,
+        "median_rank_pct": 1.31,
+        "note": "기준 설정"
+      },
+      "0.2": {
+        "n_synthetic": 60,
+        "recall_at_k": 0.75,
+        "recall_at_2k": 0.45,
+        "median_rank_pct": 1.23
+      }
+    }
+  },
+  "tuned_config": {
+    "latent": 2,
+    "hidden": 64,
+    "epochs": 1000,
+    "lr": 0.003,
+    "dropout": 0.0,
+    "denoising": 0.0
+  },
+  "tuned_result": {
+    "n_synthetic": 60,
+    "recall_at_k": 0.8167,
+    "recall_at_2k": 0.475,
+    "median_rank_pct": 1.27
+  },
+  "ofat_combination_failed": false,
+  "final_config": {
+    "latent": 2,
+    "hidden": 64,
+    "epochs": 1000,
+    "lr": 0.003,
+    "dropout": 0.0,
+    "denoising": 0.0
+  },
+  "final_result": {
+    "n_synthetic": 60,
+    "recall_at_k": 0.8167,
+    "recall_at_2k": 0.475,
+    "median_rank_pct": 1.27
+  },
+  "score_drivers": {
+    "AE-recon": {
+      "log_per_recipient": -0.079,
+      "log_per_recipient__missing": 0.264,
+      "log_support_count": 0.209,
+      "log_support_count__missing": -0.037,
+      "support_ratio": 0.238,
+      "support_ratio__missing": 0.214,
+      "project_duration": 0.179,
+      "project_duration__missing": 0.169,
+      "support_type__freq": 0.153,
+      "support_method__freq": 0.115,
+      "support_unit__freq": 0.103,
+      "amount_type__freq": 0.221,
+      "category_large__freq": 0.317
+    }
+  },
+  "resample_stability": {
+    "n_iter": 10,
+    "frac": 0.8,
+    "top_n": 30,
+    "overlap_mean": 0.2933,
+    "overlap_min": 0.2
+  },
+  "ml_reference": {
+    "IsolationForest": 0.083,
+    "LocalOutlierFactor": 0.633,
+    "OneClassSVM": 0.783,
+    "OneClassSVM_resample_overlap": 0.827
+  },
+  "top_cases": [
+    {
+      "row_id": "PBLN_000000000122952",
+      "title": "2026년 영세 소상공인 중소금융권 금융비용 지원사업 재공고",
+      "anomaly_score": 1.0,
+      "status": "rare_pattern",
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 성격 비교군 377건)"
+      ]
+    },
+    {
+      "row_id": "EXCEL2023_0875",
+      "title": "2023년 에코스타트업 지원사업",
+      "anomaly_score": 0.441,
+      "status": "rare_pattern",
+      "notable_features": [
+        "지원 기업/과제 수가 비교군 대비 높음 (P100, 성격x단위 비교군 43건)",
+        "사업기간이 비교군 대비 높음 (P100, 성격x방식x출처 비교군 60건)"
+      ]
+    },
+    {
+      "row_id": "EXCEL2023_0803",
+      "title": "2023년 글로벌 IP 스타기업 육성",
+      "anomaly_score": 0.4092,
+      "status": "rare_pattern",
+      "notable_features": []
+    },
+    {
+      "row_id": "PBLN_000000000046577",
+      "title": "2020년 식품소재 및 반가공산업육성 사업자 선정계획 공고",
+      "anomaly_score": 0.3856,
+      "status": "rare_pattern",
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P10, 성격x방식x출처 비교군 51건)"
+      ]
+    },
+    {
+      "row_id": "EXCEL2023_0455",
+      "title": "2023년 원자력생태계 지원(전공자 인턴십·정규직 전환 지원)",
+      "anomaly_score": 0.3808,
+      "status": "rare_pattern",
+      "notable_features": [
+        "지원비율이 비교군 대비 낮음 (P0, 성격 비교군 35건)"
+      ]
+    }
+  ],
+  "verdict": {
+    "verdict": "Conditional",
+    "reasons": [
+      "합성 이상치 회수율 0.817 > OneClassSVM 0.783",
+      "설계서 MVP 권장이던 IsolationForest(0.083)보다는 낫다",
+      "재학습 상위 30건 유지율 평균 29% (OneClassSVM 83%)",
+      "회수율은 앞서지만 재학습 시 상위 목록이 흔들린다"
+    ]
+  },
+  "runtime_min": 2.23
+}

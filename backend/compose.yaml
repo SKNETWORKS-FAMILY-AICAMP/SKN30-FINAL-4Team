@@ -1,0 +1,145 @@
+services:
+  api:
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      # 기본은 host loopback 전용이다. LAN HTTP PoC는 .env에서 bind 주소와
+      # Cookie Secure 예외를 둘 다 명시해야 한다.
+      - "${PREREVIEW_API_BIND_ADDRESS:-127.0.0.1}:${PREREVIEW_API_PORT:-8001}:8000"
+    environment:
+      # Compose는 LAN에 publish될 수 있으므로 인증 우회가 없는 값을 기본으로 한다.
+      # offline 계약 검증은 호스트에서 명시적으로 true로 실행한다.
+      PREREVIEW_OFFLINE_MODE: "${PREREVIEW_OFFLINE_MODE:-false}"
+      PREREVIEW_UPLOAD_MAX_BYTES: "${PREREVIEW_UPLOAD_MAX_BYTES:-52428800}"
+      PREREVIEW_HTTP_MAX_BODY_BYTES: "${PREREVIEW_HTTP_MAX_BODY_BYTES:-53477376}"
+      PREREVIEW_UPLOAD_CONCURRENCY: "${PREREVIEW_UPLOAD_CONCURRENCY:-2}"
+      PREREVIEW_GLOBAL_QUEUE_MAX: "${PREREVIEW_GLOBAL_QUEUE_MAX:-25}"
+      PREREVIEW_CURSOR_SIGNING_SECRET: "${PREREVIEW_CURSOR_SIGNING_SECRET:-}"
+      PREREVIEW_AUTH_ALLOWED_ORIGINS: "${PREREVIEW_AUTH_ALLOWED_ORIGINS:-}"
+      PREREVIEW_AUTH_COOKIE_SECURE: "${PREREVIEW_AUTH_COOKIE_SECURE:-true}"
+      PREREVIEW_AUTH_COOKIE_SAMESITE: "${PREREVIEW_AUTH_COOKIE_SAMESITE:-lax}"
+      PREREVIEW_AUTH_COOKIE_DOMAIN: "${PREREVIEW_AUTH_COOKIE_DOMAIN:-}"
+      PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE: "${PREREVIEW_AUTH_REFRESH_COOKIE_MAX_AGE:-2592000}"
+      PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL: "${PREREVIEW_AUTH_PASSWORD_RESET_CALLBACK_URL:-}"
+      PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO: "${PREREVIEW_AUTH_PASSWORD_RESET_REDIRECT_TO:-}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY:-}"
+      SUPABASE_KEY: "${SUPABASE_KEY:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --limit-concurrency
+      - "${PREREVIEW_API_LIMIT_CONCURRENCY:-32}"
+
+  # 신뢰된 내부 polling worker. 포트는 열지 않으며, 브라우저/Edge callback을
+  # 경유하지 않고 PostgreSQL queue와 private Storage만 사용한다.
+  worker:
+    build:
+      # ML Model 1/2/3 belongs only in the long-running analysis worker.
+      # The root context makes the tracked ml/ source available at /app/ml;
+      # Dockerfile.ml-worker deliberately remains separate from API/chat.
+      context: ..
+      dockerfile: backend/Dockerfile.ml-worker
+    command: ["python", "-m", "worker.main"]
+    # The verified Model 1 tree is chmod 700 by its preparation command.
+    # Run as its numeric host owner rather than as container root; values are
+    # required so a deployment cannot accidentally use a mismatched mount.
+    user: "${PREREVIEW_MODEL1_RUNTIME_UID:?set PREREVIEW_MODEL1_RUNTIME_UID to the Model 1 runtime owner UID}:${PREREVIEW_MODEL1_RUNTIME_GID:?set PREREVIEW_MODEL1_RUNTIME_GID to the Model 1 runtime owner GID}"
+    restart: unless-stopped
+    # SIGTERM 후 현재 claim을 정리할 시간을 준다. 배포 전 queue drain이 우선이다.
+    stop_grace_period: 10m
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_LLM_MODEL: "${OPENAI_LLM_MODEL:-}"
+      OPENAI_REQUEST_PROFILE_MODEL: "${OPENAI_REQUEST_PROFILE_MODEL:-gpt-5.6-terra}"
+      OPENAI_FIT_MODEL: "${OPENAI_FIT_MODEL:-}"
+      OPENAI_SIM_MODEL: "${OPENAI_SIM_MODEL:-}"
+      OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-120}"
+      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-2}"
+      PREREVIEW_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_WORKER_HEARTBEAT_SECONDS:-30}"
+      PREREVIEW_WORKER_LEASE_SECONDS: "${PREREVIEW_WORKER_LEASE_SECONDS:-120}"
+      PREREVIEW_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_WORKER_IDLE_POLL_SECONDS:-1}"
+      PREREVIEW_WORKER_TOP_K: "${PREREVIEW_WORKER_TOP_K:-5}"
+      PREREVIEW_EXISTING_KB_REQUIRED: "${PREREVIEW_EXISTING_KB_REQUIRED:-true}"
+      PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS:-30}"
+      PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+      PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS:-120}"
+      # rhwp의 native FreeType 호환성은 parser subprocess에만 적용된다.
+      PREREVIEW_FREETYPE_LIB: "${PREREVIEW_FREETYPE_LIB:-/usr/lib/x86_64-linux-gnu/libfreetype.so.6}"
+      # ML is child-process-only.  Model 2/3 source and registered artifacts
+      # are tracked inside the dedicated image; the verified Model 1 package
+      # is deliberately never copied into it.
+      PREREVIEW_ML_ROOT: "/app/ml"
+      PREREVIEW_MODEL1_SERVING_DIR: "/opt/prereview/model1"
+      PREREVIEW_ML_PYTHON_EXECUTABLE: "/opt/prereview-ml-venv/bin/python"
+      PREREVIEW_ML_TIMEOUT_SECONDS: "${PREREVIEW_ML_TIMEOUT_SECONDS:-180}"
+      PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT: "true"
+      # Compose starts under a numeric artifact owner that may not have a
+      # passwd entry. All caches/scratch writes stay on the tmpfs below.
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      HF_HOME: "/tmp/.cache/huggingface"
+      TORCH_HOME: "/tmp/.cache/torch"
+      TRANSFORMERS_CACHE: "/tmp/.cache/transformers"
+    volumes:
+      # Required for this service: a compose deployment must fail closed rather
+      # than silently publish Model 1 as unavailable.  The host value can be
+      # any absolute path, including a path outside this checkout.
+      - type: bind
+        source: "${PREREVIEW_MODEL1_SERVING_HOST_DIR:?set PREREVIEW_MODEL1_SERVING_HOST_DIR to the verified Model 1 runtime directory}"
+        target: /opt/prereview/model1
+        read_only: true
+        bind:
+          create_host_path: false
+    # The source/artifact image and the Model 1 bind mount are immutable at
+    # runtime.  Parser/model scratch space is explicitly limited to /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # 분석 완료 건의 CPL/FIT/SIM/ML 결과만 근거로 답하는 비동기 Chat worker.
+  # 분석 worker와 queue/RPC가 분리되어 긴 문서 분석이 대화 응답을 막지 않는다.
+  chat-worker:
+    build:
+      context: .
+    command: ["python", "-m", "worker.chat_main"]
+    restart: unless-stopped
+    stop_grace_period: 3m
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_LLM_MODEL: "${OPENAI_LLM_MODEL:-}"
+      OPENAI_CHAT_MODEL: "${OPENAI_CHAT_MODEL:-}"
+      OPENAI_EMBEDDING_MODEL: "${OPENAI_EMBEDDING_MODEL:-}"
+      OPENAI_TIMEOUT_SECONDS: "${OPENAI_TIMEOUT_SECONDS:-120}"
+      OPENAI_MAX_REPAIRS: "${OPENAI_MAX_REPAIRS:-2}"
+      PREREVIEW_CHAT_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_CHAT_WORKER_HEARTBEAT_SECONDS:-30}"
+      PREREVIEW_CHAT_WORKER_LEASE_SECONDS: "${PREREVIEW_CHAT_WORKER_LEASE_SECONDS:-120}"
+      PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS:-1}"
+      PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

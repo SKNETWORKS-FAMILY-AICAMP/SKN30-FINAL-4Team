@@ -1,0 +1,72 @@
+{
+  "run_id": "form",
+  "status": "ok",
+  "started_at_utc": "2026-08-31T01:20:27.755603+00:00",
+  "ended_at_utc": "2026-08-31T01:20:28.840723+00:00",
+  "notice_id": "PREREVIEW-FORM",
+  "source_kind": "hwp",
+  "input": {
+    "path": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서양식.hwp",
+    "sha256": "28c03655a2f82c40240b75549979d14441653b00c895ad28c0940e2e8e8ba90b"
+  },
+  "toolchain": {
+    "python": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/.rhwp-local/venv-wheel/bin/python",
+    "rhwp": "0.8.1",
+    "rhwp_core": "0.7.17"
+  },
+  "declared_constraints": {
+    "ocr_called": false,
+    "pdf_processed": false,
+    "gpu_used": false,
+    "network_access": false
+  },
+  "steps": [
+    {
+      "name": "rhwp_parse",
+      "status": "ok",
+      "output": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/form/raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json",
+      "output_sha256": "1d402edb671ca4385ee18f11e9eadcdba4cd3395cdb601c77d71b41e14f9b67a"
+    },
+    {
+      "name": "adapt_rhwp_to_common_ir_v1",
+      "status": "ok",
+      "command": [
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/.rhwp-local/venv-wheel/bin/python",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/study/results/scripts/adapt_rhwp_to_common_ir_v1.py",
+        "--notice-id",
+        "PREREVIEW-FORM",
+        "--rhwp",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/form/raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json",
+        "--source-kind",
+        "hwp",
+        "--source-path",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/fixtures/사전협의서양식.hwp",
+        "--source-sha256",
+        "28c03655a2f82c40240b75549979d14441653b00c895ad28c0940e2e8e8ba90b",
+        "--source-location-base",
+        "raw/rhwp_full_ir/PREREVIEW-FORM.hwp.json",
+        "--output",
+        "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/form/common_ir_v1/PREREVIEW-FORM.hwp.json"
+      ],
+      "started_at_utc": "2026-08-31T01:20:28.442689+00:00",
+      "duration_seconds": 0.398438,
+      "return_code": 0,
+      "summary": {
+        "output": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/form/common_ir_v1/PREREVIEW-FORM.hwp.json",
+        "blocks": 5,
+        "relations": 3,
+        "skipped_empty_paragraphs": 22,
+        "skipped_pictures": 0,
+        "skipped_other_blocks_by_kind": {},
+        "skipped_furniture_by_kind": {
+          "str": 4
+        },
+        "validation_errors": 0
+      },
+      "stdout": "{\"output\": \"/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/form/common_ir_v1/PREREVIEW-FORM.hwp.json\", \"blocks\": 5, \"relations\": 3, \"skipped_empty_paragraphs\": 22, \"skipped_pictures\": 0, \"skipped_other_blocks_by_kind\": {}, \"skipped_furniture_by_kind\": {\"str\": 4}, \"validation_errors\": 0}\n",
+      "stderr": "",
+      "output": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/results/request_hwp_structure_probe_20260831/form/common_ir_v1/PREREVIEW-FORM.hwp.json",
+      "output_sha256": "c62decd731f484b7a91e0237521359827ab96e240defbacfab9967a51a482591"
+    }
+  ]
+}

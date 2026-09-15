@@ -1,0 +1,58 @@
+{
+  "model": "klue/roberta-base",
+  "config": {
+    "lr": 3e-05,
+    "epochs": 12,
+    "batch": 16,
+    "max_len": 256,
+    "class_weight": true
+  },
+  "mc_samples": 30,
+  "n_rows": 900,
+  "n_classes": 26,
+  "folds": 5,
+  "seed": 42,
+  "performance": {
+    "deterministic": {
+      "accuracy": 0.7911,
+      "macro_f1": 0.7194
+    },
+    "mc_dropout_mean": {
+      "accuracy": 0.7978,
+      "macro_f1": 0.7149
+    }
+  },
+  "baseline_ml_macro_f1": 0.6428,
+  "max_entropy": 3.2581,
+  "uncertainty_mean": {
+    "total": 1.1521,
+    "aleatoric": 1.1315,
+    "epistemic": 0.0206,
+    "std_top": 0.0438
+  },
+  "uncertainty_by_correctness": {
+    "correct": {
+      "total": 1.0678,
+      "aleatoric": 1.0535,
+      "epistemic": 0.0144,
+      "std_top": 0.0367
+    },
+    "wrong": {
+      "total": 1.4847,
+      "aleatoric": 1.4393,
+      "epistemic": 0.0454,
+      "std_top": 0.0718
+    }
+  },
+  "hold_group_analysis": {
+    "n_hold": 3,
+    "hold_rate": 0.0033,
+    "hold_accuracy": 0.0,
+    "usable_accuracy": 0.8004,
+    "hold_epistemic_share": 4.0
+  },
+  "epistemic_share_pct": 1.8,
+  "verdict": "epistemic 비중 1.8% — 대부분 aleatoric(클래스 자체가 겹침). 데이터를 늘려도 한계가 있고 26클래스 체계 재정의가 근본 해법이다.",
+  "total_seconds": 246.8,
+  "leak_control": "OOF 예측만 사용 — fold별 모델이 자기 val 만 예측"
+}

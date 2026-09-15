@@ -1,0 +1,638 @@
+{
+  "step1_fingerprint": {
+    "path": "data\\processed\\design_features.parquet",
+    "builder": "ml/scripts/f06_design_features.py",
+    "upstream": [
+      "f05_amount_observations.py — 지원규모 관측 추출 (PDF 확장자 제외: EXCLUDE_EXT={'pdf'})",
+      "e01_extract_text.py — 공고문 원문 텍스트 추출",
+      "amount_parser.py — 금액/기간/기업수 파싱 (M32 패턴 수정 반영)"
+    ],
+    "sha256": "9f308112fb99e750fcbd4fdcba980a9a3ac698eaa623b99e60e205e11c8043e4",
+    "bytes": 965903,
+    "mtime": "2026-08-26T11:52:59.969189644",
+    "rows_raw": 3963,
+    "rows_after_filters": 1877,
+    "expected_n": 1877,
+    "n_matches_expected": true,
+    "filter_trace": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    },
+    "target": {
+      "column": "per_recipient",
+      "transform": "log10",
+      "basis_kept": "stated_cap",
+      "semantics": {
+        "total_budget": "제외 — 사업 전체 예산. per_recipient 와 단위가 다르다",
+        "support_cap / support_per_recipient": "**사용** — 원문에 명시된 기업당 한도(stated_cap)",
+        "support_per_project": "amount_type=per_project 인 행은 support_unit=project 로 비교군이 갈린다. 타깃 자체는 같은 stated_cap",
+        "budget_div_count(총예산÷건수)": "제외 — '평균'이라 '한도'와 의미가 다르다",
+        "loan_limit": "별도 컬럼 없음. 융자는 support_method=loan 으로 비교군이 갈린다",
+        "support_rate": "타깃 아님 — feature(support_ratio)",
+        "selected_count": "타깃 아님 — feature(support_count)"
+      },
+      "filters": [
+        "support_type 결측 제외",
+        "per_recipient 결측·0 이하 제외",
+        "amount_outlier(상식범위 밖 = 파싱오류) 제외",
+        "per_recipient_basis != 'stated_cap' 제외",
+        "support_unit / cohort 결측 제외"
+      ]
+    }
+  },
+  "step1_pipeline": {
+    "feature_version": "m2-feat-v2",
+    "grouping_version": "m2-group-v2",
+    "seed": 42,
+    "structured_cats": [
+      "support_type",
+      "support_method",
+      "support_unit",
+      "category_large",
+      "industry_grp",
+      "agency_grp",
+      "amount_type",
+      "cohort"
+    ],
+    "structured_nums": [
+      "support_count",
+      "support_ratio",
+      "project_duration",
+      "self_burden_ratio",
+      "year"
+    ],
+    "title_spec": {
+      "source": "title (원문 사업명). evidence_text 는 타깃이 파싱된 문장이라 사용 금지",
+      "input_form": "amount_masked",
+      "vectorizer": "TfidfVectorizer",
+      "analyzer": "char_wb",
+      "ngram_range": [
+        2,
+        3
+      ],
+      "min_df": 3,
+      "max_features": 30000,
+      "sublinear_tf": true,
+      "reduction": "TruncatedSVD",
+      "n_components": 64,
+      "fitted_on": "fold train only",
+      "output_prefix": "title_svd"
+    },
+    "model_point": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    },
+    "model_quantile": {
+      "objective": "reg:quantileerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    },
+    "quantiles": [
+      0.1,
+      0.9
+    ],
+    "nominal_coverage": 0.8,
+    "cqr_cal_frac": 0.3,
+    "n_splits": 5,
+    "min_improvement": 0.1,
+    "excluded_inputs": [
+      "evidence_text (타깃이 파싱된 문장 — 사용 금지)"
+    ]
+  },
+  "run_timestamp": "2026-08-27T17:11:34.308369",
+  "python": "3.13.12",
+  "step3_comparison": {
+    "program_stem": {
+      "M45(LGBM·구조화)": {
+        "MAE_log10": 0.4681,
+        "MedAE_log10": 0.3598,
+        "geo_mean_error_x": 2.939,
+        "within_2x": 0.431,
+        "within_3x": 0.6159,
+        "improvement": 0.1192
+      },
+      "M56(XGB·구조화+제목)": {
+        "MAE_log10": 0.4155,
+        "MedAE_log10": 0.3122,
+        "geo_mean_error_x": 2.603,
+        "within_2x": 0.4875,
+        "within_3x": 0.6761,
+        "improvement": 0.2182
+      },
+      "비교군중앙값(baseline)": {
+        "MAE_log10": 0.5315,
+        "MedAE_log10": 0.4269,
+        "geo_mean_error_x": 3.4,
+        "within_2x": 0.3548,
+        "within_3x": 0.5253,
+        "improvement": -0.0001
+      },
+      "분해: LGBM·구조화+제목": {
+        "MAE_log10": 0.4384,
+        "MedAE_log10": 0.3304,
+        "geo_mean_error_x": 2.744,
+        "within_2x": 0.463,
+        "within_3x": 0.6521,
+        "improvement": 0.1751
+      },
+      "분해: XGB·구조화만": {
+        "MAE_log10": 0.4536,
+        "MedAE_log10": 0.3414,
+        "geo_mean_error_x": 2.842,
+        "within_2x": 0.4491,
+        "within_3x": 0.6308,
+        "improvement": 0.1465
+      }
+    },
+    "normalized_title": {
+      "M45(LGBM·구조화)": {
+        "MAE_log10": 0.4858,
+        "MedAE_log10": 0.3775,
+        "geo_mean_error_x": 3.06,
+        "within_2x": 0.4182,
+        "within_3x": 0.6031,
+        "improvement": 0.1165
+      },
+      "M56(XGB·구조화+제목)": {
+        "MAE_log10": 0.4356,
+        "MedAE_log10": 0.3399,
+        "geo_mean_error_x": 2.727,
+        "within_2x": 0.4486,
+        "within_3x": 0.6425,
+        "improvement": 0.2078
+      },
+      "비교군중앙값(baseline)": {
+        "MAE_log10": 0.5499,
+        "MedAE_log10": 0.4454,
+        "geo_mean_error_x": 3.547,
+        "within_2x": 0.3356,
+        "within_3x": 0.5147,
+        "improvement": -0.0
+      },
+      "분해: LGBM·구조화+제목": {
+        "MAE_log10": 0.4627,
+        "MedAE_log10": 0.3521,
+        "geo_mean_error_x": 2.902,
+        "within_2x": 0.4374,
+        "within_3x": 0.6212,
+        "improvement": 0.1585
+      },
+      "분해: XGB·구조화만": {
+        "MAE_log10": 0.4758,
+        "MedAE_log10": 0.3642,
+        "geo_mean_error_x": 2.991,
+        "within_2x": 0.4326,
+        "within_3x": 0.6105,
+        "improvement": 0.1347
+      }
+    }
+  },
+  "step3_stability": {
+    "M45(LGBM·구조화)": {
+      "n_repeat": 10,
+      "mean": 0.1167,
+      "std": 0.0082,
+      "min": 0.0995,
+      "max": 0.1276,
+      "n_pass": 9,
+      "pass": "9/10"
+    },
+    "M56(XGB·구조화+제목)": {
+      "n_repeat": 10,
+      "mean": 0.2175,
+      "std": 0.0073,
+      "min": 0.2056,
+      "max": 0.2294,
+      "n_pass": 10,
+      "pass": "10/10"
+    }
+  },
+  "step3_interval": {
+    "raw": {
+      "coverage": 0.5056,
+      "nominal": 0.8,
+      "median_width_log10": 0.7463,
+      "median_width_x": 5.6,
+      "mean_width_log10": 0.7864,
+      "interval_score_median": 1.2538,
+      "crossing_rate": 0.0
+    },
+    "conformal": {
+      "coverage": 0.8034,
+      "nominal": 0.8,
+      "median_width_log10": 1.3994,
+      "median_width_x": 25.1,
+      "mean_width_log10": 1.4453,
+      "interval_score_median": 1.5373,
+      "crossing_rate": 0.0
+    },
+    "conformal_delta_mean": 0.3671,
+    "tier_counts": {
+      "참고 가능": 16,
+      "범위 넓음": 12,
+      "참고 범위 제시 어려움": 1
+    },
+    "tiers": [
+      {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 316,
+        "width_x": 23.2,
+        "coverage": 0.867,
+        "MAE_log10": 0.3253,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 270,
+        "width_x": 48.0,
+        "coverage": 0.837,
+        "MAE_log10": 0.4833,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "연구개발",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 121,
+        "width_x": 10.2,
+        "coverage": 0.876,
+        "MAE_log10": 0.2404,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "판로",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 111,
+        "width_x": 16.4,
+        "coverage": 0.856,
+        "MAE_log10": 0.3214,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "융자",
+        "support_method": "loan",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 93,
+        "width_x": 15.4,
+        "coverage": 0.796,
+        "MAE_log10": 0.3689,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "컨설팅",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 80,
+        "width_x": 38.0,
+        "coverage": 0.775,
+        "MAE_log10": 0.4405,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "판로",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 68,
+        "width_x": 19.7,
+        "coverage": 0.735,
+        "MAE_log10": 0.3986,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "컨설팅",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 67,
+        "width_x": 39.8,
+        "coverage": 0.836,
+        "MAE_log10": 0.5194,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "support_unit": "project",
+        "cohort": "bizinfo",
+        "n": 64,
+        "width_x": 61.5,
+        "coverage": 0.766,
+        "MAE_log10": 0.6005,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "설비",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 57,
+        "width_x": 64.1,
+        "coverage": 0.789,
+        "MAE_log10": 0.492,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "융자",
+        "support_method": "loan",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 55,
+        "width_x": 10.7,
+        "coverage": 0.836,
+        "MAE_log10": 0.2687,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "융자",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 47,
+        "width_x": 16.7,
+        "coverage": 0.83,
+        "MAE_log10": 0.358,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "고용보조",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 45,
+        "width_x": 17.7,
+        "coverage": 0.733,
+        "MAE_log10": 0.5147,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "연구개발",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 29,
+        "width_x": 87.7,
+        "coverage": 0.69,
+        "MAE_log10": 0.5469,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "연구개발",
+        "support_method": "grant",
+        "support_unit": "project",
+        "cohort": "bizinfo",
+        "n": 26,
+        "width_x": 70.6,
+        "coverage": 0.769,
+        "MAE_log10": 0.5822,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "해외수주·실증",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 25,
+        "width_x": 17.8,
+        "coverage": 0.88,
+        "MAE_log10": 0.2863,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "설비",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 20,
+        "width_x": 92.3,
+        "coverage": 0.8,
+        "MAE_log10": 0.5701,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "사업화",
+        "support_method": "voucher",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 18,
+        "width_x": 35.4,
+        "coverage": 0.778,
+        "MAE_log10": 0.4696,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "성능인증",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 17,
+        "width_x": 25.9,
+        "coverage": 0.765,
+        "MAE_log10": 0.3517,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "support_unit": "project",
+        "cohort": "taxonomy",
+        "n": 16,
+        "width_x": 22.2,
+        "coverage": 0.812,
+        "MAE_log10": 0.4288,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "해외인증",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 16,
+        "width_x": 12.7,
+        "coverage": 0.812,
+        "MAE_log10": 0.3635,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "해외인증",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 16,
+        "width_x": 11.7,
+        "coverage": 0.75,
+        "MAE_log10": 0.2365,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "연구개발",
+        "support_method": "grant",
+        "support_unit": "project",
+        "cohort": "taxonomy",
+        "n": 15,
+        "width_x": 11.8,
+        "coverage": 0.933,
+        "MAE_log10": 0.2388,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "고용보조",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 15,
+        "width_x": 27.1,
+        "coverage": 0.733,
+        "MAE_log10": 0.4119,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "수출통관",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 14,
+        "width_x": 175.9,
+        "coverage": 0.643,
+        "MAE_log10": 0.5658,
+        "tier": "참고 범위 제시 어려움"
+      },
+      {
+        "support_type": "사업화",
+        "support_method": "grant",
+        "support_unit": "person",
+        "cohort": "taxonomy",
+        "n": 13,
+        "width_x": 30.6,
+        "coverage": 0.769,
+        "MAE_log10": 0.3774,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "SW·솔루션",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 13,
+        "width_x": 10.3,
+        "coverage": 0.769,
+        "MAE_log10": 0.2577,
+        "tier": "참고 가능"
+      },
+      {
+        "support_type": "창업보육",
+        "support_method": "grant",
+        "support_unit": "company",
+        "cohort": "taxonomy",
+        "n": 13,
+        "width_x": 37.1,
+        "coverage": 0.846,
+        "MAE_log10": 0.3342,
+        "tier": "범위 넓음"
+      },
+      {
+        "support_type": "컨설팅",
+        "support_method": "guarantee",
+        "support_unit": "company",
+        "cohort": "bizinfo",
+        "n": 11,
+        "width_x": 51.9,
+        "coverage": 0.727,
+        "MAE_log10": 0.4635,
+        "tier": "범위 넓음"
+      }
+    ]
+  },
+  "m45_published": {
+    "MAE_log10": 0.4681,
+    "baseline": 0.5315,
+    "improvement": 0.119,
+    "within_2x": 0.431,
+    "stability_mean": 0.117,
+    "stability_std": 0.008,
+    "stability_min": 0.1,
+    "stability_pass": "9/10",
+    "coverage": 0.796,
+    "width_x": 33.2,
+    "tiers": [
+      12,
+      14,
+      3
+    ]
+  },
+  "leakage_audit": {
+    "source": "m55_m2_leakage_audit.json",
+    "verdict": "PASS"
+  },
+  "serving": {
+    "artifact_dir": "data\\processed\\m56_model2_canonical",
+    "roundtrip": {
+      "n_checked": 5,
+      "feature_order_identical": true,
+      "numeric_identical": true,
+      "categorical_identical": true,
+      "prediction_identical": true,
+      "all_pass": true
+    },
+    "cqr_delta": 0.35578392620092814,
+    "n_features": 77
+  },
+  "step4_checks": {
+    "M53/M56 실행 재현 가능 (동일 스크립트·seed·해시 기록)": true,
+    "feature pipeline 코드 고정 (m2_features.py)": true,
+    "title normalization 코드 고정 (normalize_business_title)": true,
+    "direct amount leakage 점검 통과 (M55)": true,
+    "normalized-title GroupKFold 에서 개선 유지": true,
+    "동일사업·재공고 계열 leakage 방지": true,
+    "M45 대비 동일 조건 성능 우세": true,
+    "fold stability 우세": true,
+    "interval 품질 악화 없음": true,
+    "서비스 inference 동기화 (왕복 자체점검)": true,
+    "Product Boundary 위반 없음 (적정/과다/삭감 문구 없음)": true
+  },
+  "verdict": "M53 CANONICAL 승격",
+  "target_cleaning": {
+    "전체": 3963,
+    "지원성격_결측_제외": 58,
+    "기업당지원액_결측_제외": 1694,
+    "파싱오류범위_제외": 84,
+    "총예산나눗셈(평균)_제외": 250,
+    "필수축_결측_제외": 0,
+    "최종": 1877
+  }
+}

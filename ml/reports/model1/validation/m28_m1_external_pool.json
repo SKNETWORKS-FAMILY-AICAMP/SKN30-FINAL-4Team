@@ -1,0 +1,74 @@
+{
+  "filter_steps": [
+    {
+      "step": "Open API 전체",
+      "n": 1570
+    },
+    {
+      "step": "HWP/HWPX 원문 있음",
+      "n": 641
+    },
+    {
+      "step": "원문 500자 이상",
+      "n": 634
+    },
+    {
+      "step": "기존 라벨 50건 제외",
+      "n": 586
+    },
+    {
+      "step": "학습셋과 같은 사업 제외",
+      "n": 580
+    },
+    {
+      "step": "같은 사업 중복 제거",
+      "n": 556
+    },
+    {
+      "step": "대분류 CORE8",
+      "n": 556
+    }
+  ],
+  "n_existing_labeled": 50,
+  "n_existing_evaluable": 41,
+  "n_added": 100,
+  "n_target_total": 150,
+  "agency_cap": 15,
+  "executor_cap": 2,
+  "min_chars": 500,
+  "seed": 42,
+  "added_by_category": {
+    "금융": 16,
+    "경영": 15,
+    "기술": 15,
+    "내수": 14,
+    "수출": 13,
+    "창업": 13,
+    "인력": 12,
+    "기타": 2
+  },
+  "added_by_ext": {
+    "hwp": 87,
+    "hwpx": 13
+  },
+  "n_agencies": 25,
+  "existing_label_distribution": {
+    "판로": 10,
+    "(판단보류/대상밖)": 9,
+    "융자": 6,
+    "설비": 4,
+    "기술·IP평가": 4,
+    "수출물류": 3,
+    "고용보조": 3,
+    "보증": 2,
+    "컨설팅": 2,
+    "사업화": 2,
+    "경진대회": 1,
+    "연구개발": 1,
+    "SW·솔루션": 1,
+    "성능인증": 1,
+    "창업보육": 1
+  },
+  "sheet": "data\\labels\\openapi_manual_150_candidates.csv",
+  "blind": "모델 예측·확신도는 시트에 넣지 않는다. 라벨링이 끝난 뒤 M29 에서 붙인다."
+}

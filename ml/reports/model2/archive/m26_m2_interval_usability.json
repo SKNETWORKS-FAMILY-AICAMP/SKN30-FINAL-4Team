@@ -1,0 +1,183 @@
+{
+  "n_rows": 2205,
+  "cohort_axis": "성격x방식",
+  "min_cell": 30,
+  "thresholds": {
+    "usable_max_x": 30.0,
+    "wide_max_x": 100.0
+  },
+  "overall": {
+    "coverage": 0.8027,
+    "width_median_log10": 1.6139,
+    "width_median_x": 41.1,
+    "width_mean_log10": 1.6697,
+    "interval_score_median": 1.774,
+    "interval_score_mean": 2.457,
+    "MAE_log10": 0.5164,
+    "MedAE_log10": 0.3897,
+    "pinball_lo": 0.12507,
+    "pinball_mid": 0.2582,
+    "pinball_hi": 0.12063
+  },
+  "per_cohort": [
+    {
+      "cohort": "연구개발 / grant",
+      "n": 231,
+      "coverage": 0.8095,
+      "width_median_log10": 1.2742,
+      "width_x": 18.8,
+      "interval_score": 1.4862,
+      "MAE_log10": 0.4971,
+      "MedAE_log10": 0.3215,
+      "pinball_lo": 0.11852,
+      "pinball_hi": 0.11482,
+      "status": "참고 가능"
+    },
+    {
+      "cohort": "판로 / grant",
+      "n": 193,
+      "coverage": 0.8238,
+      "width_median_log10": 1.3884,
+      "width_x": 24.5,
+      "interval_score": 1.4639,
+      "MAE_log10": 0.4251,
+      "MedAE_log10": 0.3258,
+      "pinball_lo": 0.10422,
+      "pinball_hi": 0.11072,
+      "status": "참고 가능"
+    },
+    {
+      "cohort": "해외인증 / grant",
+      "n": 35,
+      "coverage": 0.8571,
+      "width_median_log10": 1.5281,
+      "width_x": 33.7,
+      "interval_score": 1.6217,
+      "MAE_log10": 0.4742,
+      "MedAE_log10": 0.3195,
+      "pinball_lo": 0.10205,
+      "pinball_hi": 0.14476,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "사업화 / grant",
+      "n": 802,
+      "coverage": 0.7955,
+      "width_median_log10": 1.5566,
+      "width_x": 36.0,
+      "interval_score": 1.7006,
+      "MAE_log10": 0.4932,
+      "MedAE_log10": 0.3941,
+      "pinball_lo": 0.11171,
+      "pinball_hi": 0.11176,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "사업화 / voucher",
+      "n": 30,
+      "coverage": 0.7667,
+      "width_median_log10": 1.5757,
+      "width_x": 37.6,
+      "interval_score": 1.6684,
+      "MAE_log10": 0.7144,
+      "MedAE_log10": 0.5225,
+      "pinball_lo": 0.2733,
+      "pinball_hi": 0.11614,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "고용보조 / grant",
+      "n": 72,
+      "coverage": 0.6944,
+      "width_median_log10": 1.6021,
+      "width_x": 40.0,
+      "interval_score": 1.9267,
+      "MAE_log10": 0.5824,
+      "MedAE_log10": 0.4402,
+      "pinball_lo": 0.14722,
+      "pinball_hi": 0.14984,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "융자 / loan",
+      "n": 194,
+      "coverage": 0.8041,
+      "width_median_log10": 1.6237,
+      "width_x": 42.0,
+      "interval_score": 1.7633,
+      "MAE_log10": 0.4915,
+      "MedAE_log10": 0.4142,
+      "pinball_lo": 0.12825,
+      "pinball_hi": 0.10356,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "컨설팅 / grant",
+      "n": 178,
+      "coverage": 0.8427,
+      "width_median_log10": 1.8649,
+      "width_x": 73.3,
+      "interval_score": 1.9767,
+      "MAE_log10": 0.5289,
+      "MedAE_log10": 0.3891,
+      "pinball_lo": 0.11305,
+      "pinball_hi": 0.14703,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "융자 / grant",
+      "n": 66,
+      "coverage": 0.6818,
+      "width_median_log10": 1.877,
+      "width_x": 75.3,
+      "interval_score": 2.0319,
+      "MAE_log10": 0.6769,
+      "MedAE_log10": 0.4833,
+      "pinball_lo": 0.18555,
+      "pinball_hi": 0.1392,
+      "status": "범위 넓음"
+    },
+    {
+      "cohort": "설비 / grant",
+      "n": 117,
+      "coverage": 0.8632,
+      "width_median_log10": 2.5661,
+      "width_x": 368.2,
+      "interval_score": 2.6644,
+      "MAE_log10": 0.6327,
+      "MedAE_log10": 0.5282,
+      "pinball_lo": 0.16251,
+      "pinball_hi": 0.14776,
+      "status": "참고 범위 제시 어려움"
+    }
+  ],
+  "service_summary": {
+    "n_judged": 1918,
+    "usable": {
+      "n": 424,
+      "share": 0.2211
+    },
+    "usable_or_wide": {
+      "n": 1801,
+      "share": 0.939
+    },
+    "unusable": {
+      "n": 117,
+      "share": 0.061
+    },
+    "not_judged": 287
+  },
+  "verdict": {
+    "verdict": "조건부 채택 — 구간을 기본 출력으로 두면 안 된다",
+    "reasons": [
+      "전체 커버리지 80.3% / 구간폭 중앙값 41.1배 — M22 에서 확인한 대로 더 좁힐 여지는 없다",
+      "Interval Score 중앙값 1.7740 — 커버리지와 폭을 한 값으로 묶은 지표다. 폭만 보거나 커버리지만 보면 한쪽으로 도망칠 수 있다",
+      "판정 대상 1918행 중 '참고 가능' 22.1%, '범위 넓음' 포함 93.9%, '참고 범위 제시 어려움' 6.1%",
+      "가장 좁은 칸 연구개발 / grant 18.8배 / 가장 넓은 칸 설비 / grant 368.2배 — 하나의 폭으로 뭉뚱그려 낼 수 없는 이유다",
+      "'참고 범위 제시 어려움' 로 판정된 칸은 구간을 내보내지 않고 그 사실을 표기한다. 폭이 100배를 넘으면 담당자가 근거로 쓸 수 없을 뿐 아니라 근거가 있다고 오해한다",
+      "비교군 30건 미만인 287행은 애초에 판정하지 않는다(비교군 부족)",
+      "'참고 가능' 비중이 22.1% 로 낮다. 구간은 요청 시 보조 정보로 내고, 기본 출력은 percentile 위치로 두는 편이 안전하다"
+    ]
+  },
+  "runtime_min": 0.29
+}

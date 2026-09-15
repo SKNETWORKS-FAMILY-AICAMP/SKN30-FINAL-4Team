@@ -1,0 +1,38 @@
+{
+  "rows_raw": 97794,
+  "rows_final": 97794,
+  "url_without_pblanc_id": 0,
+  "duplicate_dropped": 0,
+  "registered_date_null": 0,
+  "category_null": 0,
+  "region_coverage": 0.6728,
+  "date_min": "2013-01-02",
+  "date_max": "2025-03-27",
+  "by_category": {
+    "기술": 24165,
+    "수출": 23121,
+    "경영": 20016,
+    "내수": 8712,
+    "창업": 6776,
+    "인력": 6720,
+    "금융": 6289,
+    "기타": 1995
+  },
+  "by_year": {
+    "2013": 4407,
+    "2014": 5244,
+    "2015": 4727,
+    "2016": 6043,
+    "2017": 7233,
+    "2018": 7481,
+    "2019": 8313,
+    "2020": 10138,
+    "2021": 10556,
+    "2022": 10507,
+    "2023": 10186,
+    "2024": 9644,
+    "2025": 3315
+  },
+  "apply_days_median": 18.0,
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_master.parquet"
+}

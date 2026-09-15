@@ -1,0 +1,17 @@
+{
+  "document": "samples/hwpx/mockup_04_보통사례_친환경그린에너지.hwpx",
+  "grade": "MODERATE",
+  "source_annotation": "보통(양호) 사례 2 (Moderate - 정합도 80% / 대상범위차이)",
+  "annotated_defects": [
+    "목적은 액화수소·그린에너지 부품소재 기업인데 지원대상은 도내 모든 제조기업으로 과도하게 포괄적"
+  ],
+  "fit": {
+    "FIT-1": {
+      "status": "NEEDS_REVIEW",
+      "covered_by_contract": true,
+      "why": "목적의 대상 한정과 지원대상의 범위가 어긋난다"
+    }
+  },
+  "cpl": {},
+  "blank_markers": {}
+}

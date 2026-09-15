@@ -1,0 +1,71 @@
+{
+  "support_type_source": "m08",
+  "support_type_source_path": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/announcement_detail_with_support_type_v2.parquet",
+  "support_type_coverage": {
+    "labeled": 1728,
+    "total": 2458,
+    "note": "목록 표본(2019~2025)에는 지원성격 라벨이 원래 없다. 라벨은 Open API 분에만 붙는다. 판단보류 예측은 라벨로 쓰지 않는다."
+  },
+  "outliers_flagged": 72,
+  "outliers_by_type": {
+    "per_company": 25,
+    "periodic": 23,
+    "total_budget": 18,
+    "per_project": 6
+  },
+  "sane_range": {
+    "per_company": [
+      100000.0,
+      5000000000.0
+    ],
+    "per_project": [
+      100000.0,
+      10000000000.0
+    ],
+    "periodic": [
+      10000.0,
+      100000000.0
+    ],
+    "total_budget": [
+      1000000.0,
+      10000000000000.0
+    ]
+  },
+  "outlier_policy": "SANE_RANGE 밖은 파싱 오류로 보고 is_outlier 플래그를 붙인다. 행은 지우지 않으며 집계·STL·예측·참고범위가 모두 이 플래그로 제외한다.",
+  "excluded_ext": [
+    "pdf"
+  ],
+  "exclusion_reason": "PDF 는 표 셀이 뭉쳐 나와 금액이 왜곡된다. 표 보유 PDF 의 13.6%가 한 셀에 금액 3개 이상 병합되며(HWP 0%), 해당 문서 기반 per_company 는 중앙값 2배·p95 3.8배로 부풀려졌다. 병합 탐지로 일부만 거르는 대신 오류가 0인 HWP 계열만 사용한다.",
+  "observations": 2458,
+  "source_dist": {
+    "list_sample": 1720,
+    "openapi": 738
+  },
+  "amount_type_dist": {
+    "unknown": 889,
+    "per_company": 807,
+    "total_budget": 386,
+    "periodic": 251,
+    "per_project": 125
+  },
+  "typed_observations": 1569,
+  "year_range": [
+    2019,
+    2026
+  ],
+  "by_year": {
+    "2019": 220,
+    "2020": 198,
+    "2021": 172,
+    "2022": 184,
+    "2023": 152,
+    "2024": 96,
+    "2025": 102,
+    "2026": 445
+  },
+  "note": "설계서 24장 규칙8 — per_company/total_budget/per_project/periodic 을 섞지 않는다",
+  "outputs": {
+    "observations": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/support_amount_observations.parquet"
+  },
+  "removed": "월별 집계·시계열 가용성 판정은 제거했다. 금액 축에 시간 구조가 없음이 확인돼(a03 STL / a10 추세검정) 소비처가 전부 사라졌다."
+}

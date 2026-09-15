@@ -1,0 +1,1780 @@
+{
+  "schema_version": "existing_program_profile/v0.2",
+  "notice_id": "bizinfo:PBLN_000000000125016",
+  "source_profile_id": "hwp:PBLN_000000000125016",
+  "identity": {
+    "title_raw": null,
+    "title_source_block_ids": [],
+    "notice_date_raw": null,
+    "notice_date_source_block_ids": [],
+    "source_url": null
+  },
+  "comparison_profile": {
+    "purpose_goal": [
+      {
+        "fact_id": "fact:purpose",
+        "field_name": "purpose_goal",
+        "value_raw": "청년의 사회연대경제 분야 진출 지원 및 사회연대경제 활성화",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": null,
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b13",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p13"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b13",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p13"
+            ]
+          }
+        ],
+        "context_evidence": [],
+        "value_source": {
+          "source_block_id": "hwp:b13",
+          "start_char": 9,
+          "end_char": 41,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "program_period": [
+      {
+        "fact_id": "fact:program_period",
+        "field_name": "program_period",
+        "value_raw": "2026. 6월~12월",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": null,
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b14",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p14"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b14",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p14"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b14",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p14"
+            ],
+            "text": "○ 사업기간 : 2026. 6월~12월   ※ 사업기간은 연장될 수 있음",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b14",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p14"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b14",
+          "start_char": 9,
+          "end_char": 21,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "applicant_eligibility": [
+      {
+        "fact_id": "fact:applicant_eligibility",
+        "field_name": "applicant_eligibility",
+        "value_raw": "마을기업, 협동조합, 고용 10인 미만 사회연대경제 관련 비영리법인 및 단체",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b18",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p18"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b18",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p18"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b15",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p15"
+            ],
+            "text": "○ 참여대상",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b15",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p15"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b18",
+          "start_char": 9,
+          "end_char": 51,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_target": [
+      {
+        "fact_id": "fact:support_target",
+        "field_name": "support_target",
+        "value_raw": "미취업 청년",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "policy_target",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b16",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p16"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b16",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p16"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b15",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p15"
+            ],
+            "text": "○ 참여대상",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b15",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p15"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b16",
+          "start_char": 40,
+          "end_char": 46,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "beneficiary": [
+      {
+        "fact_id": "fact:beneficiary_youth",
+        "field_name": "beneficiary",
+        "value_raw": "참여청년",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "beneficiary",
+        "semantic_role": "direct_support_recipient",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b126",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p126"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b126",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p126"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b124",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p124"
+            ],
+            "text": "□ 지원기간: 2026. 8월~12월   ※ 기간은 연장될 수 있음",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b124",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p124"
+            ]
+          },
+          {
+            "source_block_id": "hwp:b126",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p126"
+            ],
+            "text": "○ 참여청년인턴: 5개월 인건비 (8~12월)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b126",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p126"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b126",
+          "start_char": 2,
+          "end_char": 6,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "eligibility_conditions": [
+      {
+        "fact_id": "fact:eligibility_age",
+        "field_name": "eligibility_conditions",
+        "value_raw": "‘26. 1. 1. 기준 만 19세 이상 39세 이하의 미취업 청년",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "beneficiary",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b16",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p16"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b16",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p16"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b15",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p15"
+            ],
+            "text": "○ 참여대상",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b15",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p15"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b16",
+          "start_char": 9,
+          "end_char": 46,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:company_operating",
+        "field_name": "eligibility_conditions",
+        "value_raw": "사업을 정상적으로 영위하고 있을 것",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b58",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p58"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b58",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p58"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b57",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p57"
+            ],
+            "text": "○ 참여기업은 참여 신청일 기준 각 호를 모두 충족하여야 함",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b57",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p57"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b58",
+          "start_char": 2,
+          "end_char": 21,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:company_activity",
+        "field_name": "eligibility_conditions",
+        "value_raw": "최근 6개월 내 실질적인 경영활동이 확인될 것",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b59",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p59"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b59",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p59"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b57",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p57"
+            ],
+            "text": "○ 참여기업은 참여 신청일 기준 각 호를 모두 충족하여야 함",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b57",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p57"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b59",
+          "start_char": 2,
+          "end_char": 27,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:social_economy_activity",
+        "field_name": "eligibility_conditions",
+        "value_raw": "사회연대경제 관련 활동 실적*이 확인 될 것",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b63",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p63"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b63",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p63"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b57",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p57"
+            ],
+            "text": "○ 참여기업은 참여 신청일 기준 각 호를 모두 충족하여야 함",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b57",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p57"
+            ]
+          },
+          {
+            "source_block_id": "hwp:b64",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p64"
+            ],
+            "text": "* 사업 결과보고서, 보조금 정산서 등 객관적 증빙자료 제출",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b64",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p64"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b63",
+          "start_char": 2,
+          "end_char": 26,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "duplicate_support_conditions": [
+      {
+        "fact_id": "fact:duplicate_restriction",
+        "field_name": "duplicate_support_conditions",
+        "value_raw": "타 국비 지원 일경험 사업에 참여하고 있지 않은 경우에 한하여 참여 가능",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b19",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p19"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b19",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p19"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b18",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p18"
+            ],
+            "text": "- (참여기업) 마을기업, 협동조합, 고용 10인 미만 사회연대경제 관련 비영리법인 및 단체",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b18",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p18"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b19",
+          "start_char": 26,
+          "end_char": 66,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_activities": [
+      {
+        "fact_id": "fact:work_experience_activity",
+        "field_name": "support_activities",
+        "value_raw": "사회연대경제 조직 현장에서 과업을 직접 수행하는 방식으로 청년 일경험 기회 제공",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "basis_fact_ids": [],
+        "subject_role": "beneficiary",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b20",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p20"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b20",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p20"
+            ]
+          }
+        ],
+        "context_evidence": [],
+        "value_source": {
+          "source_block_id": "hwp:b20",
+          "start_char": 9,
+          "end_char": 53,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_items": [
+      {
+        "fact_id": "fact:work_wage_item",
+        "field_name": "support_items",
+        "value_raw": "인건비",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "beneficiary",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b126",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p126"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b126",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p126"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b124",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p124"
+            ],
+            "text": "□ 지원기간: 2026. 8월~12월   ※ 기간은 연장될 수 있음",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b124",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p124"
+            ]
+          },
+          {
+            "source_block_id": "hwp:b126",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p126"
+            ],
+            "text": "○ 참여청년인턴: 5개월 인건비 (8~12월)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b126",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p126"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b126",
+          "start_char": 14,
+          "end_char": 17,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:operating_cost_item",
+        "field_name": "support_items",
+        "value_raw": "운영비",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b130",
+          "start_char": 17,
+          "end_char": 20,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:mentor_allowance_item",
+        "field_name": "support_items",
+        "value_raw": "멘토수당",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b130",
+          "start_char": 28,
+          "end_char": 32,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:insurance_item",
+        "field_name": "support_items",
+        "value_raw": "4대보험 기업부담금",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b130",
+          "start_char": 40,
+          "end_char": 50,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_scale": [
+      {
+        "fact_id": "fact:selection_capacity_people",
+        "field_name": "support_scale",
+        "value_raw": "4명",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": "selection_capacity",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b21",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p21"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b21",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p21"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b21",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p21"
+            ],
+            "text": "- 취업형 또는 일자리창조형 선택하여 신청(최대 4명까지 신청가능)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b21",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p21"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b21",
+          "start_char": 27,
+          "end_char": 29,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:selection_capacity_companies",
+        "field_name": "support_scale",
+        "value_raw": "12개사 내외",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": "selection_capacity",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b36",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p36"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b36",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p36"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b36",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p36"
+            ],
+            "text": "○ ｢사회연대경제 청년 일경험 시범사업｣에 참여를 희망하는 마을기업, 협동조합, 고용 10인 미만 사회연대경제 관련 비영리법인 및 단체 12개사 내외",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b36",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p36"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b36",
+          "start_char": 76,
+          "end_char": 83,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:wage_amount",
+        "field_name": "support_scale",
+        "value_raw": "월급 234만원",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "beneficiary",
+        "semantic_role": "support_amount",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b127",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p127"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b127",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p127"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b126",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p126"
+            ],
+            "text": "○ 참여청년인턴: 5개월 인건비 (8~12월)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b126",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p126"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b127",
+          "start_char": 9,
+          "end_char": 17,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:operating_amount",
+        "field_name": "support_scale",
+        "value_raw": "월20만원",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "applicant",
+        "semantic_role": "support_amount",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b130",
+          "start_char": 21,
+          "end_char": 26,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:mentor_amount",
+        "field_name": "support_scale",
+        "value_raw": "월15만원",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "applicant",
+        "semantic_role": "support_amount",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b130",
+          "start_char": 33,
+          "end_char": 38,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:insurance_rate",
+        "field_name": "support_scale",
+        "value_raw": "11.47%",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "subject_role": "applicant",
+        "semantic_role": "support_rate",
+        "evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b130",
+          "start_char": 51,
+          "end_char": 57,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_period": [
+      {
+        "fact_id": "fact:support_period",
+        "field_name": "support_period",
+        "value_raw": "2026. 8월~12월",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "basis_fact_ids": [],
+        "subject_role": "beneficiary",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b124",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p124"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b124",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p124"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b124",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p124"
+            ],
+            "text": "□ 지원기간: 2026. 8월~12월   ※ 기간은 연장될 수 있음",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b124",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p124"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b124",
+          "start_char": 8,
+          "end_char": 20,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "cost_sharing": [
+      {
+        "fact_id": "fact:cost_sharing_insurance",
+        "field_name": "cost_sharing",
+        "value_raw": "지원금 지급범위를 초과하는 4대 보험료는 참여기업 자부담",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b131",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p131"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b131",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p131"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b130",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p130"
+            ],
+            "text": "○ 참여기업: 참여청년 1인당 운영비 월20만원, 멘토수당 월15만원,\n4대보험 기업부담금(11.47%)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b130",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p130"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b131",
+          "start_char": 2,
+          "end_char": 33,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:cost_sharing_wage",
+        "field_name": "cost_sharing",
+        "value_raw": "지원금 지급범위를 초과하는 참여청년 인건비, 연장‧야간‧휴일 근로에 따른 가산 임금 및 관계 법령에 따른 사용자 부담 비용(연차수당 등)은 참여기업 자부담",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b137",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p137"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b137",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p137"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b136",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p136"
+            ],
+            "text": "○ (참여청년 임금) ①참여기업이 매월 참여청년 본인 명의 계좌로 지급,\n②매월 증빙자료 확인 후 참여기업에 사후 지급(익월 20일 이내)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b136",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p136"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b137",
+          "start_char": 2,
+          "end_char": 88,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "payment_terms": [
+      {
+        "fact_id": "fact:payment_wage_to_youth",
+        "field_name": "payment_terms",
+        "value_raw": "참여기업이 매월 참여청년 본인 명의 계좌로 지급",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:beneficiary_youth"
+        ],
+        "basis_fact_ids": [],
+        "subject_role": "beneficiary",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b136",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p136"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b136",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p136"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b136",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p136"
+            ],
+            "text": "○ (참여청년 임금) ①참여기업이 매월 참여청년 본인 명의 계좌로 지급,\n②매월 증빙자료 확인 후 참여기업에 사후 지급(익월 20일 이내)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b136",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p136"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b136",
+          "start_char": 13,
+          "end_char": 39,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:payment_wage_reimbursement",
+        "field_name": "payment_terms",
+        "value_raw": "매월 증빙자료 확인 후 참여기업에 사후 지급(익월 20일 이내)",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b136",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p136"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b136",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p136"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b136",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p136"
+            ],
+            "text": "○ (참여청년 임금) ①참여기업이 매월 참여청년 본인 명의 계좌로 지급,\n②매월 증빙자료 확인 후 참여기업에 사후 지급(익월 20일 이내)",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b136",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p136"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b136",
+          "start_char": 42,
+          "end_char": 77,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:payment_operating",
+        "field_name": "payment_terms",
+        "value_raw": "매월 증빙자료 확인 후 참여기업에 지급",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b140",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p140"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b140",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p140"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b138",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p138"
+            ],
+            "text": "○ (참여기업 지원금) 참여청년의 월별 프로그램 출석률*에 따라 차등 지급",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b138",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p138"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b140",
+          "start_char": 8,
+          "end_char": 29,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      },
+      {
+        "fact_id": "fact:payment_mentor",
+        "field_name": "payment_terms",
+        "value_raw": "매월 증빙자료 확인 후 참여기업에 사후 지급",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [
+          "fact:applicant_eligibility"
+        ],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b141",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p141"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b141",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p141"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b141",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p141"
+            ],
+            "text": "- (멘토수당) ①참여기업이 멘토 본인 명의 계좌로 지급, ②매월 증빙자료 확인 후 참여기업에 사후 지급",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b141",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p141"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b141",
+          "start_char": 34,
+          "end_char": 58,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "participation_requirements": [
+      {
+        "fact_id": "fact:participation_training",
+        "field_name": "participation_requirements",
+        "value_raw": "사업 선정 후 1개월 이내에 운영기관이 주관하는 필수 직무교육을 이수할 수 있도록 지원해야 함",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b95",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p95"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b95",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p95"
+            ]
+          }
+        ],
+        "context_evidence": [],
+        "value_source": {
+          "source_block_id": "hwp:b95",
+          "start_char": 2,
+          "end_char": 54,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ],
+    "support_content": [
+      {
+        "fact_id": "fact:job_creation_use",
+        "field_name": "support_content",
+        "value_raw": "운영비와 멘토수당을 직무개발 지원금으로 사용 가능",
+        "model_summary": null,
+        "status": "identified",
+        "scope": "notice",
+        "support_component_id": null,
+        "applicability_component_ids": [
+          "component:job_creation_type"
+        ],
+        "modifies_fact_ids": [],
+        "recipient_fact_ids": [],
+        "basis_fact_ids": [],
+        "subject_role": "applicant",
+        "semantic_role": null,
+        "evidence": [
+          {
+            "source_block_id": "hwp:b143",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p143"
+            ],
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b143",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p143"
+            ]
+          }
+        ],
+        "context_evidence": [
+          {
+            "source_block_id": "hwp:b143",
+            "section_id": "main_notice",
+            "source_occurrence_ids": [
+              "occ:rhwp:p143"
+            ],
+            "text": "※ 일자리창조형 인턴은 참여기업이 운영비와 멘토수당을 직무개발 지원금으로 사용 가능",
+            "common_ir_document_id": "hwp:PBLN_000000000125016",
+            "common_ir_block_id": "hwp:b143",
+            "common_ir_occurrence_ids": [
+              "occ:rhwp:p143"
+            ]
+          }
+        ],
+        "value_source": {
+          "source_block_id": "hwp:b143",
+          "start_char": 19,
+          "end_char": 46,
+          "text_basis": "common_ir_v1_candidate_pack"
+        }
+      }
+    ]
+  },
+  "support_components": [
+    {
+      "support_component_id": "component:employment_type",
+      "component_kind": "participation_type",
+      "name_raw": "취업형",
+      "name_status": "identified",
+      "name_source_block_id": "hwp:b21",
+      "source_block_ids": [
+        "hwp:b21"
+      ],
+      "table_block_ids": [],
+      "facts": []
+    },
+    {
+      "support_component_id": "component:job_creation_type",
+      "component_kind": "participation_type",
+      "name_raw": "일자리창조형",
+      "name_status": "identified",
+      "name_source_block_id": "hwp:b21",
+      "source_block_ids": [
+        "hwp:b21",
+        "hwp:b143"
+      ],
+      "table_block_ids": [],
+      "facts": []
+    }
+  ],
+  "table_catalog": [],
+  "unresolved_relations": [],
+  "source_documents": [
+    {
+      "document_name": null,
+      "format": "hwp",
+      "source_url": null,
+      "notice_detail_url": null,
+      "common_ir": {
+        "document_id": "hwp:PBLN_000000000125016",
+        "schema_version": "common_ir_v1",
+        "source_kind": "hwp",
+        "source_sha256": "400ea19be132144f6d5e349c0a688b1605397946214dface2e7d6a2b9f65460d",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/exploratory_study/input/common_ir_transfer_20260827/transfer_common_ir_20260827/study/input/paired_hwp/PBLN_000000000125016/notice.hwp",
+        "artifact_role": "production"
+      }
+    }
+  ],
+  "derived_projections": [
+    {
+      "projection_type": "support_facets",
+      "source_fact_ids": [
+        "fact:work_experience_activity",
+        "fact:work_wage_item",
+        "fact:operating_cost_item",
+        "fact:mentor_allowance_item",
+        "fact:insurance_item",
+        "fact:wage_amount",
+        "fact:operating_amount",
+        "fact:mentor_amount",
+        "fact:insurance_rate"
+      ],
+      "activities": [
+        "일경험"
+      ],
+      "methods": [
+        "인건비 지원",
+        "운영비 지원",
+        "멘토링"
+      ],
+      "items": [
+        "인건비",
+        "운영비",
+        "멘토수당",
+        "4대보험 기업부담금"
+      ],
+      "status": "identified"
+    },
+    {
+      "projection_type": "support_scale_measures",
+      "source_fact_ids": [
+        "fact:insurance_rate",
+        "fact:mentor_amount",
+        "fact:operating_amount",
+        "fact:selection_capacity_companies",
+        "fact:selection_capacity_people",
+        "fact:wage_amount"
+      ],
+      "measures": [
+        {
+          "measure_type": "count",
+          "measure_role": "selection_capacity",
+          "lower_value": 4,
+          "upper_value": 4,
+          "unit": "명",
+          "comparator": "eq",
+          "source_fact_id": "fact:selection_capacity_people",
+          "source_numeric_candidate_id": "hwp:b21#num[0]",
+          "applies_per": null,
+          "calculation_basis": null,
+          "frequency": null,
+          "aggregation_scope": null
+        },
+        {
+          "measure_type": "count",
+          "measure_role": "selection_capacity",
+          "lower_value": 12,
+          "upper_value": 12,
+          "unit": "개사",
+          "comparator": "approx",
+          "source_fact_id": "fact:selection_capacity_companies",
+          "source_numeric_candidate_id": "hwp:b36#num[0]",
+          "applies_per": null,
+          "calculation_basis": null,
+          "frequency": null,
+          "aggregation_scope": null
+        },
+        {
+          "measure_type": "amount",
+          "measure_role": "support_amount",
+          "lower_value": 2340000,
+          "upper_value": 2340000,
+          "unit": "KRW",
+          "comparator": "eq",
+          "source_fact_id": "fact:wage_amount",
+          "source_numeric_candidate_id": "hwp:b127#num[0]",
+          "applies_per": null,
+          "calculation_basis": null,
+          "frequency": null,
+          "aggregation_scope": null
+        },
+        {
+          "measure_type": "amount",
+          "measure_role": "support_amount",
+          "lower_value": 200000,
+          "upper_value": 200000,
+          "unit": "KRW",
+          "comparator": "eq",
+          "source_fact_id": "fact:operating_amount",
+          "source_numeric_candidate_id": "hwp:b130#num[0]",
+          "applies_per": null,
+          "calculation_basis": null,
+          "frequency": "MONTHLY",
+          "aggregation_scope": null
+        },
+        {
+          "measure_type": "amount",
+          "measure_role": "support_amount",
+          "lower_value": 150000,
+          "upper_value": 150000,
+          "unit": "KRW",
+          "comparator": "eq",
+          "source_fact_id": "fact:mentor_amount",
+          "source_numeric_candidate_id": "hwp:b130#num[1]",
+          "applies_per": null,
+          "calculation_basis": null,
+          "frequency": "MONTHLY",
+          "aggregation_scope": null
+        },
+        {
+          "measure_type": "rate",
+          "measure_role": "support_rate",
+          "lower_value": 1147,
+          "upper_value": 1147,
+          "unit": "BPS",
+          "comparator": "eq",
+          "source_fact_id": "fact:insurance_rate",
+          "source_numeric_candidate_id": "hwp:b130#num[2]",
+          "applies_per": null,
+          "calculation_basis": null,
+          "frequency": null,
+          "aggregation_scope": null
+        }
+      ],
+      "status": "identified"
+    }
+  ],
+  "unresolved_observations": [],
+  "processing_metadata": {
+    "source_selection_artifact": "server-materialized exact-span source selection",
+    "value_raw_policy": "value_raw is server-recovered from one value_source span",
+    "schema_version": "existing_program_profile/v0.2",
+    "candidate_pack": {
+      "candidate_pack_id": "PBLN_000000000125016-a-profile-v0.2",
+      "candidate_pack_generator": "semantic_structuring.common_ir_v1",
+      "candidate_pack_generator_version": "1",
+      "common_ir_document_id": "hwp:PBLN_000000000125016",
+      "common_ir_source_sha256": "400ea19be132144f6d5e349c0a688b1605397946214dface2e7d6a2b9f65460d",
+      "text_basis": "common_ir_v1_candidate_pack"
+    },
+    "derived_projection_producers": {
+      "support_scale_measures": {
+        "numeric_candidate_extractor_version": "numeric_candidate_v1"
+      }
+    }
+  }
+}

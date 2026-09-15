@@ -1,0 +1,1009 @@
+"""
+Migration Contract Tests
+Date: 2026-08-31
+
+Static file-based contract tests that verify the Supabase schema migration
+configuration matches expected requirements.
+
+These are NOT database runtime tests - they verify the migration files
+themselves are structurally correct and complete.
+
+Tests:
+1. All migration files exist in correct order
+2. All required schemas are created
+3. All required tables are defined
+4. All critical foreign key relationships exist
+5. All CHECK constraints are present
+6. All indexes are created
+7. RLS is properly configured
+
+Run: pytest backend/tests/test_migration_contract.py -v
+"""
+
+import os
+import re
+from pathlib import Path
+from typing import Set, List, Dict, Tuple
+
+
+class MigrationContractTest:
+    """Verify migration schema contract."""
+
+    MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
+
+    EXPECTED_MIGRATIONS = [
+        "01_core_schemas.sql",
+        "02_core_ddl.sql",
+        "03_workspace_ddl.sql",
+        "04_workspace_components.sql",
+        "05_workspace_projections.sql",
+        "06_result_ddl.sql",
+        "07_indexes.sql",
+        "08_rls_policies.sql",
+        "09_kb_notice_metadata.sql",
+        "10_api_contract_foundation.sql",
+        "11_storage_policies.sql",
+        "12_realtime_analysis_run.sql",
+        "13_api_contract_state_hardening.sql",
+        "14_storage_upload_hardening.sql",
+        "15_api_views_and_result_rpcs.sql",
+        "16_conversation_command_rpcs.sql",
+        "17_request_profile_ingest_core.sql",
+        "18_worker_existing_api_and_result_ingest.sql",
+        "19_pgvector_existing_profile_retrieval.sql",
+        "20_embedding_input_policy_and_axis_match.sql",
+        "21_analysis_worker_queue.sql",
+        "22_fenced_analysis_result_ingest.sql",
+        "23_result_read_retention_and_candidate_evidence.sql",
+        "24_retire_legacy_worker_completion.sql",
+        "25_queued_source_invariant.sql",
+        "26_ml_result_contract.sql",
+        "27_chat_worker_queue.sql",
+        "28_component_name_embedding_assembly.sql",
+        "29_repair_component_embedding_activation.sql",
+        "30_serialise_existing_kb_embedding_activation.sql",
+        "31_existing_profile_model1_classification.sql",
+        "32_existing_profile_model1_classification_hardening.sql",
+        "33_v02_lifecycle_and_fastapi_boundary.sql",
+        "34_v02_public_result_projection_and_evidence.sql",
+        "35_v02_partial_axis_retrieval.sql",
+        "36_v02_conversation_idempotency_and_claim.sql",
+        "37_v02_global_queue_admission.sql",
+        "38_model1_runtime_manifest_refresh.sql",
+        "39_v02_atomic_upload_finalization.sql",
+        "40_v02_embedding_execution_provenance.sql",
+    ]
+
+    REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
+
+    REQUIRED_TABLES = {
+        # app schema
+        "app.user_profile",
+
+        # ops schema
+        "ops.processing_run",
+        "ops.model_invocation",
+        "ops.cleanup_event",
+
+        # retrieval schema (persistent Existing Profile embeddings only)
+        "retrieval.embedding_configuration",
+        "retrieval.existing_profile_embedding",
+        "retrieval.classification_configuration",
+        "retrieval.existing_profile_classification",
+
+        # kb schema (existing knowledge base)
+        "kb.notice",
+        "kb.source_profile",
+        "kb.source_version",
+        "kb.artifact",
+        "kb.artifact_lineage",
+        "kb.profile_version",
+        "kb.support_component",
+        "kb.fact_occurrence",
+        "kb.fact_evidence",
+        "kb.fact_context",
+        "kb.fact_relation",
+        "kb.fact_component_link",
+        "kb.delivery_role",
+        "kb.delivery_role_organization",
+        "kb.target_constraint",
+        "kb.target_constraint_source",
+        "kb.target_constraint_dimension",
+        "kb.support_facet",
+        "kb.support_facet_source",
+        "kb.support_facet_value",
+        "kb.support_scale_projection",
+        "kb.support_scale_measure",
+
+        # workspace schema (request analysis)
+        "workspace.analysis_run",
+        "workspace.source_artifact",
+        "workspace.artifact_lineage",
+        "workspace.request_profile",
+        "workspace.support_component",
+        "workspace.program_node",
+        "workspace.fact_occurrence",
+        "workspace.fact_evidence",
+        "workspace.fact_context",
+        "workspace.target_constraint",
+        "workspace.target_constraint_source",
+        "workspace.target_constraint_dimension",
+        "workspace.support_facet",
+        "workspace.support_facet_source",
+        "workspace.support_facet_value",
+        "workspace.support_scale_projection",
+        "workspace.support_scale_measure",
+        "workspace.request_type",
+        "workspace.delivery_relation",
+        "workspace.delivery_action",
+        "workspace.delivery_method",
+        "workspace.field_state",
+        "workspace.field_state_ref",
+
+        # result schema (analysis results)
+        "result.analysis_case",
+        "result.axis_result",
+        "result.sim_candidate",
+        "result.evidence_snapshot",
+        "result.analysis_session",
+        "result.conversation_message",
+        "result.conversation_reference",
+        "result.report_artifact",
+    }
+
+    # Critical foreign keys that must exist
+    REQUIRED_FOREIGN_KEYS = {
+        "app.user_profile.user_id -> auth.users.id",
+        "kb.source_profile.notice_pk -> kb.notice.notice_pk",
+        "kb.source_version.source_profile_pk -> kb.source_profile.source_profile_pk",
+        "kb.artifact.source_version_pk -> kb.source_version.source_version_pk",
+        "kb.profile_version.source_version_pk -> kb.source_version.source_version_pk",
+        "kb.support_component.profile_version_pk -> kb.profile_version.profile_version_pk",
+        "kb.fact_occurrence.profile_version_pk -> kb.profile_version.profile_version_pk",
+        "workspace.analysis_run.user_id -> auth.users.id",
+        "workspace.request_profile.analysis_run_pk -> workspace.analysis_run.analysis_run_pk",
+        "workspace.support_component.request_profile_pk -> workspace.request_profile.request_profile_pk",
+        "workspace.fact_occurrence.request_profile_pk -> workspace.request_profile.request_profile_pk",
+        "result.analysis_case.user_id -> auth.users.id",
+        "result.sim_candidate.analysis_case_pk -> result.analysis_case.analysis_case_pk",
+        "result.sim_candidate.existing_profile_version_pk -> kb.profile_version.profile_version_pk",
+        "retrieval.existing_profile_classification.profile_version_pk -> kb.profile_version.profile_version_pk",
+        "retrieval.existing_profile_classification.classification_config_pk -> retrieval.classification_configuration.classification_config_pk",
+    }
+
+    def test_all_migrations_present(self):
+        """Verify all expected migration files exist."""
+        missing = []
+        for expected in self.EXPECTED_MIGRATIONS:
+            migration_path = self.MIGRATIONS_DIR / expected
+            if not migration_path.exists():
+                missing.append(expected)
+
+        assert not missing, f"Missing migration files: {missing}"
+
+    def test_migrations_valid_sql(self):
+        """Verify each migration file contains valid SQL."""
+        for migration_file in self.MIGRATIONS_DIR.glob("*.sql"):
+            content = migration_file.read_text()
+
+            # Check for BEGIN/COMMIT
+            assert "BEGIN;" in content or "BEGIN" in content.upper(), \
+                f"{migration_file.name} missing BEGIN"
+            assert "COMMIT;" in content or "COMMIT" in content.upper(), \
+                f"{migration_file.name} missing COMMIT"
+
+            # Check for proper SQL statement termination
+            statements = [s.strip() for s in content.split(";") if s.strip()]
+            assert len(statements) > 0, f"{migration_file.name} has no SQL statements"
+
+    def test_all_schemas_created(self):
+        """Verify CREATE SCHEMA for all required schemas."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        missing_schemas = []
+        for schema in self.REQUIRED_SCHEMAS:
+            # Look for CREATE SCHEMA IF NOT EXISTS schema_name
+            pattern = rf"CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS)?\s+{schema}"
+            if not re.search(pattern, migration_content, re.IGNORECASE):
+                missing_schemas.append(schema)
+
+        assert not missing_schemas, f"Missing schema definitions: {missing_schemas}"
+
+    def test_all_tables_created(self):
+        """Verify CREATE TABLE for all required tables."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        missing_tables = []
+        for table in self.REQUIRED_TABLES:
+            schema, table_name = table.split(".")
+            # Look for CREATE TABLE IF NOT EXISTS schema.table_name
+            pattern = rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS)?\s+{schema}\.{table_name}"
+            if not re.search(pattern, migration_content, re.IGNORECASE):
+                missing_tables.append(table)
+
+        assert not missing_tables, f"Missing table definitions: {missing_tables}"
+
+    def test_auth_users_constraints(self):
+        """Verify auth.users references use ON DELETE RESTRICT."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        # Find all references to auth.users
+        user_refs = re.finditer(
+            r"user_id\s+UUID[^,;]*?REFERENCES\s+auth\.users\([^)]+\)([^,;]*?)(?:,|$)",
+            migration_content,
+            re.IGNORECASE | re.DOTALL
+        )
+
+        for ref in user_refs:
+            fk_spec = ref.group(1)
+            assert "ON DELETE RESTRICT" in fk_spec, \
+                "auth.users reference must use ON DELETE RESTRICT to preserve user ownership"
+
+    def test_rls_enabled(self):
+        """Verify RLS is enabled on all protected tables."""
+        rls_file = self.MIGRATIONS_DIR / "08_rls_policies.sql"
+        assert rls_file.exists(), "RLS migration file missing"
+
+        rls_content = rls_file.read_text()
+
+        # Verify RLS is enabled on key tables
+        tables_need_rls = {
+            "app.user_profile",
+            "workspace.analysis_run",
+            "workspace.request_profile",
+            "result.analysis_case",
+        }
+
+        for table in tables_need_rls:
+            schema, tbl = table.split(".")
+            pattern = rf"ALTER\s+TABLE\s+{schema}\.{tbl}\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY"
+            assert re.search(pattern, rls_content, re.IGNORECASE), \
+                f"RLS not enabled on {table}"
+
+    def test_indexes_created(self):
+        """Verify indexes are created for foreign keys."""
+        index_file = self.MIGRATIONS_DIR / "07_indexes.sql"
+        assert index_file.exists(), "Index migration file missing"
+
+        index_content = index_file.read_text()
+
+        # Verify critical indexes exist
+        critical_indexes = [
+            "ix_app_user_profile_user",
+            "ix_workspace_analysis_user",
+            "ix_workspace_request_profile_run",
+            "ix_result_case_user",
+            "ix_result_case_retention_expires",
+        ]
+
+        for idx in critical_indexes:
+            assert idx in index_content, f"Critical index missing: {idx}"
+
+    def test_check_constraints_present(self):
+        """Verify CHECK constraints for status fields."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        # Verify CHECK constraints on status columns
+        checks_needed = [
+            "status IN ('queued','running','succeeded','failed','cancelled')",  # processing_run
+            "status IN ('processing','ready','read_only','failed')",  # analysis_case
+            "side IN ('REQUEST','EXISTING')",  # evidence_snapshot
+        ]
+
+        for check in checks_needed:
+            assert check in migration_content, f"Missing CHECK constraint: {check}"
+
+    def test_no_direct_writes_to_protected_schemas(self):
+        """Verify business-table writes are not granted to browser clients."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        # Storage RLS may allow a reservation-bound object INSERT, but no
+        # business table may grant direct INSERT/UPDATE/DELETE to authenticated.
+        assert "GRANT INSERT" not in migration_content or "TO authenticated" not in migration_content, \
+            "Authenticated role should not have INSERT grants"
+        assert "GRANT UPDATE" not in migration_content or "TO authenticated" not in migration_content, \
+            "Authenticated role should not have UPDATE grants"
+        assert "GRANT DELETE" not in migration_content or "TO authenticated" not in migration_content, \
+            "Authenticated role should not have DELETE grants"
+
+    def test_direct_client_foundation_is_hardened(self):
+        """Verify the direct Supabase client has its minimum security boundary."""
+        foundation = (self.MIGRATIONS_DIR / "10_api_contract_foundation.sql").read_text()
+        state = (self.MIGRATIONS_DIR / "13_api_contract_state_hardening.sql").read_text()
+        storage = (self.MIGRATIONS_DIR / "14_storage_upload_hardening.sql").read_text()
+        api_views = (self.MIGRATIONS_DIR / "15_api_views_and_result_rpcs.sql").read_text()
+        conversation_commands = (self.MIGRATIONS_DIR / "16_conversation_command_rpcs.sql").read_text()
+        request_ingest = (self.MIGRATIONS_DIR / "17_request_profile_ingest_core.sql").read_text()
+
+        assert "CREATE SCHEMA IF NOT EXISTS api" in foundation
+        assert "ALTER DEFAULT PRIVILEGES IN SCHEMA api" in state
+        assert "uq_workspace_analysis_run_one_active_per_user" in state
+        assert "uq_workspace_dispatch_worker_job" in state
+        assert "GRANT SELECT (" in state
+        assert "request_temp_insert_reserved_source" in storage
+        assert "can_manage_own_reserved_source" in storage
+        assert "file_size_limit = 52428800" in storage
+        assert "rpc_get_analysis_result" in api_views
+        assert "rpc_get_sim_candidate_detail" in api_views
+        assert "(SELECT auth.uid())" in api_views
+        assert "prepare_conversation_messages" in conversation_commands
+        assert "retry_conversation_message" in conversation_commands
+        assert "ingest_request_profile_core" in request_ingest
+
+    def test_embedding_input_policy_and_axis_match(self):
+        """Embedding input limits and A/B retrieval must stay reproducible."""
+        policy = (
+            self.MIGRATIONS_DIR / "20_embedding_input_policy_and_axis_match.sql"
+        ).read_text()
+        component_policy = (
+            self.MIGRATIONS_DIR / "28_component_name_embedding_assembly.sql"
+        ).read_text()
+        activation_repair = (
+            self.MIGRATIONS_DIR / "29_repair_component_embedding_activation.sql"
+        ).read_text()
+        activation_serialisation = (
+            self.MIGRATIONS_DIR
+            / "30_serialise_existing_kb_embedding_activation.sql"
+        ).read_text()
+
+        assert "max_input_tokens" in policy
+        assert "BETWEEN 1 AND 8192" in policy
+        assert "fact-boundary-token-weighted-mean-v1" in policy
+        assert "approved-facts-role-aware-v1" in policy
+        assert "match_existing_profiles_three_axis" in policy
+        assert "HAVING COUNT(*) = 3" in policy
+        # apply_migrations.sh replays migration 20.  It may retire only the
+        # known generic pre-policy config, must preserve a verified active
+        # v2, and bootstraps v1 only if no config is active.
+        assert "assembly_version = 'existing-profile-v1'" in policy
+        assert "assembly_version <> 'approved-facts-role-aware-v1'" not in policy
+        assert "is_active = TRUE" not in policy.split("ON CONFLICT", 1)[1].split(
+            "UPDATE retrieval.embedding_configuration AS v1", 1
+        )[0]
+        assert "AND NOT EXISTS" in policy
+        assert "FROM retrieval.embedding_configuration AS active_config" in policy
+        assert "approved-facts-components-role-aware-v2" in component_policy
+        assert "FALSE" in component_policy
+        assert "is_active is intentionally" in component_policy
+        assert "v2_complete_count <> current_profile_count" in activation_repair
+        assert "HAVING COUNT(DISTINCT embedding.scope) = 4" in activation_repair
+        assert "approved-facts-role-aware-v1" in activation_repair
+        assert "pg_advisory_xact_lock" in activation_repair
+        assert "must never promote an inactive v2" in activation_repair
+        assert "v2_is_active BOOLEAN" in activation_repair
+        assert "v_any_active BOOLEAN" in activation_repair
+        assert "IF v2_is_active" in activation_repair
+        assert "ELSIF NOT v_any_active" in activation_repair
+        assert "embedding_config_pk = v2_pk\n           AND is_active" in activation_repair
+        assert "embedding_config_pk = v1_pk\n           AND NOT is_active" in activation_repair
+        assert "pg_advisory_xact_lock" in activation_serialisation
+        assert "LOCK TABLE kb.source_version, kb.profile_version" in activation_serialisation
+        assert "kb.support_component, kb.fact_occurrence" in activation_serialisation
+        assert "SHARE ROW EXCLUSIVE" in activation_serialisation
+        assert "trg_kb_source_version_embedding_activation" in activation_serialisation
+        assert "trg_kb_profile_version_embedding_activation" in activation_serialisation
+        assert "trg_kb_support_component_embedding_activation" in activation_serialisation
+        assert "trg_kb_fact_occurrence_embedding_activation" in activation_serialisation
+        assert "SET is_active = FALSE" in activation_serialisation
+        assert "NEW.is_current IS DISTINCT FROM OLD.is_current" in activation_serialisation
+        assert "NEW.source_sha256 IS NOT DISTINCT FROM OLD.source_sha256" in activation_serialisation
+        assert "NEW.profile_sha256 IS NOT DISTINCT FROM OLD.profile_sha256" in activation_serialisation
+        assert "NEW.structured_artifact_pk" in activation_serialisation
+        assert "TG_OP = 'DELETE'" in activation_serialisation
+        assert "AFTER INSERT OR UPDATE OR DELETE" in activation_serialisation
+        assert "pg_try_advisory_xact_lock" in activation_serialisation
+        assert "EMBEDDING_INVALIDATION_LOCK_UNAVAILABLE" in activation_serialisation
+        assert "ERRCODE = '40001'" in activation_serialisation
+        # Migration 30 is reapplied by the local bootstrap script.  It takes
+        # a one-time revalidation gate before replacing triggers, so a
+        # healthy reapply preserves a complete active v2 corpus while a
+        # first install or trigger/function drift safely restores v1.
+        assert "CREATE TEMP TABLE migration_30_activation_gate" in activation_serialisation
+        assert "requires_one_time_revalidation" in activation_serialisation
+        assert "pre-review-migration-30-embedding-activation-v1" in activation_serialisation
+        assert "trigger_row.tgtype = 29" in activation_serialisation
+        assert "tgenabled = 'O'" in activation_serialisation
+        assert "current_profile_count" not in activation_serialisation
+        assert "v2_complete_count" not in activation_serialisation
+        assert activation_serialisation.index("LOCK TABLE kb.source_version") < (
+            activation_serialisation.index(
+                "CREATE TEMP TABLE migration_30_activation_gate"
+            )
+        )
+        assert activation_serialisation.index(
+            "CREATE TEMP TABLE migration_30_activation_gate"
+        ) < activation_serialisation.index(
+            "DROP TRIGGER IF EXISTS trg_kb_source_version_embedding_activation"
+        )
+        assert "profile.profile_version_pk = ANY(v_touched_profile_pks)" in activation_serialisation
+        # The demotion branch is explicitly gated.  Do not reintroduce a
+        # count-only activation check: child-content edits are invisible to a
+        # row count and require byte/hash revalidation by the embed script.
+        install_tail = activation_serialisation.rsplit(
+            "IF v_requires_one_time_revalidation", 1
+        )[1]
+        assert "AND EXISTS" in install_tail
+        assert "COUNT(" not in install_tail
+
+    def test_ml_result_migration_is_replay_safe(self):
+        """Migration 26 wraps migration 23 once and can be reapplied."""
+        ml_result = (self.MIGRATIONS_DIR / "26_ml_result_contract.sql").read_text()
+
+        assert "ADD COLUMN IF NOT EXISTS ml_result" in ml_result
+        assert "persist_analysis_result_core_without_ml" in ml_result
+        assert "rpc_get_analysis_result_without_ml" in ml_result
+        assert "to_regprocedure('workspace.persist_analysis_result_core(uuid,uuid,jsonb)')" in ml_result
+        assert "CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core" in ml_result
+        assert "CREATE OR REPLACE FUNCTION api.rpc_get_analysis_result" in ml_result
+
+    def test_existing_model1_classification_contract(self):
+        """Existing Model 1 enrichment remains versioned and service-only."""
+        legacy_classification = (
+            self.MIGRATIONS_DIR / "31_existing_profile_model1_classification.sql"
+        ).read_text()
+        classification = (
+            self.MIGRATIONS_DIR
+            / "32_existing_profile_model1_classification_hardening.sql"
+        ).read_text()
+        runtime_refresh = (
+            self.MIGRATIONS_DIR / "38_model1_runtime_manifest_refresh.sql"
+        ).read_text()
+        classification_all = legacy_classification + classification + runtime_refresh
+
+        # m31 is replayed before m32 on every ledgerless apply. It must not
+        # commit an older trigger/projection boundary while m32 already exists.
+        assert "SECURITY DEFINER" in legacy_classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.assert_classification_configuration_complete()",
+            1,
+        )[1].split("$$;", 1)[0]
+        assert "pg_try_advisory_xact_lock" in legacy_classification
+        assert "CLASSIFICATION_INVALIDATION_LOCK_UNAVAILABLE" in legacy_classification
+        assert "CREATE TRIGGER trg_kb_support_component_classification_activation" not in legacy_classification
+        assert "classification_config_pk UUID" in legacy_classification
+
+        assert "CREATE TABLE IF NOT EXISTS retrieval.classification_configuration" in classification_all
+        assert "CREATE TABLE IF NOT EXISTS retrieval.existing_profile_classification" in classification_all
+        assert "PRIMARY KEY (profile_version_pk, classification_config_pk)" in classification_all
+        assert "REFERENCES kb.profile_version(profile_version_pk) ON DELETE CASCADE" in classification_all
+        assert "REFERENCES ops.processing_run(processing_run_pk) ON DELETE SET NULL" in classification_all
+        assert "execution_status IN ('OK', 'UNAVAILABLE', 'FAILED')" in classification_all
+        assert "prediction_status IN ('판단보류', '참고용', '신뢰')" in classification_all
+        assert "uq_retrieval_one_active_classification_configuration" in classification_all
+        assert "runtime_manifest_sha256" in classification_all
+        assert "2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60" in classification_all
+        assert "pre-review-existing-model1-runtime-v3" in classification_all
+        assert "uq_retrieval_classification_configuration_identity" in classification
+        assert "CLASSIFICATION_CONFIGURATION_IDENTITY_IMMUTABLE" in classification
+        assert "CLASSIFICATION_CONFIGURATION_EMPTY_CURRENT_CORPUS" in classification
+        assert "CLASSIFICATION_CONFIGURATION_INCOMPLETE" in classification
+        assert "execution_status = 'OK'" in classification
+        assert "PREDICTION_WITHHELD" in classification
+        assert "ALTER TABLE retrieval.classification_configuration ENABLE ROW LEVEL SECURITY" in classification_all
+        assert "ALTER TABLE retrieval.existing_profile_classification ENABLE ROW LEVEL SECURITY" in classification_all
+        assert "TO service_role" in classification_all
+        assert "GRANT USAGE ON SCHEMA retrieval TO service_role" in classification
+        activation_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.assert_classification_configuration_complete()",
+            1,
+        )[1].split("$$;", 1)[0]
+        projection_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.get_active_existing_profile_classifications()",
+            1,
+        )[1].split("$$;", 1)[0]
+        assert "SECURITY DEFINER" in activation_function
+        assert "SET search_path = pg_catalog, retrieval, kb" in activation_function
+        assert "SECURITY DEFINER" in projection_function
+        assert "SET search_path = pg_catalog, retrieval, kb" in projection_function
+        assert "REVOKE ALL ON FUNCTION retrieval.assert_classification_configuration_complete()" in classification
+        assert "GRANT EXECUTE ON FUNCTION retrieval.get_active_existing_profile_classifications()" in classification
+        assert "CREATE OR REPLACE FUNCTION retrieval.promote_classification_configuration(" in classification
+        assert "CLASSIFICATION_CONFIGURATION_DIRECT_ACTIVATION_FORBIDDEN" in classification
+        promotion_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.promote_classification_configuration(",
+            1,
+        )[1].split("$$;", 1)[0]
+        assert "SECURITY DEFINER" in promotion_function
+        assert "pg_advisory_xact_lock" in promotion_function
+        assert "FOR UPDATE" in promotion_function
+        assert "GRANT EXECUTE ON FUNCTION retrieval.promote_classification_configuration(UUID)" in classification
+        invalidation_function = classification.split(
+            "CREATE OR REPLACE FUNCTION retrieval.invalidate_active_classification_on_kb_change()",
+            1,
+        )[1].split("$$;", 1)[0]
+        # This one trigger function is attached to notice, source_profile,
+        # source_version, profile_version, and fact_occurrence. Accessing
+        # notice-only OLD/NEW fields in a compound boolean condition causes
+        # PostgreSQL to resolve them for source_version rows too.
+        assert "IF TG_TABLE_NAME = 'notice' THEN" in invalidation_function
+        assert "IF OLD.portal_metadata ->> 'title'" in invalidation_function
+        assert "pg_try_advisory_xact_lock" in invalidation_function
+        assert "CLASSIFICATION_INVALIDATION_LOCK_UNAVAILABLE" in invalidation_function
+        assert "ERRCODE = '40001'" in invalidation_function
+        assert "ELSIF TG_TABLE_NAME = 'source_profile' THEN" in invalidation_function
+        assert "trg_kb_source_profile_classification_notice_activation" in classification
+        assert "DROP TRIGGER IF EXISTS trg_kb_support_component_classification_activation" in classification
+        assert "CREATE TRIGGER trg_kb_support_component_classification_activation" not in classification
+
+        # A runtime/code change creates a new immutable identity.  It does
+        # not rewrite historic configurations or their classification rows.
+        assert "INSERT INTO retrieval.classification_configuration" in runtime_refresh
+        assert "ON CONFLICT DO NOTHING" in runtime_refresh
+        assert "runtime refreshes register a new inactive configuration" in runtime_refresh
+        assert "UPDATE retrieval.classification_configuration" not in runtime_refresh
+        assert "existing_profile_classification" not in runtime_refresh
+
+    def test_storage_owner_windows_preserve_project_function_ownership(self):
+        """Storage policy DDL needs its official table owner, not postgres."""
+        storage_11 = (self.MIGRATIONS_DIR / "11_storage_policies.sql").read_text()
+        storage_14 = (self.MIGRATIONS_DIR / "14_storage_upload_hardening.sql").read_text()
+        apply_script = (self.MIGRATIONS_DIR.parent / "apply_migrations.sh").read_text()
+
+        assert "psql -U supabase_admin -d postgres" in apply_script
+        assert "SET ROLE postgres;" in apply_script
+        assert "SET LOCAL ROLE supabase_storage_admin;" in storage_11
+        assert "SET LOCAL ROLE supabase_storage_admin;" in storage_14
+        assert "DROP POLICY IF EXISTS request_temp_insert_own_prefix" in storage_11
+        assert "DROP POLICY IF EXISTS request_temp_delete_own_prefix" in storage_11
+        assert "CREATE POLICY request_temp_insert_own_prefix" not in storage_11
+        assert "CREATE POLICY request_temp_delete_own_prefix" not in storage_11
+        assert "pre_review.m14_storage_workspace_usage_preexisting" in storage_14
+        assert "pre_review.m14_storage_auth_usage_preexisting" in storage_14
+        assert "GRANT USAGE ON SCHEMA auth TO supabase_storage_admin" in storage_14
+        assert "REVOKE USAGE ON SCHEMA auth FROM supabase_storage_admin" in storage_14
+        assert "GRANT USAGE ON SCHEMA workspace TO supabase_storage_admin" in storage_14
+        assert "REVOKE USAGE ON SCHEMA workspace FROM supabase_storage_admin" in storage_14
+        function_start = storage_14.index(
+            "CREATE OR REPLACE FUNCTION workspace.can_manage_own_reserved_source"
+        )
+        before_function = storage_14[:function_start]
+        after_function = storage_14[function_start:]
+        assert "SET LOCAL ROLE postgres;" in before_function
+        assert "SET LOCAL ROLE supabase_storage_admin;" in after_function
+
+    def test_analysis_worker_queue_contract(self):
+        """The durable worker queue must be PostgreSQL-only and fenced."""
+        queue = (
+            self.MIGRATIONS_DIR / "21_analysis_worker_queue.sql"
+        ).read_text()
+        queue_lower = queue.lower()
+
+        # Idempotence matters for self-hosted repair/replay runs.
+        assert "ADD COLUMN IF NOT EXISTS attempt_count" in queue
+        assert "CREATE INDEX IF NOT EXISTS ix_workspace_analysis_run_queue_poll" in queue
+        assert "CREATE OR REPLACE FUNCTION workspace.claim_next_analysis_run" in queue
+        assert "analysis_run_dispatch_attempt_count_check" in queue
+
+        # Claim selection must be database polling with lock skipping, rather
+        # than an external broker.  The dispatch table owns all lease fields.
+        assert "FOR UPDATE OF ar, dispatch SKIP LOCKED" in queue
+        assert "workspace.analysis_run_dispatch" in queue
+        assert "CHECK (attempt_count BETWEEN 0 AND 2)" in queue
+        assert "p_lease_seconds INTEGER DEFAULT 120" in queue
+        assert "v_heartbeat_seconds CONSTANT INTEGER := 30" in queue
+        assert not re.search(r"\\b(redis|rq)\\b", queue_lower)
+
+        # One audit run per claim is the fence token used on heartbeat and both
+        # terminal transitions.  Both stale and explicit first failures are
+        # retried; the exhausted second attempt becomes terminal public
+        # failure while ops retains each failed attempt.
+        assert "INSERT INTO ops.processing_run AS processing_attempt" in queue
+        assert "RETURNING processing_attempt.processing_run_pk" in queue
+        assert "WORKER_LEASE_EXPIRED" in queue
+        assert "WORKER_MAX_ATTEMPTS_EXCEEDED" in queue
+        assert "IF v_attempt_count < 2 THEN" in queue
+        assert "SET status = 'queued'" in queue
+        assert "ATTEMPT_ERROR_DETAILS_REQUIRED" in queue
+        for function_name in (
+            "heartbeat_analysis_run",
+            "complete_analysis_run",
+            "fail_analysis_run",
+        ):
+            assert f"CREATE OR REPLACE FUNCTION workspace.{function_name}" in queue
+            assert "dispatch.processing_run_pk = p_processing_run_pk" in queue
+
+        # Dispatch source locations and lease state remain backend-only.
+        assert "ALTER TABLE workspace.analysis_run_dispatch ENABLE ROW LEVEL SECURITY" in queue
+        assert "REVOKE ALL ON TABLE workspace.analysis_run_dispatch FROM PUBLIC, anon, authenticated" in queue
+        assert "GRANT EXECUTE ON FUNCTION workspace.claim_next_analysis_run" in queue
+        assert "TO service_role" in queue
+
+    def test_fenced_analysis_result_ingest_contract(self):
+        """Only a live processing-run fence may materialise a result."""
+        ingest = (
+            self.MIGRATIONS_DIR / "22_fenced_analysis_result_ingest.sql"
+        ).read_text()
+
+        assert "CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core" in ingest
+        assert "p_processing_run_pk UUID" in ingest
+        assert "RETURNS UUID" in ingest
+        assert "FOR UPDATE OF ar, dispatch" in ingest
+        assert "dispatch.processing_run_pk = p_processing_run_pk" in ingest
+        assert "dispatch.lease_expires_at > v_now" in ingest
+
+        # Fence loss is a normal no-op: return before any materialisation.
+        assert "IF NOT FOUND THEN\n        RETURN NULL;" in ingest
+        assert ingest.index("RETURN NULL;") < ingest.index("INSERT INTO result.analysis_case")
+        assert "NULL performs no result or state mutation" in ingest
+
+        # The legacy materialisation remains complete, but terminal queue and
+        # ops state changes happen in the same fenced database function.
+        for table in (
+            "result.analysis_case",
+            "result.axis_result",
+            "result.sim_candidate",
+            "result.evidence_snapshot",
+            "result.analysis_session",
+        ):
+            assert table in ingest
+        assert "UPDATE ops.processing_run" in ingest
+        assert "SET status = 'succeeded'" in ingest
+        assert "UPDATE workspace.analysis_run_dispatch" in ingest
+        assert "UPDATE workspace.analysis_run" in ingest
+
+        # Service-role execution of the old unfenced Edge callback is retired.
+        assert "COMMENT ON FUNCTION api.ingest_comparison_result_core(UUID, JSONB)" in ingest
+        assert "Deprecated unfenced legacy Edge callback" in ingest
+        assert "REVOKE ALL ON FUNCTION api.ingest_comparison_result_core(UUID, JSONB)" in ingest
+        assert "authenticated, service_role" in ingest
+        assert "GRANT EXECUTE ON FUNCTION workspace.persist_analysis_result_core(UUID, UUID, JSONB)" in ingest
+
+    def test_legacy_state_only_success_transition_is_removed(self):
+        """A worker cannot mark success without atomically storing a result."""
+        retirement = (
+            self.MIGRATIONS_DIR / "24_retire_legacy_worker_completion.sql"
+        ).read_text()
+
+        assert (
+            "DROP FUNCTION IF EXISTS "
+            "workspace.complete_analysis_run(UUID, UUID, UUID)"
+        ) in retirement
+        assert "persist_analysis_result_core" in retirement
+
+    def test_queued_source_invariant_contract(self):
+        """Only a complete immutable source reservation may become queued."""
+        invariant = (
+            self.MIGRATIONS_DIR / "25_queued_source_invariant.sql"
+        ).read_text()
+
+        # One run has at most one authoritative source artifact. Existing
+        # duplicates are not silently deleted or relabelled during migration.
+        assert "DUPLICATE_SOURCE_ARTIFACTS_REQUIRE_REPAIR" in invariant
+        assert (
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_workspace_source_artifact_one_source_per_run" in invariant
+        )
+        assert "WHERE artifact_type = 'source'" in invariant
+
+        # Existing unsafe queued rows and their live attempts are failed in the
+        # same writer-drained migration transaction. Dispatch leases are
+        # cleared, while source provenance is retained for reconciliation.
+        assert invariant.count("LOCK TABLE workspace.analysis_run,") == 2
+        assert "IN SHARE ROW EXCLUSIVE MODE" in invariant
+        assert (
+            "workspace.quarantine_invalid_queued_analysis_runs()" in invariant
+        )
+        assert "UPDATE ops.processing_run AS processing_attempt" in invariant
+        assert "processing_attempt.status IN ('queued', 'running')" in invariant
+        assert "UPDATE workspace.analysis_run_dispatch AS dispatch" in invariant
+        assert "UPDATE workspace.analysis_run AS ar" in invariant
+        assert "QUEUED_SOURCE_INVARIANT_VIOLATION" in invariant
+
+        assert (
+            "CREATE OR REPLACE FUNCTION "
+            "workspace.enforce_queued_source_invariant()" in invariant
+        )
+        assert "SECURITY DEFINER" in invariant
+        assert "SET search_path = pg_catalog" in invariant
+        assert "BEFORE INSERT OR UPDATE OF status" in invariant
+        assert "dispatch.source_content_sha256 IS NOT NULL" in invariant
+        for exact_match in (
+            "source.storage_bucket = dispatch.source_bucket",
+            "source.storage_object_key = dispatch.source_object_key",
+            "source.content_sha256 = dispatch.source_content_sha256",
+            "source.size_bytes = NEW.declared_size_bytes",
+        ):
+            assert exact_match in invariant
+        for empty_lease_field in (
+            "dispatch.processing_run_pk IS NULL",
+            "dispatch.claimed_by IS NULL",
+            "dispatch.claimed_at IS NULL",
+            "dispatch.heartbeat_at IS NULL",
+            "dispatch.lease_expires_at IS NULL",
+        ):
+            assert empty_lease_field in invariant
+        assert (
+            "REVOKE ALL ON FUNCTION workspace.enforce_queued_source_invariant()"
+            in invariant
+        )
+        assert "RUNNING_ANALYSIS_REQUIRES_LIVE_FENCE" in invariant
+        assert "dispatch.lease_expires_at > clock_timestamp()" in invariant
+
+        # Every cross-table source/dispatch/ops write serializes through the
+        # same analysis_run row. Source identity is immutable, and initial
+        # source rows may be created only while the reservation is uploading.
+        for protection_function in (
+            "workspace.protect_active_source_artifact()",
+            "workspace.protect_active_dispatch_source()",
+            "workspace.protect_active_source_size()",
+            "workspace.enforce_dispatch_fence()",
+            "workspace.serialize_analysis_processing_attempt()",
+            "workspace.enforce_live_processing_attempt_fence()",
+        ):
+            assert f"CREATE OR REPLACE FUNCTION {protection_function}" in invariant
+            assert f"REVOKE ALL ON FUNCTION {protection_function}" in invariant
+        assert invariant.count("FOR UPDATE;") >= 3
+        assert "BEFORE INSERT OR UPDATE OR DELETE\nON workspace.source_artifact" in invariant
+        assert "SOURCE_ARTIFACT_REQUIRES_UPLOAD_RESERVATION" in invariant
+        assert "SOURCE_ARTIFACT_IMMUTABLE" in invariant
+        assert "ACTIVE_SOURCE_ARTIFACT_IMMUTABLE" in invariant
+        assert "BEFORE INSERT OR UPDATE OR DELETE\nON workspace.analysis_run_dispatch" in invariant
+        assert "DISPATCH_SOURCE_REQUIRES_UPLOAD_RESERVATION" in invariant
+        assert "DISPATCH_SOURCE_IMMUTABLE" in invariant
+        assert "ACTIVE_DISPATCH_SOURCE_IMMUTABLE" in invariant
+        assert "workspace.assert_analysis_run_fence(UUID)" in invariant
+        assert "CREATE CONSTRAINT TRIGGER trg_workspace_enforce_dispatch_fence" in invariant
+        assert "NON_RUNNING_ANALYSIS_HAS_LIVE_FENCE" in invariant
+        assert "BEFORE UPDATE OF declared_size_bytes" in invariant
+        assert "SOURCE_SIZE_IMMUTABLE" in invariant
+
+        # A live ops row cannot race a queued transition or commit unless it is
+        # the exact, unexpired processing fence for a running dispatch.
+        assert "LIVE_PROCESSING_ATTEMPT_REQUIRES_ACTIVE_RUN" in invariant
+        assert "PROCESSING_ATTEMPT_RUN_IMMUTABLE" in invariant
+        assert (
+            "CREATE CONSTRAINT TRIGGER "
+            "trg_ops_enforce_live_processing_attempt_fence" in invariant
+        )
+        assert "DEFERRABLE INITIALLY DEFERRED" in invariant
+        assert "LIVE_PROCESSING_ATTEMPT_FENCE_INVARIANT_VIOLATION" in invariant
+
+        runtime = (
+            self.MIGRATIONS_DIR.parent / "tests" / "analysis_worker_queue_runtime.sql"
+        ).read_text()
+        for negative_case in (
+            "invalid legacy queued row was not quarantined",
+            "mismatched source tuple case",
+            "second source artifact was accepted",
+            "queued transition with an occupied lease was accepted",
+            "queued dispatch accepted a post-publication lease",
+            "unfenced running transition was accepted",
+            "unfenced live processing attempt was accepted",
+        ):
+            assert negative_case in runtime
+        # The queue runtime intentionally materializes with the legacy fenced
+        # writer, then upgrades a real candidate/evidence row only for its v2
+        # service-role read checks.  This keeps both contracts observable.
+        for v2_upgrade_token in (
+            "runtime/candidate/%s/evidence/%s",
+            "evidence_role = 'RIGHT'",
+            "public_metadata = jsonb_build_object(",
+            "public_axes = jsonb_build_object(",
+            "v_candidate_evidence_id::text",
+            "candidate detail RPC omitted linked evidence",
+        ):
+            assert v2_upgrade_token in runtime
+
+    def test_result_read_retention_and_candidate_evidence_contract(self):
+        """Result reads hide expired history and expose only linked SIM evidence."""
+        projection = (
+            self.MIGRATIONS_DIR
+            / "23_result_read_retention_and_candidate_evidence.sql"
+        ).read_text()
+
+        # A completed result without a live expiry is not history-visible and
+        # a guessed UUID cannot bypass that boundary through either RPC.
+        assert "CREATE OR REPLACE VIEW api.v_my_analysis_history" in projection
+        assert projection.count("c.retention_expires_at > now()") == 3
+        assert "CREATE OR REPLACE FUNCTION api.rpc_get_analysis_result" in projection
+        for result_field in (
+            "'case', jsonb_build_object(",
+            "'cpl', jsonb_build_object",
+            "'fit', jsonb_build_object",
+            "'sim', jsonb_build_object",
+            "'report', COALESCE",
+            "'session', COALESCE",
+            "'evidences', COALESCE(evidence.items, '[]'::jsonb)",
+        ):
+            assert result_field in projection
+
+        # Detail objects use the stable public evidence object fields and are
+        # scoped through the relational candidate FK, never a client-supplied
+        # owner or unscoped case-wide evidence list.
+        assert "CREATE OR REPLACE FUNCTION api.rpc_get_sim_candidate_detail" in projection
+        assert "'evidences', COALESCE(evidence.items, '[]'::jsonb)" in projection
+        assert "e.sim_candidate_pk = sc.sim_candidate_pk" in projection
+        for field in (
+            "'evidence_id', e.evidence_snapshot_pk",
+            "'side', lower(e.side)",
+            "'field_name', e.field_name",
+            "'raw_value', e.raw_value",
+            "'excerpt', e.context_excerpt",
+        ):
+            assert field in projection
+
+        # The worker may opt in to candidate linkage, but the mapping is
+        # resolved only against candidates materialised for the same case.
+        assert "candidate_source_profile_id" in projection
+        assert "sc.analysis_case_pk = v_case_pk" in projection
+        assert "EVIDENCE_CANDIDATE_NOT_FOUND" in projection
+
+        # Candidate display fields are resolved from the Existing-KB lineage,
+        # rather than copied from worker-supplied candidate JSON.
+        assert "JOIN kb.notice n ON n.notice_pk = sp.notice_pk" in projection
+        assert "v_item->>'profile_version_pk'" in projection
+        assert (
+            "pv.profile_version_pk = (v_item->>'profile_version_pk')::uuid"
+            in projection
+        )
+        assert "WHERE pv.is_current AND sv.is_current" not in projection[
+            projection.index("FOR v_item IN SELECT value FROM jsonb_array_elements(COALESCE(p_result->'candidates'"):
+            projection.index("INSERT INTO result.sim_candidate")
+        ]
+        for metadata_field in (
+            "n.portal_metadata ->> 'title'",
+            "n.portal_metadata ->> 'executing_agency'",
+            "n.portal_metadata ->> 'detail_url'",
+            "n.portal_metadata ->> 'source_state'",
+        ):
+            assert metadata_field in projection
+        assert "sv.notice_detail_url" in projection
+        assert "priority_score, status, notice_title, issuing_organization, source_url," in projection
+
+        # Migration 23 replaces the fenced writer as well, so preserve the
+        # migration-22 fence in the active function definition.
+        assert "CREATE OR REPLACE FUNCTION workspace.persist_analysis_result_core" in projection
+        assert "dispatch.processing_run_pk = p_processing_run_pk" in projection
+        assert "dispatch.lease_expires_at > v_now" in projection
+        assert projection.index("RETURN NULL;") < projection.index("INSERT INTO result.analysis_case")
+
+    def test_storage_buckets_documented(self):
+        """Verify storage bucket configuration is documented."""
+        readme = Path(self.MIGRATIONS_DIR.parent) / "README.md"
+        assert readme.exists(), "README.md missing"
+
+        content = readme.read_text()
+        assert "existing-kb" in content, "existing-kb bucket not documented"
+        assert "request-temp" in content, "request-temp bucket not documented"
+        assert "analysis-reports" in content, "analysis-reports bucket not documented"
+
+    def test_env_example_provided(self):
+        """Host-path and application env examples must keep separate roles."""
+        supabase_env = self.MIGRATIONS_DIR.parent / ".env.example"
+        backend_env = self.MIGRATIONS_DIR.parents[1] / ".env.example"
+        assert supabase_env.exists(), "backend/supabase/.env.example missing"
+        assert backend_env.exists(), "backend/.env.example missing"
+
+        supabase_content = supabase_env.read_text()
+        for variable_name in (
+            "SUPABASE_COMPOSE_DIR=",
+            "SUPABASE_DB_DATA_DIR=",
+            "SUPABASE_STORAGE_DATA_DIR=",
+        ):
+            assert variable_name in supabase_content
+        assert not re.search(
+            r"^(SUPABASE_URL|SUPABASE_(?:ANON_)?KEY|"
+            r"SUPABASE_(?:SECRET|SERVICE_ROLE)_KEY)=",
+            supabase_content,
+            re.MULTILINE,
+        )
+
+        backend_content = backend_env.read_text()
+        for variable_name in (
+            "SUPABASE_URL=",
+            "SUPABASE_ANON_KEY=",
+            "SUPABASE_SERVICE_ROLE_KEY=",
+            "DATABASE_URL=",
+        ):
+            assert variable_name in backend_content
+        assert not re.search(
+            r"^SUPABASE_(?:COMPOSE_DIR|DB_DATA_DIR|STORAGE_DATA_DIR)=",
+            backend_content,
+            re.MULTILINE,
+        )
+
+    def test_unique_constraints(self):
+        """Verify UNIQUE constraints on identity columns."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        # Verify key identity constraints
+        unique_checks = [
+            r"notice_id\s+TEXT\s+NOT\s+NULL\s+UNIQUE",  # kb.notice
+            r"source_profile_id\s+TEXT\s+NOT\s+NULL\s+UNIQUE",  # kb.source_profile
+            r"UNIQUE\s*\(\s*analysis_run_pk\s*,\s*profile_id\s*\)",  # workspace.request_profile
+            r"source_analysis_run_id\s+UUID\s+NOT\s+NULL",  # result.analysis_case identity
+        ]
+
+        for unique in unique_checks:
+            assert re.search(unique, migration_content, re.IGNORECASE), \
+                f"Missing UNIQUE constraint matching: {unique}"
+
+    def test_retention_logic(self):
+        """Verify retention logic columns exist."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        # Verify analysis_case has retention columns
+        assert "retention_expires_at" in migration_content, \
+            "retention_expires_at column missing for result retention"
+        assert "analysis_completed_at" in migration_content, \
+            "analysis_completed_at column missing for result retention tracking"
+
+    def test_lifecycle_columns(self):
+        """Verify lifecycle tracking columns (created_at, updated_at, expires_at)."""
+        migration_content = ""
+        for migration_file in sorted(self.MIGRATIONS_DIR.glob("*.sql")):
+            migration_content += migration_file.read_text() + "\n"
+
+        # Verify key lifecycle columns
+        lifecycle_cols = [
+            r"created_at\s+TIMESTAMPTZ",
+            r"updated_at\s+TIMESTAMPTZ",
+            r"expires_at\s+TIMESTAMPTZ",
+            r"started_at\s+TIMESTAMPTZ",
+            r"completed_at\s+TIMESTAMPTZ",
+        ]
+
+        for pattern in lifecycle_cols:
+            assert re.search(pattern, migration_content, re.IGNORECASE), \
+                f"Lifecycle column missing: {pattern}"
+
+
+# ============================================================================
+# Pytest Fixtures & Runners
+# ============================================================================
+
+def test_migration_contract():
+    """Run all migration contract tests."""
+    tester = MigrationContractTest()
+
+    # Run all test methods
+    for method_name in dir(tester):
+        if method_name.startswith("test_"):
+            method = getattr(tester, method_name)
+            print(f"Running {method_name}...")
+            method()
+            print(f"✓ {method_name} passed")
+
+
+if __name__ == "__main__":
+    # Run tests
+    test = MigrationContractTest()
+
+    print("=" * 70)
+    print("Migration Contract Tests")
+    print("=" * 70)
+
+    test_methods = [m for m in dir(test) if m.startswith("test_")]
+
+    passed = 0
+    failed = 0
+
+    for method_name in sorted(test_methods):
+        try:
+            method = getattr(test, method_name)
+            method()
+            print(f"✓ {method_name}")
+            passed += 1
+        except AssertionError as e:
+            print(f"✗ {method_name}")
+            print(f"  Error: {e}")
+            failed += 1
+
+    print("=" * 70)
+    print(f"Results: {passed} passed, {failed} failed")
+    print("=" * 70)
+
+    exit(0 if failed == 0 else 1)

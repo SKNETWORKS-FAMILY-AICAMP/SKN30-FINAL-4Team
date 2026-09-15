@@ -1,0 +1,1270 @@
+{
+  "purpose": "M65 전역 예측 위에 residual expert / MoE 를 얹어 OOF MAE 를 낮출 수 있는가",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "target": "log10(per_recipient), basis=stated_cap",
+    "split": "GroupKFold(5), group=program_stem / normalized_title",
+    "features": "m2-feat-v2 (구조화 + 제목 SVD64, fold 내부 적합)",
+    "model": {
+      "objective": "reg:absoluteerror",
+      "n_estimators": 800,
+      "learning_rate": 0.03,
+      "max_depth": 6,
+      "subsample": 0.9,
+      "colsample_bytree": 0.8,
+      "min_child_weight": 1,
+      "reg_alpha": 0.0,
+      "reg_lambda": 1.0,
+      "tree_method": "hist",
+      "enable_categorical": true,
+      "random_state": 42
+    }
+  },
+  "changed": "예측 경로만 — 단일 회귀 -> base 예측 + residual 보정(전역/구간/MoE/극단)",
+  "residual_source": "fold train 내부 inner GroupKFold(5) 의 out-of-sample base 예측",
+  "bucket_definition": {
+    "E2": [
+      33.333333333333336,
+      66.66666666666667
+    ],
+    "E2b": [
+      25.0,
+      75.0
+    ],
+    "E4": [
+      20.0,
+      80.0
+    ],
+    "computed_on": "fold train 의 base_oof 예측값"
+  },
+  "results": {
+    "program_stem": {
+      "baseline_MAE": 0.5223,
+      "methods": {
+        "M65 단일 XGB": {
+          "MAE_log10": 0.4117,
+          "MedAE_log10": 0.3089,
+          "geo_mean_error_x": 2.581,
+          "within_2x": 0.4917,
+          "within_3x": 0.6814,
+          "improvement": 0.2117,
+          "per_fold_MAE": [
+            0.4201,
+            0.3811,
+            0.4359,
+            0.4288,
+            0.3927
+          ],
+          "fold_std": 0.0212,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.5036,
+              "within_2x": 0.4108
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3187,
+              "within_2x": 0.5649
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4159,
+              "within_2x": 0.4968
+            }
+          }
+        },
+        "E1 전역 residual": {
+          "MAE_log10": 0.4148,
+          "MedAE_log10": 0.3067,
+          "geo_mean_error_x": 2.599,
+          "within_2x": 0.4917,
+          "within_3x": 0.6809,
+          "improvement": 0.2058,
+          "per_fold_MAE": [
+            0.4246,
+            0.3834,
+            0.4355,
+            0.4463,
+            0.3841
+          ],
+          "fold_std": 0.0262,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4884,
+              "within_2x": 0.419
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3541,
+              "within_2x": 0.519
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4044,
+              "within_2x": 0.5347
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0031,
+            "ci95": [
+              -0.0035,
+              0.0094
+            ],
+            "wilcoxon_p": 0.51,
+            "n_better": 928,
+            "n_worse": 949,
+            "fold_win": 2
+          }
+        },
+        "E2 예측구간 residual(33/67)": {
+          "MAE_log10": 0.4249,
+          "MedAE_log10": 0.3162,
+          "geo_mean_error_x": 2.66,
+          "within_2x": 0.4822,
+          "within_3x": 0.6628,
+          "improvement": 0.1864,
+          "per_fold_MAE": [
+            0.4421,
+            0.3798,
+            0.4495,
+            0.4447,
+            0.4081
+          ],
+          "fold_std": 0.0269,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4995,
+              "within_2x": 0.4124
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3657,
+              "within_2x": 0.5316
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4119,
+              "within_2x": 0.5
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0131,
+            "ci95": [
+              0.0056,
+              0.0207
+            ],
+            "wilcoxon_p": 0.00904,
+            "n_better": 898,
+            "n_worse": 979,
+            "fold_win": 1
+          }
+        },
+        "E2b 예측구간 residual(25/75)": {
+          "MAE_log10": 0.4258,
+          "MedAE_log10": 0.3117,
+          "geo_mean_error_x": 2.666,
+          "within_2x": 0.4827,
+          "within_3x": 0.6601,
+          "improvement": 0.1847,
+          "per_fold_MAE": [
+            0.4304,
+            0.3871,
+            0.4457,
+            0.4497,
+            0.4161
+          ],
+          "fold_std": 0.0227,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4992,
+              "within_2x": 0.4206
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3632,
+              "within_2x": 0.5158
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4174,
+              "within_2x": 0.5095
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0141,
+            "ci95": [
+              0.0065,
+              0.0214
+            ],
+            "wilcoxon_p": 0.000877,
+            "n_better": 868,
+            "n_worse": 1009,
+            "fold_win": 0
+          }
+        },
+        "E3 residual MoE": {
+          "MAE_log10": 0.4192,
+          "MedAE_log10": 0.3147,
+          "geo_mean_error_x": 2.625,
+          "within_2x": 0.4811,
+          "within_3x": 0.6697,
+          "improvement": 0.1973,
+          "per_fold_MAE": [
+            0.4315,
+            0.3883,
+            0.4398,
+            0.4388,
+            0.3976
+          ],
+          "fold_std": 0.0218,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.4924,
+              "within_2x": 0.4075
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.354,
+              "within_2x": 0.5016
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4136,
+              "within_2x": 0.5315
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0075,
+            "ci95": [
+              0.0019,
+              0.0132
+            ],
+            "wilcoxon_p": 0.107,
+            "n_better": 936,
+            "n_worse": 941,
+            "fold_win": 0
+          }
+        },
+        "E4 극단구간만 보정(20/80)": {
+          "MAE_log10": 0.4142,
+          "MedAE_log10": 0.309,
+          "geo_mean_error_x": 2.595,
+          "within_2x": 0.4917,
+          "within_3x": 0.6803,
+          "improvement": 0.2069,
+          "per_fold_MAE": [
+            0.4226,
+            0.3876,
+            0.4366,
+            0.4329,
+            0.3912
+          ],
+          "fold_std": 0.0208,
+          "buckets": {
+            "Low": {
+              "n": 611,
+              "MAE_log10": 0.5062,
+              "within_2x": 0.401
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3227,
+              "within_2x": 0.5744
+            },
+            "High": {
+              "n": 634,
+              "MAE_log10": 0.4167,
+              "within_2x": 0.4968
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0025,
+            "ci95": [
+              -0.0021,
+              0.0072
+            ],
+            "wilcoxon_p": 0.698,
+            "n_better": 388,
+            "n_worse": 384,
+            "fold_win": 1
+          }
+        }
+      },
+      "residual_diag": {
+        "실제 잔차 abs mean": 0.4117,
+        "실제 잔차 std": 0.5641,
+        "보정량": {
+          "E1 전역 residual": {
+            "보정 크기 평균": 0.1237,
+            "실제 잔차와 상관": 0.1008,
+            "부호 일치율": 0.5583
+          },
+          "E2 예측구간 residual(33/67)": {
+            "보정 크기 평균": 0.1472,
+            "실제 잔차와 상관": 0.0581,
+            "부호 일치율": 0.553
+          },
+          "E2b 예측구간 residual(25/75)": {
+            "보정 크기 평균": 0.1429,
+            "실제 잔차와 상관": 0.0434,
+            "부호 일치율": 0.5333
+          },
+          "E3 residual MoE": {
+            "보정 크기 평균": 0.1108,
+            "실제 잔차와 상관": 0.0741,
+            "부호 일치율": 0.5567
+          },
+          "E4 극단구간만 보정(20/80)": {
+            "보정 크기 평균": 0.0604,
+            "실제 잔차와 상관": 0.0445,
+            "부호 일치율": 0.2376
+          }
+        }
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_train": 1501,
+          "n_test": 376,
+          "base_oof_MAE_train": 0.4213,
+          "base_insample_MAE_train": 0.0616,
+          "val_residual_MAE": 0.4201,
+          "e2_edges_won": [
+            17033941,
+            107791419
+          ],
+          "e2_train_n": [
+            500,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            111,
+            137,
+            128
+          ],
+          "e4_edges_won": [
+            9139215,
+            240421256
+          ],
+          "e4_corrected_n": 149,
+          "gate_label_n": [
+            495,
+            500,
+            506
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.1377,
+            "E2 예측구간 residual(33/67)": -0.0343,
+            "E2b 예측구간 residual(25/75)": 0.059,
+            "E3 residual MoE": 0.056,
+            "E4 극단구간만 보정(20/80)": 0.0199
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1211,
+            "E2 예측구간 residual(33/67)": 0.1427,
+            "E2b 예측구간 residual(25/75)": 0.128,
+            "E3 residual MoE": 0.1002,
+            "E4 극단구간만 보정(20/80)": 0.0544
+          },
+          "baseline_MAE": 0.5425,
+          "MAE": {
+            "M65 단일 XGB": 0.4201,
+            "E1 전역 residual": 0.4246,
+            "E2 예측구간 residual(33/67)": 0.4421,
+            "E2b 예측구간 residual(25/75)": 0.4304,
+            "E3 residual MoE": 0.4315,
+            "E4 극단구간만 보정(20/80)": 0.4226
+          },
+          "seconds": 134.2
+        },
+        {
+          "fold": 1,
+          "n_train": 1501,
+          "n_test": 376,
+          "base_oof_MAE_train": 0.4291,
+          "base_insample_MAE_train": 0.0623,
+          "val_residual_MAE": 0.3811,
+          "e2_edges_won": [
+            18113078,
+            104393605
+          ],
+          "e2_train_n": [
+            500,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            116,
+            139,
+            121
+          ],
+          "e4_edges_won": [
+            9540421,
+            214860774
+          ],
+          "e4_corrected_n": 148,
+          "gate_label_n": [
+            499,
+            508,
+            494
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.1359,
+            "E2 예측구간 residual(33/67)": 0.1917,
+            "E2b 예측구간 residual(25/75)": 0.0979,
+            "E3 residual MoE": 0.0901,
+            "E4 극단구간만 보정(20/80)": 0.0501
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1266,
+            "E2 예측구간 residual(33/67)": 0.1589,
+            "E2b 예측구간 residual(25/75)": 0.1481,
+            "E3 residual MoE": 0.1107,
+            "E4 극단구간만 보정(20/80)": 0.064
+          },
+          "baseline_MAE": 0.4965,
+          "MAE": {
+            "M65 단일 XGB": 0.3811,
+            "E1 전역 residual": 0.3834,
+            "E2 예측구간 residual(33/67)": 0.3798,
+            "E2b 예측구간 residual(25/75)": 0.3871,
+            "E3 residual MoE": 0.3883,
+            "E4 극단구간만 보정(20/80)": 0.3876
+          },
+          "seconds": 129.2
+        },
+        {
+          "fold": 2,
+          "n_train": 1502,
+          "n_test": 375,
+          "base_oof_MAE_train": 0.4086,
+          "base_insample_MAE_train": 0.0543,
+          "val_residual_MAE": 0.4359,
+          "e2_edges_won": [
+            19884719,
+            99265432
+          ],
+          "e2_train_n": [
+            501,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            131,
+            103,
+            141
+          ],
+          "e4_edges_won": [
+            9456751,
+            224257667
+          ],
+          "e4_corrected_n": 154,
+          "gate_label_n": [
+            499,
+            473,
+            530
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.064,
+            "E2 예측구간 residual(33/67)": 0.0099,
+            "E2b 예측구간 residual(25/75)": 0.0346,
+            "E3 residual MoE": 0.0348,
+            "E4 극단구간만 보정(20/80)": 0.0469
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1201,
+            "E2 예측구간 residual(33/67)": 0.1466,
+            "E2b 예측구간 residual(25/75)": 0.1553,
+            "E3 residual MoE": 0.1326,
+            "E4 극단구간만 보정(20/80)": 0.0605
+          },
+          "baseline_MAE": 0.5262,
+          "MAE": {
+            "M65 단일 XGB": 0.4359,
+            "E1 전역 residual": 0.4355,
+            "E2 예측구간 residual(33/67)": 0.4495,
+            "E2b 예측구간 residual(25/75)": 0.4457,
+            "E3 residual MoE": 0.4398,
+            "E4 극단구간만 보정(20/80)": 0.4366
+          },
+          "seconds": 133.8
+        },
+        {
+          "fold": 3,
+          "n_train": 1502,
+          "n_test": 375,
+          "base_oof_MAE_train": 0.4165,
+          "base_insample_MAE_train": 0.0582,
+          "val_residual_MAE": 0.4288,
+          "e2_edges_won": [
+            18297104,
+            100735395
+          ],
+          "e2_train_n": [
+            501,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            132,
+            99,
+            144
+          ],
+          "e4_edges_won": [
+            9563909,
+            212292300
+          ],
+          "e4_corrected_n": 166,
+          "gate_label_n": [
+            465,
+            497,
+            540
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.023,
+            "E2 예측구간 residual(33/67)": 0.0668,
+            "E2b 예측구간 residual(25/75)": 0.015,
+            "E3 residual MoE": 0.0687,
+            "E4 극단구간만 보정(20/80)": 0.0426
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.124,
+            "E2 예측구간 residual(33/67)": 0.1449,
+            "E2b 예측구간 residual(25/75)": 0.1367,
+            "E3 residual MoE": 0.107,
+            "E4 극단구간만 보정(20/80)": 0.0587
+          },
+          "baseline_MAE": 0.5243,
+          "MAE": {
+            "M65 단일 XGB": 0.4288,
+            "E1 전역 residual": 0.4463,
+            "E2 예측구간 residual(33/67)": 0.4447,
+            "E2b 예측구간 residual(25/75)": 0.4497,
+            "E3 residual MoE": 0.4388,
+            "E4 극단구간만 보정(20/80)": 0.4329
+          },
+          "seconds": 135.6
+        },
+        {
+          "fold": 4,
+          "n_train": 1502,
+          "n_test": 375,
+          "base_oof_MAE_train": 0.4312,
+          "base_insample_MAE_train": 0.0583,
+          "val_residual_MAE": 0.3927,
+          "e2_edges_won": [
+            18399221,
+            105428368
+          ],
+          "e2_train_n": [
+            501,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            124,
+            139,
+            112
+          ],
+          "e4_edges_won": [
+            9958513,
+            215011902
+          ],
+          "e4_corrected_n": 155,
+          "gate_label_n": [
+            491,
+            496,
+            515
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.1648,
+            "E2 예측구간 residual(33/67)": 0.0653,
+            "E2b 예측구간 residual(25/75)": 0.0164,
+            "E3 residual MoE": 0.1372,
+            "E4 극단구간만 보정(20/80)": 0.0601
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1269,
+            "E2 예측구간 residual(33/67)": 0.143,
+            "E2b 예측구간 residual(25/75)": 0.1466,
+            "E3 residual MoE": 0.1032,
+            "E4 극단구간만 보정(20/80)": 0.0646
+          },
+          "baseline_MAE": 0.5218,
+          "MAE": {
+            "M65 단일 XGB": 0.3927,
+            "E1 전역 residual": 0.3841,
+            "E2 예측구간 residual(33/67)": 0.4081,
+            "E2b 예측구간 residual(25/75)": 0.4161,
+            "E3 residual MoE": 0.3976,
+            "E4 극단구간만 보정(20/80)": 0.3912
+          },
+          "seconds": 133.6
+        }
+      ],
+      "leakage": {
+        "residual 학습 타깃": "y_train - base_oof_train. base_oof 는 fold train 을 inner GroupKFold(5) 로 다시 나눠 만든 out-of-sample 예측",
+        "in-sample 잔차를 쓰지 않았다는 증거": "fold별 train 잔차 |OOF| [0.4213, 0.4291, 0.4086, 0.4165, 0.4312] vs |in-sample| [0.0616, 0.0623, 0.0543, 0.0582, 0.0583] — in-sample 은 0 에 눌려 있어 그대로 쓰면 residual 모델이 배울 신호가 없다",
+        "구간 경계 계산 입력": "fold train 의 base_oof 예측값만 (정답 금액·전체 데이터 미사용)",
+        "경계가 fold 마다 흔들린다": "True",
+        "fold별 E2 경계(원)": "[['17,033,941', '107,791,419'], ['18,113,078', '104,393,605'], ['19,884,719', '99,265,432'], ['18,297,104', '100,735,395'], ['18,399,221', '105,428,368']]",
+        "routing / gating 입력": "Xte 와 base 예측뿐 — yte 는 metric·구간집계에만 쓴다",
+        "gate 라벨 생성": "inner split 에서 expert 를 다시 학습한 out-of-sample 예측으로 argmin_k |r - expert_k| — 자기 자신을 학습한 예측을 쓰지 않는다"
+      }
+    },
+    "normalized_title": {
+      "baseline_MAE": 0.5458,
+      "methods": {
+        "M65 단일 XGB": {
+          "MAE_log10": 0.4304,
+          "MedAE_log10": 0.3406,
+          "geo_mean_error_x": 2.694,
+          "within_2x": 0.464,
+          "within_3x": 0.6537,
+          "improvement": 0.2114,
+          "per_fold_MAE": [
+            0.4098,
+            0.4261,
+            0.464,
+            0.4161,
+            0.436
+          ],
+          "fold_std": 0.019,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5106,
+              "within_2x": 0.4089
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3422,
+              "within_2x": 0.5142
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4412,
+              "within_2x": 0.467
+            }
+          }
+        },
+        "E1 전역 residual": {
+          "MAE_log10": 0.4367,
+          "MedAE_log10": 0.3494,
+          "geo_mean_error_x": 2.733,
+          "within_2x": 0.4502,
+          "within_3x": 0.6484,
+          "improvement": 0.1999,
+          "per_fold_MAE": [
+            0.4176,
+            0.4215,
+            0.4781,
+            0.4321,
+            0.4343
+          ],
+          "fold_std": 0.0216,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4994,
+              "within_2x": 0.4204
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3839,
+              "within_2x": 0.4446
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4291,
+              "within_2x": 0.4843
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0063,
+            "ci95": [
+              -0.0007,
+              0.0131
+            ],
+            "wilcoxon_p": 0.0843,
+            "n_better": 903,
+            "n_worse": 974,
+            "fold_win": 2
+          }
+        },
+        "E2 예측구간 residual(33/67)": {
+          "MAE_log10": 0.438,
+          "MedAE_log10": 0.3398,
+          "geo_mean_error_x": 2.742,
+          "within_2x": 0.4582,
+          "within_3x": 0.6414,
+          "improvement": 0.1975,
+          "per_fold_MAE": [
+            0.4162,
+            0.4337,
+            0.4707,
+            0.4345,
+            0.4351
+          ],
+          "fold_std": 0.0178,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.4967,
+              "within_2x": 0.4286
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3869,
+              "within_2x": 0.4636
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4328,
+              "within_2x": 0.4811
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0076,
+            "ci95": [
+              -0.0002,
+              0.016
+            ],
+            "wilcoxon_p": 0.0362,
+            "n_better": 892,
+            "n_worse": 985,
+            "fold_win": 1
+          }
+        },
+        "E2b 예측구간 residual(25/75)": {
+          "MAE_log10": 0.4416,
+          "MedAE_log10": 0.3338,
+          "geo_mean_error_x": 2.765,
+          "within_2x": 0.4544,
+          "within_3x": 0.6489,
+          "improvement": 0.1909,
+          "per_fold_MAE": [
+            0.4237,
+            0.4342,
+            0.4826,
+            0.4361,
+            0.4316
+          ],
+          "fold_std": 0.0209,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5041,
+              "within_2x": 0.4039
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3908,
+              "within_2x": 0.4684
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4323,
+              "within_2x": 0.489
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0112,
+            "ci95": [
+              0.0032,
+              0.0195
+            ],
+            "wilcoxon_p": 0.00896,
+            "n_better": 906,
+            "n_worse": 971,
+            "fold_win": 1
+          }
+        },
+        "E3 residual MoE": {
+          "MAE_log10": 0.4396,
+          "MedAE_log10": 0.3473,
+          "geo_mean_error_x": 2.752,
+          "within_2x": 0.4385,
+          "within_3x": 0.6484,
+          "improvement": 0.1946,
+          "per_fold_MAE": [
+            0.4266,
+            0.4382,
+            0.4678,
+            0.4291,
+            0.4365
+          ],
+          "fold_std": 0.0147,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5067,
+              "within_2x": 0.3892
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3753,
+              "within_2x": 0.4778
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4394,
+              "within_2x": 0.4465
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.0092,
+            "ci95": [
+              0.0031,
+              0.0158
+            ],
+            "wilcoxon_p": 0.0077,
+            "n_better": 899,
+            "n_worse": 978,
+            "fold_win": 0
+          }
+        },
+        "E4 극단구간만 보정(20/80)": {
+          "MAE_log10": 0.4334,
+          "MedAE_log10": 0.3381,
+          "geo_mean_error_x": 2.713,
+          "within_2x": 0.4608,
+          "within_3x": 0.6494,
+          "improvement": 0.2059,
+          "per_fold_MAE": [
+            0.4229,
+            0.4232,
+            0.4654,
+            0.4251,
+            0.4306
+          ],
+          "fold_std": 0.0162,
+          "buckets": {
+            "Low": {
+              "n": 609,
+              "MAE_log10": 0.5108,
+              "within_2x": 0.3875
+            },
+            "Mid": {
+              "n": 632,
+              "MAE_log10": 0.3491,
+              "within_2x": 0.5237
+            },
+            "High": {
+              "n": 636,
+              "MAE_log10": 0.4431,
+              "within_2x": 0.4686
+            }
+          },
+          "vs_base": {
+            "delta_MAE": 0.003,
+            "ci95": [
+              -0.0021,
+              0.0085
+            ],
+            "wilcoxon_p": 0.422,
+            "n_better": 388,
+            "n_worse": 406,
+            "fold_win": 2
+          }
+        }
+      },
+      "residual_diag": {
+        "실제 잔차 abs mean": 0.4304,
+        "실제 잔차 std": 0.5772,
+        "보정량": {
+          "E1 전역 residual": {
+            "보정 크기 평균": 0.1237,
+            "실제 잔차와 상관": 0.1086,
+            "부호 일치율": 0.5408
+          },
+          "E2 예측구간 residual(33/67)": {
+            "보정 크기 평균": 0.1473,
+            "실제 잔차와 상관": 0.0992,
+            "부호 일치율": 0.5381
+          },
+          "E2b 예측구간 residual(25/75)": {
+            "보정 크기 평균": 0.1482,
+            "실제 잔차와 상관": 0.0867,
+            "부호 일치율": 0.5477
+          },
+          "E3 residual MoE": {
+            "보정 크기 평균": 0.111,
+            "실제 잔차와 상관": 0.0799,
+            "부호 일치율": 0.5168
+          },
+          "E4 극단구간만 보정(20/80)": {
+            "보정 크기 평균": 0.0661,
+            "실제 잔차와 상관": 0.0807,
+            "부호 일치율": 0.2392
+          }
+        }
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "n_train": 1501,
+          "n_test": 376,
+          "base_oof_MAE_train": 0.4425,
+          "base_insample_MAE_train": 0.0569,
+          "val_residual_MAE": 0.4098,
+          "e2_edges_won": [
+            17442840,
+            102119692
+          ],
+          "e2_train_n": [
+            500,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            126,
+            127,
+            123
+          ],
+          "e4_edges_won": [
+            9231483,
+            202469351
+          ],
+          "e4_corrected_n": 167,
+          "gate_label_n": [
+            479,
+            495,
+            527
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.1471,
+            "E2 예측구간 residual(33/67)": 0.143,
+            "E2b 예측구간 residual(25/75)": 0.0689,
+            "E3 residual MoE": 0.0835,
+            "E4 극단구간만 보정(20/80)": 0.0338
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1317,
+            "E2 예측구간 residual(33/67)": 0.1503,
+            "E2b 예측구간 residual(25/75)": 0.1405,
+            "E3 residual MoE": 0.1079,
+            "E4 극단구간만 보정(20/80)": 0.0765
+          },
+          "baseline_MAE": 0.5105,
+          "MAE": {
+            "M65 단일 XGB": 0.4098,
+            "E1 전역 residual": 0.4176,
+            "E2 예측구간 residual(33/67)": 0.4162,
+            "E2b 예측구간 residual(25/75)": 0.4237,
+            "E3 residual MoE": 0.4266,
+            "E4 극단구간만 보정(20/80)": 0.4229
+          },
+          "seconds": 130.8
+        },
+        {
+          "fold": 1,
+          "n_train": 1501,
+          "n_test": 376,
+          "base_oof_MAE_train": 0.4446,
+          "base_insample_MAE_train": 0.0588,
+          "val_residual_MAE": 0.4261,
+          "e2_edges_won": [
+            17685380,
+            106535052
+          ],
+          "e2_train_n": [
+            500,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            110,
+            133,
+            133
+          ],
+          "e4_edges_won": [
+            8834806,
+            215808377
+          ],
+          "e4_corrected_n": 143,
+          "gate_label_n": [
+            481,
+            521,
+            499
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.1793,
+            "E2 예측구간 residual(33/67)": 0.1408,
+            "E2b 예측구간 residual(25/75)": 0.0953,
+            "E3 residual MoE": 0.0807,
+            "E4 극단구간만 보정(20/80)": 0.1157
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1194,
+            "E2 예측구간 residual(33/67)": 0.146,
+            "E2b 예측구간 residual(25/75)": 0.1439,
+            "E3 residual MoE": 0.1069,
+            "E4 극단구간만 보정(20/80)": 0.0548
+          },
+          "baseline_MAE": 0.5577,
+          "MAE": {
+            "M65 단일 XGB": 0.4261,
+            "E1 전역 residual": 0.4215,
+            "E2 예측구간 residual(33/67)": 0.4337,
+            "E2b 예측구간 residual(25/75)": 0.4342,
+            "E3 residual MoE": 0.4382,
+            "E4 극단구간만 보정(20/80)": 0.4232
+          },
+          "seconds": 133.6
+        },
+        {
+          "fold": 2,
+          "n_train": 1502,
+          "n_test": 375,
+          "base_oof_MAE_train": 0.439,
+          "base_insample_MAE_train": 0.058,
+          "val_residual_MAE": 0.464,
+          "e2_edges_won": [
+            19630236,
+            102750343
+          ],
+          "e2_train_n": [
+            501,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            142,
+            110,
+            123
+          ],
+          "e4_edges_won": [
+            10381939,
+            216518683
+          ],
+          "e4_corrected_n": 171,
+          "gate_label_n": [
+            465,
+            523,
+            514
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.0113,
+            "E2 예측구간 residual(33/67)": 0.0164,
+            "E2b 예측구간 residual(25/75)": 0.0204,
+            "E3 residual MoE": 0.0851,
+            "E4 극단구간만 보정(20/80)": 0.0691
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1197,
+            "E2 예측구간 residual(33/67)": 0.1516,
+            "E2b 예측구간 residual(25/75)": 0.1576,
+            "E3 residual MoE": 0.1275,
+            "E4 극단구간만 보정(20/80)": 0.0727
+          },
+          "baseline_MAE": 0.5663,
+          "MAE": {
+            "M65 단일 XGB": 0.464,
+            "E1 전역 residual": 0.4781,
+            "E2 예측구간 residual(33/67)": 0.4707,
+            "E2b 예측구간 residual(25/75)": 0.4826,
+            "E3 residual MoE": 0.4678,
+            "E4 극단구간만 보정(20/80)": 0.4654
+          },
+          "seconds": 122.8
+        },
+        {
+          "fold": 3,
+          "n_train": 1502,
+          "n_test": 375,
+          "base_oof_MAE_train": 0.4489,
+          "base_insample_MAE_train": 0.0625,
+          "val_residual_MAE": 0.4161,
+          "e2_edges_won": [
+            19797247,
+            101543590
+          ],
+          "e2_train_n": [
+            501,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            127,
+            115,
+            133
+          ],
+          "e4_edges_won": [
+            9874741,
+            216510030
+          ],
+          "e4_corrected_n": 168,
+          "gate_label_n": [
+            522,
+            485,
+            495
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.0983,
+            "E2 예측구간 residual(33/67)": 0.0637,
+            "E2b 예측구간 residual(25/75)": 0.0819,
+            "E3 residual MoE": 0.0123,
+            "E4 극단구간만 보정(20/80)": 0.0926
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1397,
+            "E2 예측구간 residual(33/67)": 0.1491,
+            "E2b 예측구간 residual(25/75)": 0.1583,
+            "E3 residual MoE": 0.1085,
+            "E4 극단구간만 보정(20/80)": 0.0706
+          },
+          "baseline_MAE": 0.5706,
+          "MAE": {
+            "M65 단일 XGB": 0.4161,
+            "E1 전역 residual": 0.4321,
+            "E2 예측구간 residual(33/67)": 0.4345,
+            "E2b 예측구간 residual(25/75)": 0.4361,
+            "E3 residual MoE": 0.4291,
+            "E4 극단구간만 보정(20/80)": 0.4251
+          },
+          "seconds": 132.3
+        },
+        {
+          "fold": 4,
+          "n_train": 1502,
+          "n_test": 375,
+          "base_oof_MAE_train": 0.4336,
+          "base_insample_MAE_train": 0.0609,
+          "val_residual_MAE": 0.436,
+          "e2_edges_won": [
+            19390936,
+            111141808
+          ],
+          "e2_train_n": [
+            501,
+            500,
+            501
+          ],
+          "e2_test_n": [
+            124,
+            130,
+            121
+          ],
+          "e4_edges_won": [
+            9240606,
+            231385636
+          ],
+          "e4_corrected_n": 145,
+          "gate_label_n": [
+            467,
+            493,
+            542
+          ],
+          "corr_vs_residual_r": {
+            "E1 전역 residual": 0.1051,
+            "E2 예측구간 residual(33/67)": 0.1314,
+            "E2b 예측구간 residual(25/75)": 0.1779,
+            "E3 residual MoE": 0.1155,
+            "E4 극단구간만 보정(20/80)": 0.1046
+          },
+          "corr_abs_mean": {
+            "E1 전역 residual": 0.1079,
+            "E2 예측구간 residual(33/67)": 0.1396,
+            "E2b 예측구간 residual(25/75)": 0.1407,
+            "E3 residual MoE": 0.1043,
+            "E4 극단구간만 보정(20/80)": 0.0562
+          },
+          "baseline_MAE": 0.524,
+          "MAE": {
+            "M65 단일 XGB": 0.436,
+            "E1 전역 residual": 0.4343,
+            "E2 예측구간 residual(33/67)": 0.4351,
+            "E2b 예측구간 residual(25/75)": 0.4316,
+            "E3 residual MoE": 0.4365,
+            "E4 극단구간만 보정(20/80)": 0.4306
+          },
+          "seconds": 131.8
+        }
+      ],
+      "leakage": {
+        "residual 학습 타깃": "y_train - base_oof_train. base_oof 는 fold train 을 inner GroupKFold(5) 로 다시 나눠 만든 out-of-sample 예측",
+        "in-sample 잔차를 쓰지 않았다는 증거": "fold별 train 잔차 |OOF| [0.4425, 0.4446, 0.439, 0.4489, 0.4336] vs |in-sample| [0.0569, 0.0588, 0.058, 0.0625, 0.0609] — in-sample 은 0 에 눌려 있어 그대로 쓰면 residual 모델이 배울 신호가 없다",
+        "구간 경계 계산 입력": "fold train 의 base_oof 예측값만 (정답 금액·전체 데이터 미사용)",
+        "경계가 fold 마다 흔들린다": "True",
+        "fold별 E2 경계(원)": "[['17,442,840', '102,119,692'], ['17,685,380', '106,535,052'], ['19,630,236', '102,750,343'], ['19,797,247', '101,543,590'], ['19,390,936', '111,141,808']]",
+        "routing / gating 입력": "Xte 와 base 예측뿐 — yte 는 metric·구간집계에만 쓴다",
+        "gate 라벨 생성": "inner split 에서 expert 를 다시 학습한 out-of-sample 예측으로 argmin_k |r - expert_k| — 자기 자신을 학습한 예측을 쓰지 않는다"
+      }
+    }
+  },
+  "reproducibility": {
+    "M65 단일 XGB": true,
+    "E1 전역 residual": true,
+    "E2 예측구간 residual(33/67)": true,
+    "E2b 예측구간 residual(25/75)": true,
+    "E3 residual MoE": true,
+    "E4 극단구간만 보정(20/80)": true
+  },
+  "promotion_checks": {
+    "E1 전역 residual": {
+      "1. OOF MAE 가 M65 보다 낮다": false,
+      "2. 목표 MAE 0.30 이하": false,
+      "3. 5폴드 중 4 이상에서 같은 방향 개선": false,
+      "4. 엄격 그룹(normalized_title)에서도 개선 유지": false,
+      "5. paired 95% CI 상한이 0 아래": false,
+      "6. 누수 점검 통과": true,
+      "7. 같은 seed 재실행 일치": true
+    },
+    "E2 예측구간 residual(33/67)": {
+      "1. OOF MAE 가 M65 보다 낮다": false,
+      "2. 목표 MAE 0.30 이하": false,
+      "3. 5폴드 중 4 이상에서 같은 방향 개선": false,
+      "4. 엄격 그룹(normalized_title)에서도 개선 유지": false,
+      "5. paired 95% CI 상한이 0 아래": false,
+      "6. 누수 점검 통과": true,
+      "7. 같은 seed 재실행 일치": true
+    },
+    "E2b 예측구간 residual(25/75)": {
+      "1. OOF MAE 가 M65 보다 낮다": false,
+      "2. 목표 MAE 0.30 이하": false,
+      "3. 5폴드 중 4 이상에서 같은 방향 개선": false,
+      "4. 엄격 그룹(normalized_title)에서도 개선 유지": false,
+      "5. paired 95% CI 상한이 0 아래": false,
+      "6. 누수 점검 통과": true,
+      "7. 같은 seed 재실행 일치": true
+    },
+    "E3 residual MoE": {
+      "1. OOF MAE 가 M65 보다 낮다": false,
+      "2. 목표 MAE 0.30 이하": false,
+      "3. 5폴드 중 4 이상에서 같은 방향 개선": false,
+      "4. 엄격 그룹(normalized_title)에서도 개선 유지": false,
+      "5. paired 95% CI 상한이 0 아래": false,
+      "6. 누수 점검 통과": true,
+      "7. 같은 seed 재실행 일치": true
+    },
+    "E4 극단구간만 보정(20/80)": {
+      "1. OOF MAE 가 M65 보다 낮다": false,
+      "2. 목표 MAE 0.30 이하": false,
+      "3. 5폴드 중 4 이상에서 같은 방향 개선": false,
+      "4. 엄격 그룹(normalized_title)에서도 개선 유지": false,
+      "5. paired 95% CI 상한이 0 아래": false,
+      "6. 누수 점검 통과": true,
+      "7. 같은 seed 재실행 일치": true
+    }
+  },
+  "best_method": "E4 극단구간만 보정(20/80)",
+  "verdict": "reject (Case 5) — M65 유지",
+  "published_m65": {
+    "MAE_log10": 0.4117,
+    "improvement": 0.212,
+    "within_2x": 0.492,
+    "within_3x": 0.681
+  },
+  "smoke": false,
+  "run_timestamp": "2026-09-02T11:06:32.481062",
+  "seconds": 2002.6
+}

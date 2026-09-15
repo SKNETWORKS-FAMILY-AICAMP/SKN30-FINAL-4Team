@@ -1,0 +1,103 @@
+{
+  "model": "klue/roberta-base",
+  "n_rows": 1404,
+  "n_classes": 19,
+  "n_groups": 1203,
+  "folds": 2,
+  "seed": 42,
+  "cv": "StratifiedGroupKFold (program_stem)",
+  "method": "one-factor-at-a-time",
+  "base_config": {
+    "lr": 3e-05,
+    "epochs": 8,
+    "batch": 16,
+    "max_len": 256,
+    "class_weight": true,
+    "fields": "all"
+  },
+  "base_result": {
+    "accuracy": 0.8376,
+    "macro_f1": 0.7968,
+    "weighted_f1": 0.837
+  },
+  "baselines": {
+    "ml_plain_cv": 0.82,
+    "ml_group_cv": 0.7953
+  },
+  "axes": {
+    "lr": {
+      "1e-05": {
+        "accuracy": 0.698,
+        "macro_f1": 0.6835,
+        "weighted_f1": 0.6902,
+        "is_base": false,
+        "delta": -0.1133
+      },
+      "2e-05": {
+        "accuracy": 0.8162,
+        "macro_f1": 0.7751,
+        "weighted_f1": 0.8169,
+        "is_base": false,
+        "delta": -0.0217
+      },
+      "3e-05": {
+        "accuracy": 0.8376,
+        "macro_f1": 0.7968,
+        "weighted_f1": 0.837,
+        "is_base": true,
+        "delta": 0.0
+      },
+      "5e-05": {
+        "accuracy": 0.8283,
+        "macro_f1": 0.7867,
+        "weighted_f1": 0.8275,
+        "is_base": false,
+        "delta": -0.0101
+      }
+    }
+  },
+  "best_per_axis": {
+    "lr": "3e-05",
+    "epochs": "8",
+    "batch": "16",
+    "max_len": "256",
+    "class_weight": "True",
+    "fields": "all"
+  },
+  "best_config_combined": {
+    "lr": 3e-05,
+    "epochs": 8,
+    "batch": 16,
+    "max_len": 256,
+    "class_weight": true,
+    "fields": "all"
+  },
+  "final_combined_result": {
+    "accuracy": 0.8376,
+    "macro_f1": 0.7968,
+    "weighted_f1": 0.837
+  },
+  "total_seconds": 303.6,
+  "classes": [
+    "SW·솔루션",
+    "경진대회",
+    "고용보조",
+    "교육훈련",
+    "기술·IP평가",
+    "보증",
+    "사업화",
+    "상담",
+    "설비",
+    "성능인증",
+    "수출물류",
+    "수출통관",
+    "연구개발",
+    "융자",
+    "창업보육",
+    "컨설팅",
+    "판로",
+    "해외수주·실증",
+    "해외인증"
+  ],
+  "caveat": "axes 의 수치는 하이퍼파라미터 선택에 사용된 CV 성능이라 선택 편향이 있다. 순수 일반화 성능은 별도로 Open API 정답 50건(M13) 대조로 확인한다."
+}

@@ -1,0 +1,184 @@
+{
+  "정의": "Model 3 = 유사사업 비교군 대비 설계 조합의 통계적 이례성 산출. 정상/이상 판정기가 아니다 (방향서 §1·§12)",
+  "검증대상": "판정 정확도가 아니라 이례성 신호의 안정성 (방향서 §8)",
+  "라벨": "이 실험은 사람 라벨을 한 건도 쓰지 않는다",
+  "n_pool": 1948,
+  "cohort_level_dist": {
+    "2_성격x방식": 1741,
+    "1_성격": 128,
+    "0_전체": 79
+  },
+  "resample_stability": {
+    "frac_0.9": {
+      "n_iter": 15,
+      "spearman_mean": 0.9827,
+      "spearman_min": 0.9653,
+      "top30_mean": 0.8289,
+      "top30_min": 0.7,
+      "top39_mean": 0.8376,
+      "top39_min": 0.7436,
+      "centroid_shift_mean": 0.3659
+    },
+    "frac_0.8": {
+      "n_iter": 15,
+      "spearman_mean": 0.9691,
+      "spearman_min": 0.9575,
+      "top30_mean": 0.7889,
+      "top30_min": 0.6667,
+      "top39_mean": 0.8376,
+      "top39_min": 0.6923,
+      "centroid_shift_mean": 0.4806
+    },
+    "frac_0.7": {
+      "n_iter": 15,
+      "spearman_mean": 0.9517,
+      "spearman_min": 0.9413,
+      "top30_mean": 0.7622,
+      "top30_min": 0.6333,
+      "top39_mean": 0.7846,
+      "top39_min": 0.641,
+      "centroid_shift_mean": 0.3742
+    },
+    "frac_0.5": {
+      "n_iter": 15,
+      "spearman_mean": 0.9395,
+      "spearman_min": 0.9323,
+      "top30_mean": 0.6533,
+      "top30_min": 0.4,
+      "top39_mean": 0.706,
+      "top39_min": 0.5128,
+      "centroid_shift_mean": 0.3835
+    }
+  },
+  "min_cohort_sensitivity": {
+    "10": {
+      "spearman": 0.9765,
+      "top30_overlap": 0.8,
+      "top39_overlap": 0.8462,
+      "level_dist": {
+        "0_전체": 32,
+        "1_성격": 105,
+        "2_성격x방식": 1811
+      }
+    },
+    "15": {
+      "spearman": 0.9846,
+      "top30_overlap": 0.8667,
+      "top39_overlap": 0.8974,
+      "level_dist": {
+        "0_전체": 46,
+        "1_성격": 128,
+        "2_성격x방식": 1774
+      }
+    },
+    "20": {
+      "spearman": 1.0,
+      "top30_overlap": 1.0,
+      "top39_overlap": 1.0,
+      "level_dist": {
+        "0_전체": 79,
+        "1_성격": 128,
+        "2_성격x방식": 1741
+      }
+    },
+    "30": {
+      "spearman": 0.9546,
+      "top30_overlap": 0.9333,
+      "top39_overlap": 0.9487,
+      "level_dist": {
+        "0_전체": 197,
+        "1_성격": 183,
+        "2_성격x방식": 1568
+      }
+    },
+    "50": {
+      "spearman": 0.9516,
+      "top30_overlap": 0.9,
+      "top39_overlap": 0.8974,
+      "level_dist": {
+        "0_전체": 197,
+        "1_성격": 227,
+        "2_성격x방식": 1524
+      }
+    }
+  },
+  "cohort_volatility": {
+    "설명": "80% 재표집 15회에서 백분위 순위가 평균 몇 점 움직이는가",
+    "overall_mean": 3.3184,
+    "overall_median": 2.0637,
+    "by_level": {
+      "0_전체": 1.3552,
+      "1_성격": 5.9373,
+      "2_성격x방식": 3.2149
+    },
+    "worst_cohorts": [
+      {
+        "cohort": "사업화|other",
+        "n": 23,
+        "volatility": 29.3745
+      },
+      {
+        "cohort": "수출통관|grant",
+        "n": 20,
+        "volatility": 20.662
+      },
+      {
+        "cohort": "사업화|loan",
+        "n": 25,
+        "volatility": 13.8665
+      },
+      {
+        "cohort": "성능인증|grant",
+        "n": 20,
+        "volatility": 11.5038
+      },
+      {
+        "cohort": "해외수주·실증|grant",
+        "n": 27,
+        "volatility": 7.8933
+      },
+      {
+        "cohort": "사업화|voucher",
+        "n": 29,
+        "volatility": 6.1663
+      },
+      {
+        "cohort": "해외인증|grant",
+        "n": 29,
+        "volatility": 5.1269
+      },
+      {
+        "cohort": "고용보조|grant",
+        "n": 70,
+        "volatility": 3.4251
+      }
+    ],
+    "best_cohorts": [
+      {
+        "cohort": "컨설팅|grant",
+        "n": 136,
+        "volatility": 3.1024
+      },
+      {
+        "cohort": "판로|grant",
+        "n": 158,
+        "volatility": 2.6365
+      },
+      {
+        "cohort": "융자|loan",
+        "n": 159,
+        "volatility": 2.1523
+      },
+      {
+        "cohort": "연구개발|grant",
+        "n": 226,
+        "volatility": 1.9498
+      },
+      {
+        "cohort": "사업화|grant",
+        "n": 675,
+        "volatility": 1.559
+      }
+    ]
+  }
+}

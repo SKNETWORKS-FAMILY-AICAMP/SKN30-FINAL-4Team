@@ -1,0 +1,160 @@
+{
+  "n_rows": 3905,
+  "min_cohort": 30,
+  "axes": [
+    "per_recipient",
+    "support_count",
+    "support_ratio",
+    "project_duration"
+  ],
+  "reference_rows": 360,
+  "cohorts_ge30": {
+    "per_recipient": {
+      "성격x방식x단위x출처": 14,
+      "성격x방식x단위": 11,
+      "성격x단위": 10,
+      "단위": 2
+    },
+    "support_count": {
+      "성격x방식x단위x출처": 14,
+      "성격x방식x단위": 12,
+      "성격x단위": 11,
+      "단위": 3
+    },
+    "support_ratio": {
+      "성격x방식x출처": 6,
+      "성격x방식": 5,
+      "성격": 6,
+      "전체": 1
+    },
+    "project_duration": {
+      "성격x방식x출처": 7,
+      "성격x방식": 7,
+      "성격": 7,
+      "전체": 1
+    }
+  },
+  "cohorts_ge30_source_split": 14,
+  "demo": {
+    "row_id": "EXCEL2022_0524",
+    "title": "2022년 핵심산업 클라우드 플래그십 프로젝트 사업",
+    "support_type": "사업화",
+    "support_method": "grant",
+    "axes": [
+      {
+        "axis": "per_recipient",
+        "value": 5000000000.0,
+        "level": "성격x방식x단위",
+        "n": 80,
+        "distribution": {
+          "p10": 2350000.0000000005,
+          "p25": 6750000.0,
+          "p50": 27500000.0,
+          "p75": 120000000.0,
+          "p90": 434200000.0000001
+        },
+        "percentile_rank": 100.0,
+        "status": "비교가능",
+        "statement": "비교군 80건 중 약 100%가 이 값 이하다."
+      },
+      {
+        "axis": "support_count",
+        "value": 5.0,
+        "level": "성격x방식x단위",
+        "n": 61,
+        "distribution": {
+          "p10": 1.0,
+          "p25": 2.0,
+          "p50": 3.0,
+          "p75": 6.0,
+          "p90": 16.0
+        },
+        "percentile_rank": 66.7,
+        "status": "비교가능",
+        "statement": "비교군 61건 중 약 67%가 이 값 이하다."
+      },
+      {
+        "axis": "support_ratio",
+        "value": 80.0,
+        "level": "성격x방식x출처",
+        "n": 267,
+        "distribution": {
+          "p10": 70.0,
+          "p25": 70.0,
+          "p50": 80.0,
+          "p75": 90.0,
+          "p90": 90.0
+        },
+        "percentile_rank": 50.0,
+        "status": "비교가능",
+        "statement": "비교군 267건 중 약 50%가 이 값 이하다."
+      },
+      {
+        "axis": "project_duration",
+        "status": "비교불가",
+        "reason": "신규 사업 값 미기재"
+      }
+    ]
+  },
+  "phase_b": {
+    "n": 2205,
+    "target": "log10(기업당 지원액)",
+    "cv": "GroupKFold(5) by program_stem",
+    "features": [
+      "support_type",
+      "support_method",
+      "support_unit",
+      "category_large",
+      "industry_grp",
+      "agency_type",
+      "amount_type",
+      "support_count",
+      "support_ratio",
+      "project_duration"
+    ],
+    "results": {
+      "전체중앙값": {
+        "MAE_log10": 0.86,
+        "RMSE_log10": 1.0886,
+        "geo_mean_error_x": 7.244,
+        "within_2x": 0.1909,
+        "within_3x": 0.3447
+      },
+      "코호트중앙값(baseline)": {
+        "MAE_log10": 0.679,
+        "RMSE_log10": 0.8972,
+        "geo_mean_error_x": 4.775,
+        "within_2x": 0.2608,
+        "within_3x": 0.4458
+      },
+      "LightGBM": {
+        "MAE_log10": 0.5164,
+        "RMSE_log10": 0.6948,
+        "geo_mean_error_x": 3.284,
+        "within_2x": 0.39,
+        "within_3x": 0.5823
+      },
+      "CatBoost": {
+        "MAE_log10": 0.5332,
+        "RMSE_log10": 0.7115,
+        "geo_mean_error_x": 3.414,
+        "within_2x": 0.3646,
+        "within_3x": 0.5528
+      },
+      "LGBM-quantile50": {
+        "MAE_log10": 0.516,
+        "RMSE_log10": 0.7077,
+        "geo_mean_error_x": 3.281,
+        "within_2x": 0.4068,
+        "within_3x": 0.581
+      }
+    },
+    "baseline_MAE": 0.679,
+    "best_ml": "LGBM-quantile50",
+    "best_ml_MAE": 0.516,
+    "improvement": 0.2401,
+    "min_required": 0.1,
+    "adopt": true
+  },
+  "verdict": "Go"
+}

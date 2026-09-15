@@ -1,0 +1,39 @@
+{
+  "n_rows": 50,
+  "n_rows_with_error": 15,
+  "error_counts": {
+    "selected_count_error": 13,
+    "year_as_duration_error": 7,
+    "total_vs_per_recipient_error": 2
+  },
+  "error_types": {
+    "year_as_duration_error": "공고연도를 사업기간으로 읽음 (2026년->26, '21년->21)",
+    "duration_unsupported": "기간 근거가 없는데 값이 만들어짐",
+    "duration_range_error": "기간이 상식 범위(0~10년) 밖",
+    "selected_count_error": "기업수 오파싱 — 단위어 오인(12개소/6개월) 또는 콤마 절단",
+    "total_vs_per_recipient_error": "총예산/기업수 파생 기업당액이 상식 범위 밖"
+  },
+  "by_human_label": {
+    "경계": {
+      "n": 18,
+      "with_error": 5
+    },
+    "비전형": {
+      "n": 15,
+      "with_error": 8
+    },
+    "정상": {
+      "n": 17,
+      "with_error": 2
+    }
+  },
+  "full_corpus_impact": {
+    "사업기간 보유행": 954,
+    "  연도 오파싱": "480건 (50%)",
+    "지원기업수 보유행": 2782,
+    "  교정 시 변동": "871건 (31%)",
+    "기업당액 상식범위 밖": 146
+  },
+  "csv_path": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\reports\\m31_parser_audit.csv",
+  "scope": "감사 전용 — amount_parser.py 는 수정하지 않았다 (Task 2 에서 승격)"
+}

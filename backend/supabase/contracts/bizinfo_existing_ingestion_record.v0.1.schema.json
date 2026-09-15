@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prereview.local/contracts/bizinfo-existing-ingestion-record-v0.1.schema.json",
+  "title": "Bizinfo Existing KB ingestion record v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "portal_metadata",
+    "analysis",
+    "structured_profile"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "bizinfo_existing_ingestion_record/v0.1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "portal_metadata": {
+      "$ref": "#/$defs/portalMetadata"
+    },
+    "analysis": {
+      "$ref": "#/$defs/analysis"
+    },
+    "structured_profile": {
+      "$ref": "#/$defs/structuredProfile"
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "portalMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "notice_id",
+        "pblanc_id",
+        "title",
+        "apply_period",
+        "ministry",
+        "executing_agency",
+        "registered_at",
+        "detail_url"
+      ],
+      "properties": {
+        "notice_id": { "$ref": "#/$defs/nonEmptyString" },
+        "pblanc_id": { "$ref": "#/$defs/nonEmptyString" },
+        "support_field": { "type": ["string", "null"] },
+        "category": { "type": ["string", "null"] },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "apply_period": { "$ref": "#/$defs/nonEmptyString" },
+        "ministry": { "$ref": "#/$defs/nonEmptyString" },
+        "executing_agency": { "$ref": "#/$defs/nonEmptyString" },
+        "registered_at": { "$ref": "#/$defs/nonEmptyString" },
+        "detail_url": { "$ref": "#/$defs/nonEmptyString" },
+        "source_state": { "type": ["string", "null"] },
+        "list_provenance": { "type": ["object", "null"] }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_path", "common_ir_path"],
+      "properties": {
+        "input_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\\\]+\\.(hwp|hwpx|pdf)$"
+        },
+        "common_ir_path": {
+          "type": "string",
+          "pattern": "^pipeline/common_ir_v1/PBLN_[0-9]+\\.(hwp|hwpx|pdf)\\.json$"
+        }
+      }
+    },
+    "commonIrReference": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "document_id",
+        "schema_version",
+        "source_kind",
+        "source_sha256"
+      ],
+      "properties": {
+        "document_id": { "$ref": "#/$defs/nonEmptyString" },
+        "schema_version": { "const": "common_ir_v1" },
+        "source_kind": { "enum": ["hwp", "hwpx", "pdf"] },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      }
+    },
+    "sourceDocument": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["format", "common_ir"],
+      "properties": {
+        "format": { "enum": ["hwp", "hwpx", "pdf"] },
+        "common_ir": { "$ref": "#/$defs/commonIrReference" }
+      }
+    },
+    "structuredProfile": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "schema_version",
+        "notice_id",
+        "source_profile_id",
+        "source_documents",
+        "comparison_profile",
+        "support_components",
+        "derived_projections",
+        "processing_metadata"
+      ],
+      "properties": {
+        "schema_version": { "const": "existing_program_profile/v0.2" },
+        "notice_id": { "$ref": "#/$defs/nonEmptyString" },
+        "source_profile_id": {
+          "type": "string",
+          "pattern": "^(hwp|hwpx|pdf):PBLN_[0-9]+$"
+        },
+        "source_documents": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/sourceDocument" }
+        },
+        "comparison_profile": { "type": "object" },
+        "support_components": { "type": "array" },
+        "derived_projections": { "type": "array" },
+        "processing_metadata": { "type": "object" }
+      }
+    }
+  }
+}

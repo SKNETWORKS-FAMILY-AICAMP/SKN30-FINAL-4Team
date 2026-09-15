@@ -1,0 +1,195 @@
+{
+  "before": "data\\processed\\design_features.parquet",
+  "after": "data\\processed\\design_features_v2.parquet",
+  "producer": "ml/scripts/f06_design_features.py (M65 에서 근본 수정)",
+  "rows": 3963,
+  "sha256_before": "9f308112fb99e750fcbd4fdcba980a9a3ac698eaa623b99e60e205e11c8043e4",
+  "sha256_after": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+  "ledger": {
+    "D1_근거문_복원": {
+      "제목만_있던_행": 1749,
+      "근거문_교체": 2127,
+      "출처_후": {
+        "document": 2127,
+        "scale_text": 1505,
+        "api_summary": 331
+      },
+      "교체_후_중앙값_길이": 2692,
+      "복원_불가(제목만_남음)": 0,
+      "복원_불가(API_요약만)": 331
+    },
+    "D5_지원방식_재도출": {
+      "대상(근거문_교체)": 2127,
+      "변경": 834,
+      "이동": {
+        "other->grant": 213,
+        "other->mixed": 129,
+        "other->service": 115,
+        "grant->loan": 113,
+        "other->loan": 69,
+        "grant->other": 33,
+        "service->mixed": 30,
+        "guarantee->loan": 19,
+        "grant->voucher": 17,
+        "grant->guarantee": 15,
+        "service->other": 14,
+        "other->guarantee": 14,
+        "other->voucher": 11,
+        "mixed->service": 9,
+        "loan->other": 7,
+        "guarantee->grant": 6,
+        "service->grant": 3,
+        "grant->mixed": 3,
+        "service->voucher": 2,
+        "mixed->other": 2,
+        "service->loan": 2,
+        "loan->grant": 2,
+        "mixed->grant": 2,
+        "mixed->loan": 1,
+        "voucher->other": 1,
+        "voucher->grant": 1,
+        "grant->service": 1
+      },
+      "전": {
+        "grant": 2118,
+        "other": 891,
+        "loan": 428,
+        "service": 290,
+        "guarantee": 89,
+        "voucher": 84,
+        "mixed": 63
+      },
+      "후": {
+        "grant": 2163,
+        "loan": 623,
+        "other": 397,
+        "service": 364,
+        "mixed": 211,
+        "voucher": 112,
+        "guarantee": 93
+      }
+    },
+    "D2_지원단위_보완": {
+      "결측_전": 1414,
+      "결측_후": 1206,
+      "결측률_전": 0.3568,
+      "결측률_후": 0.3043,
+      "신규_충원": 286,
+      "결측으로_되돌림": 78,
+      "값_변경": 136,
+      "근거등급": {
+        "unchanged": 1208,
+        "none": 1206,
+        "amount_context": 1176,
+        "scope_section": 303,
+        "amount_type_convention": 70
+      },
+      "전": {
+        "company": 2096,
+        "nan": 1414,
+        "person": 274,
+        "project": 167,
+        "team": 12
+      },
+      "후": {
+        "company": 2144,
+        "nan": 1206,
+        "person": 356,
+        "project": 207,
+        "team": 50
+      }
+    },
+    "D4_설계축_결측보완": {
+      "사업기간_신규": 1549,
+      "자부담률_신규": 204,
+      "사업기간_결측률_전": 0.8542,
+      "사업기간_결측률_후": 0.4686,
+      "자부담률_결측률_전": 0.8123,
+      "자부담률_결측률_후": 0.7608
+    },
+    "D3_파싱오류_제거": {
+      "지원비율_결측으로": 1,
+      "자부담률_결측으로": 0,
+      "사업기간_결측으로": 21,
+      "지원비율_최소_전": -320.0,
+      "지원비율_최소_후": 0.0,
+      "사업기간_최대_전": 66.0,
+      "사업기간_최대_후": 26.0
+    },
+    "상류_드리프트(이번_수정과_무관)": {
+      "support_count": 0,
+      "extraction_confidence": 0
+    }
+  },
+  "model2_filter_trace": {
+    "before": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    },
+    "after": {
+      "전체": 3963,
+      "지원성격_결측_제외": 58,
+      "기업당지원액_결측_제외": 1694,
+      "파싱오류범위_제외": 84,
+      "총예산나눗셈(평균)_제외": 250,
+      "필수축_결측_제외": 0,
+      "최종": 1877
+    }
+  },
+  "model3_pool": {
+    "before": {
+      "pool_rows": 1948,
+      "지원단위_결측률": 0.1489,
+      "지원방식_분포": {
+        "grant": 1577,
+        "loan": 197,
+        "other": 65,
+        "voucher": 57,
+        "guarantee": 21,
+        "service": 21,
+        "mixed": 10
+      },
+      "축_결측률": {
+        "log_per_recipient": 0.0837,
+        "log_support_count": 0.1653,
+        "support_ratio": 0.5452,
+        "project_duration": 0.7772
+      },
+      "n_axes_평균": 2.429
+    },
+    "after": {
+      "pool_rows": 2451,
+      "지원단위_결측률": 0.1616,
+      "지원방식_분포": {
+        "grant": 1658,
+        "loan": 399,
+        "mixed": 102,
+        "other": 92,
+        "voucher": 82,
+        "service": 79,
+        "guarantee": 39
+      },
+      "축_결측률": {
+        "log_per_recipient": 0.2277,
+        "log_support_count": 0.1954,
+        "support_ratio": 0.6189,
+        "project_duration": 0.3554
+      },
+      "n_axes_평균": 2.603
+    }
+  },
+  "audit_sample_rows": 60,
+  "audit_csv": "reports\\m62_unit_audit.csv",
+  "unchanged": [
+    "타깃 정의(stated_cap)",
+    "비교군 사다리",
+    "모델·하이퍼파라미터",
+    "평가 프로토콜",
+    "design_features.parquet 원본(얼어 있음)"
+  ]
+}

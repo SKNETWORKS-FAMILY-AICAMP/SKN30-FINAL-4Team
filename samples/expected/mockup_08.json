@@ -1,0 +1,115 @@
+{
+  "document": "samples/hwpx/mockup_08_CPL전항목_스마트기술사업화.hwpx",
+  "purpose": "CPL 판별기준 정리본(2026-08-21)의 확인 항목이 모두 근거를 남기는지 보는 표본. 안내자료 우수사례 재현이 아니라 CPL 커버리지 시험용이다",
+  "grade": "HIGH",
+  "request_type": "내역사업 신설 (계층 표본과 다년도 추진계획을 함께 만들기 위함)",
+  "arithmetic": "40개사 × 5,000만원 × 3년 = 6,000백만원(지원금). 총사업비 6,600백만원 = 지원금 6,000 + 운영·평가비 600 = 연 2,200 × 3. 모순 없음",
+  "cpl_expected_axes": {
+    "REQUEST_TYPE": [
+      "내역사업 신설 체크"
+    ],
+    "PURPOSE_GOAL": [
+      "PURPOSE_TARGET_CONDITION",
+      "PURPOSE_DIRECTION",
+      "정량 표현 120개사"
+    ],
+    "IMPLEMENTATION_PLAN": [
+      "ANNUAL_PLAN_CONTENT",
+      "SUBPROGRAM_PLAN_CONTENT"
+    ],
+    "BUSINESS_PERIOD": [
+      "start=2026-01-01",
+      "end=2028-12-31",
+      "다년도"
+    ],
+    "BUSINESS_NEED": [
+      "NEED_PROBLEM",
+      "NEED_CAUSE",
+      "NEED_RESPONSE",
+      "NEED_SOURCE"
+    ],
+    "LEGAL_BASIS": [
+      "법령명 + 조문"
+    ],
+    "LINKED_POLICY": [
+      "LINKED_POLICY_IDENTIFIER"
+    ],
+    "BUDGET": [
+      "총사업비",
+      "연차별"
+    ],
+    "TARGET_AND_CONDITIONS": [
+      "TARGET_GROUP",
+      "COND_REGION",
+      "COND_INDUSTRY",
+      "COND_BUSINESS_AGE",
+      "COND_REVENUE",
+      "COND_HEADCOUNT",
+      "COND_COMPANY_TYPE",
+      "COND_CERTIFICATION",
+      "COND_OTHER",
+      "COND_EXCLUSION"
+    ],
+    "SUPPORT_CONTENT_AND_SCALE": [
+      "SUPPORT_ACTIVITY",
+      "SUPPORT_ITEM",
+      "COMPANY_COUNT",
+      "PER_COMPANY_LIMIT",
+      "SUBSIDY_RATE",
+      "SELF_BURDEN_RATE",
+      "TOTAL_SCALE"
+    ],
+    "DELIVERY_SYSTEM": [
+      "DELIVERY_ORG_NAME",
+      "DELIVERY_METHOD_TYPE",
+      "DELIVERY_PROCEDURE_STEP",
+      "DELIVERY_STEP_ROLE"
+    ],
+    "EXPECTED_EFFECTS_AND_PERFORMANCE": [
+      "EFFECT_SUBJECT",
+      "EFFECT_CONTENT",
+      "KPI_NAME",
+      "KPI_TARGET_VALUE",
+      "KPI_UNIT",
+      "KPI_BASE_YEAR"
+    ]
+  },
+  "fit": {
+    "FIT-1": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "목적의 제조·정보통신 중소기업 한정과 지원대상이 일치"
+    },
+    "FIT-2": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "목적의 기술경쟁력 강화·시제품 사업화와 지원내용이 대응"
+    },
+    "FIT-3": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "목적의 방향과 기대효과·성과지표가 대응"
+    },
+    "FIT-4": {
+      "status": "FIT",
+      "covered_by_contract": false,
+      "why": "세부사업과 신설 내역사업의 계층 표본이 처음으로 존재한다. 다만 FIT-4 는 계약상 HIERARCHY_COMPARISON_NOT_AVAILABLE 로 고정되어 있다"
+    },
+    "FIT-5": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "업력 3~10년, 매출 10~300억원, 종사자 10~300명, 인증 보유는 동시에 성립"
+    },
+    "FIT-6": {
+      "status": "FIT",
+      "covered_by_contract": true,
+      "why": "수행절차 7단계와 단계별 기관 역할이 수행기관과 대응"
+    },
+    "FIT-7": {
+      "status": "INSUFFICIENT",
+      "covered_by_contract": false,
+      "why": "판별기준 §12 대로 지원기업수·단가·보조율·총 지원규모를 지원내용 안에 두었다. 지원규모 구역이 따로 없으므로 FIT-7 의 구역 대조 설계로는 단측이다"
+    }
+  },
+  "blank_markers": {}
+}

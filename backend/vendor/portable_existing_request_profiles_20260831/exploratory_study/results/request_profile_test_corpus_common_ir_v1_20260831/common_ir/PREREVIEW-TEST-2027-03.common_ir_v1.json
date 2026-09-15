@@ -1,0 +1,3789 @@
+{
+  "schema_version": "common_ir_v1",
+  "document": {
+    "document_id": "request:PREREVIEW-TEST-2027-03",
+    "source_kind": "markdown_fixture",
+    "artifact_role": "production",
+    "page_count": null,
+    "raw_artifact_ids": [],
+    "provenance": {
+      "method": "markdown_fixture_adapter",
+      "page": null,
+      "bbox": null,
+      "coordinate_space": "unicode_codepoint_offset",
+      "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+      "source_sha256": "c912a35510bdc3e7a588acc692123578f0fb8f28afcfafae9083d6af8a9c64de",
+      "generator": "semantic_structuring.request_markdown_common_ir_v1",
+      "generator_version": "1.0.0",
+      "schema_version": "common_ir_v1",
+      "parser": "markdown_fixture_parser",
+      "parser_version": "1.0.0"
+    }
+  },
+  "blocks": [
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b0",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "> ⚠️ **가상 문서**\n> 본 문서는 가상의 사전협의 요청서이며, 실제 행정기관의 제출·의사결정·사업 추진 내용과 무관합니다.",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b0"
+      ],
+      "reading_order": 0,
+      "page": null,
+      "section_path": "",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b0",
+          "role": "markdown_text",
+          "text": "> ⚠️ **가상 문서**\n> 본 문서는 가상의 사전협의 요청서이며, 실제 행정기관의 제출·의사결정·사업 추진 내용과 무관합니다.",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 0,
+            "source_end_char": 72
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 0,
+        "source_end_char": 72
+      },
+      "source_block_label": "markdown_paragraph"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b1",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "중소기업지원사업 사전협의 요청서",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b1"
+      ],
+      "reading_order": 1,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b1",
+          "role": "markdown_text",
+          "text": "중소기업지원사업 사전협의 요청서",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 81,
+            "source_end_char": 98
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 81,
+        "source_end_char": 98
+      },
+      "source_block_label": "markdown_heading_h1"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b2",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "< 가상 동구청년창업지원센터 >",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b2"
+      ],
+      "reading_order": 2,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b2",
+          "role": "markdown_text",
+          "text": "< 가상 동구청년창업지원센터 >",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 104,
+            "source_end_char": 121
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 104,
+        "source_end_char": 121
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b3",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**사전협의 요청사유**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b3"
+      ],
+      "reading_order": 3,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사전협의 요청사유**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b3",
+          "role": "markdown_text",
+          "text": "**사전협의 요청사유**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 128,
+            "source_end_char": 141
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 128,
+        "source_end_char": 141
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b4",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: ☐ 세부사업 신설 ☐ 내역사업 신설 ☐ 내내역사업 신설 <br> ☑ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b4"
+      ],
+      "reading_order": 4,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사전협의 요청사유**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b4",
+          "role": "markdown_text",
+          "text": "**내용**: ☐ 세부사업 신설 ☐ 내역사업 신설 ☐ 내내역사업 신설 <br> ☑ 사업내용 변경(지원내용, 지원대상, 사업추진방식 등)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 144,
+            "source_end_char": 219
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 144,
+        "source_end_char": 219
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b5",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**사업명**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b5"
+      ],
+      "reading_order": 5,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사업명**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b5",
+          "role": "markdown_text",
+          "text": "**사업명**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 226,
+            "source_end_char": 233
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 226,
+        "source_end_char": 233
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b6",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: (세부) 동구 청년 창업지원사업(지원내용 개편) <br> (내역) 세부사업 신설 시 미기재 — 해당 없음 <br> (내내역) 세부사업·내역사업 신설 시 미기재 — 해당 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b6"
+      ],
+      "reading_order": 6,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사업명**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b6",
+          "role": "markdown_text",
+          "text": "**내용**: (세부) 동구 청년 창업지원사업(지원내용 개편) <br> (내역) 세부사업 신설 시 미기재 — 해당 없음 <br> (내내역) 세부사업·내역사업 신설 시 미기재 — 해당 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 236,
+            "source_end_char": 340
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 236,
+        "source_end_char": 340
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b7",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**신설·변경 필요성(사유)**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b7"
+      ],
+      "reading_order": 7,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**신설·변경 필요성(사유)**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b7",
+          "role": "markdown_text",
+          "text": "**신설·변경 필요성(사유)**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 347,
+            "source_end_char": 364
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 347,
+        "source_end_char": 364
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b8",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: ○ (사업목적) 최종 선정팀에게 지급하는 창업지원금의 지급 구조를 단계별로 나누고, 이미 지원 방식에 포함되어 있던 멘토링을 1:1·정기 방식으로 구체화하여 사업화 실행력을 높임 <br> ○ (필요성) 2026년 사업(참조: bizinfo:PBLN_000000000125612)은 창업교육에 20개팀이 참여하고 이 중 4개팀이 최종 선정되어 팀당 300만원의 창업지원금(멘토링 지원 포함, 지출영수증 등 증빙서류 확인 후 사후 일괄 지급)을 받는 구조. 그러나 지원금이 한 시점에 일괄 지급되어 아이디어 검증과 사업화 실행 각 단계에 맞춘 자금 배분이 이루어지지 못하고, 멘토링도 지원방식에 포함되어 있을 뿐 구체적 방식·빈도가 정해져 있지 않아 실행 지도가 형식적으로 그치는 사례가 있음 <br> ○ (지원근거) (가상 근거) 「청년기본법」 제17조, 「중소기업창업 지원법」 제4조 <br> ○ (연계정책) (가상 근거) 동구 청년창업 활성화 기본계획(가상)과 연계",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b8"
+      ],
+      "reading_order": 8,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**신설·변경 필요성(사유)**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b8",
+          "role": "markdown_text",
+          "text": "**내용**: ○ (사업목적) 최종 선정팀에게 지급하는 창업지원금의 지급 구조를 단계별로 나누고, 이미 지원 방식에 포함되어 있던 멘토링을 1:1·정기 방식으로 구체화하여 사업화 실행력을 높임 <br> ○ (필요성) 2026년 사업(참조: bizinfo:PBLN_000000000125612)은 창업교육에 20개팀이 참여하고 이 중 4개팀이 최종 선정되어 팀당 300만원의 창업지원금(멘토링 지원 포함, 지출영수증 등 증빙서류 확인 후 사후 일괄 지급)을 받는 구조. 그러나 지원금이 한 시점에 일괄 지급되어 아이디어 검증과 사업화 실행 각 단계에 맞춘 자금 배분이 이루어지지 못하고, 멘토링도 지원방식에 포함되어 있을 뿐 구체적 방식·빈도가 정해져 있지 않아 실행 지도가 형식적으로 그치는 사례가 있음 <br> ○ (지원근거) (가상 근거) 「청년기본법」 제17조, 「중소기업창업 지원법」 제4조 <br> ○ (연계정책) (가상 근거) 동구 청년창업 활성화 기본계획(가상)과 연계",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 367,
+            "source_end_char": 860
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 367,
+        "source_end_char": 860
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b9",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**신설·변경 주요내용**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b9"
+      ],
+      "reading_order": 9,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**신설·변경 주요내용**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b9",
+          "role": "markdown_text",
+          "text": "**신설·변경 주요내용**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 867,
+            "source_end_char": 881
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 867,
+        "source_end_char": 881
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b10",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: ○ (사업기간) 2027년 7월~11월(5개월, 연도만 갱신, 변경 없음) ○ (사업예산) 14,400천원 → 21,000천원(+6,600천원) ○ (지원대상) 19~39세 예비창업자, 사업자등록 이력 없는 자 — 변경 없음 ○ (지원내용) 창업교육(20개팀, 변경 없음) + 창업지원금 지급을 1단계(아이디어 검증)·2단계(사업화)로 분할하고 팀당 300만원→400만원으로 조정, 기존 멘토링 지원을 1:1·월2회·총8회로 구체화 ○ (수행기관) 가상 동구청년창업지원센터(총괄) + 신규 협력기관(청년창업 멘토풀 운영기관) — 상세는 아래 [첨부] 참조",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b10"
+      ],
+      "reading_order": 10,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**신설·변경 주요내용**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b10",
+          "role": "markdown_text",
+          "text": "**내용**: ○ (사업기간) 2027년 7월~11월(5개월, 연도만 갱신, 변경 없음) ○ (사업예산) 14,400천원 → 21,000천원(+6,600천원) ○ (지원대상) 19~39세 예비창업자, 사업자등록 이력 없는 자 — 변경 없음 ○ (지원내용) 창업교육(20개팀, 변경 없음) + 창업지원금 지급을 1단계(아이디어 검증)·2단계(사업화)로 분할하고 팀당 300만원→400만원으로 조정, 기존 멘토링 지원을 1:1·월2회·총8회로 구체화 ○ (수행기관) 가상 동구청년창업지원센터(총괄) + 신규 협력기관(청년창업 멘토풀 운영기관) — 상세는 아래 [첨부] 참조",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 884,
+            "source_end_char": 1202
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 884,
+        "source_end_char": 1202
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b11",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**기대효과**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b11"
+      ],
+      "reading_order": 11,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**기대효과**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b11",
+          "role": "markdown_text",
+          "text": "**기대효과**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1209,
+            "source_end_char": 1217
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1209,
+        "source_end_char": 1217
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b12",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: ○ (파급효과) 단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고 <br> ○ (성과지표) 창업 전환율(사업자등록 완료율), 단계별 지급 집행률, 멘토링 만족도 — 상세 수치는 [첨부] 참조",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b12"
+      ],
+      "reading_order": 12,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**기대효과**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b12",
+          "role": "markdown_text",
+          "text": "**내용**: ○ (파급효과) 단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고 <br> ○ (성과지표) 창업 전환율(사업자등록 완료율), 단계별 지급 집행률, 멘토링 만족도 — 상세 수치는 [첨부] 참조",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1220,
+            "source_end_char": 1342
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1220,
+        "source_end_char": 1342
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b13",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**타 제도 협의·심사여부**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b13"
+      ],
+      "reading_order": 13,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**타 제도 협의·심사여부**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b13",
+          "role": "markdown_text",
+          "text": "**타 제도 협의·심사여부**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1349,
+            "source_end_char": 1365
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1349,
+        "source_end_char": 1365
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b14",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: 제도명: 해당없음(가상) <br> 협의부처: 해당없음 &nbsp;&nbsp; 협의일시: 해당없음 <br> 협의결과: 해당없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b14"
+      ],
+      "reading_order": 14,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**타 제도 협의·심사여부**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b14",
+          "role": "markdown_text",
+          "text": "**내용**: 제도명: 해당없음(가상) <br> 협의부처: 해당없음 &nbsp;&nbsp; 협의일시: 해당없음 <br> 협의결과: 해당없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1368,
+            "source_end_char": 1445
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1368,
+        "source_end_char": 1445
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b15",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "**사업담당자(부처, 기관)**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b15"
+      ],
+      "reading_order": 15,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사업담당자(부처, 기관)**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b15",
+          "role": "markdown_text",
+          "text": "**사업담당자(부처, 기관)**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1452,
+            "source_end_char": 1469
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1452,
+        "source_end_char": 1469
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b16",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: 담당부서: 가상 동구청년창업지원센터 창업지원팀 <br> 직급: 팀장(가상) &nbsp; 성명: 박가상(가상 인물) <br> 연락처: 000-0000-0000(가상) &nbsp; 전자메일: test-pm03@example-gov.test(가상)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b16"
+      ],
+      "reading_order": 16,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사업담당자(부처, 기관)**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b16",
+          "role": "markdown_text",
+          "text": "**내용**: 담당부서: 가상 동구청년창업지원센터 창업지원팀 <br> 직급: 팀장(가상) &nbsp; 성명: 박가상(가상 인물) <br> 연락처: 000-0000-0000(가상) &nbsp; 전자메일: test-pm03@example-gov.test(가상)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1472,
+            "source_end_char": 1615
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1472,
+        "source_end_char": 1615
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b17",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "첨부: 1. 제출자료 자체 점검표 1부(생략 — 가상 문서) &nbsp; 2. '27년도 사업계획서(안) 및 참고자료(아래 본문에 포함)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b17"
+      ],
+      "reading_order": 17,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/< 가상 동구청년창업지원센터 >/**사업담당자(부처, 기관)**",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b17",
+          "role": "markdown_text",
+          "text": "첨부: 1. 제출자료 자체 점검표 1부(생략 — 가상 문서) &nbsp; 2. '27년도 사업계획서(안) 및 참고자료(아래 본문에 포함)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1618,
+            "source_end_char": 1694
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1618,
+        "source_end_char": 1694
+      },
+      "source_block_label": "markdown_paragraph"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b18",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "첨부: 사업설명자료",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b18"
+      ],
+      "reading_order": 18,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b18",
+          "role": "markdown_text",
+          "text": "첨부: 사업설명자료",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1704,
+            "source_end_char": 1714
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1704,
+        "source_end_char": 1714
+      },
+      "source_block_label": "markdown_heading_h2"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b19",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "1. 사업목적",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b19"
+      ],
+      "reading_order": 19,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/1. 사업목적",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b19",
+          "role": "markdown_text",
+          "text": "1. 사업목적",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1720,
+            "source_end_char": 1727
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1720,
+        "source_end_char": 1727
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b20",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "동구 내 예비 창업 청년을 대상으로 창업교육과 최종 선정팀 대상 창업지원금·멘토링을 제공한다는 기존 목적은 유지하되, 창업지원금의 지급 시점을 사업화 단계에 맞춰 분할하고, 기존에 이미 포함되어 있던 멘토링을 1:1·정기 방식으로 구체화하여 **교육 이수 → 실제 창업 전환**까지의 실행력을 강화한다.",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b20"
+      ],
+      "reading_order": 20,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/1. 사업목적",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b20",
+          "role": "markdown_text",
+          "text": "동구 내 예비 창업 청년을 대상으로 창업교육과 최종 선정팀 대상 창업지원금·멘토링을 제공한다는 기존 목적은 유지하되, 창업지원금의 지급 시점을 사업화 단계에 맞춰 분할하고, 기존에 이미 포함되어 있던 멘토링을 1:1·정기 방식으로 구체화하여 **교육 이수 → 실제 창업 전환**까지의 실행력을 강화한다.",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1729,
+            "source_end_char": 1898
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1729,
+        "source_end_char": 1898
+      },
+      "source_block_label": "markdown_paragraph"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b21",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "2. 사업필요성",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b21"
+      ],
+      "reading_order": 21,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/2. 사업필요성",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b21",
+          "role": "markdown_text",
+          "text": "2. 사업필요성",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1904,
+            "source_end_char": 1912
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1904,
+        "source_end_char": 1912
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b22",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "2026년 사업(참조: bizinfo:PBLN_000000000125612)은 창업교육 20개팀 참여 → 최종 4개팀 선정 → 팀당 300만원 창업지원금을 지출영수증 등 증빙서류 확인 후 사후 일괄 지급하는 구조로, 지원금이 한 시점에 몰려 지급되어 아이디어 검증 단계의 초기 자금 소요를 충당하기 어려움",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b22"
+      ],
+      "reading_order": 22,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/2. 사업필요성",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b22",
+          "role": "markdown_text",
+          "text": "2026년 사업(참조: bizinfo:PBLN_000000000125612)은 창업교육 20개팀 참여 → 최종 4개팀 선정 → 팀당 300만원 창업지원금을 지출영수증 등 증빙서류 확인 후 사후 일괄 지급하는 구조로, 지원금이 한 시점에 몰려 지급되어 아이디어 검증 단계의 초기 자금 소요를 충당하기 어려움",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 1916,
+            "source_end_char": 2086
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 1916,
+        "source_end_char": 2086
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b23",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "창업지원금의 지원방식에 \"멘토링 지원\"이 이미 포함되어 있으나, 원문상 빈도·방식(그룹/1:1 여부)이 특정되어 있지 않아 실행 지도가 팀별로 편차 있게 이루어짐",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b23"
+      ],
+      "reading_order": 23,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/2. 사업필요성",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b23",
+          "role": "markdown_text",
+          "text": "창업지원금의 지원방식에 \"멘토링 지원\"이 이미 포함되어 있으나, 원문상 빈도·방식(그룹/1:1 여부)이 특정되어 있지 않아 실행 지도가 팀별로 편차 있게 이루어짐",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2089,
+            "source_end_char": 2179
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2089,
+        "source_end_char": 2179
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b24",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "최종 선정 4개팀은 \"2026년 중 사업자등록을 완료하여야 함\"이라는 참여요건을 충족해야 하는데, 사업화 준비 자금이 일괄 지급 이후에나 확보되어 등록 시점이 지연되는 사례가 있음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b24"
+      ],
+      "reading_order": 24,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/2. 사업필요성",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b24",
+          "role": "markdown_text",
+          "text": "최종 선정 4개팀은 \"2026년 중 사업자등록을 완료하여야 함\"이라는 참여요건을 충족해야 하는데, 사업화 준비 자금이 일괄 지급 이후에나 확보되어 등록 시점이 지연되는 사례가 있음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2182,
+            "source_end_char": 2282
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2182,
+        "source_end_char": 2282
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b25",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b25"
+      ],
+      "reading_order": 25,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b25",
+          "role": "markdown_text",
+          "text": "3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2288,
+            "source_end_char": 2326
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2288,
+        "source_end_char": 2326
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b26",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "신청주체",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b26"
+      ],
+      "reading_order": 26,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/신청주체",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b26",
+          "role": "markdown_text",
+          "text": "신청주체",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2333,
+            "source_end_char": 2337
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2333,
+        "source_end_char": 2337
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b27",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: 동구 내 창업을 희망하는 청년 예비 창업자(19~39세) 본인",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b27"
+      ],
+      "reading_order": 27,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/신청주체",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b27",
+          "role": "markdown_text",
+          "text": "**내용**: 동구 내 창업을 희망하는 청년 예비 창업자(19~39세) 본인",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2340,
+            "source_end_char": 2382
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2340,
+        "source_end_char": 2382
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b28",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 여부**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b28"
+      ],
+      "reading_order": 28,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/신청주체",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b28",
+          "role": "markdown_text",
+          "text": "**변경 여부**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2385,
+            "source_end_char": 2401
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2385,
+        "source_end_char": 2401
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b29",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "정책적 지원대상",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b29"
+      ],
+      "reading_order": 29,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/정책적 지원대상",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b29",
+          "role": "markdown_text",
+          "text": "정책적 지원대상",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2408,
+            "source_end_char": 2416
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2408,
+        "source_end_char": 2416
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b30",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: 신청자 명의의 사업자 등록이 없는 청년(19~39세)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b30"
+      ],
+      "reading_order": 30,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/정책적 지원대상",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b30",
+          "role": "markdown_text",
+          "text": "**내용**: 신청자 명의의 사업자 등록이 없는 청년(19~39세)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2419,
+            "source_end_char": 2456
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2419,
+        "source_end_char": 2456
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b31",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 여부**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b31"
+      ],
+      "reading_order": 31,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/정책적 지원대상",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b31",
+          "role": "markdown_text",
+          "text": "**변경 여부**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2459,
+            "source_end_char": 2475
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2459,
+        "source_end_char": 2475
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b32",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "실제 수혜자(컴포넌트별)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b32"
+      ],
+      "reading_order": 32,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/실제 수혜자(컴포넌트별)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b32",
+          "role": "markdown_text",
+          "text": "실제 수혜자(컴포넌트별)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2482,
+            "source_end_char": 2495
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2482,
+        "source_end_char": 2495
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b33",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**내용**: 창업교육=교육 참여자(20개팀), 창업지원금=창업지원금 지원 대상자로 최종 선정된 자(4개팀)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b33"
+      ],
+      "reading_order": 33,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/실제 수혜자(컴포넌트별)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b33",
+          "role": "markdown_text",
+          "text": "**내용**: 창업교육=교육 참여자(20개팀), 창업지원금=창업지원금 지원 대상자로 최종 선정된 자(4개팀)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2498,
+            "source_end_char": 2558
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2498,
+        "source_end_char": 2558
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b34",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 여부**: 변경 없음(구분 자체 유지)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b34"
+      ],
+      "reading_order": 34,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/실제 수혜자(컴포넌트별)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b34",
+          "role": "markdown_text",
+          "text": "**변경 여부**: 변경 없음(구분 자체 유지)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2561,
+            "source_end_char": 2587
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2561,
+        "source_end_char": 2587
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b35",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "> 지원대상 연령(19~39세) 및 자격요건(사업자등록 이력 없는 자)은 2026년 사업과 **동일하게 유지**하며, 본 요청서는 지원대상·자격 변경을 요청하지 않는다.",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b35"
+      ],
+      "reading_order": 35,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/3. 신청주체 / 정책적 지원대상 / 실제 수혜자 구분 (변경 없음)/실제 수혜자(컴포넌트별)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b35",
+          "role": "markdown_text",
+          "text": "> 지원대상 연령(19~39세) 및 자격요건(사업자등록 이력 없는 자)은 2026년 사업과 **동일하게 유지**하며, 본 요청서는 지원대상·자격 변경을 요청하지 않는다.",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2590,
+            "source_end_char": 2684
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2590,
+        "source_end_char": 2684
+      },
+      "source_block_label": "markdown_paragraph"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b36",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "4. 지원활동 / 지원방식 / 지원항목 — 변경 상세",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b36"
+      ],
+      "reading_order": 36,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b36",
+          "role": "markdown_text",
+          "text": "4. 지원활동 / 지원방식 / 지원항목 — 변경 상세",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2690,
+            "source_end_char": 2719
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2690,
+        "source_end_char": 2719
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b37",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "(1) 창업교육",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b37"
+      ],
+      "reading_order": 37,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(1) 창업교육",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b37",
+          "role": "markdown_text",
+          "text": "(1) 창업교육",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2726,
+            "source_end_char": 2734
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2726,
+        "source_end_char": 2734
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b38",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전, 기존 사업 기준)**: 창업기초 및 실무교육, 20개팀 참여, 수혜자=교육 참여자",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b38"
+      ],
+      "reading_order": 38,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(1) 창업교육",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b38",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전, 기존 사업 기준)**: 창업기초 및 실무교육, 20개팀 참여, 수혜자=교육 참여자",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2737,
+            "source_end_char": 2799
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2737,
+        "source_end_char": 2799
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b39",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: 동일(변경 없음)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b39"
+      ],
+      "reading_order": 39,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(1) 창업교육",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b39",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: 동일(변경 없음)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2802,
+            "source_end_char": 2832
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2802,
+        "source_end_char": 2832
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b40",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 구분**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b40"
+      ],
+      "reading_order": 40,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(1) 창업교육",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b40",
+          "role": "markdown_text",
+          "text": "**변경 구분**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2835,
+            "source_end_char": 2851
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2835,
+        "source_end_char": 2851
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b41",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "(2) 창업지원금",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b41"
+      ],
+      "reading_order": 41,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b41",
+          "role": "markdown_text",
+          "text": "(2) 창업지원금",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2858,
+            "source_end_char": 2867
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2858,
+        "source_end_char": 2867
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b42",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전, 기존 사업 기준)**: 최종 선정 4개팀에 팀당 300만원, **지원방식**: 멘토링 지원 포함(빈도·방식 미특정) + 지출영수증 등 증빙서류 확인 후 **일괄 사후 지급**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b42"
+      ],
+      "reading_order": 42,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b42",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전, 기존 사업 기준)**: 최종 선정 4개팀에 팀당 300만원, **지원방식**: 멘토링 지원 포함(빈도·방식 미특정) + 지출영수증 등 증빙서류 확인 후 **일괄 사후 지급**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2870,
+            "source_end_char": 2984
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2870,
+        "source_end_char": 2984
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b43",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: 최종 선정 4개팀(**변경 없음**)에 팀당 400만원, **지원방식**: 1단계(아이디어 검증 완료, 150만원)·2단계(사업화 완료 보고, 250만원)로 **분할 사후 지급**(각 단계 모두 증빙서류 확인 후 지급, 지급 확인 절차 자체는 유지) + 멘토링을 **1:1 방식, 월 2회, 총 8회로 구체화**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b43"
+      ],
+      "reading_order": 43,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b43",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: 최종 선정 4개팀(**변경 없음**)에 팀당 400만원, **지원방식**: 1단계(아이디어 검증 완료, 150만원)·2단계(사업화 완료 보고, 250만원)로 **분할 사후 지급**(각 단계 모두 증빙서류 확인 후 지급, 지급 확인 절차 자체는 유지) + 멘토링을 **1:1 방식, 월 2회, 총 8회로 구체화**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 2987,
+            "source_end_char": 3182
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 2987,
+        "source_end_char": 3182
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b44",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 구분**: 변경",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b44"
+      ],
+      "reading_order": 44,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b44",
+          "role": "markdown_text",
+          "text": "**변경 구분**: 변경",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3185,
+            "source_end_char": 3198
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3185,
+        "source_end_char": 3198
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b45",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**지원방식 변경**: \"선정 직후 일괄 사후 지급(멘토링 지원 포함, 방식 미특정)\" → \"1·2단계 분할 사후 지급 + 멘토링 1:1·월2회·총8회로 구체화\" (변경)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b45"
+      ],
+      "reading_order": 45,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b45",
+          "role": "markdown_text",
+          "text": "**지원방식 변경**: \"선정 직후 일괄 사후 지급(멘토링 지원 포함, 방식 미특정)\" → \"1·2단계 분할 사후 지급 + 멘토링 1:1·월2회·총8회로 구체화\" (변경)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3203,
+            "source_end_char": 3298
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3203,
+        "source_end_char": 3298
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b46",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**지원항목(금액) 변경**: 창업지원금 팀당 300만원 → 400만원(+100만원, +약 33%), 1단계 150만원 + 2단계 250만원으로 구성(합산액이 400만원과 정합)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b46"
+      ],
+      "reading_order": 46,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b46",
+          "role": "markdown_text",
+          "text": "**지원항목(금액) 변경**: 창업지원금 팀당 300만원 → 400만원(+100만원, +약 33%), 1단계 150만원 + 2단계 250만원으로 구성(합산액이 400만원과 정합)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3301,
+            "source_end_char": 3400
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3301,
+        "source_end_char": 3400
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b47",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**대상 단위**: 교육 20개팀·최종 선정 4개팀 모두 **단위(개팀)와 수치가 변경 없이 유지**됨 — 인원(명) 단위로 전환하지 않음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b47"
+      ],
+      "reading_order": 47,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/4. 지원활동 / 지원방식 / 지원항목 — 변경 상세/(2) 창업지원금",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b47",
+          "role": "markdown_text",
+          "text": "**대상 단위**: 교육 20개팀·최종 선정 4개팀 모두 **단위(개팀)와 수치가 변경 없이 유지**됨 — 인원(명) 단위로 전환하지 않음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3403,
+            "source_end_char": 3480
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3403,
+        "source_end_char": 3480
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b48",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "5. 사업 전체기간 vs 수혜자 지원 기간",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b48"
+      ],
+      "reading_order": 48,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b48",
+          "role": "markdown_text",
+          "text": "5. 사업 전체기간 vs 수혜자 지원 기간",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3486,
+            "source_end_char": 3509
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3486,
+        "source_end_char": 3509
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b49",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "사업 전체기간",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b49"
+      ],
+      "reading_order": 49,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/사업 전체기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b49",
+          "role": "markdown_text",
+          "text": "사업 전체기간",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3516,
+            "source_end_char": 3523
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3516,
+        "source_end_char": 3523
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b50",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 전**: 2026년 7월 ~ 11월(5개월)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b50"
+      ],
+      "reading_order": 50,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/사업 전체기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b50",
+          "role": "markdown_text",
+          "text": "**변경 전**: 2026년 7월 ~ 11월(5개월)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3526,
+            "source_end_char": 3555
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3526,
+        "source_end_char": 3555
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b51",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 후**: **2027년 7월 ~ 11월(5개월)**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b51"
+      ],
+      "reading_order": 51,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/사업 전체기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b51",
+          "role": "markdown_text",
+          "text": "**변경 후**: **2027년 7월 ~ 11월(5개월)**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3558,
+            "source_end_char": 3591
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3558,
+        "source_end_char": 3591
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b52",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 연도만 2027년으로 갱신, 기간 산정 방식·개월 수는 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b52"
+      ],
+      "reading_order": 52,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/사업 전체기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b52",
+          "role": "markdown_text",
+          "text": "**비고**: 연도만 2027년으로 갱신, 기간 산정 방식·개월 수는 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3594,
+            "source_end_char": 3638
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3594,
+        "source_end_char": 3638
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b53",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "최종 선정팀 참여요건 시점",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b53"
+      ],
+      "reading_order": 53,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/최종 선정팀 참여요건 시점",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b53",
+          "role": "markdown_text",
+          "text": "최종 선정팀 참여요건 시점",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3645,
+            "source_end_char": 3659
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3645,
+        "source_end_char": 3659
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b54",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 전**: \"2026년 중 사업자등록을 완료하여야 함\"",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b54"
+      ],
+      "reading_order": 54,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/최종 선정팀 참여요건 시점",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b54",
+          "role": "markdown_text",
+          "text": "**변경 전**: \"2026년 중 사업자등록을 완료하여야 함\"",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3662,
+            "source_end_char": 3696
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3662,
+        "source_end_char": 3696
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b55",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 후**: \"2027년 중 사업자등록을 완료하여야 함\"",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b55"
+      ],
+      "reading_order": 55,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/최종 선정팀 참여요건 시점",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b55",
+          "role": "markdown_text",
+          "text": "**변경 후**: \"2027년 중 사업자등록을 완료하여야 함\"",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3699,
+            "source_end_char": 3733
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3699,
+        "source_end_char": 3733
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b56",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 연도 갱신, target_fiscal_year=2027과 정합",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b56"
+      ],
+      "reading_order": 56,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/최종 선정팀 참여요건 시점",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b56",
+          "role": "markdown_text",
+          "text": "**비고**: 연도 갱신, target_fiscal_year=2027과 정합",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3736,
+            "source_end_char": 3778
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3736,
+        "source_end_char": 3778
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b57",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "수혜자 지원기간",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b57"
+      ],
+      "reading_order": 57,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/수혜자 지원기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b57",
+          "role": "markdown_text",
+          "text": "수혜자 지원기간",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3785,
+            "source_end_char": 3793
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3785,
+        "source_end_char": 3793
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b58",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 전**: 선정~11월(사업 전체기간과 동일 추정)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b58"
+      ],
+      "reading_order": 58,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/수혜자 지원기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b58",
+          "role": "markdown_text",
+          "text": "**변경 전**: 선정~11월(사업 전체기간과 동일 추정)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3796,
+            "source_end_char": 3828
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3796,
+        "source_end_char": 3828
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b59",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 후**: 동일(변경 없음, 연도만 갱신)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b59"
+      ],
+      "reading_order": 59,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/수혜자 지원기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b59",
+          "role": "markdown_text",
+          "text": "**변경 후**: 동일(변경 없음, 연도만 갱신)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3831,
+            "source_end_char": 3858
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3831,
+        "source_end_char": 3858
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b60",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b60"
+      ],
+      "reading_order": 60,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/5. 사업 전체기간 vs 수혜자 지원 기간/수혜자 지원기간",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b60",
+          "role": "markdown_text",
+          "text": "**비고**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3861,
+            "source_end_char": 3874
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3861,
+        "source_end_char": 3874
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b61",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b61"
+      ],
+      "reading_order": 61,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b61",
+          "role": "markdown_text",
+          "text": "6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3881,
+            "source_end_char": 3915
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3881,
+        "source_end_char": 3915
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b62",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "선정 규모(창업교육)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b62"
+      ],
+      "reading_order": 62,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업교육)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b62",
+          "role": "markdown_text",
+          "text": "선정 규모(창업교육)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3922,
+            "source_end_char": 3933
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3922,
+        "source_end_char": 3933
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b63",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전)**: 20개팀",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b63"
+      ],
+      "reading_order": 63,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업교육)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b63",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전)**: 20개팀",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3936,
+            "source_end_char": 3960
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3936,
+        "source_end_char": 3960
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b64",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: 20개팀(변경 없음)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b64"
+      ],
+      "reading_order": 64,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업교육)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b64",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: 20개팀(변경 없음)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3963,
+            "source_end_char": 3995
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3963,
+        "source_end_char": 3995
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b65",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b65"
+      ],
+      "reading_order": 65,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업교육)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b65",
+          "role": "markdown_text",
+          "text": "**비고**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 3998,
+            "source_end_char": 4011
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 3998,
+        "source_end_char": 4011
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b66",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "선정 규모(창업지원금 최종 선정)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b66"
+      ],
+      "reading_order": 66,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업지원금 최종 선정)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b66",
+          "role": "markdown_text",
+          "text": "선정 규모(창업지원금 최종 선정)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4018,
+            "source_end_char": 4036
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4018,
+        "source_end_char": 4036
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b67",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전)**: 4개팀",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b67"
+      ],
+      "reading_order": 67,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업지원금 최종 선정)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b67",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전)**: 4개팀",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4039,
+            "source_end_char": 4062
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4039,
+        "source_end_char": 4062
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b68",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: 4개팀(변경 없음)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b68"
+      ],
+      "reading_order": 68,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업지원금 최종 선정)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b68",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: 4개팀(변경 없음)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4065,
+            "source_end_char": 4096
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4065,
+        "source_end_char": 4096
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b69",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경 없음 — 단위·수치 모두 유지",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b69"
+      ],
+      "reading_order": 69,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/선정 규모(창업지원금 최종 선정)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b69",
+          "role": "markdown_text",
+          "text": "**비고**: 변경 없음 — 단위·수치 모두 유지",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4099,
+            "source_end_char": 4126
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4099,
+        "source_end_char": 4126
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b70",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "창업지원금 단가(팀당)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b70"
+      ],
+      "reading_order": 70,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/창업지원금 단가(팀당)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b70",
+          "role": "markdown_text",
+          "text": "창업지원금 단가(팀당)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4133,
+            "source_end_char": 4145
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4133,
+        "source_end_char": 4145
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b71",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전)**: 300만원(일괄 지급)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b71"
+      ],
+      "reading_order": 71,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/창업지원금 단가(팀당)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b71",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전)**: 300만원(일괄 지급)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4148,
+            "source_end_char": 4180
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4148,
+        "source_end_char": 4180
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b72",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: **400만원**(1단계 150만원 + 2단계 250만원, 분할 지급)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b72"
+      ],
+      "reading_order": 72,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/창업지원금 단가(팀당)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b72",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: **400만원**(1단계 150만원 + 2단계 250만원, 분할 지급)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4183,
+            "source_end_char": 4243
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4183,
+        "source_end_char": 4243
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b73",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b73"
+      ],
+      "reading_order": 73,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/창업지원금 단가(팀당)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b73",
+          "role": "markdown_text",
+          "text": "**비고**: 변경",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4246,
+            "source_end_char": 4256
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4246,
+        "source_end_char": 4256
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b74",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "멘토링",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b74"
+      ],
+      "reading_order": 74,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/멘토링",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b74",
+          "role": "markdown_text",
+          "text": "멘토링",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4263,
+            "source_end_char": 4266
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4263,
+        "source_end_char": 4266
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b75",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전)**: 지원방식에 포함(빈도·방식 미특정)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b75"
+      ],
+      "reading_order": 75,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/멘토링",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b75",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전)**: 지원방식에 포함(빈도·방식 미특정)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4269,
+            "source_end_char": 4308
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4269,
+        "source_end_char": 4308
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b76",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: 1:1 방식, 월 2회, 총 8회로 구체화",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b76"
+      ],
+      "reading_order": 76,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/멘토링",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b76",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: 1:1 방식, 월 2회, 총 8회로 구체화",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4311,
+            "source_end_char": 4355
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4311,
+        "source_end_char": 4355
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b77",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b77"
+      ],
+      "reading_order": 77,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/멘토링",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b77",
+          "role": "markdown_text",
+          "text": "**비고**: 변경",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4358,
+            "source_end_char": 4368
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4358,
+        "source_end_char": 4368
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b78",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "자부담",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b78"
+      ],
+      "reading_order": 78,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/자부담",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b78",
+          "role": "markdown_text",
+          "text": "자부담",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4375,
+            "source_end_char": 4378
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4375,
+        "source_end_char": 4378
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b79",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전)**: 원문상 자부담 조건 식별되지 않음(정보부족)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b79"
+      ],
+      "reading_order": 79,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/자부담",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b79",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전)**: 원문상 자부담 조건 식별되지 않음(정보부족)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4381,
+            "source_end_char": 4425
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4381,
+        "source_end_char": 4425
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b80",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: 없음(전액 지원, 변경 없음)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b80"
+      ],
+      "reading_order": 80,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/자부담",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b80",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: 없음(전액 지원, 변경 없음)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4428,
+            "source_end_char": 4465
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4428,
+        "source_end_char": 4465
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b81",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b81"
+      ],
+      "reading_order": 81,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/자부담",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b81",
+          "role": "markdown_text",
+          "text": "**비고**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4468,
+            "source_end_char": 4481
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4468,
+        "source_end_char": 4481
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b82",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "총예산",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b82"
+      ],
+      "reading_order": 82,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/총예산",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b82",
+          "role": "markdown_text",
+          "text": "총예산",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4488,
+            "source_end_char": 4491
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4488,
+        "source_end_char": 4491
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b83",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2026년 사업(변경 전)**: **14,400천원**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b83"
+      ],
+      "reading_order": 83,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/총예산",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b83",
+          "role": "markdown_text",
+          "text": "**2026년 사업(변경 전)**: **14,400천원**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4494,
+            "source_end_char": 4526
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4494,
+        "source_end_char": 4526
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b84",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**2027년 요청안(변경 후)**: **21,000천원**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b84"
+      ],
+      "reading_order": 84,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/총예산",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b84",
+          "role": "markdown_text",
+          "text": "**2027년 요청안(변경 후)**: **21,000천원**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4529,
+            "source_end_char": 4562
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4529,
+        "source_end_char": 4562
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b85",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**비고**: 변경 — 산식은 아래 참고",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b85"
+      ],
+      "reading_order": 85,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/총예산",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b85",
+          "role": "markdown_text",
+          "text": "**비고**: 변경 — 산식은 아래 참고",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4565,
+            "source_end_char": 4587
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4565,
+        "source_end_char": 4587
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b86",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "> **총예산 산식(참고, 가상 산정 예시)**: 기존 사업에는 총예산 14,400천원이라는 합계값만 제시되어 있고, 항목별 내역 구분은 명시되어 있지 않다. 아래는 합계가 일치하도록 산정한 예시다.\n> - 변경 전: 교육운영비 2,400천원(20개팀) + 창업지원금 12,000천원(4개팀×300만원) = **14,400천원** (원문 총예산과 일치)\n> - 변경 후: 교육운영비 2,400천원(20개팀, 변경 없음) + 창업지원금 16,000천원(4개팀×400만원) + 멘토링 전담 운영비 2,600천원(신규 협력기관 계약비용) = **21,000천원**",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b86"
+      ],
+      "reading_order": 86,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/6. 선정 수 / 금액 / 비율 / 한도 / 자부담 / 총예산/총예산",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b86",
+          "role": "markdown_text",
+          "text": "> **총예산 산식(참고, 가상 산정 예시)**: 기존 사업에는 총예산 14,400천원이라는 합계값만 제시되어 있고, 항목별 내역 구분은 명시되어 있지 않다. 아래는 합계가 일치하도록 산정한 예시다.\n> - 변경 전: 교육운영비 2,400천원(20개팀) + 창업지원금 12,000천원(4개팀×300만원) = **14,400천원** (원문 총예산과 일치)\n> - 변경 후: 교육운영비 2,400천원(20개팀, 변경 없음) + 창업지원금 16,000천원(4개팀×400만원) + 멘토링 전담 운영비 2,600천원(신규 협력기관 계약비용) = **21,000천원**",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4590,
+            "source_end_char": 4902
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4590,
+        "source_end_char": 4902
+      },
+      "source_block_label": "markdown_paragraph"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b87",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "7. 수행기관 및 역할",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b87"
+      ],
+      "reading_order": 87,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/7. 수행기관 및 역할",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b87",
+          "role": "markdown_text",
+          "text": "7. 수행기관 및 역할",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4908,
+            "source_end_char": 4920
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4908,
+        "source_end_char": 4920
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b88",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "가상 동구청년창업지원센터",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b88"
+      ],
+      "reading_order": 88,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/7. 수행기관 및 역할/가상 동구청년창업지원센터",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b88",
+          "role": "markdown_text",
+          "text": "가상 동구청년창업지원센터",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4927,
+            "source_end_char": 4940
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4927,
+        "source_end_char": 4940
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b89",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**역할**: 사업 총괄, 신청 접수·선정, 교육 운영, 창업지원금 단계별 지급 관리",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b89"
+      ],
+      "reading_order": 89,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/7. 수행기관 및 역할/가상 동구청년창업지원센터",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b89",
+          "role": "markdown_text",
+          "text": "**역할**: 사업 총괄, 신청 접수·선정, 교육 운영, 창업지원금 단계별 지급 관리",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4943,
+            "source_end_char": 4990
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4943,
+        "source_end_char": 4990
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b90",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**변경 여부**: 변경 없음",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b90"
+      ],
+      "reading_order": 90,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/7. 수행기관 및 역할/가상 동구청년창업지원센터",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b90",
+          "role": "markdown_text",
+          "text": "**변경 여부**: 변경 없음",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 4993,
+            "source_end_char": 5009
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 4993,
+        "source_end_char": 5009
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b91",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "가상 청년창업 멘토풀 운영기관",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b91"
+      ],
+      "reading_order": 91,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/7. 수행기관 및 역할/가상 청년창업 멘토풀 운영기관",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b91",
+          "role": "markdown_text",
+          "text": "가상 청년창업 멘토풀 운영기관",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5016,
+            "source_end_char": 5032
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5016,
+        "source_end_char": 5032
+      },
+      "source_block_label": "markdown_heading_h4"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b92",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "**역할**: 1:1 멘토링 매칭 및 운영",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b92"
+      ],
+      "reading_order": 92,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/7. 수행기관 및 역할/가상 청년창업 멘토풀 운영기관",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b92",
+          "role": "markdown_text",
+          "text": "**역할**: 1:1 멘토링 매칭 및 운영",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5035,
+            "source_end_char": 5058
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5035,
+        "source_end_char": 5058
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b93",
+      "kind": "heading",
+      "structure_status": "explicit",
+      "text": "8. 기대효과 및 성과지표(KPI)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b93"
+      ],
+      "reading_order": 93,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/8. 기대효과 및 성과지표(KPI)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b93",
+          "role": "markdown_text",
+          "text": "8. 기대효과 및 성과지표(KPI)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5065,
+            "source_end_char": 5084
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5065,
+        "source_end_char": 5084
+      },
+      "source_block_label": "markdown_heading_h3"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b94",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "(파급효과) 단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b94"
+      ],
+      "reading_order": 94,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/8. 기대효과 및 성과지표(KPI)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b94",
+          "role": "markdown_text",
+          "text": "(파급효과) 단계별 자금 배분과 멘토링 구체화를 통한 실제 창업 전환율 제고",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5088,
+            "source_end_char": 5130
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5088,
+        "source_end_char": 5130
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b95",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "(성과지표, 가상 목표치)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b95"
+      ],
+      "reading_order": 95,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/8. 기대효과 및 성과지표(KPI)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b95",
+          "role": "markdown_text",
+          "text": "(성과지표, 가상 목표치)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5133,
+            "source_end_char": 5147
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5133,
+        "source_end_char": 5147
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b96",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "창업 전환율(사업자등록 완료율): 35% 이상(2026년 실적은 원문 미확인으로 비교 불가 — 정보부족)",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b96"
+      ],
+      "reading_order": 96,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/8. 기대효과 및 성과지표(KPI)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b96",
+          "role": "markdown_text",
+          "text": "창업 전환율(사업자등록 완료율): 35% 이상(2026년 실적은 원문 미확인으로 비교 불가 — 정보부족)",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5152,
+            "source_end_char": 5210
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5152,
+        "source_end_char": 5210
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b97",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "1·2단계 지급 집행률: 각 단계 90% 이상",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b97"
+      ],
+      "reading_order": 97,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/8. 기대효과 및 성과지표(KPI)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b97",
+          "role": "markdown_text",
+          "text": "1·2단계 지급 집행률: 각 단계 90% 이상",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5215,
+            "source_end_char": 5240
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5215,
+        "source_end_char": 5240
+      },
+      "source_block_label": "markdown_list_item"
+    },
+    {
+      "block_id": "markdown:PREREVIEW-TEST-2027-03:b98",
+      "kind": "paragraph",
+      "structure_status": "explicit",
+      "text": "멘토링 참여 만족도: 4.5/5.0 이상",
+      "text_occurrence_ids": [
+        "markdown:PREREVIEW-TEST-2027-03:occ:b98"
+      ],
+      "reading_order": 98,
+      "page": null,
+      "section_path": "중소기업지원사업 사전협의 요청서/첨부: 사업설명자료/8. 기대효과 및 성과지표(KPI)",
+      "occurrences": [
+        {
+          "occurrence_id": "markdown:PREREVIEW-TEST-2027-03:occ:b98",
+          "role": "markdown_text",
+          "text": "멘토링 참여 만족도: 4.5/5.0 이상",
+          "provenance": {
+            "method": "markdown_fixture_source_span",
+            "page": null,
+            "bbox": null,
+            "coordinate_space": "unicode_codepoint_offset",
+            "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+            "source_start_char": 5245,
+            "source_end_char": 5267
+          }
+        }
+      ],
+      "provenance": {
+        "method": "markdown_fixture_source_span",
+        "page": null,
+        "bbox": null,
+        "coordinate_space": "unicode_codepoint_offset",
+        "source_location": "/home/hyseo/SKN_30_Works/Projects/SKN30_T4_final_work/hwp_parsing/docs/PreReview_Request_Profile/test_request_corpus_v0.1/semantic_input/request_03_support_content.input.md",
+        "source_start_char": 5245,
+        "source_end_char": 5267
+      },
+      "source_block_label": "markdown_list_item"
+    }
+  ],
+  "conflicts": [],
+  "relations": []
+}

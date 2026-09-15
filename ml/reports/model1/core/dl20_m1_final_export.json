@@ -1,0 +1,26 @@
+{
+  "model": "klue/bert-base",
+  "lr": 5e-05,
+  "seed": 42,
+  "fixed": {
+    "epochs": 8,
+    "batch": 16,
+    "max_len": 256,
+    "class_weight": true
+  },
+  "n_train": 1404,
+  "n_classes": 19,
+  "source_of_lr": "dl12_m1_candidates_dl.json:results.KLUE-BERT.lr (내부 CV)",
+  "external_131_single_seed": {
+    "n": 131,
+    "accuracy": 0.8321,
+    "macro_f1_present": 0.7184,
+    "n_classes_present": 15
+  },
+  "external_131_dl12_published_3seed_mean": {
+    "accuracy_mean": 0.8422,
+    "accuracy_std": 0.0072
+  },
+  "elapsed_min": 1.1,
+  "export_dir": "/workspace/dl/models/m1_klue_bert"
+}

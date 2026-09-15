@@ -1,0 +1,107 @@
+{
+  "purpose": "M82/P3 를 canonical 후보로 확정하기 전 재현성 3-run",
+  "dataset": {
+    "path": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877
+  },
+  "n_runs": 3,
+  "runs": [
+    {
+      "P0_MAE": 0.356251,
+      "P3_MAE": 0.351813,
+      "paired": {
+        "delta_MAE": -0.0044,
+        "ci95": [
+          -0.0083,
+          -0.0003
+        ],
+        "wilcoxon_p": 0.0253,
+        "n_better": 987,
+        "n_worse": 890
+      },
+      "fold_wins": 5,
+      "within_2x": 0.571657,
+      "within_3x": 0.74374
+    },
+    {
+      "P0_MAE": 0.356251,
+      "P3_MAE": 0.351813,
+      "paired": {
+        "delta_MAE": -0.0044,
+        "ci95": [
+          -0.0083,
+          -0.0003
+        ],
+        "wilcoxon_p": 0.0253,
+        "n_better": 987,
+        "n_worse": 890
+      },
+      "fold_wins": 5,
+      "within_2x": 0.571657,
+      "within_3x": 0.74374
+    },
+    {
+      "P0_MAE": 0.356251,
+      "P3_MAE": 0.351813,
+      "paired": {
+        "delta_MAE": -0.0044,
+        "ci95": [
+          -0.0083,
+          -0.0003
+        ],
+        "wilcoxon_p": 0.0253,
+        "n_better": 987,
+        "n_worse": 890
+      },
+      "fold_wins": 5,
+      "within_2x": 0.571657,
+      "within_3x": 0.74374
+    }
+  ],
+  "feature_dims_per_fold": {
+    "fold0": {
+      "P0": 171,
+      "P3": 211
+    },
+    "fold1": {
+      "P0": 171,
+      "P3": 211
+    },
+    "fold2": {
+      "P0": 171,
+      "P3": 211
+    },
+    "fold3": {
+      "P0": 171,
+      "P3": 211
+    },
+    "fold4": {
+      "P0": 171,
+      "P3": 211
+    }
+  },
+  "new_proximity_cols": 40,
+  "checks": {
+    "OOF prediction exact match": true,
+    "MAE exact match": true,
+    "CI exact match": true,
+    "feature dimension exact match": true,
+    "feature ordering exact match": true,
+    "M82 공표치 재현 (P0 0.3563 / P3 0.3518)": true,
+    "fold 분할이 run 간 동일": true
+  },
+  "verdict": "PASS — P3 canonical 후보 확정 가능",
+  "published_m82": {
+    "P0": 0.3563,
+    "P3": 0.3518,
+    "delta": -0.0044,
+    "ci95": [
+      -0.0083,
+      -0.0003
+    ],
+    "fold_wins": 5
+  },
+  "oof": "data\\processed\\m82_p3_oof.parquet",
+  "seconds": 1626.0
+}

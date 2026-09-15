@@ -1,0 +1,176 @@
+{
+  "purpose": "전체본문 SVD 가 잃어버릴 수 있는 수치-맥락 결합을 명시 feature 로 복원",
+  "unchanged": {
+    "dataset": "data\\processed\\design_features_v2.parquet",
+    "sha256": "eced88f6767e2e2460a05812dd8e9cd39990937e4c1a2a8363e02d114bfdc7f4",
+    "rows": 1877,
+    "baseline": "M73 soft/ordinal_xgb 재현 블록 + M69 G단계 feature"
+  },
+  "m73_baseline": {
+    "MAE_log10": 0.3563,
+    "strict_MAE": 0.3756,
+    "within_2x": 0.564,
+    "within_3x": 0.742
+  },
+  "window_primary": 30,
+  "window_sweep_diagnostic": {
+    "20": {
+      "coverage_support_rate": 0.0341,
+      "ambiguity_rate": 0.3703
+    },
+    "30": {
+      "coverage_support_rate": 0.0373,
+      "ambiguity_rate": 0.3703
+    },
+    "50": {
+      "coverage_support_rate": 0.0373,
+      "ambiguity_rate": 0.3703
+    }
+  },
+  "coverage": {
+    "prox_support_rate": 0.0373,
+    "prox_self_burden_rate": 0.4635,
+    "prox_selected_count": 0.1071,
+    "prox_duration_months": 0.1263
+  },
+  "flag_rate": {
+    "has_loan_context": 0.0975,
+    "has_grant_context": 0.0794,
+    "has_voucher_context": 0.0282,
+    "has_per_company_context": 0.4294,
+    "has_per_project_context": 0.0666,
+    "has_percent_near_support": 0.0373,
+    "has_percent_near_self_burden": 0.4635,
+    "has_count_near_selection": 0.1071,
+    "has_month_near_duration": 0.0575,
+    "has_year_near_duration": 0.089,
+    "ambiguity_flag": 0.3703
+  },
+  "leakage_hits": 0,
+  "ctx_digit_residue": 0,
+  "results": {
+    "program_stem": {
+      "P0": {
+        "MAE_log10": 0.3563,
+        "within_2x": 0.5642,
+        "within_3x": 0.7421
+      },
+      "P1": {
+        "MAE_log10": 0.3559,
+        "within_2x": 0.5567,
+        "within_3x": 0.7443,
+        "vs_P0": {
+          "delta_MAE": -0.0004,
+          "ci95": [
+            -0.0039,
+            0.003
+          ],
+          "wilcoxon_p": 0.851,
+          "n_better": 933,
+          "n_worse": 944
+        },
+        "fold_wins_vs_P0": 3
+      },
+      "P2": {
+        "MAE_log10": 0.3544,
+        "within_2x": 0.5711,
+        "within_3x": 0.7453,
+        "vs_P0": {
+          "delta_MAE": -0.0019,
+          "ci95": [
+            -0.0053,
+            0.0016
+          ],
+          "wilcoxon_p": 0.213,
+          "n_better": 964,
+          "n_worse": 913
+        },
+        "fold_wins_vs_P0": 3
+      },
+      "P3": {
+        "MAE_log10": 0.3518,
+        "within_2x": 0.5717,
+        "within_3x": 0.7437,
+        "vs_P0": {
+          "delta_MAE": -0.0044,
+          "ci95": [
+            -0.0083,
+            -0.0003
+          ],
+          "wilcoxon_p": 0.0253,
+          "n_better": 987,
+          "n_worse": 890
+        },
+        "fold_wins_vs_P0": 5
+      }
+    },
+    "normalized_title": {
+      "P0": {
+        "MAE_log10": 0.3756,
+        "within_2x": 0.5338,
+        "within_3x": 0.7171
+      },
+      "P1": {
+        "MAE_log10": 0.3742,
+        "within_2x": 0.5232,
+        "within_3x": 0.7176,
+        "vs_P0": {
+          "delta_MAE": -0.0015,
+          "ci95": [
+            -0.0045,
+            0.0015
+          ],
+          "wilcoxon_p": 0.713,
+          "n_better": 962,
+          "n_worse": 915
+        },
+        "fold_wins_vs_P0": 3
+      },
+      "P2": {
+        "MAE_log10": 0.374,
+        "within_2x": 0.5274,
+        "within_3x": 0.716,
+        "vs_P0": {
+          "delta_MAE": -0.0016,
+          "ci95": [
+            -0.005,
+            0.0017
+          ],
+          "wilcoxon_p": 0.691,
+          "n_better": 957,
+          "n_worse": 920
+        },
+        "fold_wins_vs_P0": 4
+      },
+      "P3": {
+        "MAE_log10": 0.3751,
+        "within_2x": 0.5344,
+        "within_3x": 0.7118,
+        "vs_P0": {
+          "delta_MAE": -0.0005,
+          "ci95": [
+            -0.0041,
+            0.0032
+          ],
+          "wilcoxon_p": 0.827,
+          "n_better": 951,
+          "n_worse": 926
+        },
+        "fold_wins_vs_P0": 3
+      }
+    }
+  },
+  "best_candidate": "P3",
+  "promotion_checks": {
+    "1. OOF MAE < 0.3563": true,
+    "2. strict 에서도 개선": true,
+    "3. 최소 4/5 fold 개선": true,
+    "4. CI 가 0 아래": true,
+    "5. target amount leakage 0건": true,
+    "6. parser ambiguity 과도하지 않음(<0.5)": true,
+    "7. 실질기준 ΔMAE <= -0.003": true,
+    "8. reproducibility": true
+  },
+  "verdict": "승격 후보 (P3)",
+  "seconds": 3994.0
+}

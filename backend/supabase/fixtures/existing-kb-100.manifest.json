@@ -1,0 +1,48 @@
+{
+  "schema_version": "prereview_existing_kb_pack_manifest/v0.1",
+  "dataset": "bizinfo_existing_structured_profiles_100/20260909",
+  "archive": {
+    "file_name": "structured-profiles-100.zip",
+    "sha256": "6649f1a5aab36f659d688634103950d3b73f8a5903a453aabdbbd9f5bc0f7f0d",
+    "size_bytes": 30716283
+  },
+  "expected": {
+    "notices": 100,
+    "files": 600,
+    "bytes": 93236396,
+    "source_formats": {
+      "hwp": 48,
+      "hwpx": 5,
+      "pdf": 47
+    },
+    "facts": 2409,
+    "delivery_roles": 38,
+    "projections": {
+      "support_facets": 4,
+      "support_scale_measures": 30
+    },
+    "relational_rows": {
+      "delivery_role_organizations": 48,
+      "delivery_roles": 38,
+      "fact_component_links": 298,
+      "fact_context": 1888,
+      "fact_evidence": 2409,
+      "fact_relations": 400,
+      "facts": 2409,
+      "support_components": 219,
+      "support_facet_sources": 10,
+      "support_facet_values": 14,
+      "support_facets": 4,
+      "support_scale_measures": 77,
+      "support_scale_projections": 30,
+      "target_constraint_dimensions": 0,
+      "target_constraint_sources": 0,
+      "target_constraints": 0
+    },
+    "notice_ids_sha256": "4630706772423d0a0fa9b161c2b534de46d8805733ea8e31cd56f2281add84b6"
+  },
+  "notes": [
+    "The archive itself is intentionally stored outside Git.",
+    "PDF sources are accepted because this pack contains previously completed Common IR and Existing Profile outputs; bootstrap does not run OCR."
+  ]
+}

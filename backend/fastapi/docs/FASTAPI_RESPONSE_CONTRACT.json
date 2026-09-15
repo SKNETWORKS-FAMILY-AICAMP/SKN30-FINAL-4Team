@@ -1,0 +1,92 @@
+{
+  "_description": "비규범(non-normative) 성공 응답 예시 모음이다. mock과 응답 이해에만 사용하며 필드, nullability, enum, 의미 또는 호출 흐름을 정의하지 않는다. 유일한 사람용 계약은 0.FASTAPI_FRONTEND_API_SPEC.md이고 실행 코드의 구조 계약은 /openapi.json이다. 예시와 OpenAPI가 다르면 배포 대상 OpenAPI를 구조 기준으로 사용한다. UUID·일시·문구는 모두 예시다.",
+  "auth_sign_in": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}, "access_token_expires_at": "2030-01-01T00:00:00Z"},
+  "auth_me": {"user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}, "access_token_expires_at": "2030-01-01T00:00:00Z"},
+  "auth_refresh": {"access_token_expires_at": "2030-01-01T01:00:00Z"},
+  "auth_sign_up": {"email_confirmation_required": true, "user": {"id": "11111111-1111-1111-1111-111111111111", "email": "user@example.com", "display_name": "홍길동"}},
+  "auth_password_reset": {"message": "If an account exists, password reset instructions have been sent."},
+  "analysis_run_created": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "queued"},
+  "analysis_run_status": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "running", "analysis_case_id": null, "error_code": null, "error_message": null},
+  "analysis_current_processing": {
+    "state": "processing",
+    "run": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "running", "original_filename": "요청서.hwpx", "created_at": "2026-09-14T03:00:00Z", "updated_at": "2026-09-14T03:01:00Z"},
+    "session": null
+  },
+  "analysis_current_ready": {
+    "state": "ready",
+    "run": null,
+    "session": {"analysis_session_id": "22222222-2222-2222-2222-222222222222", "analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "session_expires_at": "2026-09-14T03:30:00Z"}
+  },
+  "analysis_current_idle": {"state": "idle", "run": null, "session": null},
+  "active_analysis_session_legacy": {"analysis_session_id": "22222222-2222-2222-2222-222222222222", "analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "session_expires_at": "2026-09-14T03:30:00Z"},
+  "analysis_session_close": {"http_status": 204, "response_body": null, "note": "POST /analysis-sessions/{analysis_session_id}/close는 소유자의 같은 session 종료를 idempotent하게 처리한다. 다른 소유자 또는 존재하지 않는 session은 404다."},
+  "analysis_result": {
+    "case": {"analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "completed_at": "2026-09-14T03:00:00Z"},
+    "cpl": {
+      "items": [{
+        "code": "CPL-10", "status": "confirmed", "summary": "지원대상이 확인되었습니다.",
+        "detail": {"reason_code": null, "reason": "원문에서 확인했습니다.", "values": [{"label": "지원 대상", "value": "부산 소재 중소기업", "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}], "source_fields": ["support_target"], "evidence_ids": ["67666666-6666-6666-6666-666666666666"]}
+      }]
+    },
+    "fit": {
+      "items": [{
+        "code": "FIT-1", "status": "FIT", "summary": "사업 목적과 지원대상의 연결이 확인되었습니다.",
+        "detail": {"comparison_performed": true, "reason_code": null, "reason": "사업 목적과 지원대상이 연결됩니다.", "left": {"value_summary": "지역 중소기업의 디지털 전환 촉진", "evidence_ids": ["66666666-6666-6666-6666-666666666666"]}, "right": {"value_summary": "부산 소재 중소기업", "evidence_ids": ["69666666-6666-6666-6666-666666666666"]}, "evidence_ids": ["66666666-6666-6666-6666-666666666666", "69666666-6666-6666-6666-666666666666"]}
+      }]
+    },
+    "sim": {
+      "status": "completed", "reason_code": null, "summary": "유사 공고 검색을 완료했습니다.",
+      "candidates": [{"sim_candidate_id": "55555555-5555-5555-5555-555555555555", "rank": 1, "title": "2025년 디지털 전환 지원사업", "comparison_status": "partial", "comparison_summary": "목적과 대상은 유사하지만 지원 방식에 차이가 있습니다."}]
+    },
+    "ml": {
+      "model_1": {"message": "유사 사업의 지원유형 참고 분류는 '판로' 계열입니다."},
+      "model_2": {"message": "비교군 기준 참고 예측 지원액은 853만원 수준입니다."},
+      "model_3": {"message": "비교군 대비 과거 사업 패턴과 차이가 큽니다."}
+    },
+    "report": {"status": "generating", "can_download": false, "can_regenerate": false, "retry_count": 0},
+    "session": {"analysis_session_id": "22222222-2222-2222-2222-222222222222", "is_active": true, "can_chat": true, "expires_at": "2026-09-14T03:30:00Z"},
+    "evidences": [
+      {"evidence_id": "66666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": null},
+      {"evidence_id": "67666666-6666-6666-6666-666666666666", "side": "request", "field_name": "support_target", "raw_value": "부산 소재 중소기업", "excerpt": null},
+      {"evidence_id": "69666666-6666-6666-6666-666666666666", "side": "request", "field_name": "support_target", "raw_value": "부산 소재 중소기업", "excerpt": null}
+    ]
+  },
+  "sim_candidate_detail": {
+    "sim_candidate_id": "55555555-5555-5555-5555-555555555555",
+    "analysis_case_id": "33333333-3333-3333-3333-333333333333",
+    "rank": 1,
+    "metadata": {"title": "2025년 디지털 전환 지원사업", "support_field": "스마트제조", "apply_period": "2026-09-01 ~ 2026-09-30", "ministry": "중소벤처기업부", "executing_agency": "○○테크노파크", "registered_at": "2026-09-01", "notice_status": "closed", "source_url": "https://example.com/notice/123"},
+    "comparison": {"status": "partial", "summary": "목적과 대상은 유사하지만 지원 방식에 차이가 있습니다.", "comparable_axes": ["purpose", "target", "support"]},
+    "axes": {
+      "purpose": {"code": "SIM-1", "status": "similar", "summary": "목적이 유사합니다.", "reason_code": null, "reason": "공통 목적이 확인되었습니다.", "common_points": ["디지털 전환 지원"], "differences": [], "request_evidence_ids": ["68666666-6666-6666-6666-666666666666"], "existing_evidence_ids": ["78666666-6666-6666-6666-666666666666"]},
+      "target": {"code": "SIM-2", "status": "similar", "summary": "대상이 유사합니다.", "reason_code": null, "reason": "공통 대상이 확인되었습니다.", "common_points": ["중소기업"], "differences": [], "request_evidence_ids": [], "existing_evidence_ids": []},
+      "support": {"code": "SIM-3", "status": "partial", "summary": "지원 방식에 차이가 있습니다.", "reason_code": null, "reason": "일부 지원 항목이 다릅니다.", "common_points": [], "differences": ["지원 방식"], "request_evidence_ids": [], "existing_evidence_ids": []},
+      "delivery": {"code": "SIM-4", "status": "insufficient", "summary": "수행체계 비교 정보가 부족합니다.", "reason_code": "EVIDENCE_INSUFFICIENT", "reason": "비교 근거가 부족합니다.", "common_points": [], "differences": [], "request_evidence_ids": [], "existing_evidence_ids": []}
+    },
+    "evidences": [
+      {"evidence_id": "68666666-6666-6666-6666-666666666666", "side": "request", "field_name": "purpose_goal", "raw_value": "지역 중소기업의 디지털 전환 촉진", "excerpt": null, "axis_type": "SIM"},
+      {"evidence_id": "78666666-6666-6666-6666-666666666666", "side": "existing", "field_name": "purpose_goal", "raw_value": "중소기업 디지털 전환 지원", "excerpt": null, "axis_type": "SIM"}
+    ]
+  },
+  "analysis_history": {
+    "items": [{"analysis_case_id": "33333333-3333-3333-3333-333333333333", "program_name": "지역 중소기업 디지털 전환 지원", "original_filename": "요청서.hwpx", "completed_at": "2026-09-14T03:00:00Z"}],
+    "next_cursor": "opaque-hmac-signed-cursor"
+  },
+  "conversation_retry_limits": {
+    "retry_count": "automatic_retry_count + manual_retry_count",
+    "automatic_retry_max": 1,
+    "manual_retry_max": 2,
+    "total_retry_max": 3
+  },
+  "conversation_turn_accepted": {"user_message_id": "88888888-8888-8888-8888-888888888888", "assistant_message_id": "99999999-9999-9999-9999-999999999999", "analysis_session_id": "22222222-2222-2222-2222-222222222222", "status": "generating", "retry_count": 0},
+  "conversation_message_polling": {"message_id": "99999999-9999-9999-9999-999999999999", "analysis_case_id": "33333333-3333-3333-3333-333333333333", "role": "assistant", "sequence_no": 2, "content": null, "status": "generating", "reply_to_message_id": "88888888-8888-8888-8888-888888888888", "retry_count": 0, "error_code": null, "error_message": null, "created_at": "2026-09-14T03:31:00Z", "updated_at": "2026-09-14T03:31:00Z"},
+  "conversation_messages": {
+    "items": [
+      {"message_id": "88888888-8888-8888-8888-888888888888", "analysis_case_id": "33333333-3333-3333-3333-333333333333", "role": "user", "sequence_no": 1, "content": "지원규모가 높은 편이야?", "status": "completed", "reply_to_message_id": null, "retry_count": 0, "error_code": null, "error_message": null, "created_at": "2026-09-14T03:31:00Z", "updated_at": "2026-09-14T03:31:00Z"},
+      {"message_id": "99999999-9999-9999-9999-999999999999", "analysis_case_id": "33333333-3333-3333-3333-333333333333", "role": "assistant", "sequence_no": 2, "content": "비교군 기준으로 지원 규모가 높은 편입니다.", "status": "completed", "reply_to_message_id": "88888888-8888-8888-8888-888888888888", "retry_count": 0, "error_code": null, "error_message": null, "created_at": "2026-09-14T03:31:00Z", "updated_at": "2026-09-14T03:31:10Z"}
+    ],
+    "next_cursor": null
+  },
+  "conversation_retry_accepted": {"user_message_id": "88888888-8888-8888-8888-888888888888", "assistant_message_id": "99999999-9999-9999-9999-999999999999", "analysis_session_id": "22222222-2222-2222-2222-222222222222", "status": "generating", "retry_count": 1},
+  "error": {"code": "UNSUPPORTED_FILE_FORMAT", "message": "Request upload accepts .hwp and .hwpx"}
+}

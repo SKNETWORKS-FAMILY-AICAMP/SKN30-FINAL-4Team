@@ -1,0 +1,29 @@
+"""Shared pipeline/model outcome codes.
+
+UNAVAILABLE means an external runtime or model is not present.
+NEEDS_REVIEW means a production artifact must not be treated as complete.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class OutcomeCode(StrEnum):
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    UNAVAILABLE = "UNAVAILABLE"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    SKIPPED = "SKIPPED"
+
+
+class ErrorCode(StrEnum):
+    UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT"
+    SOURCE_HASH_MISMATCH = "SOURCE_HASH_MISMATCH"
+    INVALID_OBJECT_KEY = "INVALID_OBJECT_KEY"
+    PARSER_UNAVAILABLE = "PARSER_UNAVAILABLE"
+    OCR_RUNTIME_UNAVAILABLE = "OCR_RUNTIME_UNAVAILABLE"
+    OCR_EXECUTION_DISABLED = "OCR_EXECUTION_DISABLED"
+    MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+    EVIDENCE_MISSING = "EVIDENCE_MISSING"
+    LANGGRAPH_UNAVAILABLE = "LANGGRAPH_UNAVAILABLE"

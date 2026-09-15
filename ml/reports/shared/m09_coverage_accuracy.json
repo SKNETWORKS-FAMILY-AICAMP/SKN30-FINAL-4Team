@@ -1,0 +1,912 @@
+{
+  "question": "커버리지를 올릴 때 정확도·오분류 편향이 어떻게 변하는가. 지원규모 추정에 쓸 최적 커버리지를 정하기 위한 근거.",
+  "cv": "StratifiedGroupKFold (program_stem)",
+  "folds": 5,
+  "seed": 42,
+  "n_rows": 1404,
+  "n_classes": 19,
+  "current_threshold": 0.25,
+  "target_precision": 0.7,
+  "A_threshold_sweep": [
+    {
+      "variant": "A_threshold",
+      "threshold": 0.1,
+      "coverage": 1.0,
+      "n_covered": 1404,
+      "accuracy": 0.8283,
+      "error_rate": 0.1717,
+      "macro_f1": 0.7834,
+      "pred_vs_true_tvd": 0.0449
+    },
+    {
+      "variant": "A_threshold",
+      "threshold": 0.15,
+      "coverage": 0.9993,
+      "n_covered": 1403,
+      "accuracy": 0.8289,
+      "error_rate": 0.1711,
+      "macro_f1": 0.7853,
+      "pred_vs_true_tvd": 0.0442
+    },
+    {
+      "variant": "A_threshold",
+      "threshold": 0.2,
+      "coverage": 0.9566,
+      "n_covered": 1343,
+      "accuracy": 0.8488,
+      "error_rate": 0.1512,
+      "macro_f1": 0.8053,
+      "pred_vs_true_tvd": 0.0424
+    },
+    {
+      "variant": "A_threshold",
+      "threshold": 0.25,
+      "coverage": 0.8825,
+      "n_covered": 1239,
+      "accuracy": 0.8789,
+      "error_rate": 0.1211,
+      "macro_f1": 0.8548,
+      "pred_vs_true_tvd": 0.0395
+    },
+    {
+      "variant": "A_threshold",
+      "threshold": 0.3,
+      "coverage": 0.802,
+      "n_covered": 1126,
+      "accuracy": 0.9014,
+      "error_rate": 0.0986,
+      "macro_f1": 0.8709,
+      "pred_vs_true_tvd": 0.0417
+    },
+    {
+      "variant": "A_threshold",
+      "threshold": 0.35,
+      "coverage": 0.6952,
+      "n_covered": 976,
+      "accuracy": 0.9242,
+      "error_rate": 0.0758,
+      "macro_f1": 0.8986,
+      "pred_vs_true_tvd": 0.0359
+    },
+    {
+      "variant": "A_threshold",
+      "threshold": 0.4,
+      "coverage": 0.604,
+      "n_covered": 848,
+      "accuracy": 0.9399,
+      "error_rate": 0.0601,
+      "macro_f1": 0.9126,
+      "pred_vs_true_tvd": 0.0354
+    }
+  ],
+  "B_calibrated_sweep": [
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.1,
+      "coverage": 1.0,
+      "n_covered": 1404,
+      "accuracy": 0.8283,
+      "error_rate": 0.1717,
+      "macro_f1": 0.7716,
+      "pred_vs_true_tvd": 0.0506
+    },
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.15,
+      "coverage": 1.0,
+      "n_covered": 1404,
+      "accuracy": 0.8283,
+      "error_rate": 0.1717,
+      "macro_f1": 0.7716,
+      "pred_vs_true_tvd": 0.0506
+    },
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.2,
+      "coverage": 0.9993,
+      "n_covered": 1403,
+      "accuracy": 0.8289,
+      "error_rate": 0.1711,
+      "macro_f1": 0.7735,
+      "pred_vs_true_tvd": 0.0499
+    },
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.25,
+      "coverage": 0.9986,
+      "n_covered": 1402,
+      "accuracy": 0.8288,
+      "error_rate": 0.1712,
+      "macro_f1": 0.7735,
+      "pred_vs_true_tvd": 0.0499
+    },
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.3,
+      "coverage": 0.9893,
+      "n_covered": 1389,
+      "accuracy": 0.8344,
+      "error_rate": 0.1656,
+      "macro_f1": 0.7767,
+      "pred_vs_true_tvd": 0.049
+    },
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.35,
+      "coverage": 0.9701,
+      "n_covered": 1362,
+      "accuracy": 0.8429,
+      "error_rate": 0.1571,
+      "macro_f1": 0.7839,
+      "pred_vs_true_tvd": 0.0499
+    },
+    {
+      "variant": "B_calibrated",
+      "threshold": 0.4,
+      "coverage": 0.9423,
+      "n_covered": 1323,
+      "accuracy": 0.8549,
+      "error_rate": 0.1451,
+      "macro_f1": 0.7949,
+      "pred_vs_true_tvd": 0.0454
+    }
+  ],
+  "C_per_class_thresholds": {
+    "SW·솔루션": {
+      "threshold": 0.3,
+      "precision": 0.7647,
+      "n": 17,
+      "meets_target": true
+    },
+    "경진대회": {
+      "threshold": 0.1,
+      "precision": 1.0,
+      "n": 13,
+      "meets_target": true
+    },
+    "고용보조": {
+      "threshold": 0.1,
+      "precision": 0.9535,
+      "n": 43,
+      "meets_target": true
+    },
+    "교육훈련": {
+      "threshold": 0.1,
+      "precision": 0.8431,
+      "n": 51,
+      "meets_target": true
+    },
+    "기술·IP평가": {
+      "threshold": 0.1,
+      "precision": 1.0,
+      "n": 7,
+      "meets_target": true
+    },
+    "보증": {
+      "threshold": 0.1,
+      "precision": 0.8889,
+      "n": 9,
+      "meets_target": true
+    },
+    "사업화": {
+      "threshold": 0.1,
+      "precision": 0.8618,
+      "n": 427,
+      "meets_target": true
+    },
+    "상담": {
+      "threshold": 0.1,
+      "precision": 1.0,
+      "n": 6,
+      "meets_target": true
+    },
+    "설비": {
+      "threshold": 0.1,
+      "precision": 0.8169,
+      "n": 71,
+      "meets_target": true
+    },
+    "성능인증": {
+      "threshold": 0.55,
+      "precision": 0.6,
+      "n": 5,
+      "meets_target": false
+    },
+    "수출물류": {
+      "threshold": 0.1,
+      "precision": 0.9231,
+      "n": 13,
+      "meets_target": true
+    },
+    "수출통관": {
+      "threshold": 0.45,
+      "precision": 0.7,
+      "n": 10,
+      "meets_target": true
+    },
+    "연구개발": {
+      "threshold": 0.1,
+      "precision": 0.7967,
+      "n": 182,
+      "meets_target": true
+    },
+    "융자": {
+      "threshold": 0.1,
+      "precision": 0.9278,
+      "n": 97,
+      "meets_target": true
+    },
+    "창업보육": {
+      "threshold": 0.25,
+      "precision": 0.7727,
+      "n": 22,
+      "meets_target": true
+    },
+    "컨설팅": {
+      "threshold": 0.1,
+      "precision": 0.7892,
+      "n": 166,
+      "meets_target": true
+    },
+    "판로": {
+      "threshold": 0.1,
+      "precision": 0.8021,
+      "n": 192,
+      "meets_target": true
+    },
+    "해외수주·실증": {
+      "threshold": 0.1,
+      "precision": 0.8462,
+      "n": 26,
+      "meets_target": true
+    },
+    "해외인증": {
+      "threshold": 0.1,
+      "precision": 0.8667,
+      "n": 15,
+      "meets_target": true
+    }
+  },
+  "C_result": {
+    "coverage": 0.9772,
+    "n_covered": 1372,
+    "accuracy": 0.8389,
+    "macro_f1": 0.7848
+  },
+  "per_class_precision_current": [
+    {
+      "support_type": "사업화",
+      "n_predicted": 363,
+      "precision": 0.9118,
+      "n_wrong": 32,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 9
+    },
+    {
+      "support_type": "판로",
+      "n_predicted": 174,
+      "precision": 0.8678,
+      "n_wrong": 23,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 12
+    },
+    {
+      "support_type": "연구개발",
+      "n_predicted": 173,
+      "precision": 0.8266,
+      "n_wrong": 30,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 20
+    },
+    {
+      "support_type": "컨설팅",
+      "n_predicted": 143,
+      "precision": 0.8462,
+      "n_wrong": 22,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 7
+    },
+    {
+      "support_type": "융자",
+      "n_predicted": 88,
+      "precision": 0.9886,
+      "n_wrong": 1,
+      "top_contaminant": "설비",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "설비",
+      "n_predicted": 64,
+      "precision": 0.8125,
+      "n_wrong": 12,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 3
+    },
+    {
+      "support_type": "교육훈련",
+      "n_predicted": 43,
+      "precision": 0.9302,
+      "n_wrong": 3,
+      "top_contaminant": "상담",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "고용보조",
+      "n_predicted": 39,
+      "precision": 0.9744,
+      "n_wrong": 1,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "창업보육",
+      "n_predicted": 22,
+      "precision": 0.7727,
+      "n_wrong": 5,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 4
+    },
+    {
+      "support_type": "해외수주·실증",
+      "n_predicted": 22,
+      "precision": 0.9091,
+      "n_wrong": 2,
+      "top_contaminant": "판로",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "SW·솔루션",
+      "n_predicted": 19,
+      "precision": 0.6842,
+      "n_wrong": 6,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 2
+    },
+    {
+      "support_type": "수출통관",
+      "n_predicted": 16,
+      "precision": 0.6875,
+      "n_wrong": 5,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 3
+    },
+    {
+      "support_type": "성능인증",
+      "n_predicted": 14,
+      "precision": 0.5714,
+      "n_wrong": 6,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 2
+    },
+    {
+      "support_type": "해외인증",
+      "n_predicted": 14,
+      "precision": 0.9286,
+      "n_wrong": 1,
+      "top_contaminant": "판로",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "경진대회",
+      "n_predicted": 13,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    },
+    {
+      "support_type": "수출물류",
+      "n_predicted": 12,
+      "precision": 0.9167,
+      "n_wrong": 1,
+      "top_contaminant": "수출통관",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "보증",
+      "n_predicted": 8,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    },
+    {
+      "support_type": "기술·IP평가",
+      "n_predicted": 6,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    },
+    {
+      "support_type": "상담",
+      "n_predicted": 6,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    }
+  ],
+  "per_class_precision_relaxed": [
+    {
+      "support_type": "사업화",
+      "n_predicted": 427,
+      "precision": 0.8618,
+      "n_wrong": 59,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 13
+    },
+    {
+      "support_type": "판로",
+      "n_predicted": 191,
+      "precision": 0.8063,
+      "n_wrong": 37,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 19
+    },
+    {
+      "support_type": "연구개발",
+      "n_predicted": 182,
+      "precision": 0.7967,
+      "n_wrong": 37,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 23
+    },
+    {
+      "support_type": "컨설팅",
+      "n_predicted": 166,
+      "precision": 0.7892,
+      "n_wrong": 35,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 11
+    },
+    {
+      "support_type": "융자",
+      "n_predicted": 97,
+      "precision": 0.9278,
+      "n_wrong": 7,
+      "top_contaminant": "설비",
+      "top_contaminant_n": 4
+    },
+    {
+      "support_type": "설비",
+      "n_predicted": 71,
+      "precision": 0.8169,
+      "n_wrong": 13,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 4
+    },
+    {
+      "support_type": "교육훈련",
+      "n_predicted": 51,
+      "precision": 0.8431,
+      "n_wrong": 8,
+      "top_contaminant": "고용보조",
+      "top_contaminant_n": 3
+    },
+    {
+      "support_type": "고용보조",
+      "n_predicted": 43,
+      "precision": 0.9535,
+      "n_wrong": 2,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "SW·솔루션",
+      "n_predicted": 27,
+      "precision": 0.5185,
+      "n_wrong": 13,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 5
+    },
+    {
+      "support_type": "해외수주·실증",
+      "n_predicted": 26,
+      "precision": 0.8462,
+      "n_wrong": 4,
+      "top_contaminant": "판로",
+      "top_contaminant_n": 2
+    },
+    {
+      "support_type": "창업보육",
+      "n_predicted": 25,
+      "precision": 0.68,
+      "n_wrong": 8,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 6
+    },
+    {
+      "support_type": "성능인증",
+      "n_predicted": 18,
+      "precision": 0.5556,
+      "n_wrong": 8,
+      "top_contaminant": "사업화",
+      "top_contaminant_n": 2
+    },
+    {
+      "support_type": "수출통관",
+      "n_predicted": 16,
+      "precision": 0.6875,
+      "n_wrong": 5,
+      "top_contaminant": "컨설팅",
+      "top_contaminant_n": 3
+    },
+    {
+      "support_type": "해외인증",
+      "n_predicted": 15,
+      "precision": 0.8667,
+      "n_wrong": 2,
+      "top_contaminant": "해외수주·실증",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "경진대회",
+      "n_predicted": 13,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    },
+    {
+      "support_type": "수출물류",
+      "n_predicted": 13,
+      "precision": 0.9231,
+      "n_wrong": 1,
+      "top_contaminant": "수출통관",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "보증",
+      "n_predicted": 9,
+      "precision": 0.8889,
+      "n_wrong": 1,
+      "top_contaminant": "융자",
+      "top_contaminant_n": 1
+    },
+    {
+      "support_type": "기술·IP평가",
+      "n_predicted": 7,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    },
+    {
+      "support_type": "상담",
+      "n_predicted": 6,
+      "precision": 1.0,
+      "n_wrong": 0,
+      "top_contaminant": null,
+      "top_contaminant_n": 0
+    }
+  ],
+  "manual_check_openapi": [
+    {
+      "threshold": 0.1,
+      "n_covered": 41,
+      "coverage": 1.0,
+      "accuracy": 0.6098
+    },
+    {
+      "threshold": 0.15,
+      "n_covered": 36,
+      "coverage": 0.878,
+      "accuracy": 0.6944
+    },
+    {
+      "threshold": 0.2,
+      "n_covered": 29,
+      "coverage": 0.7073,
+      "accuracy": 0.7931
+    },
+    {
+      "threshold": 0.25,
+      "n_covered": 23,
+      "coverage": 0.561,
+      "accuracy": 0.7826
+    },
+    {
+      "threshold": 0.3,
+      "n_covered": 17,
+      "coverage": 0.4146,
+      "accuracy": 0.8235
+    },
+    {
+      "threshold": 0.35,
+      "n_covered": 13,
+      "coverage": 0.3171,
+      "accuracy": 0.9231
+    },
+    {
+      "threshold": 0.4,
+      "n_covered": 9,
+      "coverage": 0.2195,
+      "accuracy": 1.0
+    }
+  ],
+  "amount_distortion": [
+    {
+      "threshold": 0.15,
+      "support_type": "고용보조",
+      "precision": 0.9762,
+      "pure_median": 8000000.0,
+      "contaminated_median": 9000000.0,
+      "shift_ratio": 1.125,
+      "shift_pct": 12.5,
+      "n_predicted": 43
+    },
+    {
+      "threshold": 0.15,
+      "support_type": "사업화",
+      "precision": 0.9316,
+      "pure_median": 17500000.0,
+      "contaminated_median": 15000000.0,
+      "shift_ratio": 0.857,
+      "shift_pct": -14.3,
+      "n_predicted": 427
+    },
+    {
+      "threshold": 0.15,
+      "support_type": "연구개발",
+      "precision": 0.8192,
+      "pure_median": 3000000.0,
+      "contaminated_median": 4500000.0,
+      "shift_ratio": 1.5,
+      "shift_pct": 50.0,
+      "n_predicted": 182
+    },
+    {
+      "threshold": 0.15,
+      "support_type": "융자",
+      "precision": 1.0,
+      "pure_median": 200000000.0,
+      "contaminated_median": 200000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 97
+    },
+    {
+      "threshold": 0.15,
+      "support_type": "컨설팅",
+      "precision": 0.8973,
+      "pure_median": 12500000.0,
+      "contaminated_median": 13000000.0,
+      "shift_ratio": 1.04,
+      "shift_pct": 4.0,
+      "n_predicted": 166
+    },
+    {
+      "threshold": 0.15,
+      "support_type": "판로",
+      "precision": 0.8556,
+      "pure_median": 3000000.0,
+      "contaminated_median": 3000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 191
+    },
+    {
+      "threshold": 0.15,
+      "support_type": "해외인증",
+      "precision": 0.9286,
+      "pure_median": 10000000.0,
+      "contaminated_median": 10000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 15
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "고용보조",
+      "precision": 0.9762,
+      "pure_median": 8000000.0,
+      "contaminated_median": 9000000.0,
+      "shift_ratio": 1.125,
+      "shift_pct": 12.5,
+      "n_predicted": 43
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "사업화",
+      "precision": 0.9372,
+      "pure_median": 17500000.0,
+      "contaminated_median": 15000000.0,
+      "shift_ratio": 0.857,
+      "shift_pct": -14.3,
+      "n_predicted": 403
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "연구개발",
+      "precision": 0.8276,
+      "pure_median": 3000000.0,
+      "contaminated_median": 4500000.0,
+      "shift_ratio": 1.5,
+      "shift_pct": 50.0,
+      "n_predicted": 177
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "융자",
+      "precision": 1.0,
+      "pure_median": 200000000.0,
+      "contaminated_median": 200000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 93
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "컨설팅",
+      "precision": 0.9007,
+      "pure_median": 12500000.0,
+      "contaminated_median": 13000000.0,
+      "shift_ratio": 1.04,
+      "shift_pct": 4.0,
+      "n_predicted": 159
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "판로",
+      "precision": 0.8793,
+      "pure_median": 3000000.0,
+      "contaminated_median": 3000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 184
+    },
+    {
+      "threshold": 0.2,
+      "support_type": "해외인증",
+      "precision": 0.9286,
+      "pure_median": 10000000.0,
+      "contaminated_median": 10000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 15
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "고용보조",
+      "precision": 0.9744,
+      "pure_median": 8000000.0,
+      "contaminated_median": 7500000.0,
+      "shift_ratio": 0.938,
+      "shift_pct": -6.2,
+      "n_predicted": 39
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "사업화",
+      "precision": 0.9457,
+      "pure_median": 17500000.0,
+      "contaminated_median": 15000000.0,
+      "shift_ratio": 0.857,
+      "shift_pct": -14.3,
+      "n_predicted": 363
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "연구개발",
+      "precision": 0.8314,
+      "pure_median": 3000000.0,
+      "contaminated_median": 3000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 173
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "융자",
+      "precision": 1.0,
+      "pure_median": 200000000.0,
+      "contaminated_median": 200000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 88
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "컨설팅",
+      "precision": 0.9308,
+      "pure_median": 12500000.0,
+      "contaminated_median": 13000000.0,
+      "shift_ratio": 1.04,
+      "shift_pct": 4.0,
+      "n_predicted": 143
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "판로",
+      "precision": 0.9042,
+      "pure_median": 3000000.0,
+      "contaminated_median": 3000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 174
+    },
+    {
+      "threshold": 0.25,
+      "support_type": "해외인증",
+      "precision": 0.9286,
+      "pure_median": 10000000.0,
+      "contaminated_median": 9500000.0,
+      "shift_ratio": 0.95,
+      "shift_pct": -5.0,
+      "n_predicted": 14
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "고용보조",
+      "precision": 0.9737,
+      "pure_median": 8000000.0,
+      "contaminated_median": 8000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 38
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "사업화",
+      "precision": 0.9612,
+      "pure_median": 17500000.0,
+      "contaminated_median": 15000000.0,
+      "shift_ratio": 0.857,
+      "shift_pct": -14.3,
+      "n_predicted": 318
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "연구개발",
+      "precision": 0.8457,
+      "pure_median": 3000000.0,
+      "contaminated_median": 3000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 163
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "융자",
+      "precision": 1.0,
+      "pure_median": 200000000.0,
+      "contaminated_median": 200000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 85
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "컨설팅",
+      "precision": 0.9649,
+      "pure_median": 12500000.0,
+      "contaminated_median": 13000000.0,
+      "shift_ratio": 1.04,
+      "shift_pct": 4.0,
+      "n_predicted": 123
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "판로",
+      "precision": 0.9346,
+      "pure_median": 3000000.0,
+      "contaminated_median": 3000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 159
+    },
+    {
+      "threshold": 0.3,
+      "support_type": "해외인증",
+      "precision": 1.0,
+      "pure_median": 10000000.0,
+      "contaminated_median": 10000000.0,
+      "shift_ratio": 1.0,
+      "shift_pct": 0.0,
+      "n_predicted": 13
+    }
+  ],
+  "caveat": "학습셋 정확도는 도메인 내부값이라 실제 적용(2026 지자체 공고)보다 낙관적이다. M13 대조를 함께 보고 두 곳에서 모두 견디는 값을 고른다.",
+  "output": "C:\\Users\\playdata2\\workspace\\SKN30-FINAL-4Team\\ml\\data\\processed/coverage_accuracy_sweep.parquet"
+}

@@ -1,0 +1,23 @@
+{
+  "document": "samples/hwpx/mockup_03_보통사례_청년로컬크리에이터.hwpx",
+  "grade": "MODERATE",
+  "source_annotation": "보통(양호) 사례 1 (Moderate - 정합도 77% / 범위차이 및 절차일부누락)",
+  "annotated_defects": [
+    "목적에는 시제품 제작이 있으나 지원내용에는 마케팅만 기재되어 FIT-2 범위 차이",
+    "수행기관의 세부 추진절차와 운영 위탁 역할 설명이 없어 FIT-6 정보 부족"
+  ],
+  "fit": {
+    "FIT-2": {
+      "status": "NEEDS_REVIEW",
+      "covered_by_contract": true,
+      "why": "목적의 시제품 제작이 지원내용에 없다"
+    },
+    "FIT-6": {
+      "status": "INSUFFICIENT",
+      "covered_by_contract": true,
+      "why": "수행절차·단계별 역할 근거가 없어 수행기관과 대조할 우측이 없다"
+    }
+  },
+  "cpl": {},
+  "blank_markers": {}
+}
