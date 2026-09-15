@@ -53,6 +53,11 @@ from semantic_structuring.composite_candidates import (  # noqa: E402
     COMPOSITE_CANDIDATE_GENERATOR_VERSION,
     generate_composite_candidates,
 )
+from semantic_structuring.native_exact_transform import (  # noqa: E402
+    NativeExactTransformOptions,
+    augment_pack_with_native_exact_transforms,
+)
+from semantic_structuring.native_provenance import parent_candidate_pack_lineage  # noqa: E402
 from semantic_structuring.final_profile_assembler import (  # noqa: E402
     assemble_final_profile_v02,
 )
@@ -111,9 +116,29 @@ _EXISTING_COMPOSITE_CANDIDATE_MODES = frozenset(
     }
 )
 
+# Native exact candidates are a separately gated, source-preserving input
+# expansion.  Unlike composite shadow mode, an enabled native mode is passed
+# to source selection and final assembly.  Keep this switch independent so a
+# diagnostic rollout can never accidentally alter model input.
+EXISTING_NATIVE_EXACT_CANDIDATE_MODE_ENV = "PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE"
+EXISTING_NATIVE_EXACT_CANDIDATE_MODE_OFF = "off"
+EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES = "lines"
+EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS = "lines+continuations"
+_EXISTING_NATIVE_EXACT_CANDIDATE_MODES = frozenset(
+    {
+        EXISTING_NATIVE_EXACT_CANDIDATE_MODE_OFF,
+        EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES,
+        EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS,
+    }
+)
+
 
 class CompositeCandidateModeError(ValueError):
     """Raised before a pipeline run when the composite rollout mode is invalid."""
+
+
+class NativeExactCandidateModeError(ValueError):
+    """Raised before a pipeline run when native exact rollout mode is invalid."""
 
 
 def existing_composite_candidate_mode_from_env(
@@ -147,6 +172,35 @@ def normalize_existing_composite_candidate_mode(value: str | None) -> str:
         accepted = ", ".join(sorted(_EXISTING_COMPOSITE_CANDIDATE_MODES))
         raise CompositeCandidateModeError(
             f"{EXISTING_COMPOSITE_CANDIDATE_MODE_ENV} must be one of {accepted}"
+        )
+    return mode
+
+
+def existing_native_exact_candidate_mode_from_env(
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Read the opt-in native exact mode at the deployment boundary."""
+
+    values = os.environ if env is None else env
+    return normalize_existing_native_exact_candidate_mode(
+        values.get(EXISTING_NATIVE_EXACT_CANDIDATE_MODE_ENV)
+    )
+
+
+def normalize_existing_native_exact_candidate_mode(value: str | None) -> str:
+    """Validate native exact modes, defaulting an absent value to ``off``."""
+
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return EXISTING_NATIVE_EXACT_CANDIDATE_MODE_OFF
+    if not isinstance(value, str):
+        raise NativeExactCandidateModeError(
+            f"{EXISTING_NATIVE_EXACT_CANDIDATE_MODE_ENV} must be a string mode"
+        )
+    mode = value.strip().lower()
+    if mode not in _EXISTING_NATIVE_EXACT_CANDIDATE_MODES:
+        accepted = ", ".join(sorted(_EXISTING_NATIVE_EXACT_CANDIDATE_MODES))
+        raise NativeExactCandidateModeError(
+            f"{EXISTING_NATIVE_EXACT_CANDIDATE_MODE_ENV} must be one of {accepted}"
         )
     return mode
 
@@ -634,6 +688,56 @@ def _with_composite_shadow_metrics(
     return metrics
 
 
+def _native_exact_transform_options(mode: str) -> NativeExactTransformOptions:
+    """Map an already-validated rollout mode to the vendor transform options."""
+
+    if mode == EXISTING_NATIVE_EXACT_CANDIDATE_MODE_OFF:
+        return NativeExactTransformOptions(enabled=False)
+    if mode == EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES:
+        return NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=False,
+        )
+    if mode == EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS:
+        return NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=True,
+        )
+    # ``structure_announcement_profile`` validates the public value before
+    # calling this helper.  Do not report a deployment value here: the stable
+    # StageError at the transform boundary must not reveal it.
+    raise NativeExactCandidateModeError("unsupported native exact candidate mode")
+
+
+def _apply_native_exact_candidates(document: dict[str, Any], pack, *, mode: str):
+    """Apply the selected exact-native augmentation after routing only.
+
+    The transform is deliberately downstream from both section scoping and
+    broad A routing.  This keeps router prompts and composite shadow metrics
+    bound to the historical atomic pack, while source selection sees the
+    opted-in line/composite candidates.  ``off`` returns the same instance to
+    preserve the legacy wire shape exactly.
+    """
+
+    options = _native_exact_transform_options(mode)
+    if not options.enabled:
+        return pack
+    try:
+        return augment_pack_with_native_exact_transforms(pack, options=options)
+    except Exception as error:  # noqa: BLE001 - document-local transform boundary
+        # Native candidate construction derives solely from a routed Common IR
+        # pack.  Its exception text can include source text or IDs, therefore
+        # persist only a stable diagnostic.
+        raise _stage_error(
+            stage="native_exact_candidate_transform",
+            unit=pack.common_ir_document_id,
+            reason_code=MATERIALIZATION_FAILED,
+            message="native exact CandidatePack transformation failed",
+        ) from error
+
+
 def _trusted_source_sha256(document: dict[str, Any], pack) -> str:
     identity = common_ir_v1_identity(document)
     if pack.common_ir_document_id is None:
@@ -757,6 +861,7 @@ def _selection_artifact(
             "common_ir_document_id": pack.common_ir_document_id,
             "common_ir_source_sha256": identity["source_sha256"],
             "text_basis": "common_ir_v1_candidate_pack",
+            **parent_candidate_pack_lineage(pack),
         },
     }
 
@@ -1013,19 +1118,19 @@ def structure_announcement_profile(
     *,
     model_profile: str,
     composite_candidate_mode: str | None = None,
+    native_exact_candidate_mode: str | None = None,
 ) -> dict[str, Any]:
     """Run the production Common IR v1 → Existing Profile v0.2 chain.
 
-    ``composite_candidate_mode`` is intentionally explicit for in-process
-    callers.  This is a prepared integration seam: the polling worker does
-    not invoke this Existing-profile producer yet, so setting the environment
-    variable alone does not enable a live worker path.  Passing ``None``
-    selects the deployment default from
-    :data:`PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE`; both an absent value
-    and ``off`` retain the historical pipeline exactly.  ``shadow`` only
-    emits aggregate-only structured diagnostics and keeps matching transient
-    metrics in the source-selection artifact; it must not affect model
-    requests or Profile v0.2.
+    ``composite_candidate_mode`` and ``native_exact_candidate_mode`` are
+    intentionally explicit for in-process callers.  This is a prepared
+    integration seam: the polling worker does not invoke this Existing-profile
+    producer yet, so setting an environment variable alone does not enable a
+    live worker path.  Passing ``None`` selects the corresponding deployment
+    default.  The default ``off`` values retain the historical pipeline
+    exactly.  ``shadow`` only emits aggregate diagnostics; native exact modes
+    augment the routed CandidatePack *after* routing/shadow measurement and
+    are then supplied to source selection and final assembly.
     """
 
     mode = (
@@ -1033,10 +1138,16 @@ def structure_announcement_profile(
         if composite_candidate_mode is None
         else normalize_existing_composite_candidate_mode(composite_candidate_mode)
     )
-    pack, metrics = route_announcement_a_pack(
+    native_mode = (
+        existing_native_exact_candidate_mode_from_env()
+        if native_exact_candidate_mode is None
+        else normalize_existing_native_exact_candidate_mode(native_exact_candidate_mode)
+    )
+    base_pack, metrics = route_announcement_a_pack(
         document, llm_client, model_profile=model_profile
     )
-    metrics = _with_composite_shadow_metrics(document, pack, metrics, mode=mode)
+    metrics = _with_composite_shadow_metrics(document, base_pack, metrics, mode=mode)
+    pack = _apply_native_exact_candidates(document, base_pack, mode=native_mode)
     return _select_and_assemble(document, pack, metrics, llm_client, model_profile)
 
 
@@ -1047,11 +1158,18 @@ __all__ = [
     "EXISTING_COMPOSITE_CANDIDATE_MODE_ENV",
     "EXISTING_COMPOSITE_CANDIDATE_MODE_OFF",
     "EXISTING_COMPOSITE_CANDIDATE_MODE_SHADOW",
+    "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_ENV",
+    "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES",
+    "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS",
+    "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_OFF",
+    "NativeExactCandidateModeError",
     "PROMPT_BUNDLE_VERSION",
     "SECTION_SCOPE_TASK",
     "SOURCE_SELECTION_TASK",
     "existing_composite_candidate_mode_from_env",
+    "existing_native_exact_candidate_mode_from_env",
     "normalize_existing_composite_candidate_mode",
+    "normalize_existing_native_exact_candidate_mode",
     "route_announcement_a_pack",
     "structure_announcement_profile",
     "verified_common_ir_source_sha256",
