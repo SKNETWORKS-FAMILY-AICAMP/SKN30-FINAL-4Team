@@ -747,6 +747,19 @@ _RATE_PATTERN = re.compile(
     rf"(?P<number>{_GROUPED_DECIMAL_NUMBER})[ \t]*%"
 )
 _COUNT_PATTERN = re.compile(_COUNT_SOURCE)
+# A zero-filled recipient count in a notice template is not an announced
+# selection capacity.  Keep this deliberately narrow: legitimate monetary
+# zeroes and non-recipient numeric values are outside this policy, while a
+# source-visible ``400개사`` remains an ordinary numeric candidate.
+_NUMERIC_PLACEHOLDER_PATTERN = re.compile(
+    r"^\s*0+\s*(?:개사|개소|명)\s*$"
+)
+_NUMERIC_PLACEHOLDER_OCCURRENCE_PATTERN = re.compile(
+    r"0+[ \t]*(?:개사|개소|명)(?!\d)"
+)
+_MALFORMED_COUNT_SUFFIX_PREFIX = re.compile(
+    r"(?:\d[ \t]*|\d[,，._/／．]+[ \t]*)$"
+)
 _GROUPED_NUMBER_WITH_COMMA = re.compile(
     r"(?<![\d,，])(?P<number>\d[\d,，]*[,，][\d,，]*(?:\.\d+)?)"
     r"(?![\d,，])(?=[ \t]*(?:억|천|백|만|원))"
@@ -773,6 +786,27 @@ _PRECEDING_MALFORMED_COUNT_FRAGMENT = re.compile(
 _FOLLOWING_LINE_MONEY_AMOUNT = re.compile(
     rf"^\r?\n[ \t]*(?:{KOREAN_KRW_MONEY_SOURCE})"
 )
+
+
+def is_numeric_placeholder(text: str) -> bool:
+    """Recognize explicit zero-filled recipient-count placeholders only."""
+
+    return bool(_NUMERIC_PLACEHOLDER_PATTERN.fullmatch(text))
+
+
+def contains_numeric_placeholder(text: str) -> bool:
+    """Return whether a selected span contains a standalone zero count.
+
+    A ``0명`` can be a template placeholder after ordinary prose punctuation,
+    but the zero suffix in malformed larger counts (``1,  000명``) is not.
+    Inspecting each occurrence's full preceding text avoids a fixed-width
+    lookbehind that would otherwise confuse those two cases.
+    """
+
+    return any(
+        not _MALFORMED_COUNT_SUFFIX_PREFIX.search(text[:match.start()])
+        for match in _NUMERIC_PLACEHOLDER_OCCURRENCE_PATTERN.finditer(text)
+    )
 
 
 def _has_line_broken_compound_money(text: str) -> bool:
@@ -904,6 +938,8 @@ def build_numeric_candidates(pack: CandidatePack) -> list[NumericCandidate]:
         index = 0
         for match in _NUMERIC_CANDIDATE_PATTERN.finditer(block.text):
             anchor_text = match.group(0)
+            if is_numeric_placeholder(anchor_text):
+                continue
             # The shared cap scanner accepts source-faithful comma runs and
             # leaves semantic rejection to its callers. Numeric candidates
             # have a stricter contract: every emitted token must also be
@@ -1920,6 +1956,24 @@ def validate_selection_quality_v02(
         for fact in invalid
     }
 
+    # ``00개사`` and similar zero-filled recipient counts are template
+    # placeholders, not a confirmed recruitment/selection/support scale.
+    # Treat them as a typed repair defect so the existing one-retry flow
+    # removes the active fact and prevents it from being restored, while the
+    # original source text remains available through the candidate pack.
+    for fact in extraction.facts:
+        if (
+            fact.field_name == FactField.SUPPORT_SCALE
+            and contains_numeric_placeholder(fact.value_anchor.anchor_text)
+        ):
+            scale_repair_records.setdefault(fact.fact_id, {
+                "fact_id": fact.fact_id,
+                "source_block_id": fact.value_anchor.source_block_id,
+                "reason": "numeric_placeholder",
+                "numeric_candidate_count": 0,
+                "derived_measure_count": 0,
+            })
+
     # A support scale count denotes how many recipients/projects are selected
     # or supported.  A count of classes, mentoring sessions, or other
     # activities is not a scale, even when the model anchors the whole phrase
@@ -2088,6 +2142,7 @@ class SupportScaleFactRepairError(ValueError):
         "ambiguous_line_broken_amount",
         "activity_count_not_support_scale",
         "historical_support_cap_context",
+        "numeric_placeholder",
     })
     _CAP_CHECK_STATES = frozenset({"not_checked", "complete", "missing"})
 

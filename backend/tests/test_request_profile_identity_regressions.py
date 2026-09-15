@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from worker import vendor  # noqa: F401 - installs vendored contract paths
 from worker.contracts.cpl_result import CplResult
 from worker.contracts.fit_result import FitResult, PurposeAxisClassification
@@ -21,6 +23,9 @@ from semantic_structuring.request_profile_v012 import (
     assemble_request_profile_v012,
     build_request_candidate_pack,
     build_value_span_candidates,
+)
+from semantic_structuring.run_request_profile_v012 import (
+    select_and_materialize_with_repairs,
 )
 
 
@@ -401,6 +406,100 @@ def test_request_profile_derives_only_explicit_limit_and_never_divides_budget() 
         measure["lower_value"] == 5_000_000 or measure["upper_value"] == 5_000_000
         for measure in measures
     )
+
+
+@pytest.mark.parametrize("value_raw", ["지원규모 00개사", "모집인원 0명", "지원규모 0개소"])
+def test_request_profile_rejects_zero_filled_recipient_scale_placeholder(
+    value_raw: str,
+) -> None:
+    """Request Raw Facts share Existing's zero-filled scale policy."""
+
+    document = _example_document()
+    original = build_request_candidate_pack(document)
+    placeholder_block = SourceBlock(
+        block_id="request:zero-scale-placeholder#p0",
+        text=value_raw,
+        relation=SourceRelation.CANDIDATE,
+        common_ir_block_id="request:zero-scale-placeholder",
+    )
+    pack = original.model_copy(
+        update={"blocks": [*original.blocks, placeholder_block]}
+    )
+    selection = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request:zero-scale-placeholder",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [{
+            "fact_id": "scale:placeholder",
+            "field_name": "support_scale",
+            "value_anchor": {
+                "source_block_id": placeholder_block.block_id,
+                "anchor_text": value_raw,
+            },
+        }],
+    })
+
+    with pytest.raises(ValueError, match="zero-filled recipient-count placeholder"):
+        assemble_request_profile_v012(document, pack, selection)
+
+
+def test_request_zero_filled_scale_placeholder_uses_existing_bounded_repair() -> None:
+    """A semantic-policy ValueError remains a one-turn Request repair input."""
+
+    document = _example_document()
+    original = build_request_candidate_pack(document)
+    placeholder_block = SourceBlock(
+        block_id="request:zero-scale-repair#p0",
+        text="지원규모 0명",
+        relation=SourceRelation.CANDIDATE,
+        common_ir_block_id="request:zero-scale-repair",
+    )
+    pack = original.model_copy(
+        update={"blocks": [*original.blocks, placeholder_block]}
+    )
+    rejected = RequestSourceSelectionV012.model_validate({
+        "profile_id": "request:zero-scale-repair",
+        "candidate_pack_id": pack.pack_id,
+        "facts": [{
+            "fact_id": "scale:placeholder",
+            "field_name": "support_scale",
+            "value_anchor": {
+                "source_block_id": placeholder_block.block_id,
+                "anchor_text": placeholder_block.text,
+            },
+        }],
+    })
+    repaired_payload = _selection_with_labeled_program_period(pack)
+    repaired_payload["profile_id"] = "request:zero-scale-repair"
+    repaired_payload["candidate_pack_id"] = pack.pack_id
+    repaired = RequestSourceSelectionV012.model_validate(repaired_payload)
+    calls: list[tuple[RequestSourceSelectionV012 | None, list[str] | None]] = []
+
+    def selector(
+        prior: RequestSourceSelectionV012 | None,
+        errors: list[str] | None,
+    ) -> tuple[RequestSourceSelectionV012, dict]:
+        calls.append((prior, errors))
+        return (rejected if len(calls) == 1 else repaired), {}
+
+    _, final_selection, _, diagnostics = select_and_materialize_with_repairs(
+        selector,
+        document,
+        pack,
+        "request:zero-scale-repair",
+        max_repairs=1,
+        model_id="test",
+    )
+
+    assert final_selection is repaired
+    assert calls[1][0] is rejected
+    assert calls[1][1] == [
+        "support_scale must not select a zero-filled recipient-count placeholder"
+    ]
+    assert diagnostics == [{
+        "repair_attempt": 1,
+        "error_type": "ValueError",
+        "validation_error": "support_scale must not select a zero-filled recipient-count placeholder",
+    }]
 
 
 def test_request_profile_recovers_per_company_scope_from_adjacent_limit_label() -> None:

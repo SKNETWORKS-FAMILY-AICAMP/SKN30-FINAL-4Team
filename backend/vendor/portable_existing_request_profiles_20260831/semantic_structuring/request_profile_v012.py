@@ -43,6 +43,7 @@ from .profile_v02 import (
 from .request_completeness import request_semantic_completeness_failures
 from .source_selection import (
     build_numeric_candidates,
+    contains_numeric_placeholder,
     derive_request_support_scale_measures_v012,
 )
 
@@ -1170,6 +1171,10 @@ def _validate_raw_fact_semantic_policy(field_name: str, value_raw: str) -> None:
         raise ValueError(f"{field_name} must not store before-after comparison narration as a Raw Fact")
     if field_name == "support_scale" and "→" in value_raw:
         raise ValueError("support_scale must select one requested final value, not a before-after comparison span")
+    if field_name == "support_scale" and contains_numeric_placeholder(value_raw):
+        raise ValueError(
+            "support_scale must not select a zero-filled recipient-count placeholder"
+        )
     if field_name == "support_items" and value_raw in _METHOD_ONLY_SERVICE_TERMS:
         raise ValueError(
             "support_items must not use a named support service as an item; select it as support_methods instead"
