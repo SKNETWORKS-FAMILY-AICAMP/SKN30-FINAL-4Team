@@ -28,6 +28,7 @@ from worker.adapters.openai_llm_client import (
 from worker.contracts.fit_result import FitStatus
 from worker.contracts.sim_result import SimStatus
 from worker.config import OpenAIConfig
+from worker.ports.llm import Message
 from worker.cpl import build_cpl_result
 from worker.fit import analyze_fit
 from worker.sim import compare_candidate
@@ -274,6 +275,49 @@ def test_openai_llm_rejects_an_empty_message_set_before_network() -> None:
             )
         )
     assert chat.calls == []
+
+
+def test_openai_llm_optionally_caps_completion_tokens() -> None:
+    chat = _FakeChatCompletions('{"value":"grounded"}')
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        max_completion_tokens=123,
+        reasoning_effort="medium",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+
+    assert asyncio.run(
+        llm.generate_structured(
+            task_name="worker_core_test",
+            messages=[Message(role="user", content="test")],
+            response_schema=_ResultSchema,
+            model_profile="default",
+        )
+    ).value == "grounded"
+    assert chat.calls[0]["max_completion_tokens"] == 123
+    assert chat.calls[0]["reasoning_effort"] == "medium"
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5, "123"])
+def test_openai_llm_rejects_invalid_completion_token_caps(value: object) -> None:
+    with pytest.raises(ValueError, match="max_completion_tokens"):
+        OpenAILLMClient(
+            api_key="test-key-not-a-real-secret",
+            model_profiles={"default": "gpt-test"},
+            max_completion_tokens=value,  # type: ignore[arg-type]
+            client=object(),
+        )
+
+
+def test_openai_llm_rejects_invalid_reasoning_effort() -> None:
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        OpenAILLMClient(
+            api_key="test-key-not-a-real-secret",
+            model_profiles={"default": "gpt-test"},
+            reasoning_effort="max",  # type: ignore[arg-type]
+            client=object(),
+        )
 
 
 def test_openai_config_keeps_model_ids_in_environment_configuration(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -77,6 +77,8 @@ class OpenAILLMClient:
         api_key: str,
         model_profiles: Mapping[str, str],
         timeout_seconds: float = 60.0,
+        max_completion_tokens: int | None = None,
+        reasoning_effort: str | None = None,
         client: Any | None = None,
         telemetry_callback: Callable[[OpenAICompletionTelemetry], None] | None = None,
     ) -> None:
@@ -84,6 +86,12 @@ class OpenAILLMClient:
             raise ValueError("OpenAI API key must not be blank")
         if not math.isfinite(float(timeout_seconds)) or timeout_seconds <= 0:
             raise ValueError("OpenAI timeout must be a finite positive number")
+        if max_completion_tokens is not None and (
+            type(max_completion_tokens) is not int or max_completion_tokens <= 0
+        ):
+            raise ValueError("OpenAI max_completion_tokens must be a positive integer")
+        if reasoning_effort is not None and reasoning_effort not in {"low", "medium", "high"}:
+            raise ValueError("OpenAI reasoning_effort must be low, medium, or high")
         profiles = {
             str(profile): str(model).strip()
             for profile, model in model_profiles.items()
@@ -94,6 +102,8 @@ class OpenAILLMClient:
 
         self._model_profiles = profiles
         self._timeout_seconds = float(timeout_seconds)
+        self._max_completion_tokens = max_completion_tokens
+        self._reasoning_effort = reasoning_effort
         self._telemetry_callback = telemetry_callback
         # The vendored synchronous orchestration opens a short-lived event
         # loop for each structured call.  A long-lived AsyncOpenAI/httpx client
@@ -131,16 +141,23 @@ class OpenAILLMClient:
             # under this adapter's control.  The SDK ``parse`` helper raises
             # before exposing content when a model validator fails, which
             # prevents the caller's bounded in-memory normalization/repair.
-            completion = self._client.chat.completions.create(
-                model=model,
-                messages=[
+            request = {
+                "model": model,
+                "messages": [
                     {"role": message.role, "content": message.content}
                     for message in messages
                 ],
-                response_format=response_format,
-                n=1,
-                store=False,
-                timeout=self._timeout_seconds,
+                "response_format": response_format,
+                "n": 1,
+                "store": False,
+                "timeout": self._timeout_seconds,
+            }
+            if self._max_completion_tokens is not None:
+                request["max_completion_tokens"] = self._max_completion_tokens
+            if self._reasoning_effort is not None:
+                request["reasoning_effort"] = self._reasoning_effort
+            completion = self._client.chat.completions.create(
+                **request,
             )
             if inspect.isawaitable(completion):  # bounded offline async fake
                 completion = await completion

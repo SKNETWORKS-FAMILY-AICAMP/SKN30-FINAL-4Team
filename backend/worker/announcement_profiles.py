@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -139,6 +140,20 @@ class CompositeCandidateModeError(ValueError):
 
 class NativeExactCandidateModeError(ValueError):
     """Raised before a pipeline run when native exact rollout mode is invalid."""
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizedAnnouncementProfileArtifacts:
+    """The finalized Profile and its exact finalized selection artifact.
+
+    The public legacy producer still returns just ``profile``.  This bundle is
+    deliberately a separate opt-in seam for reproducible candidate generation:
+    it exposes the same finalized source-selection artifact consumed by final
+    assembly, without reconstructing or mutating it from the Profile.
+    """
+
+    profile: dict[str, Any]
+    source_selection: dict[str, Any]
 
 
 def existing_composite_candidate_mode_from_env(
@@ -326,6 +341,11 @@ _REPAIR_INSTRUCTIONS = (
     "what is necessary to resolve the listed errors; do not re-extract the notice from scratch, "
     "invent a business answer, or use any Gold/expected output."
 )
+_SUPPORT_SCALE_REPAIR_INSTRUCTIONS = (
+    " The payload's required_support_scale_anchors were deterministically found in "
+    "your own selected evidence. Include each one as a separate support_scale fact using "
+    "exactly its supplied source_block_id and anchor_text."
+)
 
 
 # The bundle is the cache/reproducibility key for this producer.  The three
@@ -345,6 +365,9 @@ _PROMPT_BUNDLE_COMPONENT_HASHES = {
         _ANCHOR_CORRECTION_INSTRUCTIONS.encode("utf-8")
     ).hexdigest(),
     "repair": hashlib.sha256(_REPAIR_INSTRUCTIONS.encode("utf-8")).hexdigest(),
+    "support_scale_repair": hashlib.sha256(
+        _SUPPORT_SCALE_REPAIR_INSTRUCTIONS.encode("utf-8")
+    ).hexdigest(),
 }
 PROMPT_BUNDLE_VERSION = (
     "announcement_profile_prompt_bundle/v1:"
@@ -872,7 +895,12 @@ def _select_and_assemble(
     pack_metrics: dict[str, Any],
     llm_client: LLMClient,
     model_profile: str,
-) -> dict[str, Any]:
+    *,
+    source_selection_attempts: int = 2,
+    return_artifacts: bool = False,
+) -> dict[str, Any] | FinalizedAnnouncementProfileArtifacts:
+    if type(source_selection_attempts) is not int or source_selection_attempts < 1:
+        raise ValueError("source_selection_attempts must be a positive integer")
     common_ir_source_sha256 = _trusted_source_sha256(document, pack)
     numeric_candidates = build_numeric_candidates(pack)
     base_request = {
@@ -934,18 +962,14 @@ def _select_and_assemble(
             resolve_ambiguous_value_anchor=correction_resolver,
         )
 
-    for attempt in range(2):
+    for attempt in range(source_selection_attempts):
         is_repair = bool(last_error) and prior_selection is not None
         instructions = _source_selection_instructions() + (_REPAIR_INSTRUCTIONS if is_repair else "")
         request = base_request
         if is_repair:
             required_caps = required_support_scale_anchors(last_validation_error)
             if required_caps:
-                instructions += (
-                    " The payload's required_support_scale_anchors were deterministically found in "
-                    "your own selected evidence. Include each one as a separate support_scale fact using "
-                    "exactly its supplied source_block_id and anchor_text."
-                )
+                instructions += _SUPPORT_SCALE_REPAIR_INSTRUCTIONS
             request = {
                 **base_request,
                 "previous_selection": prior_selection,
@@ -1034,8 +1058,11 @@ def _select_and_assemble(
             stage="source_selection",
             unit=pack.common_ir_document_id,
             reason_code=last_reason,
-            message=f"source selection failed after one repair: {last_error or 'unknown validation error'}",
-            attempt=2,
+            message=(
+                "source selection failed after bounded attempts: "
+                f"{last_error or 'unknown validation error'}"
+            ),
+            attempt=source_selection_attempts,
         )
 
     if final_bundle is None:  # pragma: no cover - defensive loop invariant
@@ -1090,6 +1117,11 @@ def _select_and_assemble(
     profile["processing_metadata"]["candidate_pack_artifact"] = candidate_pack_artifact(
         pack, document
     )
+    if return_artifacts:
+        return FinalizedAnnouncementProfileArtifacts(
+            profile=profile,
+            source_selection=artifact,
+        )
     return profile
 
 
@@ -1151,6 +1183,51 @@ def structure_announcement_profile(
     return _select_and_assemble(document, pack, metrics, llm_client, model_profile)
 
 
+def structure_announcement_profile_artifacts(
+    document: dict[str, Any],
+    llm_client: LLMClient,
+    *,
+    model_profile: str,
+    composite_candidate_mode: str | None = None,
+    native_exact_candidate_mode: str | None = None,
+    source_selection_attempts: int = 2,
+) -> FinalizedAnnouncementProfileArtifacts:
+    """Run the production pipeline and return Profile plus exact selection artifact.
+
+    Callers can explicitly select a bounded attempt count.  The full canary
+    uses ``2`` (initial selection plus at most one server-guided repair), the
+    same default as the legacy producer.
+    """
+
+    mode = (
+        existing_composite_candidate_mode_from_env()
+        if composite_candidate_mode is None
+        else normalize_existing_composite_candidate_mode(composite_candidate_mode)
+    )
+    native_mode = (
+        existing_native_exact_candidate_mode_from_env()
+        if native_exact_candidate_mode is None
+        else normalize_existing_native_exact_candidate_mode(native_exact_candidate_mode)
+    )
+    base_pack, metrics = route_announcement_a_pack(
+        document, llm_client, model_profile=model_profile
+    )
+    metrics = _with_composite_shadow_metrics(document, base_pack, metrics, mode=mode)
+    pack = _apply_native_exact_candidates(document, base_pack, mode=native_mode)
+    result = _select_and_assemble(
+        document,
+        pack,
+        metrics,
+        llm_client,
+        model_profile,
+        source_selection_attempts=source_selection_attempts,
+        return_artifacts=True,
+    )
+    if not isinstance(result, FinalizedAnnouncementProfileArtifacts):  # pragma: no cover
+        raise RuntimeError("profile artifact producer did not return finalized artifacts")
+    return result
+
+
 __all__ = [
     "ANCHOR_CORRECTION_TASK",
     "BLOCK_ROUTER_TASK",
@@ -1162,6 +1239,7 @@ __all__ = [
     "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES",
     "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS",
     "EXISTING_NATIVE_EXACT_CANDIDATE_MODE_OFF",
+    "FinalizedAnnouncementProfileArtifacts",
     "NativeExactCandidateModeError",
     "PROMPT_BUNDLE_VERSION",
     "SECTION_SCOPE_TASK",
@@ -1172,5 +1250,6 @@ __all__ = [
     "normalize_existing_native_exact_candidate_mode",
     "route_announcement_a_pack",
     "structure_announcement_profile",
+    "structure_announcement_profile_artifacts",
     "verified_common_ir_source_sha256",
 ]

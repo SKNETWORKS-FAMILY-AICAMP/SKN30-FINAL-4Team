@@ -290,6 +290,134 @@ uv run --project backend pytest -q \
   backend/tests/test_worker_core_contract.py
 ```
 
+### 7.1 교정 6건 Existing Profile full canary
+
+위 A-routing canary는 2026-09-15에 이미 실행·기록되었다. full canary의 전제 확인을 위해
+그 명령을 다시 실행하지 않는다. `run_existing_profile_canary.py`는 같은 고정 6건에서
+`section scope → block router → source-selection → final Profile assembly`를 실행하고, 각
+공고의 Profile과 그 Profile을 만든 **동일한 finalized source-selection artifact**를 후보 ZIP에
+남긴다. native exact mode는 `lines+continuations`, composite은 `shadow`로 고정한다.
+
+기본 명령은 Gold를 포함해 어떤 외부 자료도 읽지 않고, baseline ZIP의 SHA·Common IR 범위와
+prompt pin·호출 상한만 확인하는 dry-run이다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend python backend/scripts/run_existing_profile_canary.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5
+```
+
+실제 실행은 baseline Common IR을 OpenAI에 전송한다. 따라서 자료 전송·비용 승인을 받은 뒤에만
+`--execute-openai`를 붙인다. `OPENAI_LOG=debug`는 원문 또는 SDK 진단 노출 위험 때문에
+허용하지 않는다. API key는 환경에서만 읽고 후보 ZIP·보고서·표준 출력에 기록하지 않는다.
+
+```bash
+REPORT_DIR="$(mktemp -d /tmp/existing-profile-canary.XXXXXX)"
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --env-file backend/.env --project backend \
+  python backend/scripts/run_existing_profile_canary.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
+  --execute-openai \
+  --model gpt-5.6-terra \
+  --timeout-seconds 90 \
+  --output-dir "$REPORT_DIR"
+
+jq . "$REPORT_DIR/existing-profile-canary.v1.json"
+```
+
+`--output-dir`은 비어 있는 Gold 밖 디렉터리여야 한다. provider 실행과 후보 생성이 완료되고
+semantic 비교 보고서까지 게시되면 gate 통과 여부와 관계없이 정확히 다음 세 최상위 파일을
+만든다. 의미 불일치라면 세 파일을 남기고 종료 코드 `2`를 반환한다.
+
+```text
+existing-profile-canary.candidates.v1.zip
+existing-profile-canary.v1.json
+existing-profile-semantic-bgc.v1.json
+```
+
+후보 ZIP은 공고마다 정확히 세 파일만 가진다.
+
+```text
+PBLN_…/pipeline/structured_profile.v0.2.json
+PBLN_…/pipeline/source_selection.json
+PBLN_…/pipeline/common_ir_v1/PBLN_….{pdf|hwp|hwpx}.json
+```
+
+ZIP member 순서, JSON key 순서, ZIP timestamp/권한은 고정되어 동일한 artifact 입력이면
+결정적 bytes를 만든다. canary 요약 보고서는 raw Common IR·model response·prompt·secret을 넣지
+않고 hash, 호출 수, token 수, 단계 상태만 기록한다. 함께 쓰는
+`existing-profile-semantic-bgc.v1.json`은 기존 비교기의 opaque hash/count/공고별 gate 진단만
+담는 상세 semantic 보고서다.
+
+provider SDK 재시도는 0이다. source-selection은 초기 선택과 서버 검증에 따른 최대 한 번의
+repair만 허용한다. 호출을 provider에 넘기기 전에 task별 상한을 차감한다: section scope 2,
+block router 6, source-selection 12, anchor correction 12, 총 32회다. 응답 길이도 task별로
+고정한다: scope/correction 4,096, router 16,384, source-selection 32,768 completion tokens. timeout은
+120초 이하만 허용한다. reasoning effort는 `medium`으로 고정하고 temperature는 지정하지 않는다.
+첫 공고 실패 시 나머지 공고 호출은 중단한다.
+
+Gold는 모든 OpenAI 호출이 끝나기 전에는 열거나 hash하지 않는다. 호출이 모두 끝난 뒤에만
+freeze manifest pin을 검증하고, 기존 `compare_existing_profile_semantics.py`의 B/G/C semantic
+gate를 이 6건 후보 ZIP에 로컬 실행한다. 따라서 Gold Profile·selection·Common IR·adjudication
+값이 모델 payload나 repair payload에 들어갈 수 없다.
+
+성공 판정은 `execution_status=succeeded`와 `semantic_gate.status=passed`가 모두 성립하는 경우다.
+`semantic_gate.status=failed`는 모델 호출 성공과 별개로 후보 의미 graph가 Gold와 같지 않거나
+로컬 provenance/입력 검증이 실패했다는 뜻이며, 결과를 Gold에서 복사해 보정해서는 안 된다.
+먼저 해당 공고의 gate 진단과 일반화 가능한 source-selection/assembly 규칙을 검토하고 fixture와
+회귀 테스트를 추가한다.
+
+### 7.2 2026-09-15 full canary 실제 실행 결과
+
+고정 baseline Common IR 6건만 OpenAI `gpt-5.6-terra`에 전송해 실제 실행했다. Gold Profile,
+source-selection, Common IR과 교정 기록은 외부로 전송하지 않았으며 모든 provider 호출이 끝난
+뒤 로컬 의미 비교에만 사용했다.
+
+OpenAI 호출과 6건의 Profile·source-selection 생성은 모두 완료됐지만 Gold 의미 회귀 gate는
+0/6으로 실패했다. 따라서 이 실행은 전송·직렬화·산출물 생성 경로가 작동한다는 확인이지,
+Existing Profile 의미 품질 통과나 배포 승인 결과가 아니다. CLI 종료 코드는 의미 불일치를
+뜻하는 `2`였다.
+
+| 항목 | 결과 |
+|---|---:|
+| 실행 상태 | `succeeded` |
+| Profile 생성 | 6 / 6 |
+| 의미 gate | 선택 6 / 통과 0 / 실패 6 |
+| 호출 | 시도 17 / provider 응답 17 |
+| 호출 구성 | scope 2 / router 6 / source-selection 8 / anchor correction 1 |
+| token | prompt 546,984 / completion 51,179 / 합계 598,163 |
+| 누적 provider 지연시간 | 460,946 ms |
+| 후보 ZIP SHA-256 | `c46e51f648f8ac0d94d791f2e1ecc8bef18d4cb73309d4195f3dbb164fc6e5b3` |
+
+로컬 진단 산출물은 아래 Git 제외 경로에 보존했다. 이 자료는 분석·재검증용이며 배포 또는
+Existing KB bootstrap 입력이 아니다.
+
+```text
+.runtime/evaluations/existing-profile-canary-20260915/
+├── existing-profile-canary.candidates.v1.zip
+├── existing-profile-canary.v1.json
+└── existing-profile-semantic-bgc.v1.json
+```
+
+후보 ZIP을 현재 비교 코드로 다시 오프라인 검증해도 선택 6 / 통과 0 / 실패 6과 종료 코드 `2`가
+재현됐다. 여섯 공고 모두 승인된 Gold 추가 atom 회수는 0이었다. 원문이 없어서 실패한 경우보다
+다음과 같은 source-selection 및 assembly 문제가 공통적으로 확인됐다.
+
+- 표의 행·열 축과 병합 문맥을 완전한 명제 및 지원 컴포넌트로 조립하지 못함
+- 연속 목록·잘린 문장을 결합하지 못하고 수량 한정어와 조건을 누락함
+- 지원 대상과 수혜자, 지원 방식과 지원 내용, 일정 단계와 지원 패키지를 혼동함
+- 공고 수준 사실과 컴포넌트 소속 사실, 금액·기간·부담률 관계를 잘못 연결하거나 누락함
+- 근거보다 많은 facet·지원 규모 projection을 파생함
+
+후속 수정은 Gold 문구를 복사하지 않고 native Common IR에서 일반화 가능한 표 축 조립, 목록
+연속성, 컴포넌트 후보 생성, 전 항목 coverage 검사를 결정적 전처리·검증 규칙으로 추가한 뒤
+최소 fixture와 이 6건 회귀 gate로 검증한다.
+
 ## 8. ID·순서 비의존 Profile 의미 회귀 비교
 
 `compare_existing_profile_semantics.py`는 자동 baseline(`B`), 사람 검토 Gold(`G`), 새
