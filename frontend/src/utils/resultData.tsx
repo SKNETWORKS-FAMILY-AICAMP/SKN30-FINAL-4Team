@@ -26,12 +26,24 @@ export const FIT_LABEL: Record<string, string> = {
     'FIT-7': '지원내용 ↔︎ 지원규모의 수치·조건',
 }
 
+// SIM 상태 맵핑
+export const SIM_STATUS_LABELS: Record<string, string> = {
+    'similar': '유사',
+    'partial': '일부 유사',
+    'different': '상이',
+    'insufficient': '근거 부족',
+}
+
 export const getCplLabel = (code: string): string => {
     return CPL_LABELS[code] || code
 }
 
 export const getFitLabel = (code: string): string => {
     return FIT_LABEL[code] || code
+}
+
+export const getSimStatusLabel = (status: string): string => {
+    return SIM_STATUS_LABELS[status] || status
 }
 
 // CPL 상태 배지 헬퍼
@@ -82,4 +94,54 @@ export const getFitBadge = (status: string) => {
         default:
             return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#F1F3F4] text-gray-700">해당 없음</span>
     }
+}
+
+// SIM 상태 배지 헬퍼 (tone 반영: 초록, 노랑, 빨강, 회색)
+export const getSimStatusBadge = (status: string) => {
+    switch (status) {
+        case 'similar':
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#E6F4EA] text-[#166534]">유사</span>
+        case 'partial':
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#FEF7E0] text-[#B06000]">일부 유사</span>
+        case 'different':
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-error-container text-error">상이</span>
+        case 'insufficient':
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#F1F3F4] text-gray-700">근거 부족</span>
+        default:
+            return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-center bg-[#F1F3F4] text-gray-700">{status}</span>
+    }
+}
+
+// 축(Axis) 키 한글 맵핑 헬퍼
+export const AXIS_LABELS: Record<string, string> = {
+    purpose: '사업 목적',
+    target: '지원 대상',
+    support: '지원 내용·수단',
+    delivery: '수행·전달체계',
+}
+
+export const getAxisLabel = (key: string): string => {
+    return AXIS_LABELS[key] || key
+}
+
+// 근거(Evidence) 내용 추출 헬퍼 (excerpt 우선, 없으면 raw_value, side 검증)
+export const getEvidenceText = (evidenceId: string, evidencesMap: any): string => {
+    const evidence = Array.isArray(evidencesMap) 
+        ? evidencesMap.find((e: any) => e.evidence_id === evidenceId)
+        : evidencesMap?.[evidenceId]
+
+    if (!evidence) return '근거 값 없음'
+
+    const { excerpt, raw_value, side } = evidence
+    
+    // side 검증 (request 또는 existing)
+    if (side !== 'request' && side !== 'existing') return '근거 값 없음'
+
+    if (excerpt && excerpt.trim() !== '') {
+        return excerpt
+    }
+    if (raw_value && raw_value.trim() !== '') {
+        return raw_value
+    }
+    return '근거 값 없음'
 }

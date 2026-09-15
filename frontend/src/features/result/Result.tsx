@@ -17,7 +17,7 @@ export default function Result({ caseId, readOnlyChat = false, onBackToUpload }:
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false)
     
-    // 💡 상세보기 중복 클릭 방지용 로딩 상태
+    // 상세보기 중복 클릭 방지용 로딩 상태
     const [isFetchingDetail, setIsFetchingDetail] = useState<boolean>(false)
 
     useEffect(() => {
@@ -43,13 +43,15 @@ export default function Result({ caseId, readOnlyChat = false, onBackToUpload }:
         fetchResult()
     }, [caseId])
 
-    // 보고서 PDF 다운로드 핸들러
     const handleExportPDF = async () => {
         
     }
 
     const handleOpenCandidateDetail = async (simCandidateId: string) => {
         if (isFetchingDetail) return
+
+        // 명세서 규칙: 후보 상세 요청을 시작할 때 이전 후보의 상세값을 비움
+        setSelectedItem(null)
 
         try {
             setIsFetchingDetail(true)
@@ -72,8 +74,8 @@ export default function Result({ caseId, readOnlyChat = false, onBackToUpload }:
         return null
     }
 
-    if (error) {
-        onBackToUpload
+    if (error && onBackToUpload) {
+        onBackToUpload()
     }
 
     return (
