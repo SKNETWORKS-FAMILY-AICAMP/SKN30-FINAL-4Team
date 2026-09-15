@@ -13,12 +13,15 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path, PurePosixPath
+import stat
 import sys
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, BinaryIO, Iterable, Iterator, Mapping, Sequence
 
 
 FREEZE_CONTRACT = "existing_profile_gold_100_freeze/v1"
@@ -29,6 +32,15 @@ COMMON_IR_SCHEMA = "common_ir_v1"
 SELECTION_CONTRACT = "v0.2_anchor"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
 DEFAULT_EXPECTED_NOTICE_COUNT = 100
+
+# The reviewed Gold-100 freeze is about 74 MiB and its largest known file
+# (reserve_pool.csv) is about 17 MiB.  Keep the verifier deliberately below a
+# general-purpose file importer while leaving headroom for the frozen corpus.
+# These module constants are intentionally simple so CI can lower them in
+# focused resource-limit tests without changing normal call sites.
+MAX_GOLD_FILE_BYTES = 32 * 1024 * 1024
+MAX_GOLD_TOTAL_UNIQUE_FILE_BYTES = 128 * 1024 * 1024
+_READ_CHUNK_BYTES = 1024 * 1024
 
 _SHA256_HEX_LENGTH = 64
 _FREEZE_PINNED_FILES = {
@@ -79,6 +91,146 @@ def _fail(message: str) -> None:
     raise GoldVerificationError(message)
 
 
+@dataclass(frozen=True)
+class _FileSnapshot:
+    """Identity captured at a checked read boundary.
+
+    The verifier is read-only, but a path can still be replaced between two
+    validations.  Comparing the descriptor snapshot on every read makes that
+    race fail closed for the normal replacement/truncation cases.
+    """
+
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+
+
+class _GoldReadBudget:
+    """Per-verification, non-global file safety and byte-budget guard."""
+
+    def __init__(
+        self,
+        *,
+        max_file_bytes: int = MAX_GOLD_FILE_BYTES,
+        max_total_unique_file_bytes: int = MAX_GOLD_TOTAL_UNIQUE_FILE_BYTES,
+    ) -> None:
+        self._max_file_bytes = max_file_bytes
+        self._max_total_unique_file_bytes = max_total_unique_file_bytes
+        self._snapshots: dict[tuple[int, int], _FileSnapshot] = {}
+        self._path_snapshots: dict[Path, _FileSnapshot] = {}
+        self._total_unique_file_bytes = 0
+
+    @staticmethod
+    def _snapshot_from_stat(metadata: os.stat_result) -> _FileSnapshot:
+        return _FileSnapshot(
+            device=metadata.st_dev,
+            inode=metadata.st_ino,
+            size=metadata.st_size,
+            mtime_ns=metadata.st_mtime_ns,
+            ctime_ns=metadata.st_ctime_ns,
+        )
+
+    def _register(self, path: Path, label: str, snapshot: _FileSnapshot) -> None:
+        if snapshot.size < 0:
+            _fail(f"{label} has an invalid file size")
+        if snapshot.size > self._max_file_bytes:
+            _fail(
+                f"{label} exceeds the per-file byte budget "
+                f"({snapshot.size} > {self._max_file_bytes})"
+            )
+        path_key = Path(os.path.abspath(path))
+        prior_path_snapshot = self._path_snapshots.get(path_key)
+        if prior_path_snapshot is not None and prior_path_snapshot != snapshot:
+            _fail(f"{label} changed while the Gold corpus was being verified")
+        self._path_snapshots[path_key] = snapshot
+        identity = (snapshot.device, snapshot.inode)
+        prior = self._snapshots.get(identity)
+        if prior is not None:
+            if prior != snapshot:
+                _fail(f"{label} changed while the Gold corpus was being verified")
+            return
+        proposed_total = self._total_unique_file_bytes + snapshot.size
+        if proposed_total > self._max_total_unique_file_bytes:
+            _fail(
+                "Gold corpus exceeds the aggregate unique-file byte budget "
+                f"({proposed_total} > {self._max_total_unique_file_bytes})"
+            )
+        self._snapshots[identity] = snapshot
+        self._total_unique_file_bytes = proposed_total
+
+    def check_file(self, path: Path, label: str) -> _FileSnapshot:
+        """Reject symlinks/non-regular files and account their immutable size."""
+
+        try:
+            link_metadata = path.lstat()
+        except OSError as error:
+            _fail(f"{label} is missing or unreadable: {error}")
+        if stat.S_ISLNK(link_metadata.st_mode):
+            _fail(f"{label} is missing or is not a regular file: {path}")
+        if not stat.S_ISREG(link_metadata.st_mode):
+            _fail(f"{label} is missing or is not a regular file: {path}")
+        try:
+            metadata = path.stat()
+        except OSError as error:
+            _fail(f"{label} is missing or unreadable: {error}")
+        snapshot = self._snapshot_from_stat(metadata)
+        if (
+            link_metadata.st_dev != snapshot.device
+            or link_metadata.st_ino != snapshot.inode
+            or link_metadata.st_size != snapshot.size
+        ):
+            _fail(f"{label} changed while the Gold corpus was being verified")
+        self._register(path, label, snapshot)
+        return snapshot
+
+    @contextmanager
+    def open_binary(self, path: Path, label: str) -> Iterator[tuple[BinaryIO, int]]:
+        """Open a previously size-checked regular file without following it."""
+
+        initial = self.check_file(path, label)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as error:
+            _fail(f"{label} is unreadable: {error}")
+        try:
+            stream = os.fdopen(descriptor, "rb")
+        except OSError as error:
+            os.close(descriptor)
+            _fail(f"{label} is unreadable: {error}")
+        try:
+            opened = self._snapshot_from_stat(os.fstat(descriptor))
+            if opened != initial:
+                _fail(f"{label} changed while the Gold corpus was being verified")
+            self._register(path, label, opened)
+            yield stream, opened.size
+        finally:
+            try:
+                try:
+                    final_snapshot = self._snapshot_from_stat(os.fstat(descriptor))
+                except OSError as error:
+                    _fail(f"{label} became unreadable while the Gold corpus was being verified: {error}")
+                if final_snapshot != initial:
+                    _fail(f"{label} changed while the Gold corpus was being verified")
+            finally:
+                stream.close()
+
+
+def _standalone_read_budget() -> _GoldReadBudget:
+    """Keep private helpers safe when a focused caller invokes one directly."""
+
+    return _GoldReadBudget(
+        max_file_bytes=MAX_GOLD_FILE_BYTES,
+        max_total_unique_file_bytes=MAX_GOLD_TOTAL_UNIQUE_FILE_BYTES,
+    )
+
+
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -108,11 +260,19 @@ def _sha256_value(value: object, label: str) -> str:
     return text
 
 
-def _digest(path: Path) -> str:
+def _digest(path: Path, label: str, *, budget: _GoldReadBudget | None = None) -> str:
+    guard = budget or _standalone_read_budget()
     digest = sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+    with guard.open_binary(path, label) as (stream, expected_size):
+        remaining = expected_size
+        while remaining:
+            chunk = stream.read(min(_READ_CHUNK_BYTES, remaining))
+            if not chunk:
+                _fail(f"{label} changed while the Gold corpus was being verified")
             digest.update(chunk)
+            remaining -= len(chunk)
+        if stream.read(1):
+            _fail(f"{label} changed while the Gold corpus was being verified")
     return digest.hexdigest()
 
 
@@ -120,36 +280,49 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON constant is forbidden: {value}")
 
 
-def _load_json(path: Path, label: str) -> Any:
-    if not path.is_file() or path.is_symlink():
-        _fail(f"{label} is missing or is not a regular file: {path}")
+def _load_json(path: Path, label: str, *, budget: _GoldReadBudget | None = None) -> Any:
+    guard = budget or _standalone_read_budget()
     try:
-        return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
+        with guard.open_binary(path, label) as (stream, expected_size):
+            payload = stream.read(expected_size + 1)
+        if len(payload) != expected_size:
+            _fail(f"{label} changed while the Gold corpus was being verified")
+        return json.loads(payload.decode("utf-8"), parse_constant=_reject_json_constant)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError, RecursionError) as error:
         _fail(f"{label} is not valid UTF-8 JSON: {error}")
 
 
-def _load_json_object(path: Path, label: str) -> Mapping[str, Any]:
-    return _mapping(_load_json(path, label), label)
+def _load_json_object(
+    path: Path,
+    label: str,
+    *,
+    budget: _GoldReadBudget | None = None,
+) -> Mapping[str, Any]:
+    return _mapping(_load_json(path, label, budget=budget), label)
 
 
-def _relative_target(root: Path, relative_path: object, label: str) -> Path:
+def _relative_target(
+    root: Path,
+    relative_path: object,
+    label: str,
+    *,
+    budget: _GoldReadBudget | None = None,
+) -> Path:
     raw = _nonempty_string(relative_path, label)
     candidate = PurePosixPath(raw)
     if candidate.is_absolute() or any(part in {"", ".", ".."} for part in candidate.parts):
         _fail(f"{label} must be a safe relative POSIX path")
     target = root.joinpath(*candidate.parts)
-    try:
-        target.resolve().relative_to(root)
-    except ValueError:
-        _fail(f"{label} escapes --gold-root")
     current = root
     for part in candidate.parts:
         current = current / part
         if current.is_symlink():
             _fail(f"{label} must not traverse a symlink")
-    if not target.is_file():
-        _fail(f"{label} does not name a regular file: {raw}")
+    try:
+        target.resolve().relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        _fail(f"{label} escapes --gold-root")
+    (budget or _standalone_read_budget()).check_file(target, label)
     return target
 
 
@@ -201,22 +374,36 @@ def _unordered_unique_json_rows(value: object, label: str) -> tuple[str, ...]:
     return tuple(sorted(encoded))
 
 
-def _read_csv(path: Path, label: str) -> list[dict[str, str]]:
-    if not path.is_file() or path.is_symlink():
-        _fail(f"{label} is missing or is not a regular file")
+def _read_csv(path: Path, label: str, *, budget: _GoldReadBudget | None = None) -> list[dict[str, str]]:
+    guard = budget or _standalone_read_budget()
     try:
-        with path.open(encoding="utf-8", newline="") as stream:
-            reader = csv.DictReader(stream)
-            if reader.fieldnames is None:
-                _fail(f"{label} has no header")
-            return list(reader)
-    except (OSError, UnicodeDecodeError, csv.Error) as error:
+        with guard.open_binary(path, label) as (binary_stream, _expected_size):
+            # TextIOWrapper keeps CSV streaming; unlike read_text/list(splitlines),
+            # it does not first materialize the entire input as one string.
+            import io
+
+            stream = io.TextIOWrapper(binary_stream, encoding="utf-8", newline="")
+            try:
+                reader = csv.DictReader(stream)
+                if reader.fieldnames is None:
+                    _fail(f"{label} has no header")
+                return list(reader)
+            finally:
+                # Keep the binary descriptor alive for ``open_binary`` to
+                # compare its final snapshot, including exceptional paths.
+                stream.detach()
+    except (OSError, UnicodeDecodeError, csv.Error, RecursionError) as error:
         _fail(f"{label} is not a readable UTF-8 CSV: {error}")
 
 
-def _verify_freeze_manifest(root: Path, expected_notice_count: int) -> Mapping[str, Any]:
+def _verify_freeze_manifest(
+    root: Path,
+    expected_notice_count: int,
+    *,
+    budget: _GoldReadBudget,
+) -> Mapping[str, Any]:
     manifest_path = root / "freeze_manifest.json"
-    manifest = _load_json_object(manifest_path, "freeze_manifest.json")
+    manifest = _load_json_object(manifest_path, "freeze_manifest.json", budget=budget)
     _require_exact_keys(
         manifest,
         (
@@ -251,7 +438,7 @@ def _verify_freeze_manifest(root: Path, expected_notice_count: int) -> Mapping[s
         target = root / filename
         if not target.is_file() or target.is_symlink():
             _fail(f"freeze manifest pinned file is missing or unsafe: {filename}")
-        if _digest(target) != expected_digest:
+        if _digest(target, f"freeze manifest pinned file {filename}", budget=budget) != expected_digest:
             _fail(f"freeze manifest SHA-256 pin mismatch: {filename}")
     if not _is_int(manifest["fact_count"]) or manifest["fact_count"] < 0:
         _fail("freeze_manifest.json.fact_count must be a non-negative integer")
@@ -269,8 +456,8 @@ def _verify_freeze_manifest(root: Path, expected_notice_count: int) -> Mapping[s
     return manifest
 
 
-def _verify_artifact_index(root: Path) -> dict[str, Mapping[str, Any]]:
-    document = _load_json_object(root / "artifact_index.json", "artifact_index.json")
+def _verify_artifact_index(root: Path, *, budget: _GoldReadBudget) -> dict[str, Mapping[str, Any]]:
+    document = _load_json_object(root / "artifact_index.json", "artifact_index.json", budget=budget)
     if document.get("schema_version") != ARTIFACT_INDEX_SCHEMA:
         _fail(f"artifact_index.json.schema_version must be {ARTIFACT_INDEX_SCHEMA!r}")
     rows = _list(document.get("artifacts"), "artifact_index.json.artifacts")
@@ -282,13 +469,13 @@ def _verify_artifact_index(root: Path) -> dict[str, Mapping[str, Any]]:
         path_text = _nonempty_string(row["path"], f"{label}.path")
         if path_text in indexed:
             _fail(f"artifact_index.json has a duplicate path: {path_text}")
-        target = _relative_target(root, path_text, f"{label}.path")
+        target = _relative_target(root, path_text, f"{label}.path", budget=budget)
         expected_digest = _sha256_value(row["sha256"], f"{label}.sha256")
         if not _is_int(row["bytes"]) or row["bytes"] < 0:
             _fail(f"{label}.bytes must be a non-negative integer")
-        if target.stat().st_size != row["bytes"]:
+        if budget.check_file(target, f"{label}.path").size != row["bytes"]:
             _fail(f"artifact index byte-size mismatch: {path_text}")
-        if _digest(target) != expected_digest:
+        if _digest(target, f"{label}.path", budget=budget) != expected_digest:
             _fail(f"artifact index SHA-256 mismatch: {path_text}")
         _nonempty_string(row["artifact"], f"{label}.artifact")
         notice_id = row["notice_id"]
@@ -323,7 +510,14 @@ def _verify_artifact_index(root: Path) -> dict[str, Mapping[str, Any]]:
         if path.is_symlink():
             _fail(f"Gold corpus must not contain symlinks: {_relative_path(root, path)}")
         if path.is_file():
+            # Even intentionally unindexed root metadata (currently README.md
+            # plus the two index roots) belongs to the same bounded corpus.
+            # Registering every regular file prevents an otherwise ignored
+            # file from bypassing both per-file and aggregate limits.
+            budget.check_file(path, "Gold corpus file")
             actual_files.add(_relative_path(root, path))
+        elif not path.is_dir():
+            _fail(f"Gold corpus must not contain non-regular entries: {_relative_path(root, path)}")
     unindexed = actual_files - set(indexed) - _UNINDEXED_ROOT_FILES
     if unindexed:
         _fail(f"artifact index omits corpus files: {sorted(unindexed)[:5]}")
@@ -340,6 +534,7 @@ def _manifest_artifact(
     *,
     pblanc_id: str,
     kind: str,
+    budget: _GoldReadBudget,
 ) -> Path:
     label = f"profile_manifest[{pblanc_id}].frozen.{kind}"
     row = _mapping(raw, label)
@@ -355,8 +550,8 @@ def _manifest_artifact(
         _fail(f"{label} SHA-256 does not match artifact_index.json")
     if indexed.get("notice_id") != pblanc_id:
         _fail(f"{label} artifact index notice_id does not match its notice directory")
-    target = _relative_target(root, row["path"], f"{label}.path")
-    if _digest(target) != expected_digest:
+    target = _relative_target(root, row["path"], f"{label}.path", budget=budget)
+    if _digest(target, f"{label}.path", budget=budget) != expected_digest:
         _fail(f"{label} SHA-256 does not match its file")
     return target
 
@@ -374,8 +569,10 @@ def _verify_profile_manifest(
     manifest: Mapping[str, Any],
     artifact_index: Mapping[str, Mapping[str, Any]],
     expected_notice_count: int,
+    *,
+    budget: _GoldReadBudget,
 ) -> dict[str, Mapping[str, Any]]:
-    document = _load_json_object(root / "profile_manifest.json", "profile_manifest.json")
+    document = _load_json_object(root / "profile_manifest.json", "profile_manifest.json", budget=budget)
     if document.get("schema_version") != PROFILE_MANIFEST_SCHEMA:
         _fail(f"profile_manifest.json.schema_version must be {PROFILE_MANIFEST_SCHEMA!r}")
     rows = _list(document.get("profiles"), "profile_manifest.json.profiles")
@@ -399,7 +596,14 @@ def _verify_profile_manifest(
         _require_exact_keys(source, _NOTICE_ARTIFACTS, f"{label}.source")
         for kind in _NOTICE_ARTIFACTS:
             frozen_entry = _mapping(frozen[kind], f"{label}.frozen.{kind}")
-            _manifest_artifact(root, artifact_index, frozen_entry, pblanc_id=pblanc_id, kind=kind)
+            _manifest_artifact(
+                root,
+                artifact_index,
+                frozen_entry,
+                pblanc_id=pblanc_id,
+                kind=kind,
+                budget=budget,
+            )
             _check_external_source(
                 source[kind],
                 _sha256_value(frozen_entry["sha256"], f"{label}.frozen.{kind}.sha256"),
@@ -812,6 +1016,10 @@ def _validate_selection_profile_materialization(
         if fact.get("field_name") == "delivery_roles":
             names = _list(item.get("organization_names"), f"{fact_label} organization_names")
             sources = _list(item.get("organization_sources"), f"{fact_label} organization_sources")
+            if not names:
+                _fail(
+                    f"{fact_label} delivery role requires at least one explicit organization"
+                )
             if len(names) != len(sources):
                 _fail(f"{fact_label} organization names/sources lengths differ")
             expected_organization_anchors: list[dict[str, str]] = []
@@ -859,12 +1067,7 @@ def _validate_selection_profile_materialization(
             role_source_block_id = item.get("role_source_block_id")
             selected_role_anchor = selected.get("role_anchor")
             if role_raw is None:
-                if (
-                    selected_role_anchor is not None
-                    or role_source is not None
-                    or role_source_block_id is not None
-                ):
-                    _fail(f"{fact_label} empty role has role-anchor provenance")
+                _fail(f"{fact_label} delivery role requires an explicit role anchor")
             else:
                 role_text = _nonempty_string(role_raw, f"{fact_label} role_raw")
                 role_source_map = _mapping(
@@ -1124,14 +1327,15 @@ def _verify_profile_document(
     common_ir_path: Path,
     *,
     pblanc_id: str,
+    budget: _GoldReadBudget,
 ) -> tuple[int, Counter[str]]:
     """Load and validate one frozen notice triple."""
 
     label = f"notice {pblanc_id}"
     return verify_profile_artifact_triple(
-        _load_json_object(profile_path, f"{label} profile"),
-        _load_json_object(selection_path, f"{label} source selection"),
-        _load_json_object(common_ir_path, f"{label} Common IR"),
+        _load_json_object(profile_path, f"{label} profile", budget=budget),
+        _load_json_object(selection_path, f"{label} source selection", budget=budget),
+        _load_json_object(common_ir_path, f"{label} Common IR", budget=budget),
         pblanc_id=pblanc_id,
     )
 
@@ -1140,8 +1344,10 @@ def _verify_sample_and_answer_set(
     root: Path,
     profiles: Mapping[str, Mapping[str, Any]],
     expected_notice_count: int,
+    *,
+    budget: _GoldReadBudget,
 ) -> None:
-    sample = _read_csv(root / "sample_100.csv", "sample_100.csv")
+    sample = _read_csv(root / "sample_100.csv", "sample_100.csv", budget=budget)
     if len(sample) != expected_notice_count:
         _fail("sample_100.csv row count does not match the expected notice count")
     sample_by_id: dict[str, dict[str, str]] = {}
@@ -1164,7 +1370,7 @@ def _verify_sample_and_answer_set(
     if set(sample_by_id) != set(profiles):
         _fail("sample_100.csv pblanc_ids do not exactly match profile_manifest.json")
 
-    answers = _load_json_object(root / "answer_set.json", "answer_set.json")
+    answers = _load_json_object(root / "answer_set.json", "answer_set.json", budget=budget)
     if answers.get("schema_version") != "answer_set.v1":
         _fail("answer_set.json.schema_version must be 'answer_set.v1'")
     answer_rows = _list(answers.get("answers"), "answer_set.json.answers")
@@ -1184,7 +1390,7 @@ def _verify_sample_and_answer_set(
     if answer_ids != expected_answers:
         _fail("answer_set.json pblanc_ids do not exactly match answer-role profiles")
 
-    competitors = _read_csv(root / "competitor_mapping.csv", "competitor_mapping.csv")
+    competitors = _read_csv(root / "competitor_mapping.csv", "competitor_mapping.csv", budget=budget)
     expected_competitors = {pblanc_id for pblanc_id, profile in profiles.items() if profile["role"] == "competitor"}
     competitor_ids: set[str] = set()
     for index, row in enumerate(competitors):
@@ -1200,28 +1406,41 @@ def _verify_sample_and_answer_set(
         _fail("competitor_mapping.csv pblanc_ids do not exactly match competitor-role profiles")
 
 
-def _load_jsonl(path: Path, label: str) -> list[Mapping[str, Any]]:
-    if not path.is_file() or path.is_symlink():
-        _fail(f"{label} is missing or is not a regular file")
+def _load_jsonl(path: Path, label: str, *, budget: _GoldReadBudget | None = None) -> list[Mapping[str, Any]]:
+    guard = budget or _standalone_read_budget()
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError) as error:
+        with guard.open_binary(path, label) as (binary_stream, _expected_size):
+            import io
+
+            stream = io.TextIOWrapper(binary_stream, encoding="utf-8", newline="")
+            records: list[Mapping[str, Any]] = []
+            try:
+                for index, line in enumerate(stream, start=1):
+                    if not line.strip():
+                        _fail(f"{label} contains a blank line at {index}")
+                    try:
+                        records.append(
+                            _mapping(json.loads(line, parse_constant=_reject_json_constant), f"{label}:{index}")
+                        )
+                    except (ValueError, json.JSONDecodeError, RecursionError) as error:
+                        _fail(f"{label} line {index} is invalid JSON: {error}")
+            finally:
+                stream.detach()
+    except (OSError, UnicodeDecodeError, RecursionError) as error:
         _fail(f"{label} is unreadable: {error}")
-    if not lines:
+    if not records:
         _fail(f"{label} must not be empty")
-    records: list[Mapping[str, Any]] = []
-    for index, line in enumerate(lines, start=1):
-        if not line.strip():
-            _fail(f"{label} contains a blank line at {index}")
-        try:
-            records.append(_mapping(json.loads(line, parse_constant=_reject_json_constant), f"{label}:{index}"))
-        except (ValueError, json.JSONDecodeError) as error:
-            _fail(f"{label} line {index} is invalid JSON: {error}")
     return records
 
 
-def _verify_passed_report(path: Path, label: str, expected_ids: set[str]) -> None:
-    report = _load_json_object(path, label)
+def _verify_passed_report(
+    path: Path,
+    label: str,
+    expected_ids: set[str],
+    *,
+    budget: _GoldReadBudget,
+) -> None:
+    report = _load_json_object(path, label, budget=budget)
     if report.get("status") != "passed":
         _fail(f"{label}.status must be 'passed'")
     if report.get("notice_count") != len(expected_ids):
@@ -1240,7 +1459,13 @@ def _verify_passed_report(path: Path, label: str, expected_ids: set[str]) -> Non
         _fail(f"{label}.reports notice ids do not match its governance overlay")
 
 
-def _verify_governance(root: Path, manifest: Mapping[str, Any], profiles: Mapping[str, Mapping[str, Any]]) -> None:
+def _verify_governance(
+    root: Path,
+    manifest: Mapping[str, Any],
+    profiles: Mapping[str, Mapping[str, Any]],
+    *,
+    budget: _GoldReadBudget,
+) -> None:
     governance = root / "governance"
     overlay = _mapping(manifest.get("retrieval_ambiguity_overlay"), "freeze_manifest.json.retrieval_ambiguity_overlay")
     _require_exact_keys(
@@ -1255,29 +1480,53 @@ def _verify_governance(root: Path, manifest: Mapping[str, Any], profiles: Mappin
         _fail("freeze_manifest.json retrieval ambiguity overlay names a notice absent from profiles")
     ledger_path = governance / "decisions.jsonl"
     semantic_path = governance / "semantic_regression_report.json"
-    if _digest(ledger_path) != _sha256_value(overlay["decision_ledger_sha256"], "retrieval ambiguity decision_ledger_sha256"):
+    if _digest(ledger_path, "governance/decisions.jsonl", budget=budget) != _sha256_value(overlay["decision_ledger_sha256"], "retrieval ambiguity decision_ledger_sha256"):
         _fail("retrieval ambiguity decision ledger SHA-256 does not match its governed artifact")
-    if _digest(semantic_path) != _sha256_value(overlay["semantic_regression_report_sha256"], "retrieval ambiguity semantic_regression_report_sha256"):
+    if _digest(semantic_path, "governance/semantic_regression_report.json", budget=budget) != _sha256_value(overlay["semantic_regression_report_sha256"], "retrieval ambiguity semantic_regression_report_sha256"):
         _fail("retrieval ambiguity semantic report SHA-256 does not match its governed artifact")
     ledger_ids = {
         _nonempty_string(record.get("notice_id"), "governance/decisions.jsonl notice_id")
-        for record in _load_jsonl(ledger_path, "governance/decisions.jsonl")
+        for record in _load_jsonl(ledger_path, "governance/decisions.jsonl", budget=budget)
     }
     if ledger_ids != overlay_ids:
         _fail("governance/decisions.jsonl notice ids do not match retrieval ambiguity overlay")
-    _verify_passed_report(governance / "materialization_report.json", "governance/materialization_report.json", overlay_ids)
-    _verify_passed_report(semantic_path, "governance/semantic_regression_report.json", overlay_ids)
+    _verify_passed_report(
+        governance / "materialization_report.json",
+        "governance/materialization_report.json",
+        overlay_ids,
+        budget=budget,
+    )
+    _verify_passed_report(
+        semantic_path,
+        "governance/semantic_regression_report.json",
+        overlay_ids,
+        budget=budget,
+    )
 
-    v4_ledger = _load_jsonl(governance / "v4_decisions.jsonl", "governance/v4_decisions.jsonl")
+    v4_ledger = _load_jsonl(
+        governance / "v4_decisions.jsonl", "governance/v4_decisions.jsonl", budget=budget
+    )
     v4_ids = {
         _nonempty_string(record.get("notice_id"), "governance/v4_decisions.jsonl notice_id")
         for record in v4_ledger
     }
     if not v4_ids.issubset(profiles):
         _fail("governance/v4_decisions.jsonl names a notice absent from profiles")
-    _verify_passed_report(governance / "v4_materialization_report.json", "governance/v4_materialization_report.json", v4_ids)
-    _verify_passed_report(governance / "v4_semantic_regression_report.json", "governance/v4_semantic_regression_report.json", v4_ids)
-    v4_manifest = _load_json_object(governance / "v4_v3_manifest.json", "governance/v4_v3_manifest.json")
+    _verify_passed_report(
+        governance / "v4_materialization_report.json",
+        "governance/v4_materialization_report.json",
+        v4_ids,
+        budget=budget,
+    )
+    _verify_passed_report(
+        governance / "v4_semantic_regression_report.json",
+        "governance/v4_semantic_regression_report.json",
+        v4_ids,
+        budget=budget,
+    )
+    v4_manifest = _load_json_object(
+        governance / "v4_v3_manifest.json", "governance/v4_v3_manifest.json", budget=budget
+    )
     for key in (
         "all_contract_valid",
         "all_exact_span_valid",
@@ -1290,7 +1539,11 @@ def _verify_governance(root: Path, manifest: Mapping[str, Any], profiles: Mappin
             _fail(f"governance/v4_v3_manifest.json.{key} must be true")
 
 
-def verify_gold_root(gold_root: str | Path, *, expected_notice_count: int = DEFAULT_EXPECTED_NOTICE_COUNT) -> VerificationReport:
+def _verify_gold_root(
+    gold_root: str | Path,
+    *,
+    expected_notice_count: int = DEFAULT_EXPECTED_NOTICE_COUNT,
+) -> VerificationReport:
     """Verify a Gold freeze without changing it or reaching any runtime service."""
 
     if not _is_int(expected_notice_count) or expected_notice_count <= 0:
@@ -1298,19 +1551,45 @@ def verify_gold_root(gold_root: str | Path, *, expected_notice_count: int = DEFA
     root = Path(gold_root).expanduser().resolve()
     if not root.is_dir():
         _fail(f"--gold-root is not a directory: {root}")
-    manifest = _verify_freeze_manifest(root, expected_notice_count)
-    artifact_index = _verify_artifact_index(root)
-    profiles = _verify_profile_manifest(root, manifest, artifact_index, expected_notice_count)
-    _verify_sample_and_answer_set(root, profiles, expected_notice_count)
+    budget = _GoldReadBudget(
+        max_file_bytes=MAX_GOLD_FILE_BYTES,
+        max_total_unique_file_bytes=MAX_GOLD_TOTAL_UNIQUE_FILE_BYTES,
+    )
+    manifest = _verify_freeze_manifest(root, expected_notice_count, budget=budget)
+    artifact_index = _verify_artifact_index(root, budget=budget)
+    profiles = _verify_profile_manifest(
+        root,
+        manifest,
+        artifact_index,
+        expected_notice_count,
+        budget=budget,
+    )
+    _verify_sample_and_answer_set(root, profiles, expected_notice_count, budget=budget)
     total_facts = 0
     fact_status_counts: Counter[str] = Counter()
     for pblanc_id, profile_manifest_row in profiles.items():
         frozen = _mapping(profile_manifest_row["frozen"], f"profile_manifest[{pblanc_id}].frozen")
         fact_count, statuses = _verify_profile_document(
-            _relative_target(root, _mapping(frozen["profile"], "profile frozen profile")["path"], "profile path"),
-            _relative_target(root, _mapping(frozen["selection"], "profile frozen selection")["path"], "selection path"),
-            _relative_target(root, _mapping(frozen["common_ir"], "profile frozen Common IR")["path"], "Common IR path"),
+            _relative_target(
+                root,
+                _mapping(frozen["profile"], "profile frozen profile")["path"],
+                "profile path",
+                budget=budget,
+            ),
+            _relative_target(
+                root,
+                _mapping(frozen["selection"], "profile frozen selection")["path"],
+                "selection path",
+                budget=budget,
+            ),
+            _relative_target(
+                root,
+                _mapping(frozen["common_ir"], "profile frozen Common IR")["path"],
+                "Common IR path",
+                budget=budget,
+            ),
             pblanc_id=pblanc_id,
+            budget=budget,
         )
         total_facts += fact_count
         fact_status_counts.update(statuses)
@@ -1318,7 +1597,7 @@ def verify_gold_root(gold_root: str | Path, *, expected_notice_count: int = DEFA
         _fail("freeze_manifest.json.fact_count does not match all profile facts")
     if dict(sorted(fact_status_counts.items())) != dict(manifest["fact_status_counts"]):
         _fail("freeze_manifest.json.fact_status_counts does not match all profile facts")
-    _verify_governance(root, manifest, profiles)
+    _verify_governance(root, manifest, profiles, budget=budget)
     return VerificationReport(
         status="valid",
         gold_root=str(root),
@@ -1327,6 +1606,24 @@ def verify_gold_root(gold_root: str | Path, *, expected_notice_count: int = DEFA
         artifact_count=len(artifact_index),
         fact_count=total_facts,
     )
+
+
+def verify_gold_root(
+    gold_root: str | Path,
+    *,
+    expected_notice_count: int = DEFAULT_EXPECTED_NOTICE_COUNT,
+) -> VerificationReport:
+    """Verify a Gold freeze without changing it or reaching any runtime service.
+
+    JSON's decoder and deeply nested semantic objects can raise RecursionError.
+    A malformed external corpus is a validation failure, never an uncaught CLI
+    traceback.
+    """
+
+    try:
+        return _verify_gold_root(gold_root, expected_notice_count=expected_notice_count)
+    except RecursionError as error:
+        _fail(f"Gold corpus exceeds the supported JSON nesting depth: {error}")
 
 
 def _parser() -> argparse.ArgumentParser:

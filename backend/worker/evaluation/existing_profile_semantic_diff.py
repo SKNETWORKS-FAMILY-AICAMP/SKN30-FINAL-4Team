@@ -37,7 +37,16 @@ from zipfile import BadZipFile, ZipFile
 
 from worker import vendor as _vendor  # noqa: F401 - installs vendored contract paths
 
-from semantic_structuring.common_ir_v1 import prepare_common_ir_v1
+from semantic_structuring.common_ir_v1 import (
+    COMMON_IR_V1_CANDIDATE_PACK_GENERATOR,
+    COMMON_IR_V1_CANDIDATE_PACK_GENERATOR_VERSION,
+    prepare_common_ir_v1,
+)
+from semantic_structuring.models import CandidatePack, SourceBlock
+from semantic_structuring.native_exact_transform import (
+    NativeExactTransformOptions,
+    augment_pack_with_native_exact_transforms,
+)
 
 from scripts.verify_existing_gold100 import (
     COMMON_IR_SCHEMA,
@@ -126,12 +135,6 @@ _AMOUNT_TOKEN = re.compile(
 )
 _RATE_TOKEN = re.compile(r"(?P<number>\d+(?:\.\d+)?)\s*%")
 _COUNT_TOKEN = re.compile(r"(?P<number>\d+)\s*(?P<unit>개사|개팀|개 과제|개과제|명|팀|사)")
-_NATIVE_LINE = re.compile(r"[^\r\n]+")
-_NATIVE_LINE_KINDS = frozenset({None, "paragraph", "text", "list_item", "body", "heading_body"})
-_CONTINUATION_KINDS = _NATIVE_LINE_KINDS
-_TERMINAL = re.compile(r"[.!?。！？]|(?:다|함|됨|있음|없음|바람|가능|불가)[.)]?\s*$")
-_BARE_NUMBER = re.compile(r"^\s*(?:\d+[.)]|[①-⑳]|[가-하][.)])\s*$")
-_LEADING_LAYOUT_MARKER = re.compile(r"^\s*(?:[-·◦□○●▪•]\s*)")
 TRUSTED_CANDIDATE_TRANSFORM = (
     "common-ir-v1-source-universe/v1:"
     "pdf-native-table-occurrences+native-lines+native-continuations"
@@ -433,6 +436,79 @@ def load_automatic_semantic_artifacts(
     return LoadedSemanticArtifacts(artifacts=artifacts, identity=identity)
 
 
+def _gold_companion_index_rows(
+    artifact_index: Mapping[str, Any],
+    *,
+    notice_ids: Sequence[str],
+) -> Mapping[tuple[str, str], tuple[str, int]]:
+    """Return the pinned digest and byte count for required Gold companions.
+
+    This intentionally validates only the rows consumed by this loader.  The
+    full-tree verifier remains responsible for the broader freeze contract,
+    but accepting a companion whose bytes are not named by the *same* captured
+    artifact index would let a directory replacement splice a valid Profile
+    corpus to unrelated provenance artifacts.
+    """
+
+    rows = artifact_index.get("artifacts")
+    _require(isinstance(rows, list), "Gold artifact index artifacts must be an array")
+    expected: dict[tuple[str, str], str] = {}
+    for notice_id in notice_ids:
+        for filename in ("source_selection.v0.2.json", "common_ir_v1.json"):
+            expected[(notice_id, filename)] = f"notices/{notice_id}/{filename}"
+
+    indexed: dict[tuple[str, str], tuple[str, int]] = {}
+    for raw_row in rows:
+        if not isinstance(raw_row, Mapping):
+            continue
+        path_text = raw_row.get("path")
+        if not isinstance(path_text, str):
+            continue
+        matching = [key for key, expected_path in expected.items() if path_text == expected_path]
+        if not matching:
+            continue
+        key = matching[0]
+        _require(key not in indexed, "Gold artifact index has duplicate companion rows")
+        _require(
+            raw_row.get("notice_id") == key[0],
+            "Gold artifact index companion notice binding is invalid",
+        )
+        digest = raw_row.get("sha256")
+        byte_count = raw_row.get("bytes")
+        _require(
+            isinstance(digest, str) and _SHA256_PATTERN.fullmatch(digest) is not None,
+            "Gold artifact index companion digest is invalid",
+        )
+        parsed_byte_count = _json_integer(
+            byte_count,
+            label="Gold artifact index companion byte count",
+        )
+        indexed[key] = (digest, parsed_byte_count)
+    _require(
+        set(indexed) == set(expected),
+        "Gold artifact index omits a required companion row",
+    )
+    return indexed
+
+
+def _require_gold_companion_snapshot_matches_index(
+    snapshot: Any,
+    *,
+    indexed: Mapping[tuple[str, str], tuple[str, int]],
+    notice_id: str,
+    filename: str,
+) -> None:
+    """Fail closed unless one read companion is exactly index-pinned."""
+
+    expected = indexed.get((notice_id, filename))
+    _require(expected is not None, "Gold companion is absent from the artifact index")
+    expected_digest, expected_size = expected
+    _require(
+        snapshot.digest == expected_digest and snapshot.size == expected_size,
+        "Gold companion snapshot does not match the artifact index",
+    )
+
+
 def load_reviewed_gold_semantic_artifacts(
     gold_root: Path,
     *,
@@ -450,6 +526,38 @@ def load_reviewed_gold_semantic_artifacts(
             f"cannot load reviewed Gold profile corpus: {error}"
         ) from error
     root = gold_root.expanduser().resolve(strict=True)
+    manifest_path = root / "freeze_manifest.json"
+    artifact_index_path = root / "artifact_index.json"
+    try:
+        manifest_snapshot = _read_regular_json_snapshot(
+            manifest_path,
+            label="Gold freeze manifest before companion reads",
+        )
+        artifact_index_snapshot = _read_regular_json_snapshot(
+            artifact_index_path,
+            label="Gold artifact index before companion reads",
+        )
+    except ExistingProfileComparisonError as error:
+        raise ExistingProfileSemanticError(
+            f"cannot bind reviewed Gold companions to the frozen index: {error}"
+        ) from error
+    _require(
+        manifest_snapshot.digest == profiles.identity.get("freeze_manifest_sha256"),
+        "Gold freeze manifest changed between Profile and companion loading",
+    )
+    manifest = manifest_snapshot.value
+    _require(isinstance(manifest, Mapping), "Gold freeze manifest must be an object")
+    expected_index_digest = manifest.get("artifact_index_sha256")
+    _require(
+        isinstance(expected_index_digest, str)
+        and _SHA256_PATTERN.fullmatch(expected_index_digest) is not None
+        and expected_index_digest == artifact_index_snapshot.digest,
+        "Gold artifact index does not match the captured freeze-manifest pin",
+    )
+    indexed_companions = _gold_companion_index_rows(
+        artifact_index_snapshot.value,
+        notice_ids=tuple(profiles.profiles),
+    )
     artifacts: dict[str, SemanticArtifact] = {}
     snapshots: dict[Path, Any] = {}
     for notice_id, profile in profiles.profiles.items():
@@ -467,6 +575,18 @@ def load_reviewed_gold_semantic_artifacts(
             raise ExistingProfileSemanticError(
                 f"cannot load reviewed Gold companions for {notice_id}: {error}"
             ) from error
+        _require_gold_companion_snapshot_matches_index(
+            selection_snapshot,
+            indexed=indexed_companions,
+            notice_id=notice_id,
+            filename="source_selection.v0.2.json",
+        )
+        _require_gold_companion_snapshot_matches_index(
+            common_ir_snapshot,
+            indexed=indexed_companions,
+            notice_id=notice_id,
+            filename="common_ir_v1.json",
+        )
         artifact = SemanticArtifact(
             notice_id=notice_id,
             profile=profile,
@@ -482,6 +602,26 @@ def load_reviewed_gold_semantic_artifacts(
     except (GoldVerificationError, ValueError, OSError) as error:
         raise ExistingProfileSemanticError(f"Gold verification failed after companion reads: {error}") from error
     _require(verification.status == "valid", "Gold verifier did not return valid status")
+    try:
+        _assert_snapshot_is_current(
+            manifest_path,
+            manifest_snapshot,
+            label="Gold freeze manifest during final companion verification",
+        )
+    except ExistingProfileComparisonError as error:
+        raise ExistingProfileSemanticError(
+            f"reviewed Gold manifest changed during companion verification: {error}"
+        ) from error
+    try:
+        _assert_snapshot_is_current(
+            artifact_index_path,
+            artifact_index_snapshot,
+            label="Gold artifact index during final companion verification",
+        )
+    except ExistingProfileComparisonError as error:
+        raise ExistingProfileSemanticError(
+            f"reviewed Gold artifact index changed during companion verification: {error}"
+        ) from error
     for path, snapshot in snapshots.items():
         try:
             _assert_snapshot_is_current(
@@ -667,150 +807,83 @@ def _native_source_contracts(
                 section_id=section_id,
             )
 
-    # Native line atoms expose reversible, trimmed lines from multi-line
-    # blocks.  Their ids and offsets match semantic_structuring.native_line_atoms.
-    atomic_contracts = list(contracts.items())
-    for parent_id, parent in atomic_contracts:
-        if (
-            parent.block_kind not in _NATIVE_LINE_KINDS
-            or ("\n" not in parent.text and "\r" not in parent.text)
-        ):
-            continue
-        for match in _NATIVE_LINE.finditer(parent.text):
-            raw = match.group(0)
-            left = len(raw) - len(raw.lstrip())
-            right = len(raw.rstrip())
-            start, end = match.start() + left, match.start() + right
-            if end <= start:
-                continue
-            identity = f"{parent_id}\0{start}\0{end}".encode()
-            block_id = f"line:{sha256(identity).hexdigest()[:20]}"
-            _require(block_id not in contracts, f"{label} has duplicate native-line candidate ids")
-            contracts[block_id] = _NativeSourceContract(
-                text=parent.text[start:end],
-                block_kind="native_line_atom",
-                source_order=parent.source_order,
-                common_ir_block_id=parent.common_ir_block_id,
-                common_ir_cell_id=parent.common_ir_cell_id,
-                common_ir_occurrence_ids=parent.common_ir_occurrence_ids,
-                source_occurrence_ids=parent.source_occurrence_ids,
-                section_id=parent.section_id,
-                native_parent_block_id=parent_id,
-                native_start_char=start,
-                native_end_char=end,
-            )
-
+    # Use the same exact-native implementation as the worker boundary.  The
+    # comparator still admits a wider Common-IR source universe than the live
+    # router; sharing this lexical transform prevents its IDs, offsets, and
+    # continuation grammar from drifting away from production.
     source_kind = common_ir.get("document", {}).get("source_kind")
-    if source_kind in {"pdf", "hwp", "hwpx"}:
-        ordered = sorted(
-            contracts.items(),
-            key=lambda item: (
-                item[1].source_order if item[1].source_order is not None else 10**12,
-                item[0],
+    try:
+        source_pack = CandidatePack(
+            pack_id=f"{prepared.common_ir_document_id}-semantic-source-universe",
+            notice_id=prepared.notice_id,
+            extraction_scope="document",
+            question="Offline provenance source-universe validation only",
+            blocks=[
+                SourceBlock(
+                    block_id=block_id,
+                    text=contract.text,
+                    relation="candidate",
+                    block_kind=contract.block_kind,
+                    section_id=contract.section_id,
+                    source_order=contract.source_order,
+                    source_occurrence_ids=list(contract.source_occurrence_ids),
+                    common_ir_block_id=contract.common_ir_block_id,
+                    common_ir_cell_id=contract.common_ir_cell_id,
+                    common_ir_occurrence_ids=contract.common_ir_occurrence_ids,
+                )
+                for block_id, contract in contracts.items()
+            ],
+            generator=COMMON_IR_V1_CANDIDATE_PACK_GENERATOR,
+            generator_version=COMMON_IR_V1_CANDIDATE_PACK_GENERATOR_VERSION,
+            common_ir_document_id=prepared.common_ir_document_id,
+        )
+        transformed_pack = augment_pack_with_native_exact_transforms(
+            source_pack,
+            options=NativeExactTransformOptions(
+                enabled=True,
+                include_line_atoms=True,
+                include_continuations=source_kind in {"pdf", "hwp", "hwpx"},
             ),
         )
-        composites: dict[str, _NativeSourceContract] = {}
-        for start_index in range(len(ordered) - 1):
-            group = [ordered[start_index]]
-            while len(group) < 3 and start_index + len(group) < len(ordered):
-                following = ordered[start_index + len(group)]
-                if not _native_continuation_needed(group[-1][1], following[1]):
-                    break
-                if (
-                    following[1].block_kind == "table_cell"
-                    or group[-1][1].block_kind == "table_cell"
-                ):
-                    break
-                group.append(following)
-                spans: list[_NativeSourceSpanContract] = []
-                for group_index, (source_id, source) in enumerate(group):
-                    first = group_index == 0
-                    span_start = 0
-                    if first:
-                        marker = _LEADING_LAYOUT_MARKER.match(source.text)
-                        if marker is not None:
-                            span_start = marker.end()
-                    span_end = len(source.text.rstrip())
-                    separator = ""
-                    if group_index + 1 < len(group):
-                        right_text = group[group_index + 1][1].text.lstrip()
-                        left_text = source.text.rstrip()
-                        if (
-                            left_text
-                            and right_text
-                            and not left_text[-1].isspace()
-                            and not right_text[0].isspace()
-                        ):
-                            separator = " "
-                    spans.append(
-                        _NativeSourceSpanContract(
-                            source_block_id=source_id,
-                            exact_text=source.text[span_start:span_end],
-                            start_char=span_start,
-                            end_char=span_end,
-                            separator_after=separator,
-                            source_order=source.source_order or 0,
-                            section_id=source.section_id or "main_notice",
-                            common_ir_block_id=source.common_ir_block_id,
-                            common_ir_cell_id=source.common_ir_cell_id,
-                            common_ir_occurrence_ids=source.common_ir_occurrence_ids,
-                        )
-                    )
-                identity = "\0".join(span.source_block_id for span in spans).encode()
-                block_id = f"composite:{sha256(identity).hexdigest()[:20]}"
-                occurrence_ids = tuple(
-                    occurrence_id
-                    for span in spans
-                    for occurrence_id in span.common_ir_occurrence_ids
+    except Exception as error:  # noqa: BLE001 - normalize a trusted boundary
+        raise ExistingProfileSemanticError(
+            f"{label}.common_ir exact-native source projection failed: "
+            f"{type(error).__name__}"
+        ) from error
+    for block in transformed_pack.blocks:
+        if not block.source_spans and block.native_parent_block_id is None:
+            continue
+        _require(block.block_id not in contracts, f"{label} has duplicate native candidate ids")
+        contracts[block.block_id] = _NativeSourceContract(
+            text=block.text,
+            block_kind=block.block_kind,
+            source_order=block.source_order,
+            common_ir_block_id=block.common_ir_block_id or "",
+            common_ir_cell_id=block.common_ir_cell_id,
+            common_ir_occurrence_ids=tuple(block.common_ir_occurrence_ids),
+            source_occurrence_ids=tuple(block.source_occurrence_ids),
+            section_id=block.section_id,
+            native_parent_block_id=block.native_parent_block_id,
+            native_start_char=block.native_start_char,
+            native_end_char=block.native_end_char,
+            source_spans=tuple(
+                _NativeSourceSpanContract(
+                    source_block_id=span.source_block_id,
+                    exact_text=span.exact_text,
+                    start_char=span.start_char,
+                    end_char=span.end_char,
+                    separator_after=span.separator_after,
+                    source_order=span.source_order,
+                    section_id=span.section_id,
+                    common_ir_block_id=span.common_ir_block_id,
+                    common_ir_cell_id=span.common_ir_cell_id,
+                    common_ir_occurrence_ids=tuple(span.common_ir_occurrence_ids),
                 )
-                composites[block_id] = _NativeSourceContract(
-                    text="".join(span.exact_text + span.separator_after for span in spans),
-                    block_kind="native_composite",
-                    source_order=spans[0].source_order,
-                    common_ir_block_id=spans[0].common_ir_block_id,
-                    common_ir_cell_id=None,
-                    common_ir_occurrence_ids=occurrence_ids,
-                    source_occurrence_ids=occurrence_ids,
-                    section_id=spans[0].section_id,
-                    source_spans=tuple(spans),
-                )
-        for block_id, contract in sorted(composites.items()):
-            _require(block_id not in contracts, f"{label} has duplicate native-composite candidate ids")
-            contracts[block_id] = contract
+                for span in block.source_spans
+            ),
+        )
     _require(contracts, f"{label}.common_ir produced no trusted CandidatePack blocks")
     return contracts
-
-
-def _native_continuation_needed(
-    block: _NativeSourceContract,
-    following: _NativeSourceContract,
-) -> bool:
-    """Mirror the reviewed native continuation admission rule."""
-
-    text = block.text.rstrip()
-    bare_number = bool(_BARE_NUMBER.fullmatch(text))
-    if not text or (_TERMINAL.search(text) and not bare_number):
-        return False
-    heading_pair = block.block_kind == following.block_kind == "heading"
-    if not heading_pair and (
-        block.block_kind not in _CONTINUATION_KINDS
-        or following.block_kind not in _CONTINUATION_KINDS
-    ):
-        return False
-    if block.section_id != following.section_id:
-        return False
-    if heading_pair and not text.endswith((",", ":", ";", "/", "(", "[")):
-        return False
-    if block.source_order is None or following.source_order is None:
-        return False
-    if not 0 < following.source_order - block.source_order <= 2:
-        return False
-    return bool(
-        bare_number
-        or text.endswith(("및", "또는", "위해", "따라", "대하여", "체납", "지원", "제공", "지"))
-        or following.text.lstrip().startswith(("*", "※", "중인", "원하여", "하는", "및 "))
-        or not _TERMINAL.search(text)
-    )
 
 
 class _ProvenanceResolver:
@@ -1327,7 +1400,10 @@ def _fact_base(
         result[evidence_key] = _unordered(normalized_evidence)
     if "organization_names" in fact:
         organizations = fact["organization_names"]
-        _require(isinstance(organizations, list) and organizations, f"{label}.organization_names must be a non-empty array")
+        _require(
+            isinstance(organizations, list),
+            f"{label}.organization_names must be an array",
+        )
         normalized_organizations: list[Mapping[str, Any]] = []
         for index, organization in enumerate(organizations):
             organization_label = f"{label}.organization_names[{index}]"
@@ -1342,21 +1418,65 @@ def _fact_base(
                 "value_raw": value_raw,
             })
         result["organization_names"] = _unordered(normalized_organizations)
+    is_delivery_role = fact["field_name"] == "delivery_roles"
+    if is_delivery_role:
+        _require(
+            "organization_names" in fact
+            and isinstance(fact["organization_names"], list)
+            and bool(fact["organization_names"]),
+            f"{label}.delivery_roles requires at least one organization_name",
+        )
     if "role_raw" in fact:
-        _require(isinstance(fact["role_raw"], str) and fact["role_raw"], f"{label}.role_raw must be non-empty")
-        result["role_raw"] = fact["role_raw"]
+        role_raw = fact["role_raw"]
+        _require(
+            role_raw is None or (isinstance(role_raw, str) and role_raw),
+            f"{label}.role_raw must be a non-empty string or null",
+        )
+        result["role_raw"] = role_raw
+    if is_delivery_role:
+        _require(
+            isinstance(fact.get("role_raw"), str) and bool(fact["role_raw"]),
+            f"{label}.delivery_roles requires a non-empty role_raw",
+        )
     if "canonical_role" in fact:
         _require(fact["canonical_role"] is None or isinstance(fact["canonical_role"], str), f"{label}.canonical_role must be a string or null")
+        _require(
+            fact["canonical_role"] is None or isinstance(fact.get("role_raw"), str),
+            f"{label}.canonical_role requires a non-null role_raw",
+        )
         result["canonical_role"] = fact["canonical_role"]
     if "role_source" in fact:
         _require("role_raw" in fact, f"{label}.role_source requires role_raw")
-        resolver.validate_value_source(
-            fact["role_source"], fact["role_raw"], label=f"{label}.role_source"
-        )
+        if fact["role_raw"] is None:
+            _require(
+                fact["role_source"] is None,
+                f"{label}.role_source must be null when role_raw is null",
+            )
+        else:
+            resolver.validate_value_source(
+                fact["role_source"],
+                fact["role_raw"],
+                label=f"{label}.role_source",
+            )
+            if is_delivery_role:
+                _require(
+                    isinstance(fact["role_source"], Mapping)
+                    and fact["role_source"].get("source_block_id")
+                    == fact.get("role_source_block_id"),
+                    f"{label}.delivery_roles role source and anchor must agree",
+                )
+    elif is_delivery_role:
+        _require(False, f"{label}.delivery_roles requires role_source")
     if "role_source_block_id" in fact and fact["role_source_block_id"] is not None:
+        _require(
+            fact.get("role_raw") is not None,
+            f"{label}.role_source_block_id requires a non-null role_raw",
+        )
         resolver.validate_source_anchor(
             fact["role_source_block_id"], label=f"{label}.role_source_block_id"
         )
+    elif is_delivery_role:
+        _require(False, f"{label}.delivery_roles requires role_source_block_id")
     return result
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -398,9 +399,9 @@ def test_rejects_delivery_organization_anchor_text_drift(tmp_path: Path) -> None
     ]
     fact.update(
         {
-            "role_raw": None,
-            "role_source_block_id": None,
-            "role_source": None,
+            "role_raw": fact["value_raw"],
+            "role_source_block_id": "block-1",
+            "role_source": fact["value_source"],
             "canonical_role": None,
         }
     )
@@ -410,16 +411,19 @@ def test_rejects_delivery_organization_anchor_text_drift(tmp_path: Path) -> None
     selected["organization_anchors"] = [
         {"source_block_id": "block-1", "anchor_text": "변조된 기관명"}
     ]
-    selected["role_anchor"] = None
+    selected["role_anchor"] = {
+        "source_block_id": "block-1",
+        "anchor_text": fact["value_raw"],
+    }
     materialized = selection["materialized_evidence"][0]  # type: ignore[index]
     materialized["field_name"] = "delivery_roles"
     materialized.update(
         {
             "organization_names": [fact["value_raw"]],
             "organization_sources": [fact["value_source"]],
-            "role_raw": None,
-            "role_source_block_id": None,
-            "role_source": None,
+            "role_raw": fact["value_raw"],
+            "role_source_block_id": "block-1",
+            "role_source": fact["value_source"],
             "canonical_role": None,
         }
     )
@@ -441,7 +445,9 @@ def test_rejects_delivery_role_anchor_text_drift(tmp_path: Path) -> None:
     fact["field_name"] = "delivery_roles"
     fact.update(
         {
-            "organization_names": [],
+            "organization_names": [
+                {"value_raw": fact["value_raw"], "value_source": fact["value_source"]}
+            ],
             "role_raw": fact["value_raw"],
             "role_source_block_id": "block-1",
             "role_source": fact["value_source"],
@@ -453,7 +459,9 @@ def test_rejects_delivery_role_anchor_text_drift(tmp_path: Path) -> None:
     selected.update(
         {
             "field_name": "delivery_roles",
-            "organization_anchors": [],
+            "organization_anchors": [
+                {"source_block_id": "block-1", "anchor_text": fact["value_raw"]}
+            ],
             "role_anchor": {
                 "source_block_id": "block-1",
                 "anchor_text": "변조된 역할",
@@ -465,8 +473,8 @@ def test_rejects_delivery_role_anchor_text_drift(tmp_path: Path) -> None:
     materialized.update(
         {
             "field_name": "delivery_roles",
-            "organization_names": [],
-            "organization_sources": [],
+            "organization_names": [fact["value_raw"]],
+            "organization_sources": [fact["value_source"]],
             "role_raw": fact["value_raw"],
             "role_source_block_id": "block-1",
             "role_source": fact["value_source"],
@@ -477,6 +485,106 @@ def test_rejects_delivery_role_anchor_text_drift(tmp_path: Path) -> None:
     with pytest.raises(
         verifier.GoldVerificationError,
         match="selection/materialized role anchor differs",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_delivery_role_without_explicit_role_or_organization(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    fact = profile["comparison_profile"].pop("support_content")[0]  # type: ignore[index,union-attr]
+    fact.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [],
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": "operating_agency",
+        }
+    )
+    profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    selection["selection"]["facts"][0].update(  # type: ignore[index]
+        {
+            "field_name": "delivery_roles",
+            "organization_anchors": [],
+            "role_anchor": None,
+            "canonical_role": "operating_agency",
+        }
+    )
+    selection["materialized_evidence"][0].update(  # type: ignore[index]
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [],
+            "organization_sources": [],
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": "operating_agency",
+        }
+    )
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="delivery role requires at least one explicit organization",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_delivery_role_canonicalization_without_raw_role(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    fact = profile["comparison_profile"].pop("support_content")[0]  # type: ignore[index,union-attr]
+    organization = {
+        "value_raw": fact["value_raw"],
+        "value_source": fact["value_source"],
+    }
+    fact.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [organization],
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": "operating_agency",
+        }
+    )
+    profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    selection["selection"]["facts"][0].update(  # type: ignore[index]
+        {
+            "field_name": "delivery_roles",
+            "organization_anchors": [
+                {"source_block_id": "block-1", "anchor_text": fact["value_raw"]}
+            ],
+            "role_anchor": None,
+            "canonical_role": "operating_agency",
+        }
+    )
+    selection["materialized_evidence"][0].update(  # type: ignore[index]
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [fact["value_raw"]],
+            "organization_sources": [fact["value_source"]],
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": "operating_agency",
+        }
+    )
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="delivery role requires an explicit role anchor",
     ):
         verifier.verify_profile_artifact_triple(
             profile, selection, common_ir, pblanc_id=pblanc_id
@@ -545,3 +653,142 @@ def test_requires_the_explicit_expected_notice_count(tmp_path: Path) -> None:
 
     with pytest.raises(verifier.GoldVerificationError, match="expected notice count"):
         verifier.verify_gold_root(root)
+
+
+def test_rejects_an_oversized_json_before_decoding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "gold"
+    _write_gold(root)
+    monkeypatch.setattr(verifier, "MAX_GOLD_FILE_BYTES", 1024 * 1024)
+    (root / "freeze_manifest.json").write_bytes(b"{" + b" " * (1024 * 1024) + b"}")
+
+    with pytest.raises(verifier.GoldVerificationError, match="per-file byte budget"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_rejects_an_oversized_jsonl_before_streaming(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "gold"
+    _write_gold(root)
+    monkeypatch.setattr(verifier, "MAX_GOLD_FILE_BYTES", 1024 * 1024)
+    (root / "governance" / "decisions.jsonl").write_bytes(
+        b'{"notice_id":"PBLN_SYNTHETIC_001"}\n' + b"x" * (1024 * 1024)
+    )
+
+    with pytest.raises(verifier.GoldVerificationError, match="per-file byte budget"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_rejects_an_oversized_csv_before_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "gold"
+    _write_gold(root)
+    monkeypatch.setattr(verifier, "MAX_GOLD_FILE_BYTES", 1024 * 1024)
+    (root / "competitor_mapping.csv").write_bytes(
+        b"answer_pblanc_id,competitor_pblanc_id\n" + b"x" * (1024 * 1024)
+    )
+
+    with pytest.raises(verifier.GoldVerificationError, match="per-file byte budget"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_unindexed_readme_still_obeys_the_corpus_byte_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "gold"
+    _write_gold(root)
+    monkeypatch.setattr(verifier, "MAX_GOLD_FILE_BYTES", 1024 * 1024)
+    (root / "README.md").write_bytes(b"x" * (1024 * 1024 + 1))
+
+    with pytest.raises(verifier.GoldVerificationError, match="per-file byte budget"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_aggregate_budget_counts_each_file_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "gold"
+    _write_gold(root)
+    # Verification first reads the freeze manifest and its artifact-index and
+    # profile-manifest pins.  Permit precisely those three unique files; the
+    # subsequent sample CSV must trigger the aggregate guard.
+    permitted = sum(
+        (root / filename).stat().st_size
+        for filename in ("freeze_manifest.json", "artifact_index.json", "profile_manifest.json")
+    )
+    monkeypatch.setattr(verifier, "MAX_GOLD_TOTAL_UNIQUE_FILE_BYTES", permitted)
+
+    with pytest.raises(verifier.GoldVerificationError, match="aggregate unique-file byte budget"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_deep_json_is_a_validation_error_without_a_recursion_traceback(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    _write_gold(root)
+    depth = 10_000
+    (root / "freeze_manifest.json").write_bytes(b'{"nested":' * depth + b"0" + b"}" * depth)
+
+    with pytest.raises(verifier.GoldVerificationError, match="freeze_manifest.json is not valid UTF-8 JSON|nesting depth"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_read_budget_binds_a_path_to_the_first_verified_inode(tmp_path: Path) -> None:
+    target = tmp_path / "artifact.json"
+    target.write_text('{"version": 1}', encoding="utf-8")
+    budget = verifier._GoldReadBudget()
+    verifier._load_json(target, "artifact", budget=budget)
+    replacement = tmp_path / "replacement.json"
+    replacement.write_text('{"version": 2}', encoding="utf-8")
+    replacement.replace(target)
+
+    with pytest.raises(verifier.GoldVerificationError, match="changed while"):
+        verifier._load_json(target, "artifact", budget=budget)
+
+
+def test_read_budget_detects_in_place_rewrite_when_mtime_is_restored(tmp_path: Path) -> None:
+    target = tmp_path / "artifact.json"
+    target.write_text('{"version": 1}', encoding="utf-8")
+    budget = verifier._GoldReadBudget()
+    assert verifier._load_json(target, "artifact", budget=budget) == {"version": 1}
+
+    before = target.stat()
+    # Keep the inode and byte size stable, then restore mtime.  A verifier that
+    # snapshots only (inode, size, mtime) would accept this replacement.
+    target.write_text('{"version": 2}', encoding="utf-8")
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    with pytest.raises(verifier.GoldVerificationError, match="changed while"):
+        verifier._load_json(target, "artifact", budget=budget)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO is unavailable")
+def test_checked_path_replaced_by_fifo_cannot_block_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "artifact.json"
+    target.write_text('{"version": 1}', encoding="utf-8")
+    budget = verifier._GoldReadBudget()
+    real_open = verifier.os.open
+    swapped = False
+
+    def replace_then_open(path, flags):
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            target.unlink()
+            os.mkfifo(target)
+        return real_open(path, flags)
+
+    monkeypatch.setattr(verifier.os, "open", replace_then_open)
+
+    with pytest.raises(verifier.GoldVerificationError, match="changed while"):
+        verifier._load_json(target, "artifact", budget=budget)

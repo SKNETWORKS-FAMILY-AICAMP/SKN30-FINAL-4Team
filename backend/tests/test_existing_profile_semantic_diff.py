@@ -3,7 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Mapping
 
 import pytest
 
@@ -23,11 +26,9 @@ from worker.evaluation.existing_profile_semantic_diff import (
 )
 
 
-BASELINE = Path("/srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip")
-GOLD = Path(
-    "/home/paim/Project/llm-prompting-test/imports/prereview-vectordb-poc/"
-    "dataset_prep/frozen_existing_profile_gold_100_20260909_v5"
-)
+REAL_BASELINE_ENV = "PREREVIEW_EXISTING_GOLD100_BASELINE_ZIP"
+REAL_GOLD_ENV = "PREREVIEW_EXISTING_GOLD100_GOLD_ROOT"
+REQUIRE_REAL_GOLD100_ENV = "PREREVIEW_REQUIRE_EXISTING_GOLD100"
 SIX = [
     "PBLN_000000000103645",
     "PBLN_000000000112425",
@@ -240,6 +241,33 @@ def _loaded(artifact: SemanticArtifact, *, role: str) -> LoadedSemanticArtifacts
         artifacts={artifact.notice_id: artifact},
         identity={"role": role, "profile_count": 1},
     )
+
+
+def _configured_real_corpora_paths() -> tuple[Path, Path] | None:
+    """Resolve optional developer fixtures without hiding an explicit bad path."""
+
+    baseline_raw = os.environ.get(REAL_BASELINE_ENV)
+    gold_raw = os.environ.get(REAL_GOLD_ENV)
+    require_real = os.environ.get(REQUIRE_REAL_GOLD100_ENV, "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    if baseline_raw is None and gold_raw is None:
+        if require_real:
+            pytest.fail(
+                f"{REQUIRE_REAL_GOLD100_ENV}=1 requires {REAL_BASELINE_ENV} and {REAL_GOLD_ENV}"
+            )
+        return None
+    if not baseline_raw or not gold_raw:
+        pytest.fail(
+            f"set both {REAL_BASELINE_ENV} and {REAL_GOLD_ENV}, or set neither for a developer skip"
+        )
+    baseline = Path(baseline_raw)
+    gold = Path(gold_raw)
+    if not baseline.is_file():
+        pytest.fail(f"explicitly configured baseline archive is missing: {baseline}")
+    if not gold.is_dir():
+        pytest.fail(f"explicitly configured Gold root is missing: {gold}")
+    return baseline, gold
 
 
 def _native_composite_artifact() -> SemanticArtifact:
@@ -565,11 +593,16 @@ def _remap_generated_ids(artifact: SemanticArtifact) -> SemanticArtifact:
 
 @pytest.fixture(scope="module")
 def real_corpora() -> tuple[LoadedSemanticArtifacts, LoadedSemanticArtifacts]:
-    if not (BASELINE.is_file() and GOLD.is_dir()):
-        pytest.skip("external baseline/Gold corpora are not installed")
+    paths = _configured_real_corpora_paths()
+    if paths is None:
+        pytest.skip(
+            "external baseline/Gold corpora are not configured; set "
+            f"{REAL_BASELINE_ENV} and {REAL_GOLD_ENV}"
+        )
+    baseline, gold = paths
     return (
-        load_automatic_semantic_artifacts(BASELINE),
-        load_reviewed_gold_semantic_artifacts(GOLD),
+        load_automatic_semantic_artifacts(baseline),
+        load_reviewed_gold_semantic_artifacts(gold),
     )
 
 
@@ -585,6 +618,102 @@ def test_synthetic_candidate_equal_to_gold_passes_exact_gate() -> None:
     assert report["counts"]["missing_gold"] == 0
     assert report["counts"]["candidate_only"] == 0
     assert report["counts"]["remaining_baseline_surplus"] == 0
+
+
+def test_synthetic_candidate_different_from_gold_fails_with_both_delta_directions() -> None:
+    baseline = _artifact(value="기존 값", fact_id="baseline-id")
+    gold = _artifact(value="교정 값", fact_id="gold-id")
+    candidate = deepcopy(baseline)
+
+    report = compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+    assert report["semantic_gate_status"] == "failed"
+    assert report["counts"]["missing_gold"] > 0
+    assert report["counts"]["candidate_only"] > 0
+
+
+def test_delivery_role_rejects_empty_organization_and_missing_role_contract(monkeypatch) -> None:
+    artifact = _artifact()
+    fact = artifact.profile["comparison_profile"]["support_content"].pop()  # type: ignore[index]
+    fact.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [],
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": None,
+        }
+    )
+    artifact.profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    selected = artifact.source_selection["selection"]["facts"][0]  # type: ignore[index]
+    selected["field_name"] = "delivery_roles"
+    materialized = artifact.source_selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["field_name"] = "delivery_roles"
+    monkeypatch.setattr(semantic_diff, "_validate_artifact_triple", lambda *args, **kwargs: None)
+
+    with pytest.raises(ExistingProfileSemanticError, match="delivery_roles requires at least one organization_name"):
+        build_semantic_graph(artifact)
+
+
+def test_delivery_role_null_raw_rejects_non_null_role_provenance(monkeypatch) -> None:
+    artifact = _artifact()
+    fact = artifact.profile["comparison_profile"]["support_content"].pop()  # type: ignore[index]
+    fact.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [],
+            "role_raw": None,
+            "role_source_block_id": "block-1",
+            "role_source": {
+                "source_block_id": "block-1",
+                "start_char": 0,
+                "end_char": len("기존 값"),
+                "text_basis": "common_ir_v1_candidate_pack",
+            },
+            "canonical_role": None,
+        }
+    )
+    artifact.profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    monkeypatch.setattr(semantic_diff, "_validate_artifact_triple", lambda *args, **kwargs: None)
+
+    with pytest.raises(ExistingProfileSemanticError):
+        build_semantic_graph(artifact)
+
+
+def test_delivery_role_rejects_role_source_anchor_disagreement(monkeypatch) -> None:
+    artifact = _artifact()
+    fact = artifact.profile["comparison_profile"]["support_content"].pop()  # type: ignore[index]
+    fact.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [
+                {
+                    "value_raw": "기존 값",
+                    "value_source": {
+                        "source_block_id": "block-1",
+                        "start_char": 0,
+                        "end_char": len("기존 값"),
+                        "text_basis": "common_ir_v1_candidate_pack",
+                    },
+                }
+            ],
+            "role_raw": "교정 값",
+            "role_source_block_id": "other-block",
+            "role_source": {
+                "source_block_id": "block-1",
+                "start_char": len("기존 값\n"),
+                "end_char": len(SOURCE_TEXT),
+                "text_basis": "common_ir_v1_candidate_pack",
+            },
+            "canonical_role": "lead_agency",
+        }
+    )
+    artifact.profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    monkeypatch.setattr(semantic_diff, "_validate_artifact_triple", lambda *args, **kwargs: None)
+
+    with pytest.raises(ExistingProfileSemanticError, match="role source and anchor must agree"):
+        build_semantic_graph(artifact)
 
 
 def test_candidate_report_declares_source_universe_scope_and_limitations() -> None:
@@ -943,6 +1072,190 @@ def test_candidate_can_use_a_server_regenerated_native_line_atom() -> None:
 
     report = compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
     assert report["semantic_gate_status"] == "passed"
+
+
+def test_native_source_projection_normalizes_collision_errors_without_raw_source() -> None:
+    artifact = _artifact()
+    private_text = "PRIVATE-SOURCE-SENTINEL\n안전"
+    first_line_end = private_text.index("\n")
+    derived_id = (
+        "line:"
+        + sha256(f"p0\0{0}\0{first_line_end}".encode()).hexdigest()[:20]
+    )
+    artifact.common_ir["document"]["document_id"] = "hwpx:PRIVATE-DOCUMENT-ID"  # type: ignore[index]
+    artifact.common_ir["document"]["source_kind"] = "hwpx"  # type: ignore[index]
+    artifact.common_ir["blocks"] = [  # type: ignore[index]
+        {
+            "block_id": "p0",
+            "text": private_text,
+            "kind": "paragraph",
+            "reading_order": 0,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-private"],
+            "occurrences": [
+                {"occurrence_id": "occ-private", "text": private_text}
+            ],
+        },
+        {
+            # This atomic ID collides with the deterministic first-line ID.
+            "block_id": derived_id,
+            "text": "충돌 블록",
+            "kind": "paragraph",
+            "reading_order": 1,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-collision"],
+            "occurrences": [
+                {"occurrence_id": "occ-collision", "text": "충돌 블록"}
+            ],
+        },
+    ]
+
+    with pytest.raises(ExistingProfileSemanticError) as caught:
+        semantic_diff._native_source_contracts(
+            artifact.common_ir, label="candidate"
+        )
+
+    message = str(caught.value)
+    assert "exact-native source projection failed" in message
+    assert "PRIVATE-SOURCE-SENTINEL" not in message
+    assert "PRIVATE-DOCUMENT-ID" not in message
+    assert derived_id not in message
+    assert "input_value" not in message
+
+
+def test_gold_companions_must_remain_bound_to_the_loaded_freeze_manifest(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "gold"
+    notice_root = root / "notices" / NOTICE_ID
+    notice_root.mkdir(parents=True)
+    old_manifest_digest = "a" * 64
+    monkeypatch.setattr(
+        semantic_diff,
+        "load_reviewed_gold",
+        lambda *args, **kwargs: SimpleNamespace(
+            profiles={NOTICE_ID: {}},
+            identity={"freeze_manifest_sha256": old_manifest_digest},
+        ),
+    )
+
+    def snapshot(path, *, label):
+        if path.name == "freeze_manifest.json":
+            return SimpleNamespace(value={}, digest="b" * 64)
+        return SimpleNamespace(value={})
+
+    monkeypatch.setattr(semantic_diff, "_read_regular_json_snapshot", snapshot)
+    monkeypatch.setattr(semantic_diff, "_validate_artifact_triple", lambda *args, **kwargs: None)
+    verified = False
+
+    def verify(*args, **kwargs):
+        nonlocal verified
+        verified = True
+        return SimpleNamespace(status="valid")
+
+    monkeypatch.setattr(semantic_diff, "verify_gold_root", verify)
+
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="freeze manifest changed between Profile and companion loading",
+    ):
+        load_reviewed_gold_semantic_artifacts(root, expected_profile_count=1)
+
+    assert verified is False
+
+
+def test_gold_directory_swap_before_companion_reads_fails_index_binding(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """A second tree cannot splice unindexed companions onto loaded Profiles."""
+
+    root = tmp_path / "gold"
+    evil_root = tmp_path / "evil-gold"
+    parked_root = tmp_path / "parked-gold"
+
+    def encoded(document: object) -> bytes:
+        return json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+    def write_tree(tree: Path, *, selection: Mapping[str, object]) -> tuple[bytes, bytes]:
+        notice = tree / "notices" / NOTICE_ID
+        notice.mkdir(parents=True)
+        selection_bytes = encoded(selection)
+        common_ir_bytes = encoded({"common_ir": "trusted"})
+        (notice / "source_selection.v0.2.json").write_bytes(selection_bytes)
+        (notice / "common_ir_v1.json").write_bytes(common_ir_bytes)
+        artifact_index_bytes = encoded(
+            {
+                "artifacts": [
+                    {
+                        "notice_id": NOTICE_ID,
+                        "artifact": "source_selection.v0.2",
+                        "path": f"notices/{NOTICE_ID}/source_selection.v0.2.json",
+                        "sha256": sha256(selection_bytes).hexdigest(),
+                        "bytes": len(selection_bytes),
+                    },
+                    {
+                        "notice_id": NOTICE_ID,
+                        "artifact": "common_ir_v1",
+                        "path": f"notices/{NOTICE_ID}/common_ir_v1.json",
+                        "sha256": sha256(common_ir_bytes).hexdigest(),
+                        "bytes": len(common_ir_bytes),
+                    },
+                ]
+            }
+        )
+        (tree / "artifact_index.json").write_bytes(artifact_index_bytes)
+        manifest_bytes = encoded(
+            {"artifact_index_sha256": sha256(artifact_index_bytes).hexdigest()}
+        )
+        (tree / "freeze_manifest.json").write_bytes(manifest_bytes)
+        return artifact_index_bytes, manifest_bytes
+
+    good_index, good_manifest = write_tree(root, selection={"selection": "trusted"})
+    evil_index, evil_manifest = write_tree(evil_root, selection={"selection": "evil"})
+    # The adversarial tree copies G0's two root pins, but not its selection
+    # bytes.  A final whole-tree check alone can be raced around this window.
+    (evil_root / "artifact_index.json").write_bytes(good_index)
+    (evil_root / "freeze_manifest.json").write_bytes(good_manifest)
+    assert evil_index != good_index
+    assert evil_manifest != good_manifest
+
+    monkeypatch.setattr(
+        semantic_diff,
+        "load_reviewed_gold",
+        lambda *args, **kwargs: SimpleNamespace(
+            profiles={NOTICE_ID: {"profile": "G0"}},
+            identity={"freeze_manifest_sha256": sha256(good_manifest).hexdigest()},
+        ),
+    )
+    monkeypatch.setattr(semantic_diff, "_validate_artifact_triple", lambda *args, **kwargs: None)
+    real_read = semantic_diff._read_regular_json_snapshot
+    swapped = False
+
+    def swap_before_first_companion(path: Path, *, label: str):
+        nonlocal swapped
+        if label.startswith("Gold source selection") and not swapped:
+            root.rename(parked_root)
+            evil_root.rename(root)
+            swapped = True
+        return real_read(path, label=label)
+
+    monkeypatch.setattr(semantic_diff, "_read_regular_json_snapshot", swap_before_first_companion)
+
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="Gold companion snapshot does not match the artifact index",
+    ) as caught:
+        load_reviewed_gold_semantic_artifacts(root, expected_profile_count=1)
+
+    assert swapped is True
+    assert "evil" not in str(caught.value)
 
 
 def test_candidate_can_use_a_server_regenerated_native_composite() -> None:
@@ -1390,6 +1703,8 @@ def test_report_is_source_free_no_clobber_and_outside_gold(tmp_path: Path) -> No
 
 
 def test_cli_returns_nonzero_when_semantic_gate_fails(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    monkeypatch.setattr(cli, "_verify_loaded_report_pins", lambda args, report: None)
     monkeypatch.setattr(
         cli,
         "compare_semantic_profile_corpora",
@@ -1416,6 +1731,8 @@ def test_cli_returns_zero_and_forwards_selection_options_when_gate_passes(
     capsys,
 ) -> None:
     captured: dict[str, object] = {}
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    monkeypatch.setattr(cli, "_verify_loaded_report_pins", lambda args, report: None)
 
     def compare(*args, **kwargs):
         captured["args"] = args
@@ -1467,11 +1784,25 @@ def test_cli_uses_explicit_baseline_calibration_mode(
     capsys,
 ) -> None:
     captured: dict[str, object] = {}
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    monkeypatch.setattr(cli, "_verify_loaded_report_pins", lambda args, report: None)
 
     def calibrate(*args, **kwargs):
         captured["args"] = args
         captured["kwargs"] = kwargs
-        return {"counts": {"selected": 100, "passed": 94, "failed": 6}}
+        return {
+            "counts": {"selected": 100, "passed": 94, "failed": 6},
+            "notices": [
+                {
+                    "notice_id": notice_id,
+                    "semantic_gate_status": "failed" if notice_id in SIX else "passed",
+                }
+                for notice_id in [
+                    *SIX,
+                    *[f"PBLN_000000000200{index:03d}" for index in range(94)],
+                ]
+            ],
+        }
 
     monkeypatch.setattr(cli, "calibrate_semantic_profile_corpora", calibrate)
     monkeypatch.setattr(
@@ -1490,9 +1821,263 @@ def test_cli_uses_explicit_baseline_calibration_mode(
         ]
     )
 
-    assert exit_code == 2
+    assert exit_code == 0
     assert captured["kwargs"] == {
         "expected_reference_count": 100,
         "notice_ids": None,
     }
-    assert json.loads(capsys.readouterr().out)["status"] == "failed"
+    assert json.loads(capsys.readouterr().out)["status"] == "calibration_matched"
+
+
+def test_cli_rejects_mismatched_input_pin_before_comparison_or_report(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    baseline = tmp_path / "baseline.zip"
+    candidate = tmp_path / "candidate.zip"
+    gold = tmp_path / "gold"
+    baseline.write_bytes(b"baseline")
+    candidate.write_bytes(b"candidate")
+    gold.mkdir()
+    (gold / "freeze_manifest.json").write_bytes(b"freeze")
+    compared = False
+    written = False
+
+    def compare(*args, **kwargs):
+        nonlocal compared
+        compared = True
+        return {"counts": {"selected": 1, "passed": 1, "failed": 0}}
+
+    def write(*args, **kwargs):
+        nonlocal written
+        written = True
+        return tmp_path / "report.json"
+
+    monkeypatch.setattr(cli, "compare_semantic_profile_corpora", compare)
+    monkeypatch.setattr(cli, "write_semantic_report", write)
+    exit_code = cli.main(
+        [
+            "--baseline-zip", str(baseline),
+            "--gold-root", str(gold),
+            "--candidate-zip", str(candidate),
+            "--output-dir", str(tmp_path),
+            "--expected-baseline-sha256", sha256(baseline.read_bytes()).hexdigest(),
+            "--expected-gold-freeze-manifest-sha256", sha256((gold / "freeze_manifest.json").read_bytes()).hexdigest(),
+            "--expected-candidate-sha256", "0" * 64,
+        ]
+    )
+
+    assert exit_code == 1
+    assert compared is False
+    assert written is False
+    assert "candidate archive SHA-256 pin mismatch" in capsys.readouterr().err
+
+
+def test_cli_preflight_rejects_an_oversized_file_before_hashing(tmp_path: Path) -> None:
+    oversized = tmp_path / "oversized-freeze-manifest.json"
+    oversized.write_bytes(b"x" * 5)
+
+    with pytest.raises(ExistingProfileSemanticError, match="preflight size cap"):
+        cli._regular_file_sha256(
+            oversized,
+            label="Gold freeze manifest",
+            max_bytes=4,
+        )
+
+
+def test_cli_preflight_rejects_growth_after_the_captured_size(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "baseline.zip"
+    source.write_bytes(b"baseline")
+    real_sha256 = sha256
+
+    class _GrowingDigest:
+        def __init__(self) -> None:
+            self._delegate = real_sha256()
+            self._grew = False
+
+        def update(self, data: bytes) -> None:
+            self._delegate.update(data)
+            if not self._grew:
+                self._grew = True
+                with source.open("ab") as handle:
+                    handle.write(b"+")
+
+        def hexdigest(self) -> str:
+            return self._delegate.hexdigest()
+
+    monkeypatch.setattr(cli, "sha256", _GrowingDigest)
+
+    with pytest.raises(ExistingProfileSemanticError, match="grew"):
+        cli._regular_file_sha256(
+            source,
+            label="baseline archive",
+            max_bytes=1024,
+        )
+
+
+def test_cli_rejects_a_loaded_snapshot_that_no_longer_matches_preflight_pin(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    monkeypatch.setattr(
+        cli,
+        "compare_semantic_profile_corpora",
+        lambda *args, **kwargs: {
+            "baseline": {"archive_sha256": "f" * 64},
+            "gold": {"freeze_manifest_sha256": cli.DEFAULT_GOLD_FREEZE_MANIFEST_SHA256},
+            "candidate": {"archive_sha256": "e" * 64},
+            "counts": {"selected": 1, "passed": 1, "failed": 0},
+            "notices": [],
+        },
+    )
+    written = False
+
+    def write(*args, **kwargs):
+        nonlocal written
+        written = True
+        return tmp_path / "report.json"
+
+    monkeypatch.setattr(cli, "write_semantic_report", write)
+
+    exit_code = cli.main(
+        [
+            "--baseline-zip", "baseline.zip",
+            "--gold-root", "gold",
+            "--candidate-zip", "candidate.zip",
+            "--output-dir", str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert written is False
+    assert "loaded baseline identity" in capsys.readouterr().err
+
+
+def test_cli_returns_two_for_calibration_expectation_mismatch(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    monkeypatch.setattr(cli, "_verify_loaded_report_pins", lambda args, report: None)
+    monkeypatch.setattr(
+        cli,
+        "calibrate_semantic_profile_corpora",
+        lambda *args, **kwargs: {
+            "counts": {"selected": 100, "passed": 95, "failed": 5},
+            "notices": [],
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "write_semantic_report",
+        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgc.v1.json",
+    )
+
+    exit_code = cli.main(
+        [
+            "--baseline-zip", "baseline.zip",
+            "--gold-root", "gold",
+            "--calibrate-baseline",
+            "--output-dir", str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "calibration_mismatch"
+
+
+def test_cli_allows_zero_calibration_failures_without_notice_ids(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    monkeypatch.setattr(cli, "_verify_loaded_report_pins", lambda args, report: None)
+    monkeypatch.setattr(
+        cli,
+        "calibrate_semantic_profile_corpora",
+        lambda *args, **kwargs: {
+            "counts": {"selected": 100, "passed": 100, "failed": 0},
+            "notices": [
+                {"notice_id": f"PBLN_{index:015d}", "semantic_gate_status": "passed"}
+                for index in range(100)
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "write_semantic_report",
+        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgc.v1.json",
+    )
+
+    exit_code = cli.main(
+        [
+            "--baseline-zip", "baseline.zip",
+            "--gold-root", "gold",
+            "--calibrate-baseline",
+            "--output-dir", str(tmp_path),
+            "--expected-calibration-passed", "100",
+            "--expected-calibration-failed", "0",
+        ]
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "calibration_matched"
+
+
+def test_cli_rejects_nondefault_positive_calibration_failure_count_without_ids(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "_verify_input_pins", lambda args: None)
+    called = False
+
+    def calibrate(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("invalid calibration expectations must fail before loading")
+
+    monkeypatch.setattr(cli, "calibrate_semantic_profile_corpora", calibrate)
+
+    exit_code = cli.main(
+        [
+            "--baseline-zip", "baseline.zip",
+            "--gold-root", "gold",
+            "--calibrate-baseline",
+            "--output-dir", str(tmp_path),
+            "--expected-calibration-failed", "1",
+        ]
+    )
+
+    assert exit_code == 1
+    assert called is False
+    assert "non-default positive" in capsys.readouterr().err
+
+
+def test_real_corpus_paths_skip_only_when_both_developer_paths_are_unset(monkeypatch) -> None:
+    monkeypatch.delenv(REAL_BASELINE_ENV, raising=False)
+    monkeypatch.delenv(REAL_GOLD_ENV, raising=False)
+    monkeypatch.delenv(REQUIRE_REAL_GOLD100_ENV, raising=False)
+    assert _configured_real_corpora_paths() is None
+
+    monkeypatch.setenv(REAL_BASELINE_ENV, "/definitely/missing/baseline.zip")
+    with pytest.raises(pytest.fail.Exception, match="set both"):
+        _configured_real_corpora_paths()
+
+
+def test_real_corpus_paths_fail_for_an_explicit_missing_path(monkeypatch, tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.zip"
+    baseline.write_bytes(b"baseline")
+    monkeypatch.setenv(REAL_BASELINE_ENV, str(baseline))
+    monkeypatch.setenv(REAL_GOLD_ENV, str(tmp_path / "missing-gold"))
+
+    with pytest.raises(pytest.fail.Exception, match="explicitly configured Gold root is missing"):
+        _configured_real_corpora_paths()

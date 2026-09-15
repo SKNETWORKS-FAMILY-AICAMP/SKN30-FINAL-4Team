@@ -298,6 +298,12 @@ OpenAI·DB·Storage를 호출하지 않는 오프라인 검사다. 생성할 때
 component ID와 set-like 배열 순서는 비교에서 제외하지만, 원문 값·상태·역할·Common IR
 occurrence 근거·component membership·방향성 관계·지원 규모 projection은 보존한다.
 
+이 명령은 입력 파일명이나 경로를 신뢰하지 않는다. 실행 전에 baseline ZIP과 Gold
+`freeze_manifest.json`의 SHA-256을 검증하고, 후보 ZIP도
+`--expected-candidate-sha256`을 주면 같은 방식으로 검증한다. pin 불일치는 비교나
+보고서 기록 전에 종료 코드 `1`로 실패한다. 아래 B/G pin은 이 Gold v5 릴리스의 trust
+root이므로, 새 Gold 릴리스에서는 pin·calibration 기대값을 같은 리뷰 변경으로 교체한다.
+
 최종 통과 조건은 승인 delta를 부분적으로 세는 휴리스틱이 아니라 의미 multigraph의
 `C == G`다. 보고서에는 원문 대신 atom SHA-256과 종류·개수만 기록한다. 입력 ZIP 파일명이나
 Gold 디렉터리명도 복사하지 않고 corpus SHA-256·건수·역할만 남긴다.
@@ -365,7 +371,10 @@ uv run --project backend python backend/scripts/compare_existing_profile_semanti
   --candidate-zip /path/to/candidate-existing-profile-100.zip \
   --output-dir "$REPORT_DIR" \
   --expected-reference-count 100 \
-  --expected-candidate-count 100
+  --expected-candidate-count 100 \
+  --expected-baseline-sha256 6649f1a5aab36f659d688634103950d3b73f8a5903a453aabdbbd9f5bc0f7f0d \
+  --expected-gold-freeze-manifest-sha256 a2c35fb4c98c92c23ff34faa045a16ec4e8ed1ea4bae5397caab547cb3db6987 \
+  --expected-candidate-sha256 <후보_ZIP_SHA256>
 
 jq . "$REPORT_DIR/existing-profile-semantic-bgc.v1.json"
 ```
@@ -382,8 +391,9 @@ PBLN_000000000121309
 PBLN_000000000122023
 ```
 
-종료 코드는 입력/계약 오류 `1`, 의미 불일치 `2`, 전건 통과 `0`이다. B/G의 검토 delta를
-재현하는 기준점은 후보 모드의 우회 조건이 아니라 명시적인 calibration 모드로만 실행한다.
+후보 gate의 종료 코드는 입력/계약 오류 `1`, 의미 불일치 `2`, 전건 통과 `0`이다. B/G의
+검토 delta를 재현하는 기준점은 후보 모드의 우회 조건이 아니라 명시적인 calibration 모드로만
+실행한다.
 
 ```bash
 REPORT_DIR="$(mktemp -d /tmp/existing-semantic-calibration.XXXXXX)"
@@ -394,14 +404,62 @@ uv run --project backend python backend/scripts/compare_existing_profile_semanti
   --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
   --calibrate-baseline \
   --output-dir "$REPORT_DIR" \
-  --expected-reference-count 100
+  --expected-reference-count 100 \
+  --expected-baseline-sha256 6649f1a5aab36f659d688634103950d3b73f8a5903a453aabdbbd9f5bc0f7f0d \
+  --expected-gold-freeze-manifest-sha256 a2c35fb4c98c92c23ff34faa045a16ec4e8ed1ea4bae5397caab547cb3db6987
 ```
 
 calibration 결과는 정확히 `evaluation_kind=baseline_gold_calibration`, `selected=100`,
-`passed=94`, `failed=6`이고 의미 차이가 있으므로 종료 코드는 `2`다. 실제 후보 비교는 항상
-`evaluation_kind=candidate_gold_gate`이며 엄격한 source admission을 우회하지 않는다. 이
-94/6은 비교기 회귀 기준일 뿐 새 후보의 합격 결과가 아니다. 앞 절의 A-routing canary는
-source-selection과 Profile을 만들지 않으므로 이 검사기의 후보 ZIP으로 사용할 수 없다.
+`passed=94`, `failed=6`, 아래 여섯 PBLN ID여야 한다. 이 기대값과 정확히 맞으면
+`status=calibration_matched`, 종료 코드 `0`이다. 다르면 보고서는 남기되
+`status=calibration_mismatch`, 종료 코드 `2`다. 이는 후보 gate 통과가 아니라 **동결된
+B/G 기준점이 그대로 재현됐다는 별도 성공 상태**다.
+
+`--expected-calibration-passed`, `--expected-calibration-failed`,
+`--expected-calibration-failed-notice-id`, `--notice-id`로 다른 기대 집합을 지정하는 기능은
+합성 fixture와 부분집합 진단용이다. 그 경우의 `calibration_matched`는 **사용자가 지정한
+진단 기대값과 일치했다**는 뜻일 뿐 Gold v5 release gate 통과를 뜻하지 않는다. Gold v5
+릴리스 검증은 위 명령처럼 해당 옵션을 재정의하거나 공고를 부분 선택하지 않고 기본
+100건·94/6·고정 6개 ID를 사용해야 한다.
+
+```text
+PBLN_000000000103645
+PBLN_000000000112425
+PBLN_000000000117175
+PBLN_000000000121019
+PBLN_000000000121309
+PBLN_000000000122023
+```
+
+실제 후보 비교는 항상 `evaluation_kind=candidate_gold_gate`이며 엄격한 source admission을
+우회하지 않는다. 이 94/6은 비교기 회귀 기준일 뿐 새 후보의 합격 결과가 아니다. 앞 절의
+A-routing canary는 source-selection과 Profile을 만들지 않으므로 이 검사기의 후보 ZIP으로
+사용할 수 없다.
+
+### 개발자·릴리스 CI의 실제 corpus 테스트
+
+`test_existing_profile_semantic_diff.py`의 실제 Gold100 테스트는 저장소 밖 자료를 임의의
+절대경로에서 찾지 않는다. 개인 개발 환경에서 두 환경변수가 **모두 미설정**이면 해당 실제
+corpus 테스트만 skip할 수 있다.
+
+```bash
+export PREREVIEW_EXISTING_GOLD100_BASELINE_ZIP=/path/to/structured-profiles-100.zip
+export PREREVIEW_EXISTING_GOLD100_GOLD_ROOT=/path/to/frozen_existing_profile_gold_100_20260909_v5
+```
+
+한 변수만 설정했거나, 명시한 경로가 없으면 skip하지 않고 테스트 실패다. release/CI에서는
+`PREREVIEW_REQUIRE_EXISTING_GOLD100=1`을 반드시 설정해 실제 corpus 테스트의 skip을 금지하고,
+`-rs` 출력에 `SKIPPED`가 없는지 확인한다. CI는 이 환경변수 없이 통과한 unit-test 결과를
+Gold100 회귀 통과로 표기해서는 안 된다.
+
+```bash
+PREREVIEW_REQUIRE_EXISTING_GOLD100=1 \
+PREREVIEW_EXISTING_GOLD100_BASELINE_ZIP=/secure/input/structured-profiles-100.zip \
+PREREVIEW_EXISTING_GOLD100_GOLD_ROOT=/secure/input/frozen_existing_profile_gold_100_20260909_v5 \
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend pytest -q -rs \
+  backend/tests/test_existing_profile_semantic_diff.py
+```
 
 검사기 테스트:
 
