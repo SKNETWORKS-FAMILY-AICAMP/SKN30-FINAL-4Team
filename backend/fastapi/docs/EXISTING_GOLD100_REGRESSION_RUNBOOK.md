@@ -87,7 +87,52 @@ UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --project backend pytest -q backend/tests/test_existing_gold100_verifier.py
 ```
 
-## 4. 후보 파이프라인 평가 원칙
+## 4. 자동 baseline과 Gold 비교
+
+아래 비교기는 baseline ZIP을 풀지 않고 Profile JSON만 읽는다. JSON 객체 키 순서와 최상위
+`notice_id`의 `bizinfo:` namespace 차이만 정규화하며, 배열 순서·문자열·Fact ID·근거 span·
+`processing_metadata`를 포함한 나머지 값은 그대로 비교한다. 유사도나 LLM으로 차이를
+자동 승인하지 않는다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team
+
+REPORT_DIR="$(mktemp -d /tmp/existing-gold100-compare.XXXXXX)"
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend python backend/scripts/compare_existing_profile_candidates.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
+  --output-dir "$REPORT_DIR" \
+  --expected-profile-count 100 \
+  --expected-shared 100 \
+  --expected-unchanged 94 \
+  --expected-changed 6 \
+  --expected-baseline-sha256 6649f1a5aab36f659d688634103950d3b73f8a5903a453aabdbbd9f5bc0f7f0d \
+  --expected-gold-freeze-manifest-sha256 a2c35fb4c98c92c23ff34faa045a16ec4e8ed1ea4bae5397caab547cb3db6987 \
+  --expected-changed-id PBLN_000000000103645 \
+  --expected-changed-id PBLN_000000000112425 \
+  --expected-changed-id PBLN_000000000117175 \
+  --expected-changed-id PBLN_000000000121019 \
+  --expected-changed-id PBLN_000000000121309 \
+  --expected-changed-id PBLN_000000000122023
+
+jq . "$REPORT_DIR/existing-profile-comparison.v1.json"
+```
+
+건수·변경 ID뿐 아니라 baseline ZIP과 Gold freeze manifest의 SHA-256도 함께 고정한다.
+기대값이 하나라도 달라지면 보고서를 쓰지 않고 실패한다. 이 결과의 `unchanged=94`는 자동
+baseline 94건을 사람이 검수한 Gold가 그대로 승인했다는 뜻이고, `changed=6`은 사람이 의미
+오류를 교정한 공고 수다. 이는 새 후보 파이프라인의 품질 점수가 아니라 비교기 자체의 기준점이다.
+
+비교기 테스트:
+
+```bash
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend pytest -q backend/tests/test_existing_profile_gold_comparator.py
+```
+
+## 5. 후보 파이프라인 평가 원칙
 
 - 동일한 원본 SHA-256과 동결 설정으로 실행한다.
 - 실행 산출물은 Gold 디렉터리 밖 별도 output 경로에 쓴다.
@@ -96,6 +141,7 @@ uv run --project backend pytest -q backend/tests/test_existing_gold100_verifier.
 - 개선과 악화를 함께 기록한다. 한 공고 개선을 위해 다른 94건을 바꾸면 자동 승인하지 않는다.
 - 의미 판정이 필요한 새 차이는 새 adjudication record를 만든 뒤 Gold 차기 버전에만 반영한다.
 
-현재 `verify_existing_gold100.py`는 freeze 무결성 gate까지만 제공한다. 후보 pipeline을 실제로
-100건 재실행하고 field/relationship 단위 diff를 내는 runner는 다음 구현 단계이며, OpenAI를
-호출하는 경우 별도 승인·모델 pin·prompt bundle·token/latency 기록이 필요하다.
+현재 비교기는 동결된 자동 baseline과 Gold의 strict canonical 차이를 재현한다. 새 후보
+pipeline을 실제로 100건 재실행하고 ID 변화에 안전한 field/relationship 단위 의미 diff를 내는
+runner는 다음 구현 단계다. OpenAI를 호출하는 경우 별도 승인·모델 pin·prompt bundle·
+token/latency 기록이 필요하다. strict canonical 94/6 기준은 향후 의미 diff 지표로 덮어쓰지 않는다.
