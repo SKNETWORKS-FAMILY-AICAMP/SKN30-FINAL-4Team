@@ -98,6 +98,10 @@ services:
       # Prepared Existing-profile diagnostic seam. The active polling worker
       # does not call it yet; default off keeps the historical path unchanged.
       PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE: "${PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE:-off}"
+      # Request is an active worker path. Existing is a prepared importer/
+      # producer seam. Both remain byte-shape compatible at the off default.
+      PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE: "${PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE:-off}"
+      PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE: "${PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE:-off}"
       PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS:-30}"
       PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
       PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS:-120}"

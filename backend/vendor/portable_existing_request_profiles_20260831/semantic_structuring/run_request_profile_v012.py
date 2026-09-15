@@ -31,7 +31,9 @@ from .request_profile_v012 import (
     candidate_pack_artifact,
     materialized_evidence_keys_v012,
     resolve_request_type_from_candidate_pack,
+    validate_request_type_pack_for_selection,
 )
+from .native_provenance import parent_candidate_pack_lineage
 
 
 REQUEST_SELECTION_PROMPT_VERSION = "request_source_selection_v0.1.4"
@@ -196,10 +198,20 @@ def request_selection_instructions() -> str:
     )
 
 
-def selection_request_payload(pack, document: dict[str, Any], profile_id: str) -> dict[str, Any]:
+def selection_request_payload(
+    pack,
+    document: dict[str, Any],
+    profile_id: str,
+    *,
+    request_type_pack=None,
+) -> dict[str, Any]:
     """The exact no-Gold payload given to the remote selector or dry-run file."""
 
-    request_type = resolve_request_type_from_candidate_pack(pack)
+    request_type_pack = validate_request_type_pack_for_selection(
+        pack,
+        pack if request_type_pack is None else request_type_pack,
+    )
+    request_type = resolve_request_type_from_candidate_pack(request_type_pack)
     return {
         "profile_id": profile_id,
         "read_only_context": {
@@ -332,10 +344,14 @@ class RequestSourceSelectionParseError(RuntimeError):
 
 def _selection_artifact(
     selection: RequestSourceSelectionV012, pack, document: dict[str, Any], usage: list[dict[str, Any]],
-    *, retry_count: int, repair_diagnostics: list[dict[str, Any]],
+    *, retry_count: int, repair_diagnostics: list[dict[str, Any]], request_type_pack=None,
 ) -> dict[str, Any]:
     identity = common_ir_v1_identity(document)
-    request_type = resolve_request_type_from_candidate_pack(pack)
+    request_type_pack = validate_request_type_pack_for_selection(
+        pack,
+        pack if request_type_pack is None else request_type_pack,
+    )
+    request_type = resolve_request_type_from_candidate_pack(request_type_pack)
     return {
         "artifact_kind": "request_source_selection_artifact",
         "selection_contract": REQUEST_SELECTION_PROMPT_VERSION,
@@ -353,6 +369,7 @@ def _selection_artifact(
             "candidate_pack_id": pack.pack_id,
             "candidate_pack_generator": pack.generator,
             "candidate_pack_generator_version": pack.generator_version,
+            **parent_candidate_pack_lineage(pack),
             "common_ir_document_id": pack.common_ir_document_id,
             "common_ir_source_sha256": identity["source_sha256"],
         },
@@ -367,11 +384,16 @@ def _selection_artifact(
 
 def _failure_selection_artifact(
     error: RequestMaterializationError, pack, document: dict[str, Any], *, profile_id: str,
+    request_type_pack=None,
 ) -> dict[str, Any]:
     """Secret-free parsed-selection diagnostic; distinct from the failure profile artifact."""
 
     identity = common_ir_v1_identity(document)
-    request_type = resolve_request_type_from_candidate_pack(pack)
+    request_type_pack = validate_request_type_pack_for_selection(
+        pack,
+        pack if request_type_pack is None else request_type_pack,
+    )
+    request_type = resolve_request_type_from_candidate_pack(request_type_pack)
     return {
         "artifact_kind": "request_source_selection_failure_artifact",
         "selection_contract": REQUEST_SELECTION_PROMPT_VERSION,
@@ -382,6 +404,7 @@ def _failure_selection_artifact(
             "candidate_pack_id": pack.pack_id,
             "candidate_pack_generator": pack.generator,
             "candidate_pack_generator_version": pack.generator_version,
+            **parent_candidate_pack_lineage(pack),
             "common_ir_document_id": pack.common_ir_document_id,
             "common_ir_source_sha256": identity["source_sha256"],
         },
@@ -398,11 +421,16 @@ def _failure_selection_artifact(
 
 def _selection_parse_failure_artifact(
     error: RequestSourceSelectionParseError, pack, document: dict[str, Any], *, profile_id: str,
+    request_type_pack=None,
 ) -> dict[str, Any]:
     """Write parse diagnostics without serializing a raw remote response."""
 
     identity = common_ir_v1_identity(document)
-    request_type = resolve_request_type_from_candidate_pack(pack)
+    request_type_pack = validate_request_type_pack_for_selection(
+        pack,
+        pack if request_type_pack is None else request_type_pack,
+    )
+    request_type = resolve_request_type_from_candidate_pack(request_type_pack)
     return {
         "artifact_kind": "request_source_selection_parse_failure_artifact",
         "selection_contract": REQUEST_SELECTION_PROMPT_VERSION,
@@ -413,6 +441,7 @@ def _selection_parse_failure_artifact(
             "candidate_pack_id": pack.pack_id,
             "candidate_pack_generator": pack.generator,
             "candidate_pack_generator_version": pack.generator_version,
+            **parent_candidate_pack_lineage(pack),
             "common_ir_document_id": pack.common_ir_document_id,
             "common_ir_source_sha256": identity["source_sha256"],
         },
@@ -492,6 +521,7 @@ def _remote_selection(
     *, prior_selection: RequestSourceSelectionV012 | None = None,
     validation_errors: list[str] | None = None,
     lifecycle: LifecycleObserver | None = None,
+    request_type_pack=None,
 ) -> tuple[RequestSourceSelectionV012, dict[str, Any]]:
     repair = prior_selection is not None
     instructions = request_selection_instructions()
@@ -501,7 +531,12 @@ def _remote_selection(
             "Return a complete replacement RequestSourceSelectionV012. Modify only invalid anchors or selection structure, "
             "preserve valid entries, and copy literal CandidatePack substrings exactly, including Markdown syntax such as ** when present."
         )
-    payload = selection_request_payload(pack, document, profile_id)
+    payload = selection_request_payload(
+        pack,
+        document,
+        profile_id,
+        request_type_pack=request_type_pack,
+    )
     if repair:
         payload["prior_selection"] = prior_selection.model_dump(mode="json")
         payload["server_validation_errors"] = validation_errors or []
@@ -554,6 +589,7 @@ def select_and_materialize_with_repairs(
     selector: Callable[[RequestSourceSelectionV012 | None, list[str] | None], tuple[RequestSourceSelectionV012, dict[str, Any]]],
     document: dict[str, Any], pack, profile_id: str, *, max_repairs: int, model_id: str,
     lifecycle: LifecycleObserver | None = None,
+    request_type_pack=None,
 ) -> tuple[dict[str, Any], RequestSourceSelectionV012, list[dict[str, Any]], list[dict[str, Any]]]:
     """Call selection once, then at most ``max_repairs`` server-guided repairs.
 
@@ -591,6 +627,7 @@ def select_and_materialize_with_repairs(
             profile = assemble_request_profile_v012(
                 document, pack, selection, model_id=model_id, prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
                 enforce_completeness=True,
+                request_type_pack=request_type_pack,
             )
             if completeness_baseline is not None:
                 current_evidence = materialized_evidence_keys_v012(profile)
@@ -629,6 +666,7 @@ def select_and_materialize_with_repairs(
 def _remote_repair_evidence_baseline(
     document: dict[str, Any], pack, prior_selection: RequestSourceSelectionV012,
     *, model_id: str,
+    request_type_pack=None,
 ) -> tuple[frozenset[tuple[str | int, ...]] | None, str | None]:
     """Materialize the resume selection once and retain only safe span IDs.
 
@@ -645,6 +683,7 @@ def _remote_repair_evidence_baseline(
             document, pack, prior_selection, model_id=model_id,
             prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
             enforce_completeness=True,
+            request_type_pack=request_type_pack,
         )
     except RequestCompletenessError as error:
         return error.materialized_evidence_keys, str(error)

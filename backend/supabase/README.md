@@ -387,6 +387,8 @@ PREREVIEW_WORKER_HEARTBEAT_SECONDS=30
 PREREVIEW_WORKER_LEASE_SECONDS=120
 PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS=120
 PREREVIEW_EXISTING_KB_REQUIRED=true
+PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE=off
+PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE=off
 ```
 
 FastAPI는 Auth 검증·private upload·owner-scoped 결과 조회에, worker는 DB queue·Storage
@@ -394,6 +396,13 @@ I/O·OpenAI 분석에 이를 사용한다. `PREREVIEW_CURSOR_SIGNING_SECRET`은 
 history cursor를 HMAC으로 서명하므로 online API에서 비워 둘 수 없고, API 인스턴스·재기동
 간에 동일하게 유지해야 한다. 값을 바꾸면 기존 cursor는 무효화된다. 브라우저, Git, 로그에는
 어떤 server-only 값도 넣지 않는다.
+
+`PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE`와
+`PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE`는 `off`, `lines`,
+`lines+continuations`만 허용한다. 기본 `off`는 기존 CandidatePack과 출력 shape를 유지한다.
+Request 설정은 analysis worker에 적용되고, Existing 설정은 별도 재구조화/import producer가
+호출될 때만 적용된다. 실제 활성화 전 Gold100 의미 회귀 검증 절차는 FastAPI worker
+runbook을 따른다.
 
 `PREREVIEW_UPLOAD_MAX_BYTES`는 추출된 단일 HWP/HWPX 파일 상한이고,
 `PREREVIEW_HTTP_MAX_BODY_BYTES`는 multipart boundary/header와 모든 part를 포함한 전체 HTTP

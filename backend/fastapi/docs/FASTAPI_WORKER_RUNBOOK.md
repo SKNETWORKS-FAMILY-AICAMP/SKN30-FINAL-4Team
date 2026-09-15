@@ -302,6 +302,8 @@ PREREVIEW_WORKER_IDLE_POLL_SECONDS=1
 PREREVIEW_WORKER_TOP_K=5
 # true면 Existing KB 또는 retrieval 결과 부재가 fail-closed이고, false면 KB_EMPTY 완료를 허용한다.
 PREREVIEW_EXISTING_KB_REQUIRED=true
+PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE=off
+PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE=off
 PREREVIEW_WORKER_STORAGE_TIMEOUT_SECONDS=30
 PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS=10
 PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS=120
@@ -348,6 +350,8 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `VLLM_TIMEOUT_SECONDS`, `VLLM_MAX_REPAIRS` | - | 선택한 worker | 선택(기본 120/2) | 재시도 없는 단일 vLLM 호출 전체 hard deadline 및 구조화 repair 상한(0~8) |
 | `VLLM_MAX_OUTPUT_TOKENS`, `VLLM_MAX_RESPONSE_BYTES` | - | 선택한 worker | 선택(기본 16384/1048576) | `max_tokens` 생성 상한(1~32768). Request Profile은 selection만 LLM이 내고 final profile은 local materialize한다; streaming response body 상한은 1024~4194304 bytes |
 | `PREREVIEW_EXISTING_KB_REQUIRED` | - | O | 선택(기본 true) | true면 KB/retrieval 부재를 fail-closed; false면 `KB_EMPTY` 완료 허용. request 0축/zero vector 허용 설정이 아님 |
+| `PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE` | - | analysis worker | 선택(기본 `off`) | Request source selection 후보 확장. `off`, `lines`, `lines+continuations`만 허용하며 오타는 작업 claim 전에 기동 실패 |
+| `PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE` | - | Existing producer | 선택(기본 `off`) | Existing 재구조화/import producer의 동일 후보 확장 seam. 현재 polling worker는 Existing producer를 호출하지 않음 |
 | `PREREVIEW_FREETYPE_LIB` | - | O | 환경별 선택 | `rhwp` parser subprocess에만 주입 |
 | `PREREVIEW_MODEL1_SERVING_HOST_DIR` | - | O (Compose) | Docker 분석 시 필수 | 검증된 외부 `model1` 디렉터리의 절대 host 경로. `/opt/prereview/model1`로 read-only mount |
 | `PREREVIEW_MODEL1_RUNTIME_UID` / `GID` | - | O (Compose) | Docker 분석 시 필수 | mode 0700 Model 1 runtime의 숫자 owner. non-root 컨테이너 user와 일치해야 함 |
@@ -368,6 +372,13 @@ embedding용 `OPENAI_API_KEY`는 필요하지만, chat worker까지 provider별 
 `SUPABASE_SECRET_KEY`와 `SUPABASE_SERVICE_ROLE_KEY` 중 실제 배포가 제공하는 하나만
 설정한다. 둘을 서로 다른 값으로 동시에 설정하면 API와 worker의 선택 우선순위가 달라질
 수 있으므로 금지한다.
+
+두 native exact mode는 원문을 요약하거나 재작성하지 않는다. `lines`는 하나의 원문
+블록 안에 있는 줄을 정확한 offset과 함께 후보로 노출하고,
+`lines+continuations`는 여기에 같은 구역의 인접 원문 블록 2~3개를 lossless span으로
+결합한 후보를 추가한다. 활성화된 실행은 parent CandidatePack lineage를 Profile에 남기며,
+재개 시 현재 환경변수가 아니라 저장된 lineage로 같은 variant를 재생성한다. 실제 rollout
+전에는 Gold100 의미 회귀를 통과해야 하므로 기본값은 계속 `off`로 둔다.
 
 `OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra`는 긴 원문에서 근거 anchor와 컴포넌트
 경계를 선택하는 Request Profile 구조화 전용 설정이다. FIT·SIM·채팅용 Luna fallback을

@@ -31,10 +31,13 @@ from .ports.embedding import EmbeddingClient
 from .ports.llm import LLMClient, LLMInvalidResponseError
 from .profiles import (
     DEFAULT_PARSE_TIMEOUT_SECONDS,
+    _request_type_preflight_diagnostic,
     build_pack,
     make_vllm_selector,
     parse_to_common_ir,
+    request_native_exact_mode_from_lineage,
     structure_request_profile,
+    transform_request_candidate_pack,
 )
 from .result_payload import build_result_payload
 from .retrieval_inputs import assemble_available_inputs, pool
@@ -311,6 +314,7 @@ class VendoredRequestProfileProducer:
         model_id: str,
         max_repairs: int = 1,
         parse_timeout_seconds: float = DEFAULT_PARSE_TIMEOUT_SECONDS,
+        native_exact_candidate_mode: str | None = "off",
         stage_callback: StageCallback | None = None,
         diagnostics_sink: DiagnosticsSink | None = None,
     ) -> None:
@@ -320,6 +324,10 @@ class VendoredRequestProfileProducer:
         self._max_repairs = max_repairs
         self._stage_callback = stage_callback
         self._diagnostics_sink = diagnostics_sink
+        # Validate at the per-document transform boundary, not in the
+        # constructor: a bad deployment value becomes a typed, persisted
+        # stage failure and cannot be mistaken for an LLM response failure.
+        self._native_exact_candidate_mode = native_exact_candidate_mode
         if parse_timeout_seconds <= 0:
             raise ValueError("parse timeout must be positive")
         self._parse_timeout_seconds = float(parse_timeout_seconds)
@@ -351,14 +359,28 @@ class VendoredRequestProfileProducer:
             if not isinstance(common.document, Mapping):
                 raise AnalysisJobContractError("Common IR document is not an object")
         with _stage(self._stage_callback, "structured_profile"):
-            pack = build_pack(common.document)
+            request_type_pack = build_pack(common.document)
             profile_id = f"request:{analysis_run_id}"
+            request_type_diagnostic = _request_type_preflight_diagnostic(request_type_pack)
+            # The original checkbox container is a server-owned form field.
+            # Do not derive lexical native candidates until it has passed its
+            # single-container preflight; line atoms would otherwise make the
+            # form look ambiguously duplicated.
+            pack = (
+                request_type_pack
+                if request_type_diagnostic is not None
+                else transform_request_candidate_pack(
+                    request_type_pack,
+                    native_exact_candidate_mode=self._native_exact_candidate_mode,
+                )
+            )
             selector = make_vllm_selector(
                 self._llm,
                 model_profile=self._model_profile,
                 pack=pack,
                 document=common.document,
                 profile_id=profile_id,
+                request_type_pack=request_type_pack,
             )
             snapshot = structure_request_profile(
                 document=common.document,
@@ -368,6 +390,7 @@ class VendoredRequestProfileProducer:
                 model_id=self._model_id,
                 max_repairs=self._max_repairs,
                 common_ir=common,
+                request_type_pack=request_type_pack,
             )
             self._llm.require_available("request profile structuring")
             if snapshot.status != "OK" or not isinstance(snapshot.profile, dict):
@@ -1011,23 +1034,76 @@ def _resumed_candidate_pack(
 
     recorded = (profile.get("processing_metadata") or {}).get("candidate_pack")
     recorded = recorded if isinstance(recorded, Mapping) else {}
-    generator = recorded.get("candidate_pack_generator")
-    version = recorded.get("candidate_pack_generator_version")
-    if not generator or not version:
-        return None, (
-            "저장된 프로파일에 CandidatePack 생성기 기록이 없어 정량 맥락을 "
-            "파생하지 않았다"
-        )
+    required = (
+        "candidate_pack_id",
+        "candidate_pack_generator",
+        "candidate_pack_generator_version",
+        "common_ir_document_id",
+    )
+    if any(not isinstance(recorded.get(key), str) or not recorded[key] for key in required):
+        return None, "저장된 프로파일의 CandidatePack 계보가 완전하지 않아 정량 맥락을 파생하지 않았다"
+
+    parent_keys = (
+        "parent_pack_id",
+        "parent_generator",
+        "parent_generator_version",
+    )
+    parent_present = [key in recorded for key in parent_keys]
+    if any(parent_present) and not all(parent_present):
+        return None, "저장된 프로파일의 CandidatePack 부모 계보가 불완전하다"
+    has_parent = all(parent_present)
+    if has_parent and any(
+        not isinstance(recorded[key], str) or not recorded[key]
+        for key in parent_keys
+    ):
+        return None, "저장된 프로파일의 CandidatePack 부모 계보가 유효하지 않다"
     try:
-        pack = build_pack(common_ir)
+        base_pack = build_pack(common_ir)
     except Exception:  # noqa: BLE001 - cached profile recovery is best-effort
         return None, "저장된 Common IR 로 CandidatePack 을 만들지 못했다"
-    if (pack.generator, pack.generator_version) != (generator, version):
+    if base_pack.common_ir_document_id != recorded["common_ir_document_id"]:
         return None, (
-            f"CandidatePack 생성기가 그 실행과 다르다 "
-            f"(기록 {generator}/{version}, 현재 {pack.generator}/"
-            f"{pack.generator_version})"
+            "저장된 CandidatePack 과 Common IR 문서 계보가 일치하지 않아 정량 맥락을 파생하지 않았다"
         )
+    if has_parent:
+        if (
+            base_pack.pack_id != recorded["parent_pack_id"]
+            or base_pack.generator != recorded["parent_generator"]
+            or base_pack.generator_version != recorded["parent_generator_version"]
+        ):
+            return None, "저장된 CandidatePack 부모 계보가 Common IR 재생성과 일치하지 않는다"
+        try:
+            mode = request_native_exact_mode_from_lineage(
+                generator=recorded["candidate_pack_generator"],
+                generator_version=recorded["candidate_pack_generator_version"],
+            )
+            pack = transform_request_candidate_pack(
+                base_pack,
+                native_exact_candidate_mode=mode,
+            )
+        except Exception:  # noqa: BLE001 - cached recovery remains best-effort
+            return None, "저장된 CandidatePack 변형을 안전하게 재생성하지 못했다"
+    else:
+        pack = base_pack
+
+    actual = {
+        "candidate_pack_id": pack.pack_id,
+        "candidate_pack_generator": pack.generator,
+        "candidate_pack_generator_version": pack.generator_version,
+        "common_ir_document_id": pack.common_ir_document_id,
+    }
+    if any(recorded[key] != actual[key] for key in required):
+        return None, "저장된 CandidatePack 계보가 Common IR 재생성과 일치하지 않는다"
+    if has_parent and any(
+        recorded[key] != getattr(pack, key) for key in parent_keys
+    ):
+        return None, "저장된 CandidatePack 부모 계보가 변형 결과와 일치하지 않는다"
+    if not has_parent and any(getattr(pack, key) is not None for key in (
+        "parent_pack_id",
+        "parent_generator",
+        "parent_generator_version",
+    )):
+        return None, "저장된 CandidatePack 부모 계보가 변형 결과와 일치하지 않는다"
     return pack, None
 
 

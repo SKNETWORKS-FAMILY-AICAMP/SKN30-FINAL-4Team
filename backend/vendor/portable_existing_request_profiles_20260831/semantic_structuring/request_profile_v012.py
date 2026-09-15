@@ -1580,10 +1580,53 @@ def resolve_request_type_from_candidate_pack(pack: CandidatePack) -> dict[str, A
     }
 
 
+def validate_request_type_pack_for_selection(
+    selection_pack: CandidatePack,
+    request_type_pack: CandidatePack,
+) -> CandidatePack:
+    """Bind the server-owned request type to the selection pack's base identity.
+
+    Native transforms may duplicate a checkbox line, so request type is read
+    from the pre-transform pack.  A caller may not substitute an unrelated
+    pack from the same Common IR document: validate this before constructing
+    an LLM payload as well as at the final materialization boundary.
+    """
+
+    if request_type_pack.common_ir_document_id != selection_pack.common_ir_document_id:
+        raise ValueError("request_type CandidatePack references another Common IR document")
+    if selection_pack.parent_pack_id is not None:
+        expected = (
+            selection_pack.parent_pack_id,
+            selection_pack.parent_generator,
+            selection_pack.parent_generator_version,
+        )
+        actual = (
+            request_type_pack.pack_id,
+            request_type_pack.generator,
+            request_type_pack.generator_version,
+        )
+        if actual != expected:
+            raise ValueError(
+                "request_type CandidatePack does not match transformed CandidatePack parent"
+            )
+    elif (
+        request_type_pack.pack_id,
+        request_type_pack.generator,
+        request_type_pack.generator_version,
+    ) != (
+        selection_pack.pack_id,
+        selection_pack.generator,
+        selection_pack.generator_version,
+    ):
+        raise ValueError("request_type CandidatePack does not match selection CandidatePack")
+    return request_type_pack
+
+
 def assemble_request_profile_v012(
     document: dict[str, Any], pack: CandidatePack, selection: RequestSourceSelectionV012,
     *, model_id: str = "not_called", prompt_version: str = "request_source_selection_v0.1.4",
     enforce_completeness: bool = False,
+    request_type_pack: CandidatePack | None = None,
 ) -> dict[str, Any]:
     """Materialize a validated Request profile without an LLM/API call."""
 
@@ -1592,6 +1635,12 @@ def assemble_request_profile_v012(
         raise ValueError("CandidatePack and Common IR document identity differ")
     if selection.candidate_pack_id != pack.pack_id:
         raise ValueError("selection candidate_pack_id does not match CandidatePack")
+    request_type_pack = validate_request_type_pack_for_selection(
+        pack,
+        pack if request_type_pack is None else request_type_pack,
+    )
+    if request_type_pack.common_ir_document_id != identity["document_id"]:
+        raise ValueError("request_type CandidatePack and Common IR document identity differ")
     blocks = {block.block_id: block for block in pack.blocks}
     comparison: dict[str, list[dict[str, Any]]] = {
         **{field: [] for field in SHARED_COMPARISON_FIELDS},
@@ -1649,7 +1698,11 @@ def assemble_request_profile_v012(
     _validate_stage_support_components(components, comparison)
     _validate_component_local_beneficiary_links(comparison["beneficiary"], components, pack)
 
-    request_type = resolve_request_type_from_candidate_pack(pack)
+    # A native exact selection pack can contain line atoms derived from the
+    # original checkbox container.  Resolve this server-owned form value from
+    # the pre-transform pack so the duplicated lexical candidate never turns
+    # one checked option into an ambiguous second container.
+    request_type = resolve_request_type_from_candidate_pack(request_type_pack)
 
     hierarchy: list[dict[str, Any]] = []
     for selected in selection.program_hierarchy:
@@ -1869,6 +1922,7 @@ def assemble_request_profile_v012(
             "candidate_pack_id": pack.pack_id,
             "candidate_pack_generator": pack.generator,
             "candidate_pack_generator_version": pack.generator_version,
+            **parent_candidate_pack_lineage(pack),
             "common_ir_document_id": identity["document_id"],
             "common_ir_source_sha256": identity["source_sha256"],
             "text_basis": TEXT_BASIS,

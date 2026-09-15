@@ -56,6 +56,13 @@ from semantic_structuring.request_profile_v012 import (  # noqa: E402
     RequestSourceSelectionV012,
     build_request_candidate_pack,
     resolve_request_type_from_candidate_pack,
+    validate_request_type_pack_for_selection,
+)
+from semantic_structuring.native_exact_transform import (  # noqa: E402
+    NATIVE_EXACT_TRANSFORM_GENERATOR,
+    NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    NativeExactTransformOptions,
+    augment_pack_with_native_exact_transforms,
 )
 from semantic_structuring.run_request_profile_v012 import (  # noqa: E402
     REQUEST_SELECTION_PROMPT_VERSION,
@@ -69,6 +76,17 @@ from semantic_structuring.run_request_profile_v012 import (  # noqa: E402
 
 
 _REQUEST_TYPE_COMPAT_GLYPH = "■"
+REQUEST_NATIVE_EXACT_CANDIDATE_MODE_ENV = "PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE"
+REQUEST_NATIVE_EXACT_CANDIDATE_MODE_OFF = "off"
+REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES = "lines"
+REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS = "lines+continuations"
+_REQUEST_NATIVE_EXACT_CANDIDATE_MODES = frozenset(
+    {
+        REQUEST_NATIVE_EXACT_CANDIDATE_MODE_OFF,
+        REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES,
+        REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS,
+    }
+)
 DEFAULT_PARSE_TIMEOUT_SECONDS = 120.0
 MAX_HWPX_MEMBERS = 10_000
 MAX_HWPX_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
@@ -98,6 +116,10 @@ class StageError(RuntimeError):
     def __init__(self, diagnostic: StageDiagnostic) -> None:
         super().__init__(diagnostic.message)
         self.diagnostic = diagnostic
+
+
+class RequestNativeExactCandidateModeError(ValueError):
+    """Raised when the request native exact rollout mode is not supported."""
 
 
 # ---------------------------------------------------------------- 1. 파싱
@@ -324,6 +346,125 @@ def build_pack(document: dict[str, Any]):
     return pack
 
 
+def normalize_request_native_exact_candidate_mode(value: str | None) -> str:
+    """Validate the request native-exact rollout mode, defaulting to ``off``."""
+
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return REQUEST_NATIVE_EXACT_CANDIDATE_MODE_OFF
+    if not isinstance(value, str):
+        raise RequestNativeExactCandidateModeError(
+            "request native exact CandidatePack mode must be a string"
+        )
+    mode = value.strip().lower()
+    if mode not in _REQUEST_NATIVE_EXACT_CANDIDATE_MODES:
+        raise RequestNativeExactCandidateModeError(
+            "request native exact CandidatePack mode is unsupported"
+        )
+    return mode
+
+
+def request_native_exact_candidate_mode_from_env(
+    env: dict[str, str] | None = None,
+) -> str:
+    """Read the deployment default without exposing the environment value."""
+
+    values = os.environ if env is None else env
+    return normalize_request_native_exact_candidate_mode(
+        values.get(REQUEST_NATIVE_EXACT_CANDIDATE_MODE_ENV)
+    )
+
+
+def _request_native_exact_transform_options(mode: str) -> NativeExactTransformOptions:
+    if mode == REQUEST_NATIVE_EXACT_CANDIDATE_MODE_OFF:
+        return NativeExactTransformOptions(enabled=False)
+    if mode == REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES:
+        return NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=False,
+        )
+    if mode == REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS:
+        return NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=True,
+        )
+    raise RequestNativeExactCandidateModeError(
+        "request native exact CandidatePack mode is unsupported"
+    )
+
+
+def transform_request_candidate_pack(
+    pack,
+    *,
+    native_exact_candidate_mode: str | None,
+) -> Any:
+    """Return an opted-in native CandidatePack or a stable typed failure.
+
+    Callers must preflight ``request_type`` on the unmodified form pack before
+    calling this boundary.  The vendor exception can contain source text or
+    block IDs, so neither configuration text nor the original exception is
+    surfaced through the persisted stage diagnostic.
+    """
+
+    try:
+        mode = normalize_request_native_exact_candidate_mode(native_exact_candidate_mode)
+        options = _request_native_exact_transform_options(mode)
+    except RequestNativeExactCandidateModeError as error:
+        raise StageError(
+            StageDiagnostic(
+                stage="native_exact_candidate_transform",
+                unit=pack.common_ir_document_id,
+                reason_code=MATERIALIZATION_FAILED,
+                message="request native exact CandidatePack mode is invalid",
+                terminated_because=MATERIALIZATION_FAILED,
+            )
+        ) from error
+    if not options.enabled:
+        return pack
+    try:
+        return augment_pack_with_native_exact_transforms(pack, options=options)
+    except Exception as error:  # noqa: BLE001 - document-local contract boundary
+        raise StageError(
+            StageDiagnostic(
+                stage="native_exact_candidate_transform",
+                unit=pack.common_ir_document_id,
+                reason_code=MATERIALIZATION_FAILED,
+                message="request native exact CandidatePack transformation failed",
+                terminated_because=MATERIALIZATION_FAILED,
+            )
+        ) from error
+
+
+def request_native_exact_mode_from_lineage(
+    *,
+    generator: object,
+    generator_version: object,
+) -> str:
+    """Recover the exact native variant recorded in a persisted profile.
+
+    This has no environment fallback by design: cache resume must reconstruct
+    the historical CandidatePack, rather than the mode currently deployed.
+    """
+
+    if generator != NATIVE_EXACT_TRANSFORM_GENERATOR:
+        raise RequestNativeExactCandidateModeError(
+            "recorded request CandidatePack generator is unsupported"
+        )
+    versions = {
+        f"{NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION}:lines": REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES,
+        (
+            f"{NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION}:lines+continuations"
+        ): REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS,
+    }
+    mode = versions.get(generator_version)
+    if mode is None:
+        raise RequestNativeExactCandidateModeError(
+            "recorded request CandidatePack generator version is unsupported"
+        )
+    return mode
+
+
 def resolve_request_type(pack) -> dict[str, Any]:
     """요청 유형은 원본 체크박스 글리프로 서버가 정한다.
 
@@ -431,6 +572,7 @@ def make_vllm_selector(
     pack,
     document: dict[str, Any],
     profile_id: str,
+    request_type_pack=None,
 ) -> Callable[
     [RequestSourceSelectionV012 | None, list[str] | None],
     tuple[RequestSourceSelectionV012, dict[str, Any]],
@@ -451,7 +593,12 @@ def make_vllm_selector(
     ) -> tuple[RequestSourceSelectionV012, dict[str, Any]]:
         repair = prior_selection is not None
         instructions = request_selection_instructions()
-        payload = selection_request_payload(pack, document, profile_id)
+        payload = selection_request_payload(
+            pack,
+            document,
+            profile_id,
+            request_type_pack=request_type_pack,
+        )
         if repair:
             instructions += _REPAIR_INSTRUCTION
             payload["prior_selection"] = prior_selection.model_dump(mode="json")
@@ -490,7 +637,12 @@ def make_vllm_selector(
             except ValidationError as validation_error:
                 if repair:
                     raise error from None
-                repair_payload = selection_request_payload(pack, document, profile_id)
+                repair_payload = selection_request_payload(
+                    pack,
+                    document,
+                    profile_id,
+                    request_type_pack=request_type_pack,
+                )
                 repair_payload["prior_selection"] = normalized
                 repair_payload["server_validation_errors"] = (
                     _selection_validation_messages(validation_error)
@@ -539,6 +691,8 @@ def _materialize_isolated(
     document: dict[str, Any],
     pack,
     model_id: str,
+    *,
+    request_type_pack=None,
 ) -> tuple[dict[str, Any], list[str], dict[str, int]] | None:
     """어긋난 묶음을 덜어내고 다시 재료화한다. 못 살리면 ``None``.
 
@@ -579,6 +733,7 @@ def _materialize_isolated(
                 model_id=model_id,
                 prompt_version=REQUEST_SELECTION_PROMPT_VERSION,
                 enforce_completeness=True,
+                request_type_pack=request_type_pack,
             )
         except (ValidationError, ValueError):
             continue
@@ -595,6 +750,7 @@ def structure_request_profile(
     model_id: str,
     max_repairs: int = 1,
     common_ir: CommonIrArtifact | None = None,
+    request_type_pack=None,
 ) -> ProfileSnapshot:
     """선택 → 서버 재료화. 실패는 부분 프로파일이 아니라 FAILED 스냅샷이 된다."""
 
@@ -615,7 +771,24 @@ def structure_request_profile(
             diagnostics=diagnostics,
         )
 
-    request_type_diagnostic = _request_type_preflight_diagnostic(pack)
+    request_type_pack = pack if request_type_pack is None else request_type_pack
+    try:
+        validate_request_type_pack_for_selection(pack, request_type_pack)
+    except ValueError:
+        return failed(
+            [
+                StageDiagnostic(
+                    stage="structure_request_profile",
+                    unit=pack.pack_id,
+                    reason_code=MATERIALIZATION_FAILED,
+                    message="request_type CandidatePack lineage is invalid",
+                    terminated_because=MATERIALIZATION_FAILED,
+                )
+            ],
+            0,
+            [],
+        )
+    request_type_diagnostic = _request_type_preflight_diagnostic(request_type_pack)
     if request_type_diagnostic is not None:
         # Request type is server-owned deterministic input. Do not spend an
         # LLM call or let a vendor ValueError escape when this gate fails.
@@ -629,6 +802,7 @@ def structure_request_profile(
             profile_id,
             max_repairs=max_repairs,
             model_id=model_id,
+            request_type_pack=request_type_pack,
         )
     except RequestMaterializationError as error:
         attempted = [
@@ -643,7 +817,13 @@ def structure_request_profile(
         ]
         # 보완을 다 써도 실패했다면, 어긋난 묶음만 덜어내고 나머지를 살려 본다.
         # 지금까지는 delivery relation 하나가 CPL·FIT 재료까지 함께 죽였다.
-        isolated = _materialize_isolated(error, document, pack, model_id)
+        isolated = _materialize_isolated(
+            error,
+            document,
+            pack,
+            model_id,
+            request_type_pack=request_type_pack,
+        )
         if isolated is not None:
             profile, dropped, counts = isolated
             return ProfileSnapshot(

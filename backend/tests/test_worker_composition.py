@@ -47,9 +47,34 @@ def test_worker_settings_hold_queue_defaults_and_accept_legacy_dsn_name() -> Non
     assert settings.lease_seconds == 120
     assert settings.top_k == 5
     assert settings.parse_timeout_seconds == 120.0
+    assert settings.request_native_exact_candidate_mode == "off"
     assert settings.model1_serving_dir is None
     assert settings.ml_python_executable is None
     assert settings.ml_timeout_seconds == 180.0
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", "off"),
+        ("OFF", "off"),
+        (" lines ", "lines"),
+        ("lines+continuations", "lines+continuations"),
+    ],
+)
+def test_worker_settings_validate_request_native_candidate_mode(
+    raw: str, expected: str,
+) -> None:
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "role",
+            "PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE": raw,
+        }
+    )
+
+    assert settings.request_native_exact_candidate_mode == expected
 
 
 def test_worker_settings_read_external_ml_boundaries() -> None:
@@ -102,6 +127,15 @@ def test_worker_settings_read_external_ml_boundaries() -> None:
             },
             "between 30 and 3600",
         ),
+        (
+            {
+                "DATABASE_URL": "postgresql://worker@db/postgres",
+                "SUPABASE_URL": "http://supabase:8000",
+                "SUPABASE_SERVICE_ROLE_KEY": "role",
+                "PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE": "typo",
+            },
+            "PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE",
+        ),
     ],
 )
 def test_worker_settings_fail_closed_on_unsafe_queue_values(
@@ -116,6 +150,7 @@ def test_build_worker_connects_only_trusted_server_adapters(
 ) -> None:
     _environment(monkeypatch)
     monkeypatch.setenv("PREREVIEW_WORKER_TOP_K", "3")
+    monkeypatch.setenv("PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE", "lines")
 
     composition = build_worker()
 
@@ -124,6 +159,8 @@ def test_build_worker_connects_only_trusted_server_adapters(
     assert composition.settings.top_k == 3
     assert composition.settings.heartbeat_seconds == 30.0
     assert composition.settings.lease_seconds == 120
+    assert composition.settings.request_native_exact_candidate_mode == "lines"
+    assert composition.handler._producer._native_exact_candidate_mode == "lines"  # type: ignore[attr-defined]
     # Adapter debug representations are a useful operational boundary: they
     # must never accidentally expose either trusted server credential.
     rendered = repr(composition.repository) + repr(composition.handler)
@@ -347,6 +384,13 @@ def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
         assert name not in api_section
         assert name not in chat_worker_section
 
+    for name in (
+        "PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE",
+        "PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE",
+    ):
+        assert name not in api_section
+        assert name not in chat_worker_section
+
     assert 'PREREVIEW_ML_ROOT: "/app/ml"' in worker_section
     assert 'PREREVIEW_MODEL1_SERVING_DIR: "/opt/prereview/model1"' in worker_section
     assert (
@@ -359,6 +403,16 @@ def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
     assert (
         'PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE: '
         '"${PREREVIEW_EXISTING_COMPOSITE_CANDIDATE_MODE:-off}"'
+        in worker_section
+    )
+    assert (
+        'PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE: '
+        '"${PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE:-off}"'
+        in worker_section
+    )
+    assert (
+        'PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE: '
+        '"${PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE:-off}"'
         in worker_section
     )
     assert (

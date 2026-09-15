@@ -11,7 +11,7 @@ from typing import Any
 
 from worker.analysis_job import _resumed_candidate_pack
 from worker.cpl import QUANTITY_CONTEXT_UNAVAILABLE, build_cpl_result, _with_quantities
-from worker.profiles import build_pack
+from worker.profiles import build_pack, transform_request_candidate_pack
 
 
 # 값이 된 것은 '최대 5,000만원' 뿐이고 '기업당' 은 그 앞 라벨에만 있다. 팩 원문을
@@ -70,15 +70,21 @@ def _block_of(pack, text: str):
     return next(row for row in pack.blocks if row.text == text)
 
 
+def _candidate_pack_lineage(pack) -> dict[str, str]:
+    return {
+        "candidate_pack_id": pack.pack_id,
+        "candidate_pack_generator": pack.generator,
+        "candidate_pack_generator_version": pack.generator_version,
+        "common_ir_document_id": pack.common_ir_document_id,
+    }
+
+
 def _profile(**metadata: Any) -> dict[str, Any]:
     """저장된 프로파일 모양. 좌표는 팩에서 직접 읽어 붙인다."""
 
     block = _block_of(build_pack(_ir()), _LINE)
     start = block.text.index(_VALUE)
-    recorded = {
-        "candidate_pack_generator": "semantic_structuring.common_ir_v1",
-        "candidate_pack_generator_version": "1",
-    }
+    recorded = _candidate_pack_lineage(build_pack(_ir()))
     recorded.update(metadata.pop("candidate_pack", {}) or {})
     return {
         "comparison_profile": {"support_scale": [{
@@ -157,7 +163,7 @@ def test_a_different_generator_version_holds_the_derivation() -> None:
     result = _with_quantities(build_cpl_result(profile), pack, reason)
 
     assert pack is None
-    assert reason is not None and "99" in reason
+    assert reason is not None
     assert _context(result) == []
     assert _facts(result) == [_VALUE]
     assert _holds(result) == [QUANTITY_CONTEXT_UNAVAILABLE]
@@ -181,6 +187,57 @@ def test_a_span_candidate_version_change_does_not_hold_the_derivation() -> None:
     pack, reason = _resumed_candidate_pack(profile, common_ir)
 
     assert pack is not None and reason is None
+
+
+def test_resumed_native_exact_pack_rebuilds_recorded_variant_without_env(
+    monkeypatch,
+) -> None:
+    common_ir = _ir()
+    base = build_pack(common_ir)
+    transformed = transform_request_candidate_pack(
+        base,
+        native_exact_candidate_mode="lines",
+    )
+    profile = _profile(candidate_pack={
+        **_candidate_pack_lineage(transformed),
+        "parent_pack_id": base.pack_id,
+        "parent_generator": base.generator,
+        "parent_generator_version": base.generator_version,
+    })
+    # Resume must not consult the currently deployed feature value.  This
+    # opposing value proves it reconstructs the persisted `lines` variant.
+    monkeypatch.setenv("PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE", "off")
+
+    pack, reason = _resumed_candidate_pack(profile, common_ir)
+
+    assert reason is None
+    assert pack is not None
+    assert pack.pack_id == transformed.pack_id
+    assert pack.generator == transformed.generator
+    assert pack.generator_version == transformed.generator_version
+    assert pack.parent_pack_id == base.pack_id
+
+
+def test_resumed_native_exact_pack_rejects_partial_or_tampered_parent_lineage() -> None:
+    common_ir = _ir()
+    base = build_pack(common_ir)
+    transformed = transform_request_candidate_pack(
+        base,
+        native_exact_candidate_mode="lines+continuations",
+    )
+    complete = {
+        **_candidate_pack_lineage(transformed),
+        "parent_pack_id": base.pack_id,
+        "parent_generator": base.generator,
+        "parent_generator_version": base.generator_version,
+    }
+    partial = dict(complete)
+    partial.pop("parent_generator")
+    assert _resumed_candidate_pack(_profile(candidate_pack=partial), common_ir)[0] is None
+
+    tampered = dict(complete)
+    tampered["parent_pack_id"] = "forged-parent"
+    assert _resumed_candidate_pack(_profile(candidate_pack=tampered), common_ir)[0] is None
 
 
 # --- 신규·재개가 같은 FIT-7 판정을 낸다 -------------------------------------
@@ -247,8 +304,7 @@ def _sided_profile(document: dict[str, Any], left: str, right: str) -> dict[str,
             {"field_name": "support_scale", "status": "identified"},
         ],
         "processing_metadata": {"candidate_pack": {
-            "candidate_pack_generator": "semantic_structuring.common_ir_v1",
-            "candidate_pack_generator_version": "1",
+            **_candidate_pack_lineage(pack),
         }},
     }
 

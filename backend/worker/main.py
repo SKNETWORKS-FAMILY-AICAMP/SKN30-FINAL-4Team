@@ -44,7 +44,11 @@ from worker.ml_reference import (
 from worker.ml_runtime_preflight import MlRuntimePreflightError, verify_ml_runtime
 from worker.postgres_analysis_store import PostgresAnalysisStore
 from worker.postgres_repository import PostgresJobRepository
-from worker.profiles import DEFAULT_PARSE_TIMEOUT_SECONDS
+from worker.profiles import (
+    DEFAULT_PARSE_TIMEOUT_SECONDS,
+    REQUEST_NATIVE_EXACT_CANDIDATE_MODE_ENV,
+    normalize_request_native_exact_candidate_mode,
+)
 from worker.providers import build_embedding_client, build_llm_provider
 from worker.runtime import (
     DEFAULT_HEARTBEAT_SECONDS,
@@ -93,6 +97,7 @@ class WorkerSettings:
     storage_timeout_seconds: float = 30.0
     database_connect_timeout_seconds: int = 10
     parse_timeout_seconds: float = DEFAULT_PARSE_TIMEOUT_SECONDS
+    request_native_exact_candidate_mode: str = "off"
     ml_root: Path = DEFAULT_ML_ROOT
     model1_serving_dir: Path | None = None
     ml_python_executable: str | None = None
@@ -131,6 +136,17 @@ class WorkerSettings:
         ml_python_executable = _optional_string(
             values, "PREREVIEW_ML_PYTHON_EXECUTABLE"
         )
+        try:
+            request_native_exact_candidate_mode = (
+                normalize_request_native_exact_candidate_mode(
+                    values.get(REQUEST_NATIVE_EXACT_CANDIDATE_MODE_ENV)
+                )
+            )
+        except ValueError:
+            raise WorkerConfigurationError(
+                f"{REQUEST_NATIVE_EXACT_CANDIDATE_MODE_ENV} must be one of "
+                "off, lines, lines+continuations"
+            ) from None
         return cls(
             database_url=database_url,
             supabase_url=_required(values, "SUPABASE_URL").rstrip("/"),
@@ -154,6 +170,7 @@ class WorkerSettings:
                 "PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS",
                 DEFAULT_PARSE_TIMEOUT_SECONDS,
             ),
+            request_native_exact_candidate_mode=request_native_exact_candidate_mode,
             ml_root=ml_root,
             model1_serving_dir=model1_serving_dir,
             ml_python_executable=ml_python_executable,
@@ -413,6 +430,7 @@ def build_worker(env: Mapping[str, str] | None = None) -> WorkerComposition:
             model_id=llm_provider.model_id_for("request_profile"),
             max_repairs=llm_provider.max_repairs,
             parse_timeout_seconds=settings.parse_timeout_seconds,
+            native_exact_candidate_mode=settings.request_native_exact_candidate_mode,
         ),
         embedding_client=embedding,
         analysis_engine=CoreAnalysisEngine(
