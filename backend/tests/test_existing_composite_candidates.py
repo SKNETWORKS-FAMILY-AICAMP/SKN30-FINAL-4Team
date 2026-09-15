@@ -21,7 +21,7 @@ from semantic_structuring.composite_candidates import (
     TABLE_AXIS_CONTEXT,
     generate_composite_candidates,
 )
-from semantic_structuring.models import CandidatePack
+from semantic_structuring.models import CandidatePack, ExtractionScope
 
 
 def _paragraph(block_id: str, text: str, order: int) -> dict:
@@ -114,7 +114,7 @@ def _document(*blocks: dict) -> dict:
     }
 
 
-def _pack(document: dict) -> CandidatePack:
+def _pack(document: dict, *, allow_duplicate_block_ids: bool = False) -> CandidatePack:
     projection = project_common_ir_v1(document)
     blocks = [
         *[block for block in projection.blocks if block.block_kind != "table"],
@@ -125,16 +125,23 @@ def _pack(document: dict) -> CandidatePack:
     # composite generator itself refuses that geometry.
     if not blocks:
         blocks = projection.blocks
-    return CandidatePack(
-        pack_id="PBLN-composite-test-a-pack",
-        notice_id="PBLN-composite-test",
-        extraction_scope="candidate_pack",
-        question="Synthetic routed A scope only",
-        blocks=blocks,
-        generator="semantic_structuring.common_ir_v1",
-        generator_version="1",
-        common_ir_document_id="hwpx:PBLN-composite-test",
-    )
+    payload = {
+        "pack_id": "PBLN-composite-test-a-pack",
+        "notice_id": "PBLN-composite-test",
+        "extraction_scope": ExtractionScope.CANDIDATE_PACK,
+        "question": "Synthetic routed A scope only",
+        "blocks": blocks,
+        "generator": "semantic_structuring.common_ir_v1",
+        "generator_version": "1",
+        "common_ir_document_id": "hwpx:PBLN-composite-test",
+    }
+    # These two downstream Common-IR defensive tests deliberately supply an
+    # impossible document (colliding projected block IDs).  Normal production
+    # construction now rejects it at CandidatePack validation; model_construct
+    # here preserves the separate generator diagnostic coverage only.
+    if allow_duplicate_block_ids:
+        return CandidatePack.model_construct(**payload)
+    return CandidatePack(**payload)
 
 
 def _with_primary(generation, occurrence_id: str):
@@ -210,7 +217,9 @@ def test_inferred_or_ambiguous_table_geometry_fails_closed() -> None:
     # invitation to expand a grid or choose one visual owner heuristically.
     ambiguous["cells"][1]["col_index"] = 0
     ambiguous_document = _document(ambiguous)
-    ambiguous_result = generate_composite_candidates(ambiguous_document, _pack(ambiguous_document))
+    ambiguous_result = generate_composite_candidates(
+        ambiguous_document, _pack(ambiguous_document, allow_duplicate_block_ids=True)
+    )
     assert not ambiguous_result.candidates
     assert "TABLE_GEOMETRY_AMBIGUOUS" in {item.code for item in ambiguous_result.diagnostics}
 
@@ -733,7 +742,7 @@ def test_duplicate_common_ir_block_id_fails_closed_independent_of_order() -> Non
     first = _paragraph("hwpx:p-duplicate", "지원 대상은 중소기업이다.", 0)
     second = _paragraph("hwpx:p-duplicate", "신청 대상은 창업기업이다.", 1)
     document = _document(first, second)
-    pack = _pack(document)
+    pack = _pack(document, allow_duplicate_block_ids=True)
 
     baseline = generate_composite_candidates(document, pack)
     reversed_document = deepcopy(document)

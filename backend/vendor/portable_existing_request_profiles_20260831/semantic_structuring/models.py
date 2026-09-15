@@ -161,6 +161,31 @@ class ExtractionScope(StrEnum):
     DOCUMENT = "document"
 
 
+NATIVE_EXACT_ATOMIC_BLOCK_KINDS = frozenset(
+    {None, "paragraph", "text", "list_item", "body", "heading_body"}
+)
+
+
+class NativeSourceSpan(StrictModel):
+    """One immutable constituent of a deterministic native composite.
+
+    This is deliberately a lexical/provenance contract, not a table relation
+    model.  A composite is admitted only when each constituent can be mapped
+    back to an unchanged character range in one atomic Common-IR source block.
+    """
+
+    source_block_id: str = Field(min_length=1, frozen=True)
+    exact_text: str = Field(min_length=1, frozen=True)
+    start_char: int = Field(default=0, ge=0, frozen=True)
+    end_char: int = Field(gt=0, frozen=True)
+    separator_after: Literal["", " "] = Field(default="", frozen=True)
+    source_order: int = Field(ge=0, frozen=True)
+    section_id: str = Field(min_length=1, frozen=True)
+    common_ir_block_id: str = Field(min_length=1, frozen=True)
+    common_ir_occurrence_ids: tuple[str, ...] = Field(min_length=1, frozen=True)
+    common_ir_cell_id: str | None = Field(default=None, min_length=1, frozen=True)
+
+
 class SourceBlock(StrictModel):
     """An IR block already selected for one semantic decision."""
 
@@ -181,6 +206,22 @@ class SourceBlock(StrictModel):
     common_ir_block_id: str | None = Field(default=None, min_length=1, frozen=True)
     common_ir_cell_id: str | None = Field(default=None, min_length=1, frozen=True)
     common_ir_occurrence_ids: tuple[str, ...] = Field(default_factory=tuple, frozen=True)
+    # ``source_spans`` is populated only by deterministic native composition.
+    # It is intentionally not a general derived-text mechanism: a candidate
+    # must remain the exact concatenation of these immutable slices.
+    source_spans: tuple[NativeSourceSpan, ...] = Field(
+        default_factory=tuple, frozen=True, exclude_if=lambda value: not value
+    )
+    # A line atom is a direct, reversible slice of one atomic source block.
+    native_parent_block_id: str | None = Field(
+        default=None, min_length=1, frozen=True, exclude_if=lambda value: value is None
+    )
+    native_start_char: int | None = Field(
+        default=None, ge=0, frozen=True, exclude_if=lambda value: value is None
+    )
+    native_end_char: int | None = Field(
+        default=None, ge=0, frozen=True, exclude_if=lambda value: value is None
+    )
     # Common IR table geometry is needed only while the trusted server builds
     # field regions.  Keep it private so neither LLM source-block payloads nor
     # the public CandidatePack/Profile contracts acquire new writable fields.
@@ -203,6 +244,19 @@ class CandidatePack(StrictModel):
     generator: str | None = Field(default=None, min_length=1, frozen=True)
     generator_version: str | None = Field(default=None, min_length=1, frozen=True)
     common_ir_document_id: str | None = Field(default=None, min_length=1, frozen=True)
+    # Filled only by a deterministic CandidatePack transform.  These values
+    # keep the source-pack identity durable after ``generator`` changes to
+    # describe the transform itself.  ``exclude_if`` keeps legacy pack dumps
+    # byte-for-byte free of three null keys.
+    parent_pack_id: str | None = Field(
+        default=None, min_length=1, frozen=True, exclude_if=lambda value: value is None
+    )
+    parent_generator: str | None = Field(
+        default=None, min_length=1, frozen=True, exclude_if=lambda value: value is None
+    )
+    parent_generator_version: str | None = Field(
+        default=None, min_length=1, frozen=True, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def common_ir_lineage_is_complete(self) -> "CandidatePack":
@@ -219,6 +273,165 @@ class CandidatePack(StrictModel):
                     "Common IR CandidatePack blocks require common_ir_block_id: "
                     f"{missing}"
                 )
+        parent_lineage = (
+            self.parent_pack_id,
+            self.parent_generator,
+            self.parent_generator_version,
+        )
+        if any(value is not None for value in parent_lineage) and not all(value is not None for value in parent_lineage):
+            raise ValueError(
+                "transformed CandidatePack requires parent_pack_id, parent_generator, "
+                "and parent_generator_version together"
+            )
+        if self.parent_pack_id == self.pack_id:
+            raise ValueError("transformed CandidatePack parent_pack_id must differ from pack_id")
+        has_native_derived_blocks = any(
+            block.source_spans or block.native_parent_block_id is not None
+            for block in self.blocks
+        )
+        if has_native_derived_blocks and not all(
+            value is not None for value in parent_lineage
+        ):
+            raise ValueError(
+                "native-derived CandidatePack blocks require durable parent lineage"
+            )
+        if all(value is not None for value in parent_lineage) and (
+            self.generator == self.parent_generator
+            and self.generator_version == self.parent_generator_version
+        ):
+            raise ValueError(
+                "transformed CandidatePack generator identity must differ from its parent"
+            )
+        by_id: dict[str, list[SourceBlock]] = {}
+        for block in self.blocks:
+            if any(ord(character) < 32 or ord(character) == 127 for character in block.block_id):
+                raise ValueError(
+                    "CandidatePack block_id values must not contain ASCII control characters"
+                )
+            by_id.setdefault(block.block_id, []).append(block)
+        duplicate_ids = sorted(block_id for block_id, matches in by_id.items() if len(matches) != 1)
+        if duplicate_ids:
+            raise ValueError(f"CandidatePack block_id values must be unique: {duplicate_ids}")
+
+        # The two reserved kinds are generated contracts, not labels that a
+        # caller can attach to an otherwise atomic block.  Requiring their
+        # matching provenance fields also prevents a forged reserved block
+        # from becoming the parent of another derived candidate.
+        forged_reserved = [
+            block.block_id
+            for block in self.blocks
+            if (
+                block.block_kind == "native_line_atom"
+                and block.native_parent_block_id is None
+            )
+            or (block.block_kind == "native_composite" and not block.source_spans)
+        ]
+        if forged_reserved:
+            raise ValueError(
+                "native reserved block kinds require their provenance contract: "
+                f"{sorted(forged_reserved)}"
+            )
+
+        # Native line atoms must be one exact span of one non-derived parent.
+        # This makes a Pydantic ``model_copy`` shortcut unable to forge a line
+        # candidate by changing only its text or provenance fields.
+        for atom in (block for block in self.blocks if block.native_parent_block_id is not None):
+            if atom.source_spans:
+                raise ValueError("native line atom cannot also be a composite")
+            if atom.block_kind != "native_line_atom" or atom.relation != SourceRelation.CANDIDATE:
+                raise ValueError("native line atom must use the native_line_atom candidate contract")
+            matches = by_id.get(atom.native_parent_block_id, [])
+            if len(matches) != 1:
+                raise ValueError("native line atom must reference one atomic parent block")
+            parent = matches[0]
+            if (
+                parent.native_parent_block_id is not None
+                or parent.source_spans
+                or parent.block_kind not in NATIVE_EXACT_ATOMIC_BLOCK_KINDS
+                or parent.relation != SourceRelation.CANDIDATE
+            ):
+                raise ValueError(
+                    "native line atom must reference one eligible atomic candidate parent"
+                )
+            if atom.native_start_char is None or atom.native_end_char is None:
+                raise ValueError("native line atom requires start/end offsets")
+            if (
+                atom.native_end_char <= atom.native_start_char
+                or atom.native_end_char > len(parent.text)
+                or parent.text[atom.native_start_char:atom.native_end_char] != atom.text
+                or atom.source_order != parent.source_order
+                or atom.source_occurrence_ids != parent.source_occurrence_ids
+                or atom.common_ir_block_id != parent.common_ir_block_id
+                or atom.common_ir_cell_id != parent.common_ir_cell_id
+                or atom.common_ir_occurrence_ids != parent.common_ir_occurrence_ids
+                or atom.section_id != parent.section_id
+            ):
+                raise ValueError("native line atom does not exactly match its parent span")
+        incomplete_slices = [
+            block.block_id for block in self.blocks
+            if block.native_parent_block_id is None
+            and (block.native_start_char is not None or block.native_end_char is not None)
+        ]
+        if incomplete_slices:
+            raise ValueError("native line offsets require native_parent_block_id")
+
+        # A native composite has no semantic rewriting authority.  Every span
+        # references exactly one atomic pack block and the composite text is
+        # the lossless concatenation of those slices and their separators.
+        for composite in (block for block in self.blocks if block.source_spans):
+            if composite.block_kind != "native_composite" or composite.relation != SourceRelation.CANDIDATE:
+                raise ValueError("native composite must use the native_composite candidate contract")
+            spans = composite.source_spans
+            if len(spans) not in {2, 3}:
+                raise ValueError("native composite requires two or three source_spans")
+            for span in spans:
+                matches = by_id.get(span.source_block_id, [])
+                if (
+                    len(matches) != 1
+                    or matches[0].source_spans
+                    or matches[0].native_parent_block_id is not None
+                ):
+                    raise ValueError("native composite span must reference an atomic pack block")
+                original = matches[0]
+                if (
+                    span.end_char <= span.start_char
+                    or span.end_char > len(original.text)
+                    or original.text[span.start_char:span.end_char] != span.exact_text
+                    or original.source_order != span.source_order
+                    or original.section_id != span.section_id
+                    or original.common_ir_block_id != span.common_ir_block_id
+                    or original.common_ir_occurrence_ids != span.common_ir_occurrence_ids
+                    or original.common_ir_cell_id != span.common_ir_cell_id
+                ):
+                    raise ValueError("native composite span does not exactly match its atomic block")
+                if original.relation != SourceRelation.CANDIDATE:
+                    raise ValueError("native composite cannot promote context blocks")
+                if original.block_kind == "table_cell":
+                    raise ValueError("native composite cannot join table cells")
+            orders = [span.source_order for span in spans]
+            if orders != sorted(orders) or len(set(orders)) != len(orders):
+                raise ValueError("native composite source_spans must be uniquely ordered")
+            if len({span.section_id for span in spans}) != 1:
+                raise ValueError("native composite source_spans must share a section")
+            if spans[-1].separator_after:
+                raise ValueError("final native composite span cannot have a trailing separator")
+            if composite.text != "".join(span.exact_text + span.separator_after for span in spans):
+                raise ValueError("native composite text must be the lossless span composition")
+            occurrences = tuple(
+                occurrence
+                for span in spans
+                for occurrence in span.common_ir_occurrence_ids
+            )
+            if composite.common_ir_occurrence_ids != occurrences:
+                raise ValueError("native composite occurrence provenance is incomplete")
+            if (
+                composite.source_order != spans[0].source_order
+                or composite.section_id != spans[0].section_id
+                or composite.common_ir_block_id != spans[0].common_ir_block_id
+                or composite.common_ir_cell_id is not None
+                or composite.source_occurrence_ids != list(occurrences)
+            ):
+                raise ValueError("native composite top-level provenance does not match source_spans")
         return self
 
 
