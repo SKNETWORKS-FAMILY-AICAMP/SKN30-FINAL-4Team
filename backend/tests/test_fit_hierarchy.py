@@ -115,6 +115,7 @@ class _HierarchyLLM:
                     {
                         "relation_id": relation["relation_id"],
                         "status": self.status,
+                        "summary": "상위사업과 하위사업의 연결을 확인했습니다.",
                         "reason_code": None,
                         "left_fact_ids": [row["fact_id"] for row in relation["left"]],
                         "right_fact_ids": [row["fact_id"] for row in relation["right"]],

@@ -198,6 +198,9 @@ class FitRelationResult:
     used_left_fact_ids: list[str] = field(default_factory=list)
     used_right_fact_ids: list[str] = field(default_factory=list)
     diagnostics: list[StageDiagnostic] = field(default_factory=list)
+    # 의미 비교가 실제 판정에 사용한 사용자용 한 줄 설명이다. 게이트·Rule처럼
+    # 모델 설명이 없는 결과는 None으로 두고 공개 경계에서 관계별 문구를 붙인다.
+    summary: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

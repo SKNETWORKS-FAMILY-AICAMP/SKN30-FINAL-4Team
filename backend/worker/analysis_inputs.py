@@ -82,12 +82,30 @@ CPL_FIELD_SOURCES: dict[CplFieldCode, tuple[str, ...]] = {
     ),
 }
 
+# 대표 신호등 판정에서 선택적으로 쓰는 보조 필드다. 값·상태·근거는 CPL
+# subfield에 그대로 보존하되, 이 컨테이너가 단순히 비어 있다는 이유만으로
+# 항목 전체를 ``needs_confirmation`` 으로 내리지는 않는다.
+#
+# ``support_components`` 는 행정 사업 계층이나 연차별·내역사업별 계획 자체가
+# 아니다. 명시적인 지원 패키지·참여유형·독립 지원단계가 있을 때만 채워지는
+# 컨테이너이므로, 그런 구성이 없는 요청서의 정상적인 빈 배열은 CPL-03/05의
+# 필수 조건이 될 수 없다. 반대로 원문에 대응 구역이 있는데 추출에 실패했거나
+# 일부만 읽힌 경우는 cpl.py에서 계속 판정에 포함한다.
+CPL_SUPPLEMENTARY_STATUS_SOURCES: dict[CplFieldCode, frozenset[str]] = {
+    CplFieldCode.IMPLEMENTATION_PLAN: frozenset({"support_components"}),
+    CplFieldCode.NEW_OR_CHANGED_CONTENT: frozenset({"support_components"}),
+}
+
 # import 시점에 13항목을 정확히 한 번씩 덮는지 고정한다. 항목이 늘거나
 # 이름이 바뀌면 여기서 즉시 터진다.
 assert tuple(CPL_FIELD_SOURCES) == tuple(CplFieldCode), (
     "CPL_FIELD_SOURCES 는 CplFieldCode 13항목을 선언 순서대로 정확히 한 번씩 "
     "가져야 한다"
 )
+assert all(
+    supplementary <= frozenset(CPL_FIELD_SOURCES[code])
+    for code, supplementary in CPL_SUPPLEMENTARY_STATUS_SOURCES.items()
+), "CPL 보조 상태 필드는 같은 항목의 CPL_FIELD_SOURCES 안에 있어야 한다"
 
 
 # 컨테이너 항목이 자기 id 로 쓰는 키. fact_id 가 우선이고, 없으면 순서대로 본다.

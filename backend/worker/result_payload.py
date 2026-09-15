@@ -15,7 +15,13 @@ from typing import TYPE_CHECKING, Any
 from uuid import NAMESPACE_URL, uuid5
 
 from .contracts.cpl_result import CplEvidence, CplFact, CplResult, cpl_display_code
-from .contracts.fit_result import FitEvidenceRef, FitResult, FitStatus, fit_axis_code
+from .contracts.fit_result import (
+    FitEvidenceRef,
+    FitRelationId,
+    FitResult,
+    FitStatus,
+    fit_axis_code,
+)
 from .contracts.ml_result import MlModelId, MlModelResult, MlReferenceResult
 from .contracts.sim_result import (
     SimAxis,
@@ -40,12 +46,21 @@ _CPL_SUMMARY = {
     "no_content": "적용 대상이지만 원문에서 내용을 찾지 못했습니다.",
     "not_applicable": "이 요청에는 적용되지 않는 항목입니다.",
 }
+_FIT_RELATION_SUBJECT = {
+    FitRelationId.FIT_1: "사업 목적과 지원대상",
+    FitRelationId.FIT_2: "사업 목적과 지원내용",
+    FitRelationId.FIT_3: "사업 목적과 기대효과·성과지표",
+    FitRelationId.FIT_4: "상위사업과 하위사업",
+    FitRelationId.FIT_5: "지원대상과 신청 조건",
+    FitRelationId.FIT_6: "수행기관과 역할·절차",
+    FitRelationId.FIT_7: "지원내용과 지원규모",
+}
 _FIT_SUMMARY = {
-    "FIT": "두 측면의 연결을 확인했습니다.",
-    "NEEDS_REVIEW": "비교는 가능하지만 추가 검토가 필요합니다.",
-    "CONFLICT": "원문상 충돌이 확인되었습니다.",
-    "INSUFFICIENT": "비교에 필요한 근거가 부족합니다.",
-    "NOT_APPLICABLE": "이 요청에는 계층 비교가 적용되지 않습니다.",
+    "FIT": "{subject} 관계를 확인했습니다.",
+    "NEEDS_REVIEW": "{subject} 관계는 추가 검토가 필요합니다.",
+    "CONFLICT": "{subject} 관계에서 충돌을 확인했습니다.",
+    "INSUFFICIENT": "{subject} 관계를 판단할 근거가 부족합니다.",
+    "NOT_APPLICABLE": "{subject} 관계는 이 요청에 적용되지 않습니다.",
 }
 _SIM_SUMMARY = {
     "similar": "공통점이 확인되었습니다.",
@@ -203,7 +218,17 @@ def _fact_identity(fact: CplFact) -> str:
 
 
 def _ref_identity(ref: FitEvidenceRef) -> str:
-    return "|".join((ref.fact_id, ref.field_name, ref.primary_component_id or ""))
+    # 한 목적 fact에서 SPECIFIC_OBJECTIVE와 DIRECTION 인용문이 함께 파생될 수
+    # 있다. 둘은 fact_id와 원문 좌표가 같으므로 값까지 넣지 않으면 FIT-2의
+    # 두 번째 evidence snapshot이 같은 UUID로 접혀 공개 근거에서 사라진다.
+    return "|".join(
+        (
+            ref.fact_id,
+            ref.field_name,
+            ref.primary_component_id or "",
+            ref.value_raw or "",
+        )
+    )
 
 
 def _entry_identity(entry: SimCommonEntry) -> str:
@@ -386,6 +411,45 @@ def _fit_side(
     }, ids
 
 
+def _fit_status_summary(relation: Any) -> str:
+    """Return the short, deterministic card label for a FIT status."""
+
+    subject = _FIT_RELATION_SUBJECT.get(
+        relation.relation_id, "해당 내부 정합성 항목"
+    )
+    template = _FIT_SUMMARY.get(
+        relation.status.value, "{subject} 관계는 추가 확인이 필요합니다."
+    )
+    return template.format(subject=subject)
+
+
+def _fit_reason(relation: Any) -> str:
+    """Return the grounded detail reason only for a performed comparison."""
+
+    if relation.status in {
+        FitStatus.FIT,
+        FitStatus.NEEDS_REVIEW,
+        FitStatus.CONFLICT,
+    }:
+        grounded = _clean_text(getattr(relation, "summary", None))
+        if grounded is not None:
+            return grounded
+    return _fit_status_summary(relation)
+
+
+def _fit_result_data(relation: Any) -> dict[str, Any]:
+    """Serialize internal FIT data without retaining an ungrounded judgment."""
+
+    result = plain(relation)
+    if relation.status not in {
+        FitStatus.FIT,
+        FitStatus.NEEDS_REVIEW,
+        FitStatus.CONFLICT,
+    }:
+        result["summary"] = None
+    return result
+
+
 def _fit_detail(relation: Any, *, collector: _EvidenceCollector) -> dict[str, Any]:
     code = fit_axis_code(relation.relation_id)
     performed = relation.status in {
@@ -407,10 +471,14 @@ def _fit_detail(relation: Any, *, collector: _EvidenceCollector) -> dict[str, An
         role="RIGHT",
         selected=relation.used_right_fact_ids if performed else (),
     )
+    if performed and (not left_ids or not right_ids):
+        raise ValueError(
+            f"{code} comparison_performed requires public evidence on both sides"
+        )
     return {
         "comparison_performed": performed,
         "reason_code": relation.reason_code,
-        "reason": _FIT_SUMMARY.get(relation.status.value, "추가 확인이 필요합니다."),
+        "reason": _fit_reason(relation),
         "left": left,
         "right": right,
         "evidence_ids": _unique([*left_ids, *right_ids]),
@@ -613,10 +681,8 @@ def build_result_payload(
                 "axis_type": "FIT",
                 "axis_code": fit_axis_code(relation.relation_id),
                 "status": relation.status.value,
-                "summary_text": _FIT_SUMMARY.get(
-                    relation.status.value, "추가 확인이 필요합니다."
-                ),
-                "result_data": plain(relation),
+                "summary_text": _fit_status_summary(relation),
+                "result_data": _fit_result_data(relation),
                 "public_detail": _fit_detail(relation, collector=collector),
             }
         )

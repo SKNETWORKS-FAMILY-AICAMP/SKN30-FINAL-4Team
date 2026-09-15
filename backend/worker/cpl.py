@@ -51,6 +51,7 @@ from .ports.llm import (
 
 from .analysis_inputs import (
     CPL_FIELD_SOURCES,
+    CPL_SUPPLEMENTARY_STATUS_SOURCES,
     facts_at,
     field_name_of,
     field_states_by_name,
@@ -205,8 +206,9 @@ def _new_unit_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
     wanted = _NEW_UNIT_LEVEL.get(selected or "")
     if wanted is None:
         # 요청유형을 못 읽었다. 어느 등급을 찾아야 하는지 모르므로 계층이
-        # 있다는 사실만으로 확인됨으로 올리지 않는다.
-        status = "mentioned_unresolved" if rows else "not_found"
+        # 있다는 사실만으로 확인됨으로 올리지 않는다. 계층 행까지 비어 있어도
+        # 어떤 행을 찾아야 했는지 자체가 미해결이므로 단순 부재로 내리지 않는다.
+        status = "mentioned_unresolved"
     elif any(row.get("level") == wanted for row in rows):
         status = "identified"
     elif rows:
@@ -263,7 +265,9 @@ def _program_nodes_subfield(profile: dict[str, Any], path: str) -> CplSubfield:
     )
 
 
-def _representative(subfields: list[CplSubfield]) -> tuple[str, str | None]:
+def _representative(
+    code: CplFieldCode, subfields: list[CplSubfield]
+) -> tuple[str, str | None]:
     """대표 신호등 표시값과 그 사유.
 
     하위 필드가 여럿이면 AGENTS.md ``IMPLEMENTATION_PLAN`` 절의 집계 규칙을
@@ -278,7 +282,24 @@ def _representative(subfields: list[CplSubfield]) -> tuple[str, str | None]:
 
     if not subfields:
         return NEEDS_CONFIRMATION, NO_PROFILE_FIELD
-    return aggregate_display(_display(sub) for sub in subfields), None
+
+    supplementary = CPL_SUPPLEMENTARY_STATUS_SOURCES.get(code, frozenset())
+    status_inputs = [
+        subfield
+        for subfield in subfields
+        if not (
+            subfield.profile_field in supplementary
+            and not subfield.facts
+            and subfield.status in {None, "not_found", "not_applicable"}
+            and EXTRACTION_COVERAGE_GAP not in subfield.reason_codes
+        )
+    ]
+    if not status_inputs:
+        # 현재 매핑에서는 필수 필드가 항상 하나 이상이라 도달하지 않는다.
+        # 향후 보조 필드만 있는 항목이 생기더라도 근거 없이 확인됨으로 올리지
+        # 않도록 fail closed 한다.
+        return NEEDS_CONFIRMATION, NO_PROFILE_FIELD
+    return aggregate_display(_display(sub) for sub in status_inputs), None
 
 
 def _display(subfield: CplSubfield) -> str:
@@ -310,7 +331,7 @@ def build_cpl_result(profile: dict[str, Any]) -> CplResult:
     diagnostics: list[StageDiagnostic] = []
     for code, paths in CPL_FIELD_SOURCES.items():
         subfields = [_subfield(profile, path, states, code) for path in paths]
-        status, reason = _representative(subfields)
+        status, reason = _representative(code, subfields)
         items.append(
             CplItem(
                 field_code=code,
@@ -734,7 +755,7 @@ def _with_form_absence(
         if subfields == item.subfields:
             items.append(item)
             continue
-        status, reason = _representative(subfields)
+        status, reason = _representative(item.field_code, subfields)
         items.append(
             replace(
                 item,
@@ -790,7 +811,7 @@ def _with_coverage_gaps(
             continue
         # 사유가 붙었으면 대표 표시도 다시 접는다. 상태를 바꾸지 않고 사유만
         # 더해 놓으면 화면은 여전히 "내용 없음" 이다.
-        status, reason = _representative(subfields)
+        status, reason = _representative(item.field_code, subfields)
         items.append(
             replace(
                 item,
@@ -1337,7 +1358,7 @@ def _with_recheck(result, common_ir, llm_client, *, model_profile, candidate_pac
         if subfields == item.subfields:
             items.append(item)
             continue
-        status, status_reason = _representative(subfields)
+        status, status_reason = _representative(item.field_code, subfields)
         items.append(
             replace(
                 item,

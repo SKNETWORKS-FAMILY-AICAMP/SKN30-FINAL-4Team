@@ -45,6 +45,7 @@ class _DeliveryLLM:
                     {
                         "relation_id": relation["relation_id"],
                         "status": "FIT",
+                        "summary": "수행기관과 역할·절차가 연결됩니다.",
                         "reason_code": None,
                         "left_fact_ids": ["delivery:1.actor"],
                         "right_fact_ids": [

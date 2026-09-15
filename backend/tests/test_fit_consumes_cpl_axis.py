@@ -18,6 +18,7 @@ from worker.contracts.cpl_result import CplAxisCode
 from worker.contracts.fit_result import FitRelationId, FitResult, FitStatus
 from worker.cpl import analyze_cpl, build_cpl_result
 from worker.fit import analyze_fit
+from worker.ports.llm import LLMInvalidResponseError
 from worker.contracts.cpl_result import (
     PurposeAxisAssignment as CplPurposeAxisAssignment,
     PurposeAxisClassification as CplPurposeAxisClassification,
@@ -149,9 +150,66 @@ class _FitPayloadRecorder:
             "relations": [{
                 "relation_id": relation["relation_id"],
                 "status": FitStatus.INSUFFICIENT.value,
+                "summary": "관계 판정에 필요한 근거가 부족합니다.",
                 "reason_code": "COMPARISON_EVIDENCE_MISSING",
             } for relation in payload["relations"]],
         })
+
+
+class _GroundedFitRecorder(_FitPayloadRecorder):
+    fit2_summary = (
+        "기술경쟁력 강화·매출 성장 목적과 기술 컨설팅·보조금 지원이 연결됩니다."
+    )
+
+    async def generate_structured(
+        self, *, task_name: str, messages: list[Any],
+        response_schema: type[BaseModel], model_profile: str,
+    ) -> BaseModel:
+        assert task_name == "fit_relation_comparison"
+        payload = json.loads(messages[-1].content)
+        self.payloads.append(payload)
+        return response_schema.model_validate({
+            "relations": [{
+                "relation_id": relation["relation_id"],
+                "status": FitStatus.FIT.value,
+                "summary": (
+                    self.fit2_summary
+                    if relation["relation_id"] == FitRelationId.FIT_2.value
+                    else "양쪽 원문 근거의 연결을 확인했습니다."
+                ),
+                "reason_code": None,
+                "left_fact_ids": list(dict.fromkeys(
+                    row["fact_id"] for row in relation["left"]
+                )),
+                "right_fact_ids": list(dict.fromkeys(
+                    row["fact_id"] for row in relation["right"]
+                )),
+            } for relation in payload["relations"]],
+        })
+
+
+class _MissingSummaryRecorder:
+    async def generate_structured(
+        self, *, task_name: str, messages: list[Any],
+        response_schema: type[BaseModel], model_profile: str,
+    ) -> BaseModel:
+        assert task_name == "fit_relation_comparison"
+        payload = json.loads(messages[-1].content)
+        raise LLMInvalidResponseError(
+            "FIT summary is missing",
+            raw={
+                "relations": [
+                    {
+                        "relation_id": relation["relation_id"],
+                        "status": FitStatus.FIT.value,
+                        "reason_code": None,
+                        "left_fact_ids": [relation["left"][0]["fact_id"]],
+                        "right_fact_ids": [relation["right"][0]["fact_id"]],
+                    }
+                    for relation in payload["relations"]
+                ]
+            },
+        )
 
 
 def _cpl(assignments: list[dict[str, str]] | None = None):
@@ -235,7 +293,7 @@ def test_the_seven_relation_output_shape_is_unchanged() -> None:
 
     assert len(fit.relations) == 7
     assert [row.relation_id for row in fit.relations] == list(FitRelationId)
-    assert fit.prompt_version == "fit-relations-v0.3"
+    assert fit.prompt_version == "fit-relations-v0.4"
 
 
 def test_fit2_uses_specific_objective_and_direction_but_fit3_stays_direction_only() -> None:
@@ -281,3 +339,75 @@ def test_fit2_falls_back_to_direction_when_specific_objective_is_absent() -> Non
     )
     assert [row.value_raw for row in fit2.left.facts] == [_DIRECTION]
     assert [row["value_raw"] for row in payload_fit2["left"]] == [_DIRECTION]
+
+
+def test_fit2_keeps_the_models_grounded_judgment_and_selected_facts() -> None:
+    cpl = analyze_cpl(
+        _comparison_profile(), _Recorder(_rows_with_objective()),
+        model_profile="default", common_ir=_ir(),
+    )
+    llm = _GroundedFitRecorder()
+
+    fit = analyze_fit(cpl, llm, model_profile="default")
+
+    fit2 = next(row for row in fit.relations if row.relation_id is FitRelationId.FIT_2)
+    payload_fit2 = next(
+        relation for relation in llm.payloads[0]["relations"]
+        if relation["relation_id"] == FitRelationId.FIT_2.value
+    )
+    assert fit2.summary == llm.fit2_summary
+    assert fit2.used_left_fact_ids == list(
+        dict.fromkeys(row["fact_id"] for row in payload_fit2["left"])
+    )
+    assert fit2.used_right_fact_ids == list(
+        dict.fromkeys(row["fact_id"] for row in payload_fit2["right"])
+    )
+
+
+def test_fit_rejects_an_assessable_verdict_without_a_judgment_summary() -> None:
+    cpl = analyze_cpl(
+        _comparison_profile(), _Recorder(_rows_with_objective()),
+        model_profile="default", common_ir=_ir(),
+    )
+
+    fit = analyze_fit(
+        cpl, _MissingSummaryRecorder(), model_profile="default", max_repairs=0
+    )
+
+    fit2 = next(row for row in fit.relations if row.relation_id is FitRelationId.FIT_2)
+    assert fit2.status is FitStatus.INSUFFICIENT
+    assert fit2.reason_code == "LLM_INVALID_RESPONSE"
+    assert fit2.summary is None
+
+
+def test_blank_source_value_isolated_before_fit_comparison() -> None:
+    profile = _comparison_profile()
+    profile["comparison_profile"]["support_activities"][0]["value_raw"] = "   "
+    profile["comparison_profile"]["support_methods"] = []
+    profile["field_states"] = [
+        row
+        for row in profile["field_states"]
+        if row["field_name"] != "support_methods"
+    ]
+    cpl = analyze_cpl(
+        profile,
+        _Recorder(_rows_with_objective()),
+        model_profile="default",
+        common_ir=_ir(),
+    )
+    llm = _GroundedFitRecorder()
+
+    fit = analyze_fit(cpl, llm, model_profile="default")
+
+    fit2 = next(row for row in fit.relations if row.relation_id is FitRelationId.FIT_2)
+    fit3 = next(row for row in fit.relations if row.relation_id is FitRelationId.FIT_3)
+    assert fit2.status is FitStatus.INSUFFICIENT
+    assert fit2.reason_code == "COMPARISON_EVIDENCE_MISSING"
+    assert fit3.status is FitStatus.FIT
+    requested = {
+        relation["relation_id"]
+        for payload in llm.payloads
+        for relation in payload["relations"]
+    }
+    assert FitRelationId.FIT_2.value not in requested
+    assert FitRelationId.FIT_3.value in requested

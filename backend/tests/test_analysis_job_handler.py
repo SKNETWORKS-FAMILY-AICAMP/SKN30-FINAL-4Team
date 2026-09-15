@@ -307,6 +307,7 @@ class CoreEngineLLM:
                         {
                             "relation_id": row["relation_id"],
                             "status": "INSUFFICIENT",
+                            "summary": "관계 판정에 필요한 근거가 부족합니다.",
                             "reason_code": "COMPARISON_EVIDENCE_MISSING",
                         }
                         for row in payload["relations"]
@@ -886,7 +887,11 @@ def test_result_payload_uses_frontend_axis_and_status_vocabulary() -> None:
     fit = FitResult(
         relations=[
             FitRelationResult(
-                FitRelationId.FIT_1, FitStatus.FIT, None, FitSide(), FitSide()
+                FitRelationId.FIT_1,
+                FitStatus.INSUFFICIENT,
+                "COMPARISON_EVIDENCE_MISSING",
+                FitSide(),
+                FitSide(),
             )
         ],
         purpose_axis=PurposeAxisClassification(attempted=False),

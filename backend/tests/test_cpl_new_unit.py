@@ -118,6 +118,54 @@ def test_a_sub_program_request_needs_a_sub_program_node() -> None:
     assert _item(with_sub).representative_status == CONFIRMED
 
 
+def test_a_matching_sub_program_does_not_require_an_invented_component() -> None:
+    profile = _profile(
+        "sub_program_new",
+        _node("p1", "sub_program", "스마트 기술사업화 지원"),
+    )
+
+    item = _item(profile)
+
+    assert item.representative_status == CONFIRMED
+    assert next(
+        row for row in item.subfields if row.profile_field == "support_components"
+    ).status == "not_found"
+
+
+def test_an_identified_plan_and_hierarchy_do_not_require_an_invented_component() -> None:
+    profile = _profile(
+        "sub_program_new",
+        _node("p1", "sub_program", "스마트 기술사업화 지원"),
+    )
+    profile["request_context"]["implementation_plan"] = [
+        {"fact_id": "plan:1", "value_raw": "1차년도 시제품 제작 지원"}
+    ]
+    profile["field_states"].append(
+        {"field_name": "implementation_plan", "status": "identified"}
+    )
+
+    item = _item(profile, CplFieldCode.IMPLEMENTATION_PLAN)
+
+    assert item.representative_status == CONFIRMED
+    assert [row.profile_field for row in item.subfields] == [
+        "request_context.implementation_plan",
+        "program_hierarchy.nodes",
+        "support_components",
+    ]
+
+
+def test_a_component_cannot_hide_the_wrong_requested_hierarchy() -> None:
+    profile = _profile(
+        "sub_program_new",
+        _node("p1", "detail_program", "스마트 기술사업화 지원"),
+        components=[
+            {"support_component_id": "c1", "name_raw": "스마트 기술사업화 지원"}
+        ],
+    )
+
+    assert _item(profile).representative_status == NEEDS_CONFIRMATION
+
+
 # CPL-03 은 같은 경로를 다른 규칙으로 본다. 세부사업만으로는 내역사업별
 # 추진계획을 볼 수 없다 — 두 항목이 같은 노드에서 다른 답을 내야 한다.
 def test_the_same_nodes_answer_differently_for_the_implementation_plan() -> None:
@@ -204,6 +252,7 @@ def test_an_unreadable_request_type_does_not_promote_the_hierarchy() -> None:
     profile = _profile(None, _node("p1", "sub_program", "스마트 기술사업화 지원"))
 
     assert _nodes_row(_item(profile)).status == "mentioned_unresolved"
+    assert _nodes_row(_item(_profile(None))).status == "mentioned_unresolved"
 
 
 def test_no_hierarchy_at_all_is_no_content() -> None:

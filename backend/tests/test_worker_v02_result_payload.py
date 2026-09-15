@@ -67,7 +67,11 @@ def _profile(profile_id: str) -> SimCommonProfile:
     )
 
 
-def _payload(*, delivery_status: SimStatus = SimStatus.INSUFFICIENT) -> dict:
+def _payload(
+    *,
+    delivery_status: SimStatus = SimStatus.INSUFFICIENT,
+    fit_relation: FitRelationResult | None = None,
+) -> dict:
     request_id = "request:run-1"
     existing_id = "existing:notice-1"
     fact = CplFact(
@@ -113,7 +117,8 @@ def _payload(*, delivery_status: SimStatus = SimStatus.INSUFFICIENT) -> dict:
     )
     fit = FitResult(
         relations=[
-            FitRelationResult(
+            fit_relation
+            or FitRelationResult(
                 FitRelationId.FIT_1,
                 FitStatus.FIT,
                 None,
@@ -200,8 +205,17 @@ def test_v02_payload_is_deterministic_and_links_only_selected_evidence() -> None
     candidate = first["candidates"][0]
     purpose = candidate["public_axes"]["purpose"]
     assert cpl_detail["evidence_ids"]
+    assert set(fit_detail) == {
+        "comparison_performed",
+        "reason_code",
+        "reason",
+        "left",
+        "right",
+        "evidence_ids",
+    }
     assert fit_detail["comparison_performed"] is True
     assert fit_detail["evidence_ids"]
+    assert fit_detail["reason"] == "사업 목적과 지원대상 관계를 확인했습니다."
     assert purpose["request_evidence_ids"] and purpose["existing_evidence_ids"]
     sim_evidence = [row for row in first["evidences"] if row["axis_type"] == "SIM"]
     assert {row["logical_code"] for row in sim_evidence} == {"SIM-1"}
@@ -212,6 +226,143 @@ def test_v02_payload_is_deterministic_and_links_only_selected_evidence() -> None
     assert candidate["metadata"]["apply_period"] == "2026-09-01 ~ 2026-09-30"
     assert candidate["metadata"]["notice_status"] == "모집중"
     assert candidate["public_axes"]["delivery"]["request_evidence_ids"] == []
+
+
+def test_fit_public_reason_preserves_the_grounded_relation_judgment() -> None:
+    judgment = (
+        "목적의 기술경쟁력 강화와 기술 컨설팅 지원이 직접 연결됩니다."
+    )
+    relation = FitRelationResult(
+        relation_id=FitRelationId.FIT_2,
+        status=FitStatus.FIT,
+        reason_code=None,
+        left=FitSide(
+            facts=[
+                FitEvidenceRef(
+                    "fact:purpose",
+                    "purpose_goal",
+                    "기술경쟁력 강화",
+                    [_evidence()],
+                )
+            ]
+        ),
+        right=FitSide(
+            facts=[
+                FitEvidenceRef(
+                    "fact:support",
+                    "support_activities",
+                    "기술 컨설팅",
+                    [_evidence()],
+                )
+            ]
+        ),
+        used_left_fact_ids=["fact:purpose"],
+        used_right_fact_ids=["fact:support"],
+        summary=judgment,
+    )
+
+    fit_axis = _payload(fit_relation=relation)["axes"][1]
+
+    assert fit_axis["summary_text"] == "사업 목적과 지원내용 관계를 확인했습니다."
+    assert fit_axis["public_detail"]["reason"] == judgment
+
+
+def test_fit_insufficient_never_publishes_an_ungrounded_model_summary() -> None:
+    sentinel = "근거 없이 공개되면 안 되는 모델 문장"
+    relation = FitRelationResult(
+        relation_id=FitRelationId.FIT_2,
+        status=FitStatus.INSUFFICIENT,
+        reason_code="COMPARISON_EVIDENCE_MISSING",
+        left=FitSide(
+            facts=[
+                FitEvidenceRef(
+                    "fact:purpose", "purpose_goal", "기술경쟁력 강화", [_evidence()]
+                )
+            ]
+        ),
+        right=FitSide(
+            facts=[
+                FitEvidenceRef(
+                    "fact:support", "support_activities", "기술 컨설팅", [_evidence()]
+                )
+            ]
+        ),
+        used_left_fact_ids=["fact:purpose"],
+        used_right_fact_ids=["fact:support"],
+        summary=sentinel,
+    )
+
+    fit_axis = _payload(fit_relation=relation)["axes"][1]
+
+    assert fit_axis["summary_text"] == (
+        "사업 목적과 지원내용 관계를 판단할 근거가 부족합니다."
+    )
+    assert fit_axis["public_detail"]["reason"] == fit_axis["summary_text"]
+    assert sentinel not in str(fit_axis)
+    assert fit_axis["public_detail"]["evidence_ids"] == []
+
+
+def test_fit2_public_evidence_keeps_each_excerpt_from_one_source_fact() -> None:
+    relation = FitRelationResult(
+        relation_id=FitRelationId.FIT_2,
+        status=FitStatus.FIT,
+        reason_code=None,
+        left=FitSide(
+            facts=[
+                FitEvidenceRef(
+                    "fact:purpose",
+                    "purpose_goal",
+                    "기술경쟁력 강화",
+                    [_evidence()],
+                ),
+                FitEvidenceRef(
+                    "fact:purpose",
+                    "purpose_goal",
+                    "매출 성장 달성",
+                    [_evidence()],
+                ),
+                FitEvidenceRef(
+                    "fact:unselected",
+                    "purpose_goal",
+                    "해외 진출",
+                    [_evidence()],
+                ),
+            ]
+        ),
+        right=FitSide(
+            facts=[
+                FitEvidenceRef(
+                    "fact:support",
+                    "support_activities",
+                    "기술 컨설팅",
+                    [_evidence()],
+                )
+            ]
+        ),
+        used_left_fact_ids=["fact:purpose"],
+        used_right_fact_ids=["fact:support"],
+    )
+
+    payload = _payload(fit_relation=relation)
+    fit_detail = payload["axes"][1]["public_detail"]
+    evidence_by_id = {row["evidence_id"]: row for row in payload["evidences"]}
+
+    assert len(fit_detail["left"]["evidence_ids"]) == 2
+    assert {
+        evidence_by_id[evidence_id]["raw_value"]
+        for evidence_id in fit_detail["left"]["evidence_ids"]
+    } == {"기술경쟁력 강화", "매출 성장 달성"}
+    assert fit_detail["left"]["value_summary"] == (
+        "기술경쟁력 강화 · 매출 성장 달성"
+    )
+    assert not any(
+        row["logical_code"] == "FIT-2" and row["raw_value"] == "해외 진출"
+        for row in payload["evidences"]
+    )
+    assert set(fit_detail["evidence_ids"]) == {
+        *fit_detail["left"]["evidence_ids"],
+        *fit_detail["right"]["evidence_ids"],
+    }
 
 
 def test_v02_candidate_comparable_axes_exclude_delivery() -> None:

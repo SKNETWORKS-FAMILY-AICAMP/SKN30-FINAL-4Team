@@ -65,7 +65,7 @@ __all__ = [
 _STAGE = "analyze_fit"
 
 FIT_RULESET_VERSION = "fit-rules-v0.2"
-FIT_PROMPT_VERSION = "fit-relations-v0.3"
+FIT_PROMPT_VERSION = "fit-relations-v0.4"
 
 
 # ------------------------------------------------------------ 입력 경로표
@@ -410,6 +410,14 @@ def _gate(left: FitSide, right: FitSide, registry: set[str]) -> str | None:
 
     if not left.facts or not right.facts:
         return COMPARISON_EVIDENCE_MISSING
+    if any(
+        not isinstance(ref.value_raw, str) or not ref.value_raw.strip()
+        for ref in (*left.facts, *right.facts)
+    ):
+        # ID만 있고 공개 근거 snapshot으로 만들 원문 값이 없는 행을 LLM에
+        # 보내면 performed 판정은 만들어져도 evidence가 0건이 된다. 관계 하나의
+        # 결함이 최종 payload 전체를 중단시키지 않도록 호출 전에 격리한다.
+        return COMPARISON_EVIDENCE_MISSING
     left_ids = {ref.fact_id for ref in left.facts}
     if left_ids & {ref.fact_id for ref in right.facts}:
         return SELF_COMPARISON
@@ -644,7 +652,7 @@ def _fit7(cpl: CplResult) -> FitRelationResult:
 # 단계에서 조용히 터지는 대신 서버가 그 항목만 떨어뜨리고 진단을 남긴다.
 _FIT_COMPARISON_INSTRUCTION = (
     "You compare two grounded evidence sides of a Korean public-program request document. "
-    "For each relation in the payload return {relation_id, status, reason_code, "
+    "For each relation in the payload return {relation_id, status, summary, reason_code, "
     "left_fact_ids, right_fact_ids}. "
     f"status must be one of {[status.value for status in FitStatus if status is not FitStatus.NOT_APPLICABLE]}. "
     "Cite only fact_ids that appear on that relation's own side in the payload. "
@@ -654,6 +662,10 @@ _FIT_COMPARISON_INSTRUCTION = (
     "facts is FIT when there is no explicit scope broadening, contradiction, or irrelevance. "
     "Use NEEDS_REVIEW only for an explicit broadening, contradiction, or unrelated pair. "
     "Use INSUFFICIENT only when the grounded comparison text is genuinely insufficient. "
+    "Write summary in Korean as a concise reason for that relation's verdict. "
+    "Keep summary to one plain-text line of at most 500 characters. "
+    "The summary may use only facts supported by the returned left_fact_ids and "
+    "right_fact_ids; cite every fact used to explain the verdict. "
     "Do not return any score, percentage, ratio, or grade."
 )
 
@@ -661,6 +673,7 @@ _FIT_COMPARISON_INSTRUCTION = (
 class _FitVerdictModel(BaseModel):
     relation_id: str
     status: str
+    summary: str = Field(min_length=1, max_length=500)
     reason_code: str | None = None
     left_fact_ids: list[str] = Field(default_factory=list)
     right_fact_ids: list[str] = Field(default_factory=list)
@@ -773,11 +786,12 @@ def _validate_verdict(
     row: _FitVerdictModel,
     left: FitSide,
     right: FitSide,
-) -> tuple[FitStatus, str | None, list[str], list[str]] | str:
+) -> tuple[FitStatus, str | None, str, list[str], list[str]] | str:
     """응답 한 줄을 검사한다.
 
-    통과하면 (상태, reason, 좌측에서 실제로 인용한 id, 우측에서 인용한 id) 고,
-    아니면 오류 설명이다. 인용된 id 는 입력 근거 전체와 구분해 보존한다.
+    통과하면 (상태, reason code, 판단문, 좌측에서 실제로 인용한 id,
+    우측에서 인용한 id) 고, 아니면 오류 설명이다. 인용된 id 는 입력 근거
+    전체와 구분해 보존한다.
     """
 
     try:
@@ -805,8 +819,13 @@ def _validate_verdict(
         # 인용이 허용 범위 안인지만 보고 인용이 있는지를 보지 않으면, 근거를
         # 하나도 대지 않은 CONFLICT 가 그대로 통과한다.
         return "판정을 내렸는데 한쪽 근거를 인용하지 않았다"
+    summary = row.summary.strip()
+    if not summary:
+        return "판단 근거 summary가 비어 있다"
+    if "\n" in summary or "\r" in summary:
+        return "판단 근거 summary가 한 줄이 아니다"
     reason = row.reason_code if row.reason_code in FIT_REASON_CODES else None
-    return status, reason, list(row.left_fact_ids), list(row.right_fact_ids)
+    return status, reason, summary, list(row.left_fact_ids), list(row.right_fact_ids)
 
 
 def _compare_relations(
@@ -816,7 +835,10 @@ def _compare_relations(
     model_profile: str,
     max_repairs: int,
     diagnostics: list[StageDiagnostic],
-) -> dict[FitRelationId, tuple[FitStatus, str | None, list[str], list[str]]]:
+) -> dict[
+    FitRelationId,
+    tuple[FitStatus, str | None, str | None, list[str], list[str]],
+]:
     """게이트를 통과한 관계를 한 번에 비교하고, 결함만 격리한다 (초안 §9.2.1).
 
     - 최상위 응답 자체를 해석할 수 없으면 그 호출 범위(= 남은 관계)만 내린다.
@@ -830,7 +852,8 @@ def _compare_relations(
     """
 
     verdicts: dict[
-        FitRelationId, tuple[FitStatus, str | None, list[str], list[str]]
+        FitRelationId,
+        tuple[FitStatus, str | None, str | None, list[str], list[str]],
     ] = {}
     errors: dict[FitRelationId, str] = {}
     remaining = dict(pending)
@@ -870,7 +893,13 @@ def _compare_relations(
                             terminated_because=reason,
                         )
                     )
-                    verdicts[relation_id] = (FitStatus.INSUFFICIENT, reason, [], [])
+                    verdicts[relation_id] = (
+                        FitStatus.INSUFFICIENT,
+                        reason,
+                        None,
+                        [],
+                        [],
+                    )
                 return verdicts
             response_rows, broken, dropped = recovered
         else:
@@ -947,7 +976,13 @@ def _compare_relations(
 
     # 예산을 다 쓰고도 남은 관계는 그 관계만 정보 부족으로 남는다.
     for relation_id in remaining:
-        verdicts[relation_id] = (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE, [], [])
+        verdicts[relation_id] = (
+            FitStatus.INSUFFICIENT,
+            LLM_INVALID_RESPONSE,
+            None,
+            [],
+            [],
+        )
     return verdicts
 
 
@@ -1057,8 +1092,9 @@ def analyze_fit(
         else {}
     )
     for relation_id, (left, right) in pending.items():
-        status, reason, used_left, used_right = verdicts.get(
-            relation_id, (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE, [], [])
+        status, reason, summary, used_left, used_right = verdicts.get(
+            relation_id,
+            (FitStatus.INSUFFICIENT, LLM_INVALID_RESPONSE, None, [], []),
         )
         results[relation_id] = FitRelationResult(
             relation_id=relation_id,
@@ -1068,6 +1104,15 @@ def analyze_fit(
             right=right,
             used_left_fact_ids=used_left,
             used_right_fact_ids=used_right,
+            # INSUFFICIENT는 비교가 성립하지 않았으므로 public evidence도 싣지
+            # 않는다. 이 상태에서 모델의 사실 서술만 남기면 근거 없는 판단문이
+            # 되므로 관계별 결정 문구를 쓰도록 모델 summary를 폐기한다.
+            summary=(
+                summary
+                if status
+                in {FitStatus.FIT, FitStatus.NEEDS_REVIEW, FitStatus.CONFLICT}
+                else None
+            ),
         )
 
     return FitResult(
