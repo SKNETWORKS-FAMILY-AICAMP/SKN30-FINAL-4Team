@@ -52,6 +52,11 @@ import re
 import statistics
 from pathlib import Path
 
+from common_ir_pipeline.pdf_fusion.native_capture import (
+    NativeCaptureError,
+    load_native_capture_file,
+    validate_native_capture,
+)
 from common_ir_pipeline.schema import validation_errors
 from common_ir_pipeline.shared import detect_boundary_markers, make_provenance, new_document_shell
 
@@ -655,7 +660,10 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    native = json.loads(args.native.read_text(encoding="utf-8"))
+    try:
+        native = load_native_capture_file(args.native)
+    except NativeCaptureError as error:
+        parser.error(str(error))
     source_path = args.source_path
     if source_path is None and native.get("source_path"):
         candidate = Path(native["source_path"])
@@ -665,6 +673,28 @@ def main() -> None:
         parser.error("--source-path is required when native source_path is absent or does not resolve locally")
     if not source_path.is_file():
         parser.error(f"source PDF does not exist: {source_path}")
+    # Production Common IR may only be built from a capture that is bound to
+    # the exact source bytes. Historical unbound JSON remains useful as an
+    # archived comparison artifact, but must not be relabelled as production.
+    if "capture_schema_version" not in native:
+        parser.error(
+            "unbound legacy native JSON cannot produce production Common IR; "
+            "recapture the PDF with replay_existing_pdf_native.py"
+        )
+    try:
+        native = validate_native_capture(
+            native,
+            source_pdf=source_path,
+            expected_notice_id=args.notice_id,
+            expected_source_relative_path=native.get("source_path"),
+        )
+    except NativeCaptureError as error:
+        parser.error(f"native capture is not bound to the supplied PDF: {error}")
+    bound_source_sha256 = native["source_sha256"]
+    if args.source_sha256 is not None and args.source_sha256 != bound_source_sha256:
+        parser.error(
+            "--source-sha256 does not match the source-bound native capture"
+        )
     document_id = f"pdf:{args.notice_id}"
     native_text_pages = {item["page"] for item in native["text_items"] if _is_substantive_text(item.get("text"))}
     eligibility = "eligible_native_text" if native_text_pages else "excluded_image_only"
@@ -687,7 +717,7 @@ def main() -> None:
     # predate this capture; never guessed at here.
     doc = new_document_shell(
         document_id, "pdf", source_path, page_count, raw_artifact_ids, method="pdf_native_only",
-        source_sha256=args.source_sha256,
+        source_sha256=bound_source_sha256,
         parser=native.get("method"), parser_version=native.get("version"),
     )
     doc["document"].update({

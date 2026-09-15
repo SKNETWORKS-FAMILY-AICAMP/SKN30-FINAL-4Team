@@ -11,6 +11,9 @@ dependencies = ["jsonschema>=4.23,<5"]
 
 [project.optional-dependencies]
 hwp = ["rhwp-python"]
+# Existing 공고의 오프라인 native PDF 재생 전용이다. 운영 Request worker의
+# 허용 형식에는 이 extra를 추가하지 않는다.
+pdf = ["pdf-inspector==1.17.0"]
 # OCR is deliberately optional.  The worker emits geometry-only diagnostic
 # sidecars; neither its dependencies nor model weights are required by the
 # native PDF Common IR path.

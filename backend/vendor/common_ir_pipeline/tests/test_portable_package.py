@@ -18,9 +18,67 @@ from common_ir_pipeline.adapters.markdown_fixture import (
     validate_input_manifest,
 )
 from common_ir_pipeline.adapters.pdf_native import main as pdf_native_main
+from common_ir_pipeline.pdf_fusion.native_capture import (
+    CAPTURE_SCHEMA_VERSION,
+    canonical_json_bytes,
+)
 from common_ir_pipeline.schema import validation_errors
 from common_ir_pipeline.shared import new_document_shell
 from common_ir_pipeline.workers.pdf_ocr_layout import build_sidecar, geometry_regions
+
+
+def _bound_native_capture(source_pdf: Path, *, notice_id: str, text: str) -> dict:
+    return {
+        "capture_schema_version": CAPTURE_SCHEMA_VERSION,
+        "notice_id": notice_id,
+        "source_kind": "pdf",
+        "artifact_role": "production",
+        "method": "pdf_inspector",
+        "version": "1.17.0",
+        "extraction_scope": "full_document",
+        "source_path": source_pdf.name,
+        "source_sha256": hashlib.sha256(source_pdf.read_bytes()).hexdigest(),
+        "source_size_bytes": source_pdf.stat().st_size,
+        "process_result": {
+            "pdf_type": "text_based",
+            "markdown": text,
+            "page_count": 1,
+            "pages_needing_ocr": [],
+            "ocr_reasons_by_page": [],
+            "title": None,
+            "confidence": 1.0,
+            "is_complex_layout": False,
+            "pages_with_tables": [],
+            "pages_with_columns": [],
+            "has_encoding_issues": False,
+        },
+        "pages_markdown_result": {
+            "pages": [{"page": 0, "markdown": text, "needs_ocr": False, "ocr_reason": None}],
+            "pages_with_tables": [],
+            "pages_with_columns": [],
+            "pages_needing_ocr": [],
+            "ocr_reasons_by_page": [],
+            "is_complex": False,
+        },
+        "text_items": [{
+            "page": 1,
+            "text": text,
+            "x": 0.0,
+            "y": 10.0,
+            "width": 50.0,
+            "height": 8.0,
+            "font": "TestFont",
+            "font_tag": "F1",
+            "font_size": 10.0,
+            "is_bold": False,
+            "is_italic": False,
+            "is_underline": False,
+            "is_strikeout": False,
+            "item_type": "text",
+            "mcid": None,
+        }],
+        "structure_elements": [],
+    }
 
 
 class PortablePackageTests(unittest.TestCase):
@@ -112,14 +170,11 @@ class PortablePackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source_pdf = root / "notice.pdf"
-            source_pdf.write_bytes(b"minimal pdf fixture")
+            source_pdf.write_bytes(b"%PDF-1.7\nminimal pdf fixture")
             native_path = root / "native.json"
-            native_path.write_text(json.dumps({
-                "method": "pdf_inspector",
-                "version": "test",
-                "process_result": {"page_count": 1},
-                "text_items": [{"page": 1, "text": "지원금 100만원", "x": 0, "y": 10, "width": 50, "height": 8, "font_size": 10}],
-            }), encoding="utf-8")
+            native_path.write_bytes(canonical_json_bytes(_bound_native_capture(
+                source_pdf, notice_id="TEST-PDF", text="지원금 100만원",
+            )))
             output = root / "notice.common_ir_v1.json"
             with patch.object(sys, "argv", [
                 "common-ir-pdf-native", "--notice-id", "TEST-PDF", "--native", str(native_path),
@@ -164,7 +219,7 @@ class PortablePackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source_pdf = root / "notice.pdf"
-            source_pdf.write_bytes(b"minimal pdf fixture")
+            source_pdf.write_bytes(b"%PDF-1.7\nminimal pdf fixture")
             secret = "절대 Common IR에 들어가면 안 되는 OCR 문자열"
             regions = geometry_regions("easy", [
                 ([[1, 2], [11, 2], [11, 9], [1, 9]], secret, 0.8),
@@ -178,10 +233,9 @@ class PortablePackageTests(unittest.TestCase):
             sidecar_path = root / "layout.json"
             sidecar_path.write_text(json.dumps(sidecar, ensure_ascii=False), encoding="utf-8")
             native_path = root / "native.json"
-            native_path.write_text(json.dumps({
-                "method": "pdf_inspector", "version": "test", "process_result": {"page_count": 1},
-                "text_items": [{"page": 1, "text": "지원금 100만원", "x": 0, "y": 10, "width": 50, "height": 8, "font_size": 10}],
-            }), encoding="utf-8")
+            native_path.write_bytes(canonical_json_bytes(_bound_native_capture(
+                source_pdf, notice_id="TEST-PDF", text="지원금 100만원",
+            )))
             output = root / "notice.common_ir_v1.json"
             with patch.object(sys, "argv", [
                 "common-ir-pdf-native", "--notice-id", "TEST-PDF", "--native", str(native_path),
