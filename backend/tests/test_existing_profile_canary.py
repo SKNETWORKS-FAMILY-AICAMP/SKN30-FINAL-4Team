@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from hashlib import sha256
 import importlib.util
 import json
 import os
@@ -98,6 +99,75 @@ def test_prompt_preflight_pins_conditional_support_scale_repair(
 
     with pytest.raises(canary.ExistingProfileCanaryError, match="prompt hash pin"):
         canary._verify_prompt_pins()
+
+
+def test_plan_preserves_safe_shared_baseline_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(canary, "_verify_prompt_pins", lambda: None)
+    monkeypatch.setattr(
+        canary.routing_canary,
+        "_read_baseline_common_ir",
+        lambda _path: (_ for _ in ()).throw(
+            canary.routing_canary.ExistingARoutingCanaryError(
+                "baseline Common IR contains manual adjudication provenance"
+            )
+        ),
+    )
+
+    with pytest.raises(
+        canary.ExistingProfileCanaryError,
+        match="manual adjudication provenance",
+    ):
+        canary.build_plan(baseline_zip=Path("baseline.zip"))
+
+
+def test_main_rejects_real_shared_guard_before_constructing_openai_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    documents = _documents()
+    first = canary.CORRECTED_NOTICE_IDS[0]
+    documents[first]["blocks"].append({
+        "block_id": "pdf:b1",
+        "kind": "text",
+        "text": "must-not-reach-provider",
+        "provenance": {
+            "method": "pdf_inspector",
+            "generator_version": "manual gold v1",
+        },
+    })
+    baseline = tmp_path / "baseline.zip"
+    with ZipFile(baseline, "w", compression=ZIP_STORED) as archive:
+        for notice_id, document in documents.items():
+            archive.writestr(
+                f"{notice_id}/pipeline/common_ir_v1/{notice_id}.pdf.json",
+                json.dumps(document, ensure_ascii=False),
+            )
+    monkeypatch.setattr(canary, "_verify_prompt_pins", lambda: None)
+    monkeypatch.setattr(
+        canary.routing_canary,
+        "BASELINE_ARCHIVE_SHA256",
+        sha256(baseline.read_bytes()).hexdigest(),
+    )
+    constructed = False
+
+    def forbidden_client(**_kwargs: object) -> object:
+        nonlocal constructed
+        constructed = True
+        raise AssertionError("OpenAI client must not be constructed")
+
+    monkeypatch.setattr(canary, "OpenAILLMClient", forbidden_client)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-real-secret")
+
+    assert canary.main([
+        "--baseline-zip", str(baseline),
+        "--gold-root", str(tmp_path / "unused-gold"),
+        "--execute-openai",
+        "--model", canary.PINNED_OPENAI_MODEL_ID,
+        "--output-dir", str(tmp_path / "unused-output"),
+    ]) == 1
+    assert constructed is False
 
 
 def test_preflight_rejects_a_lexical_gold_child_without_opening_it(

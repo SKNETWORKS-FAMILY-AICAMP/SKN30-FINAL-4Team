@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run the six-notice Existing Profile canary against pinned baseline Common IR.
+"""Run the six-notice Existing Profile canary against pinned Common IR.
 
 This command is deliberately inert without ``--execute-openai``.  Its model
-phase reads only the six Common IR documents from the pinned automatic archive.
-Frozen Gold is not opened, hashed, or otherwise inspected until every provider
-call has finished.  The post-call local semantic gate is therefore unable to
-influence an OpenAI request.
+phase accepts only the six Common IR documents that pass the shared
+manual-adjudication preflight.  Frozen Gold is not opened, hashed, or otherwise
+inspected until every provider call has finished.  The post-call local semantic
+gate is therefore unable to influence an OpenAI request.
 """
 
 from __future__ import annotations
@@ -184,7 +184,12 @@ def build_plan(*, baseline_zip: Path) -> tuple[dict[str, dict[str, Any]], dict[s
     """Read only the pinned baseline; this function must never touch Gold."""
 
     _verify_prompt_pins()
-    documents, baseline_sha256, member_sha256 = routing_canary._read_baseline_common_ir(baseline_zip)
+    try:
+        documents, baseline_sha256, member_sha256 = routing_canary._read_baseline_common_ir(
+            baseline_zip
+        )
+    except routing_canary.ExistingARoutingCanaryError as error:
+        raise ExistingProfileCanaryError(str(error)) from error
     attachment_counts = {
         notice_id: routing_canary._attachment_count(document)
         for notice_id, document in documents.items()
@@ -218,6 +223,7 @@ def build_plan(*, baseline_zip: Path) -> tuple[dict[str, dict[str, Any]], dict[s
         ],
         "limitations": [
             "baseline_common_ir_only_in_openai_requests",
+            "manual_adjudication_metadata_rejected_before_provider_construction",
             "gold_is_not_read_until_all_openai_calls_finish",
             "zero_provider_retries_and_at_most_one_source_selection_repair",
             "report_excludes_raw_source_model_responses_and_secrets",

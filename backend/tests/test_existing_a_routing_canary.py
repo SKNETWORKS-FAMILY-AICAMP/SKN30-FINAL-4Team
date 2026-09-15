@@ -36,13 +36,16 @@ def _document(notice_id: str) -> dict:
     }
 
 
-def _baseline(tmp_path: Path) -> Path:
+def _baseline(tmp_path: Path, *, injected_block: dict | None = None) -> Path:
     path = tmp_path / "baseline.zip"
     with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
         for notice_id in canary.CORRECTED_NOTICE_IDS:
+            document = _document(notice_id)
+            if injected_block is not None and notice_id == canary.CORRECTED_NOTICE_IDS[0]:
+                document["blocks"].append(injected_block)
             archive.writestr(
                 f"{notice_id}/pipeline/common_ir_v1/{notice_id}.pdf.json",
-                json.dumps(_document(notice_id), ensure_ascii=False),
+                json.dumps(document, ensure_ascii=False),
             )
     return path
 
@@ -125,6 +128,148 @@ def test_plan_rejects_baseline_sha_pin_before_any_model_work(
 
     with pytest.raises(canary.ExistingARoutingCanaryError, match="baseline ZIP SHA-256 pin"):
         canary.build_plan(baseline_zip=baseline, gold_root=gold)
+
+
+@pytest.mark.parametrize(
+    "injected_block",
+    [
+        {
+            "block_id": "adj:synthetic:purpose",
+            "kind": "text",
+            "text": "must-not-appear-in-the-error",
+            "provenance": {"method": "native"},
+        },
+        {
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "must-not-appear-in-the-error",
+            "provenance": {"method": "manual_gold_native_span_composition"},
+        },
+        {
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "must-not-appear-in-the-error",
+            "provenance": {
+                "method": "pdf_inspector",
+                "generator_version": "manual-gold-v1",
+            },
+        },
+        {
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "must-not-appear-in-the-error",
+            "provenance": {"method": "pdf_inspector"},
+            "llm_provenance": {"review_mode": "gold patch"},
+        },
+        {
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "must-not-appear-in-the-error",
+            "source_block_label": "manual gold repair",
+            "provenance": {"method": "pdf_inspector"},
+        },
+        {
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "must-not-appear-in-the-error",
+            "occurrences": [{"occurrence_id": "adj:synthetic:o1"}],
+            "provenance": {"method": "native"},
+        },
+    ],
+)
+def test_plan_rejects_adjudication_only_common_ir_before_model_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    injected_block: dict,
+) -> None:
+    baseline = _baseline(tmp_path, injected_block=injected_block)
+    gold = _gold(tmp_path)
+    _pin_synthetic(monkeypatch, baseline, gold)
+
+    with pytest.raises(
+        canary.ExistingARoutingCanaryError,
+        match="manual adjudication provenance",
+    ) as captured:
+        canary.build_plan(baseline_zip=baseline, gold_root=gold)
+
+    assert "must-not-appear-in-the-error" not in str(captured.value)
+
+
+def test_adjudication_words_in_native_source_text_do_not_trigger_metadata_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _baseline(
+        tmp_path,
+        injected_block={
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "manual_gold and adjudication are ordinary source words here",
+            "provenance": {"method": "pdf_inspector"},
+        },
+    )
+    gold = _gold(tmp_path)
+    _pin_synthetic(monkeypatch, baseline, gold)
+
+    documents, _plan = canary.build_plan(baseline_zip=baseline, gold_root=gold)
+
+    assert tuple(documents) == canary.CORRECTED_NOTICE_IDS
+
+
+def test_metadata_guard_fails_closed_on_excessive_nesting() -> None:
+    nested: dict = {}
+    cursor = nested
+    for _index in range(canary.MAX_METADATA_SCAN_DEPTH + 1):
+        child: dict = {}
+        cursor["nested"] = child
+        cursor = child
+
+    with pytest.raises(
+        canary.ExistingARoutingCanaryError,
+        match="metadata nesting exceeds limit",
+    ):
+        canary._require_automatic_common_ir(nested)
+
+
+def test_main_rejects_contaminated_baseline_before_constructing_openai_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _baseline(
+        tmp_path,
+        injected_block={
+            "block_id": "pdf:b1",
+            "kind": "text",
+            "text": "must-not-reach-provider",
+            "provenance": {
+                "method": "pdf_inspector",
+                "generator_version": "manual gold v1",
+            },
+        },
+    )
+    gold = _gold(tmp_path)
+    output = tmp_path / "output"
+    output.mkdir()
+    _pin_synthetic(monkeypatch, baseline, gold)
+    monkeypatch.setattr(canary, "_verify_prompt_pins", lambda: None)
+    constructed = False
+
+    def forbidden_client(**_kwargs: object) -> object:
+        nonlocal constructed
+        constructed = True
+        raise AssertionError("OpenAI client must not be constructed")
+
+    monkeypatch.setattr(canary, "OpenAILLMClient", forbidden_client)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-real-secret")
+
+    assert canary.main([
+        "--baseline-zip", str(baseline),
+        "--gold-root", str(gold),
+        "--execute-openai",
+        "--model", canary.PINNED_OPENAI_MODEL_ID,
+        "--output-dir", str(output),
+    ]) == 1
+    assert constructed is False
 
 
 def test_execute_uses_public_routing_seam_and_never_selection_or_profile(

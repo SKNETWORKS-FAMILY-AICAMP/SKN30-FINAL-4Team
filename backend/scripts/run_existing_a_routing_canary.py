@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Run a tightly pinned, routing-only Existing A canary.
 
-The only model input is the unreviewed Common IR read directly from the
-automatic baseline ZIP.  Before the run, Frozen Gold contributes only its
-pinned freeze metadata.  Full Gold verification and oracle reads happen after
-the model phase; no Gold Common IR, selection, Profile, or adjudication value
-can enter an OpenAI request.
+The model phase accepts only Common IR that passes a fail-closed check for
+manual-adjudication identifiers and provenance.  Before the run, Frozen Gold
+contributes only its pinned freeze metadata.  Full Gold verification and
+oracle reads happen after the model phase; no Gold selection, Profile, or
+adjudication-only Common IR block may enter an OpenAI request.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import secrets
 import stat
 import sys
@@ -89,6 +90,37 @@ _SAFE_REASON_CODES = frozenset(
         "CANDIDATE_PACK_EMPTY",
     }
 )
+_TEXT_PAYLOAD_KEYS = frozenset(
+    {
+        "content",
+        "excerpt",
+        "normalized_text",
+        "raw_text",
+        "text",
+        "value_raw",
+    }
+)
+_PROVENANCE_MARKER_KEYS = frozenset(
+    {
+        "generator",
+        "lineage",
+        "method",
+        "origin",
+        "parser",
+        "producer",
+        "source_location",
+        "transform",
+    }
+)
+_PROVENANCE_CONTAINER_KEYS = frozenset({"llm_provenance", "provenance"})
+_ADJUDICATION_LABEL_KEYS = frozenset({"source_block_label"})
+_ADJUDICATION_MARKER_FRAGMENTS = (
+    "adjudicat",
+    "gold_patch",
+    "goldpatch",
+    "manual_gold",
+)
+MAX_METADATA_SCAN_DEPTH = 128
 
 
 class ExistingARoutingCanaryError(ValueError):
@@ -152,6 +184,94 @@ def _parse_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
     return value
 
 
+def _contains_adjudication_only_metadata(document: Mapping[str, Any]) -> bool:
+    """Detect manual-oracle lineage without inspecting source text payloads."""
+
+    def marker(value: str) -> bool:
+        lowered = value.strip().lower()
+        normalized = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
+        return lowered.startswith("adj:") or any(
+            fragment in normalized for fragment in _ADJUDICATION_MARKER_FRAGMENTS
+        )
+
+    def visit(
+        value: Any,
+        *,
+        parent_key: str = "",
+        provenance_context: bool = False,
+        depth: int = 0,
+    ) -> bool:
+        _require(
+            depth <= MAX_METADATA_SCAN_DEPTH,
+            "baseline Common IR metadata nesting exceeds limit",
+        )
+        if isinstance(value, Mapping):
+            for raw_key, item in value.items():
+                key = str(raw_key).strip().lower()
+                child_provenance_context = (
+                    provenance_context or key in _PROVENANCE_CONTAINER_KEYS
+                )
+                if (
+                    key in _TEXT_PAYLOAD_KEYS
+                    and isinstance(item, str)
+                    and not child_provenance_context
+                ):
+                    continue
+                if marker(key):
+                    return True
+                if isinstance(item, str):
+                    if (
+                        child_provenance_context
+                        or key.endswith("_id")
+                        or key in _PROVENANCE_MARKER_KEYS
+                        or key in _ADJUDICATION_LABEL_KEYS
+                    ) and marker(item):
+                        return True
+                elif isinstance(item, list) and key.endswith("_ids"):
+                    if any(isinstance(member, str) and marker(member) for member in item):
+                        return True
+                elif isinstance(item, list) and (
+                    child_provenance_context or key in _PROVENANCE_MARKER_KEYS
+                ):
+                    if any(isinstance(member, str) and marker(member) for member in item):
+                        return True
+                if visit(
+                    item,
+                    parent_key=key,
+                    provenance_context=child_provenance_context,
+                    depth=depth + 1,
+                ):
+                    return True
+            return False
+        if isinstance(value, list):
+            if (
+                parent_key.endswith("_ids") or provenance_context
+            ) and any(isinstance(member, str) and marker(member) for member in value):
+                return True
+            return any(
+                visit(
+                    item,
+                    parent_key=parent_key,
+                    provenance_context=provenance_context,
+                    depth=depth + 1,
+                )
+                for item in value
+            )
+        return False
+
+    return visit(document)
+
+
+def _require_automatic_common_ir(document: Mapping[str, Any]) -> None:
+    try:
+        contaminated = _contains_adjudication_only_metadata(document)
+    except RecursionError as error:
+        raise ExistingARoutingCanaryError(
+            "baseline Common IR metadata nesting exceeds limit"
+        ) from error
+    _require(not contaminated, "baseline Common IR contains manual adjudication provenance")
+
+
 def _read_baseline_common_ir(
     archive_path: Path,
 ) -> tuple[dict[str, dict[str, Any]], str, dict[str, str]]:
@@ -212,7 +332,9 @@ def _read_baseline_common_ir(
                         document = _parse_json_object(raw, label=info.filename)
                         identity = document.get("document")
                         _require(document.get("schema_version") == "common_ir_v1", "baseline input is not common_ir_v1")
-                        _require(isinstance(identity, dict) and identity.get("document_id", "").endswith(f":{notice_id}"), "baseline Common IR identity mismatch")
+                        document_id = identity.get("document_id") if isinstance(identity, dict) else None
+                        _require(isinstance(document_id, str) and document_id.endswith(f":{notice_id}"), "baseline Common IR identity mismatch")
+                        _require_automatic_common_ir(document)
                         documents[notice_id] = document
                         member_sha256[notice_id] = sha256(raw).hexdigest()
             except BadZipFile as error:
@@ -603,6 +725,7 @@ def build_plan(
         ],
         "limitations": [
             "baseline_common_ir_only_in_openai_requests",
+            "manual_adjudication_metadata_rejected_before_provider_construction",
             "does_not_run_source_selection_or_profile_assembly",
             "does_not_measure_gold_semantic_accuracy",
             "model_outputs_are_not_deterministic",

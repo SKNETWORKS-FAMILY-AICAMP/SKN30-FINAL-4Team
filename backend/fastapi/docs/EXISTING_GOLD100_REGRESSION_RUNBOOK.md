@@ -6,13 +6,20 @@
 
 | 자료 | 역할 | 정답으로 사용 가능 여부 |
 |---|---|---|
-| `structured-profiles-100.zip` | 사람 검토 전 자동 생성 baseline과 원본 공고 묶음 | 불가 |
+| `structured-profiles-100.zip` | 자동 생성 Profile·selection과 원본 공고 묶음. 단, Common IR에는 수동 교정 블록이 포함됨 | 불가 |
 | `frozen_existing_profile_gold_100_20260909_v5` | baseline의 의미 오류를 사람이 판정·교정하고 검증 기록까지 동결한 Gold oracle | 가능 |
 
 baseline의 Profile JSON을 최신 정답처럼 재사용하면 안 된다. 원문 attachment와 metadata는
-파이프라인 재실행 입력으로 사용할 수 있고, freeze v5의 Common IR·source-selection·Profile은
-후보 실행 결과를 평가하는 외부 oracle로만 사용한다. Gold JSON을 production prompt나
-repair payload에 넣거나 정답 값을 복사하는 것은 금지한다.
+파이프라인 재실행 입력으로 사용할 수 있다. 그러나 2026-09-16 감사에서 baseline ZIP의
+Common IR에도 `adj:` 식별자와 `manual_gold`/adjudication 계열 provenance가 들어 있음을
+확인했다. 따라서 이 ZIP의 Common IR은 모델 입력용 자동 원본이 아니며, 원본 attachment에서
+다시 생성한 무교정 Common IR만 canary 입력으로 사용할 수 있다. freeze v5의 Common IR·
+source-selection·Profile은 후보 실행 결과를 평가하는 외부 oracle로만 사용한다. Gold JSON을
+production prompt나 repair payload에 넣거나 정답 값을 복사하는 것은 금지한다.
+
+아래 94/6 수치는 두 동결 corpus의 비교 기준점으로는 유효하다. 다만 baseline Profile과
+selection도 수동 교정 블록이 포함된 Common IR을 바탕으로 생성됐으므로, 이를 “완전히 사람 검토
+전인 parser→Profile baseline”이라고 해석해서는 안 된다.
 
 확인된 동일성·차이는 다음과 같다.
 
@@ -121,9 +128,10 @@ jq . "$REPORT_DIR/existing-profile-comparison.v1.json"
 ```
 
 건수·변경 ID뿐 아니라 baseline ZIP과 Gold freeze manifest의 SHA-256도 함께 고정한다.
-기대값이 하나라도 달라지면 보고서를 쓰지 않고 실패한다. 이 결과의 `unchanged=94`는 자동
-baseline 94건을 사람이 검수한 Gold가 그대로 승인했다는 뜻이고, `changed=6`은 사람이 의미
-오류를 교정한 공고 수다. 이는 새 후보 파이프라인의 품질 점수가 아니라 비교기 자체의 기준점이다.
+기대값이 하나라도 달라지면 보고서를 쓰지 않고 실패한다. 이 결과의 `unchanged=94`는 §1의
+Common IR 오염 단서를 포함한 동결 baseline 중 94건을 Gold가 그대로 승인했다는 뜻이고,
+`changed=6`은 사람이 의미 오류를 추가 교정한 공고 수다. 이는 새 후보 파이프라인의 품질 점수가
+아니라 비교기 자체의 기준점이다.
 
 비교기 테스트:
 
@@ -203,10 +211,35 @@ uv run --project backend pytest -q \
 파이프라인의 `section scope → block router` 구간만 실행한다. source-selection, Profile 생성,
 DB·Storage 적재, embedding은 실행하지 않는다. 기본 동작은 API를 호출하지 않는 계획 검증이다.
 
-모델에 전달되는 자료는 SHA-256으로 고정된 자동 baseline ZIP의 Common IR뿐이다. 실행 전에는
-Gold의 고정된 `freeze_manifest.json` 메타데이터만 확인한다. Gold Common IR,
-source-selection, Existing Profile과 adjudication 자료는 모든 모델 호출이 끝난 뒤 로컬
-감사 단계에서 처음 읽으므로 prompt나 repair payload에 들어가지 않는다.
+canary의 정상 입력 계약은 원본 attachment에서 재생성하고 SHA-256으로 고정한 무교정 Common
+IR뿐이다. 실행 전에는 Gold의 고정된 `freeze_manifest.json` 메타데이터만 확인한다. 로더는
+`adj:` 식별자와 `manual_gold`, `adjudicat`, `goldpatch` 계열 provenance를 발견하면 모델
+클라이언트를 만들기 전에 종료한다. source text에 우연히 같은 단어가 등장하는 경우는 검사하지
+않고 ID·provenance metadata만 검사한다.
+
+> **2026-09-16 감사 정정:** 현재 pin이 가리키는
+> `/srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip`의 Common IR은 이 계약을
+> 만족하지 않는다. 아래 무호출 명령은 현재 종료 코드 `1`과
+> `manual adjudication provenance` 오류로 차단되는 것이 정상이다. 원본 attachment에서 재생성한
+> 6건 Common IR archive와 새 SHA-256 pin을 함께 검토·반영하기 전에는
+> `--execute-openai`를 사용하지 않는다.
+
+현재 worker의 production parser entrypoint는 HWP/HWPX만 허용한다. 2026-09-16 원본 재생성
+검사에서 HWP 1건은 수동 교정 marker 0인 Common IR로 재생성됐지만, PDF 5건은 파일 손상이
+아니라 PDF parser entrypoint 미통합으로 중단됐다. PDF native extraction을 정식 worker 경로에
+연결하고 6건을 모두 재생성하기 전에는 새 canary pin을 발급하지 않는다.
+
+새 pin은 단순히 ZIP SHA-256 한 줄만 바꾸지 않는다. 같은 리뷰 단위에서 다음을 모두 확인한다.
+
+- 6건 원본 SHA-256 결속과 수동 교정 metadata 0건
+- Common IR 재생성 뒤 occurrence ID가 Gold 감사 키와 계속 결속되는지 여부
+- `ALL_NATIVE_SAFE_MATCH_COUNT`와 `ALL_NATIVE_REACHABLE_KEY_SHA256`의 의미가 유지되는지 여부
+- attachment section 수에 따른 section-scope 호출 수와 총 호출 budget 재계산
+- full canary의 깨끗한 model input과 historical B/G/C baseline 역할 분리
+- 8절 comparator의 `candidate Common IR == baseline Common IR` 전제를 새 입력 계약에 맞게 개정
+
+재생성 결과가 종전 8회 계획과 다르다는 이유만으로 실패나 회귀라고 단정하지 않는다. 먼저
+parser·section 차이를 검토하고, 검토된 새 호출 계획과 상한을 코드·테스트·문서에 함께 pin한다.
 
 먼저 무호출 계획을 확인한다.
 
@@ -219,13 +252,15 @@ uv run --project backend python backend/scripts/run_existing_a_routing_canary.py
   --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5
 ```
 
-정상 계획은 `announcement_section_scope_v1` 2회와
-`announcement_block_router_v03` 6회, 합계 8회다. 자료·prompt·모델 pin 또는 이 호출 계획이
-달라지면 실행하지 않고 실패한다.
+현재 historical pin에서 측정한 계획은 `announcement_section_scope_v1` 2회와
+`announcement_block_router_v03` 6회, 합계 8회다. 새 무교정 archive의 정상 계획은 Common IR
+section 구조를 재검토해 다시 확정한다. 새 pin과 함께 코드·테스트의 호출 계획을 갱신하기 전에는
+현재 8회 hard pin이 의도적으로 실행을 막는다.
 
-실제 호출은 비공개 Common IR을 외부 OpenAI API에 전송하므로 자료 전송 승인을 받은 뒤에만
-명시적인 `--execute-openai`로 실행한다. `OPENAI_API_KEY`는 출력하거나 보고서에 쓰지 않고
-환경 파일에서만 읽는다. 모델은 이 canary에 고정된 `gpt-5.6-terra`만 허용한다.
+실제 호출은 비공개 Common IR을 외부 OpenAI API에 전송하므로 무교정 input pin 검토와 자료
+전송 승인을 모두 받은 뒤에만 명시적인 `--execute-openai`로 실행한다. `OPENAI_API_KEY`는
+출력하거나 보고서에 쓰지 않고 환경 파일에서만 읽는다. 모델은 이 canary에 고정된
+`gpt-5.6-terra`만 허용한다. 아래 실행 예시는 새 input archive pin 반영 전에는 실행하지 않는다.
 
 ```bash
 REPORT_DIR="$(mktemp -d /tmp/existing-a-routing-canary.XXXXXX)"
@@ -259,14 +294,14 @@ token 사용량은 원문·응답·request ID 없이 숫자만 `calls.usage`에 
 의미 구조화가 성공했다는 뜻은 아니다. 나머지 18개와 최종 Profile 의미 품질은 8절의
 ID·순서 비의존 semantic diff로 따로 검증해야 한다.
 
-2026-09-15 고정 자료·모델로 실제 실행한 결과는 다음과 같다.
+2026-09-15 당시 고정 자료·모델로 실행한 결과는 다음과 같다. 이후 입력 Common IR의 수동 교정
+블록 혼입이 확인됐으므로 이는 **비블라인드 참고 진단**이며 routing release gate가 아니다.
 
 | 항목 | 결과 |
 |---|---:|
 | 실행 상태 | `succeeded` |
 | routing 보존 상태 | `passed` |
 | semantic Profile 상태 | `not_run` |
-
 | 호출 | 계획 8 / 시도 8 / provider 응답 8 |
 | 호출 구성 | section scope 2 / block router 6 |
 | token | prompt 107,768 / completion 18,526 / 합계 126,294 |
@@ -276,9 +311,9 @@ ID·순서 비의존 semantic diff로 따로 검증해야 한다.
 | fatal 진단 | 0 |
 | Common IR block 경계 위반 후보 | 0 |
 
-이 표는 routing canary 결과이며 source-selection이나 Profile 의미 정확도의 통과 기록이 아니다.
-비용은 실행 계정에 적용되는 `gpt-5.6-terra` 단가가 별도로 확인되지 않았으므로 token 사용량만
-고정한다.
+이 표는 당시 실행 경로와 호출량을 재현하는 기록일 뿐, 깨끗한 입력에서의 routing 보존이나
+source-selection/Profile 의미 정확도의 통과 기록이 아니다. 비용은 실행 계정에 적용되는
+`gpt-5.6-terra` 단가가 별도로 확인되지 않았으므로 token 사용량만 고정한다.
 
 관련 테스트:
 
@@ -298,8 +333,9 @@ uv run --project backend pytest -q \
 공고의 Profile과 그 Profile을 만든 **동일한 finalized source-selection artifact**를 후보 ZIP에
 남긴다. native exact mode는 `lines+continuations`, composite은 `shadow`로 고정한다.
 
-기본 명령은 Gold를 포함해 어떤 외부 자료도 읽지 않고, baseline ZIP의 SHA·Common IR 범위와
-prompt pin·호출 상한만 확인하는 dry-run이다.
+기본 명령은 Gold를 포함해 어떤 외부 자료도 읽지 않고, input ZIP의 SHA·Common IR 범위·수동
+교정 metadata 부재와 prompt pin·호출 상한만 확인하는 dry-run이다. 현재 historical baseline
+ZIP은 수동 교정 metadata 검사에서 차단된다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team
@@ -310,9 +346,10 @@ uv run --project backend python backend/scripts/run_existing_profile_canary.py \
   --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5
 ```
 
-실제 실행은 baseline Common IR을 OpenAI에 전송한다. 따라서 자료 전송·비용 승인을 받은 뒤에만
-`--execute-openai`를 붙인다. `OPENAI_LOG=debug`는 원문 또는 SDK 진단 노출 위험 때문에
-허용하지 않는다. API key는 환경에서만 읽고 후보 ZIP·보고서·표준 출력에 기록하지 않는다.
+실제 실행은 pin된 무교정 Common IR을 OpenAI에 전송한다. 따라서 새 input archive pin 검토와
+자료 전송·비용 승인을 받은 뒤에만 `--execute-openai`를 붙인다. `OPENAI_LOG=debug`는 원문 또는
+SDK 진단 노출 위험 때문에 허용하지 않는다. API key는 환경에서만 읽고 후보 ZIP·보고서·표준
+출력에 기록하지 않는다. 아래 실행 예시는 새 pin 반영 전에는 실행하지 않는다.
 
 ```bash
 REPORT_DIR="$(mktemp -d /tmp/existing-profile-canary.XXXXXX)"
@@ -361,10 +398,11 @@ block router 6, source-selection 12, anchor correction 12, 총 32회다. 응답 
 120초 이하만 허용한다. reasoning effort는 `medium`으로 고정하고 temperature는 지정하지 않는다.
 첫 공고 실패 시 나머지 공고 호출은 중단한다.
 
-Gold는 모든 OpenAI 호출이 끝나기 전에는 열거나 hash하지 않는다. 호출이 모두 끝난 뒤에만
+Gold는 모든 OpenAI 호출이 끝나기 전에는 열거나 hash하지 않는다. input Common IR 자체도 수동
+교정 metadata가 없어야 한다. 호출이 모두 끝난 뒤에만
 freeze manifest pin을 검증하고, 기존 `compare_existing_profile_semantics.py`의 B/G/C semantic
-gate를 이 6건 후보 ZIP에 로컬 실행한다. 따라서 Gold Profile·selection·Common IR·adjudication
-값이 모델 payload나 repair payload에 들어갈 수 없다.
+gate를 이 6건 후보 ZIP에 로컬 실행한다. 새 무교정 input archive와 B/G/C 비교기의 입력 결속을
+함께 갱신하기 전에는 이 단계가 release gate로 동작한다고 주장하지 않는다.
 
 성공 판정은 `execution_status=succeeded`와 `semantic_gate.status=passed`가 모두 성립하는 경우다.
 `semantic_gate.status=failed`는 모델 호출 성공과 별개로 후보 의미 graph가 Gold와 같지 않거나
@@ -372,16 +410,19 @@ gate를 이 6건 후보 ZIP에 로컬 실행한다. 따라서 Gold Profile·sele
 먼저 해당 공고의 gate 진단과 일반화 가능한 source-selection/assembly 규칙을 검토하고 fixture와
 회귀 테스트를 추가한다.
 
-### 7.2 2026-09-15 full canary 실제 실행 결과
+### 7.2 2026-09-15 full canary 실제 실행 결과와 2026-09-16 감사 정정
 
-고정 baseline Common IR 6건만 OpenAI `gpt-5.6-terra`에 전송해 실제 실행했다. Gold Profile,
-source-selection, Common IR과 교정 기록은 외부로 전송하지 않았으며 모든 provider 호출이 끝난
-뒤 로컬 의미 비교에만 사용했다.
+고정 baseline Common IR 6건을 OpenAI `gpt-5.6-terra`에 전송해 실제 실행했다. 당시에는 Gold
+root를 모든 provider 호출 뒤에만 열었으므로 Gold 디렉터리의 Profile·selection을 직접 읽어
+payload에 넣지는 않았다. 그러나 2026-09-16 감사에서 **전송한 baseline Common IR 자체에**
+`adj:` 및 `manual_gold`/adjudication provenance를 가진 수동 교정 블록이 포함됐고, 그중 일부가
+모델 후보에 노출됐음을 확인했다. 따라서 “Gold와 완전히 격리된 blind canary”라는 종전 설명을
+철회한다.
 
 OpenAI 호출과 6건의 Profile·source-selection 생성은 모두 완료됐지만 Gold 의미 회귀 gate는
-0/6으로 실패했다. 따라서 이 실행은 전송·직렬화·산출물 생성 경로가 작동한다는 확인이지,
-Existing Profile 의미 품질 통과나 배포 승인 결과가 아니다. CLI 종료 코드는 의미 불일치를
-뜻하는 `2`였다.
+0/6으로 실패했다. 이 실행은 전송·직렬화·산출물 생성 경로를 확인하고 후속 문제를 찾는
+**비블라인드 진단 자료**로만 보존한다. Existing Profile 의미 품질 통과, 회귀 gate 기준점,
+배포 승인 결과로 사용할 수 없다. 당시 CLI 종료 코드는 의미 불일치를 뜻하는 `2`였다.
 
 | 항목 | 결과 |
 |---|---:|
@@ -394,8 +435,8 @@ Existing Profile 의미 품질 통과나 배포 승인 결과가 아니다. CLI 
 | 누적 provider 지연시간 | 460,946 ms |
 | 후보 ZIP SHA-256 | `c46e51f648f8ac0d94d791f2e1ecc8bef18d4cb73309d4195f3dbb164fc6e5b3` |
 
-로컬 진단 산출물은 아래 Git 제외 경로에 보존했다. 이 자료는 분석·재검증용이며 배포 또는
-Existing KB bootstrap 입력이 아니다.
+로컬 진단 산출물은 아래 Git 제외 경로에 보존했다. 이 자료는 오염 사실을 포함한 역사적
+진단·감사용이며 재검증 baseline, 배포 또는 Existing KB bootstrap 입력이 아니다.
 
 ```text
 .runtime/evaluations/existing-profile-canary-20260915/
@@ -443,6 +484,12 @@ PBLN_<15자리>/pipeline/structured_profile.v0.2.json
 PBLN_<15자리>/pipeline/source_selection.json
 PBLN_<15자리>/pipeline/common_ir_v1/<한 개의 JSON>
 ```
+
+아래 `candidate Common IR == baseline Common IR`은 **현재 historical 비교기의 구현 계약**이다.
+그러나 그 baseline Common IR이 canary 모델 입력으로 부적합하다는 사실이 확인됐으므로, 새
+무교정 input을 쓰는 canary에는 현재 후보 gate를 그대로 연결할 수 없다. 깨끗한 input corpus를
+별도 trust root로 받도록 comparator와 occurrence 결속을 개정하기 전까지 8절의 candidate mode는
+새 canary의 release gate가 아니다. baseline/Gold calibration 재현 용도로만 구분해 사용한다.
 
 후보의 Common IR은 Gold에서 복사하지 않는다. baseline의 동결 Common IR을 후보 Profile
 생성 입력으로 사용하고 후보 ZIP에도 그대로 포함해야 한다. 배포 경로인
