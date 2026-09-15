@@ -20,6 +20,30 @@ The HWP/HWPX route additionally requires a working `rhwp-python` installation
 and its FreeType runtime. The PDF route consumes precomputed native extraction.
 The optional OCR worker is a separately invoked diagnostic producer.
 
+## Offline Existing PDF replay
+
+Existing 공고의 원본 PDF를 다시 Common IR로 만들 때만 고정된 PDF extra를
+별도 환경에 설치한다. 이 extra는 Request 업로드 API나 기본 backend worker
+이미지에 포함되지 않는다.
+
+```bash
+uv sync --locked --project backend/vendor/common_ir_pipeline --extra pdf
+
+backend/vendor/common_ir_pipeline/.venv/bin/python \
+  backend/scripts/replay_existing_pdf_native.py \
+  --notice-id PBLN_000000000103645 \
+  --pdf /abs/path/source.pdf \
+  --output-dir /abs/path/new-replay
+```
+
+`pdf-inspector==1.17.0`은 이 패키지의 `uv.lock`에 고정된다. 명령은 전체
+PDF만 읽으며 page-range를 받지 않는다. 출력 디렉터리는 새 경로여야 하고,
+`source.pdf`, `native.json`, `common_ir.json`, `manifest.json`을 생성한다.
+manifest에는 원본·native capture·Common IR의 상대 경로, 크기, SHA-256,
+parser 버전, resource limit 및 native coverage가 기록된다. 이 경로는 DB,
+Storage, OpenAI, OCR/ODL/Surya를 호출하지 않으며 Request PDF를 허용하지 않는다.
+subprocess hard limit을 사용하는 Linux/WSL(POSIX) 환경에서 실행해야 한다.
+
 ## Optional PDF OCR/layout diagnostic worker
 
 Install this only in an environment that is meant to render PDFs and run OCR
@@ -93,6 +117,11 @@ registry key.
 IDAT/scanline verification
 before a consumer may send images to a remote worker. These primitives do not
 render a PDF and do not promote OCR/ODL text into Common IR.
+
+`common-ir-pdf-native` also fails closed unless its native JSON conforms to
+`pdf_inspector_native_capture/v1` and is bound to the supplied PDF bytes.
+Unbound historical native JSON may be retained for audit, but cannot be used
+to mint a new production Common IR document.
 
 The initial renderer contract intentionally accepts only non-interlaced 8-bit
 RGB/RGBA PNGs. PNG inputs have conservative compressed-byte, dimension, total

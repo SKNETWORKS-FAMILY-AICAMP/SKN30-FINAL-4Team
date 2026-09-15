@@ -25,6 +25,10 @@ src/common_ir_pipeline/
   adapters/pdf_native.py    native PDF, optionally enriched by archived layout sidecars -> Common IR
   adapters/markdown_fixture.py
                             test-fixture Markdown -> Common IR
+  pdf_fusion/native_capture.py
+                            pinned pdf-inspector capture validation and source binding
+  workers/pdf_inspector_capture.py
+                            whole-document native capture child process
   pdf_fusion/              coordinate/render manifests and immutable byte binding
   pdf_fusion/schemas/      cross-language JSON Schemas for those manifests
   run_rhwp_e2e.py           original HWP/HWPX -> rhwp -> Common IR runner
@@ -127,6 +131,24 @@ python -m common_ir_pipeline.adapters.rhwp \
 
 ### Native PDF
 
+새 Existing 원본에서 native artifact와 Common IR을 함께 만들 때는 저장소 루트의
+오프라인 replay 명령을 사용한다. 이 경로만 `pdf-inspector==1.17.0` extra를
+사용하며 Request worker에는 연결하지 않는다.
+
+```bash
+uv sync --locked --project backend/vendor/common_ir_pipeline --extra pdf
+backend/vendor/common_ir_pipeline/.venv/bin/python \
+  backend/scripts/replay_existing_pdf_native.py \
+  --notice-id PBLN_000000000125056 \
+  --pdf /abs/path/notice.pdf \
+  --output-dir /abs/path/new-replay
+```
+
+아래 adapter 직접 호출은 `pdf_inspector_native_capture/v1`로 생성되어 원본
+SHA-256·크기와 결속된 native artifact를 재조립할 때만 사용한다. schema marker가
+없는 historical/unbound JSON은 production Common IR 생성에 사용할 수 없다.
+replay 명령은 subprocess hard limit을 적용하므로 Linux/WSL(POSIX)에서 실행한다.
+
 ```bash
 common-ir-pdf-native \
   --notice-id PBLN_000000000125056 \
@@ -136,14 +158,16 @@ common-ir-pdf-native \
   --output /abs/path/notice.pdf.common_ir_v1.json
 ```
 
-PDF semantic text is **native text only**. Archived OCR/Surya/Paddle outputs
-may optionally be supplied through `--render-manifest` and
-`--enriched-common-ir` only when they were already produced and
-source-hash-bound;
-they can preserve textless layout/table/diagram provenance but their OCR text
-never becomes Common IR semantic text, a CandidatePack text basis, an exact
-span or `value_raw`. The adapter never invokes OCR itself. Image-only PDFs
-become `excluded_image_only` with no semantic blocks.
+PDF semantic text is **native text only**. The direct adapter still exposes
+legacy `--render-manifest`, `--enriched-common-ir` and diagram-sidecar options,
+but the new replay command deliberately does not. In particular, the current
+adapter does not independently bind every enriched/render/diagram sidecar to
+the source PDF, so those inputs must not be used for a new production replay
+until the later fusion manifest gate is implemented. The separately supported
+OCR-layout diagnostic verifies its source hash and remains textless. No OCR
+string becomes Common IR semantic text, a CandidatePack text basis, an exact
+span or `value_raw`. Image-only PDFs become `excluded_image_only` with no
+semantic blocks.
 
 ### Markdown fixture (test-only adapter)
 

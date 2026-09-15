@@ -226,8 +226,10 @@ IR뿐이다. 실행 전에는 Gold의 고정된 `freeze_manifest.json` 메타데
 
 현재 worker의 production parser entrypoint는 HWP/HWPX만 허용한다. 2026-09-16 원본 재생성
 검사에서 HWP 1건은 수동 교정 marker 0인 Common IR로 재생성됐지만, PDF 5건은 파일 손상이
-아니라 PDF parser entrypoint 미통합으로 중단됐다. PDF native extraction을 정식 worker 경로에
-연결하고 6건을 모두 재생성하기 전에는 새 canary pin을 발급하지 않는다.
+아니라 Request parser entrypoint가 의도적으로 PDF를 허용하지 않아 중단됐다. PDF 5건은
+`replay_existing_pdf_native.py`의 Existing/offline 전용 native capture 경로로 재생성한다.
+이를 Request worker나 업로드 API에 연결하지 않는다. 6건을 모두 재생성하고 아래 결속·결정성
+검사를 통과하기 전에는 새 canary pin을 발급하지 않는다.
 
 새 pin은 단순히 ZIP SHA-256 한 줄만 바꾸지 않는다. 같은 리뷰 단위에서 다음을 모두 확인한다.
 
