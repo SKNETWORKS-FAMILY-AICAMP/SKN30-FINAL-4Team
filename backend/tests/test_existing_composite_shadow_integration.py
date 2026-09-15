@@ -170,6 +170,39 @@ def _shadow_log_payloads(caplog: pytest.LogCaptureFixture) -> list[dict]:
     return payloads
 
 
+def test_routing_only_seam_preserves_the_existing_prepare_router_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The canary seam is exactly the production pipeline's pre-selection path."""
+
+    prepared = object()
+    pack = _pack()
+    metrics = {"a_table_cell_total": 0}
+    calls: list[tuple[str, object]] = []
+
+    def fake_prepare(document: dict, llm: object, model: str) -> object:
+        calls.append(("prepare", (document, llm, model)))
+        return prepared
+
+    def fake_route(value: object, llm: object, model: str):
+        calls.append(("route", (value, llm, model)))
+        return pack, metrics
+
+    monkeypatch.setattr(announcement_profiles, "_prepare_scoped_notice", fake_prepare)
+    monkeypatch.setattr(announcement_profiles, "_route_blocks", fake_route)
+    document, llm = _document(), object()
+
+    actual_pack, actual_metrics = announcement_profiles.route_announcement_a_pack(
+        document, llm, model_profile="pinned-router"
+    )
+
+    assert (actual_pack, actual_metrics) == (pack, metrics)
+    assert calls == [
+        ("prepare", (document, llm, "pinned-router")),
+        ("route", (prepared, llm, "pinned-router")),
+    ]
+
+
 def test_off_skips_generator_and_shadow_keeps_profile_and_model_payload_identical(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

@@ -988,6 +988,25 @@ def _select_and_assemble(
     return profile
 
 
+def route_announcement_a_pack(
+    document: dict[str, Any],
+    llm_client: LLMClient,
+    *,
+    model_profile: str,
+):
+    """Run exactly the production section-scope and broad A-routing prefix.
+
+    This intentionally stops before source selection, anchor correction, and
+    Profile assembly.  It is the safe reusable boundary for a routing canary:
+    the returned pack contains only deterministic projections of the Common
+    IR plus the validated router decision; it does not create a Profile or
+    persist any artifact.
+    """
+
+    prepared = _prepare_scoped_notice(document, llm_client, model_profile)
+    return _route_blocks(prepared, llm_client, model_profile)
+
+
 def structure_announcement_profile(
     document: dict[str, Any],
     llm_client: LLMClient,
@@ -1014,8 +1033,9 @@ def structure_announcement_profile(
         if composite_candidate_mode is None
         else normalize_existing_composite_candidate_mode(composite_candidate_mode)
     )
-    prepared = _prepare_scoped_notice(document, llm_client, model_profile)
-    pack, metrics = _route_blocks(prepared, llm_client, model_profile)
+    pack, metrics = route_announcement_a_pack(
+        document, llm_client, model_profile=model_profile
+    )
     metrics = _with_composite_shadow_metrics(document, pack, metrics, mode=mode)
     return _select_and_assemble(document, pack, metrics, llm_client, model_profile)
 
@@ -1032,6 +1052,7 @@ __all__ = [
     "SOURCE_SELECTION_TASK",
     "existing_composite_candidate_mode_from_env",
     "normalize_existing_composite_candidate_mode",
+    "route_announcement_a_pack",
     "structure_announcement_profile",
     "verified_common_ir_source_sha256",
 ]

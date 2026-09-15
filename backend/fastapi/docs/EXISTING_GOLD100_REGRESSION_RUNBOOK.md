@@ -195,3 +195,95 @@ uv run --project backend pytest -q \
   backend/tests/test_existing_composite_candidates.py \
   backend/tests/test_existing_composite_shadow_integration.py
 ```
+
+## 7. 교정 6건 A-routing canary
+
+`run_existing_a_routing_canary.py`는 사람 검토로 의미 교정된 6건에 대해 production
+파이프라인의 `section scope → block router` 구간만 실행한다. source-selection, Profile 생성,
+DB·Storage 적재, embedding은 실행하지 않는다. 기본 동작은 API를 호출하지 않는 계획 검증이다.
+
+모델에 전달되는 자료는 SHA-256으로 고정된 자동 baseline ZIP의 Common IR뿐이다. 실행 전에는
+Gold의 고정된 `freeze_manifest.json` 메타데이터만 확인한다. Gold Common IR,
+source-selection, Existing Profile과 adjudication 자료는 모든 모델 호출이 끝난 뒤 로컬
+감사 단계에서 처음 읽으므로 prompt나 repair payload에 들어가지 않는다.
+
+먼저 무호출 계획을 확인한다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend python backend/scripts/run_existing_a_routing_canary.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5
+```
+
+정상 계획은 `announcement_section_scope_v1` 2회와
+`announcement_block_router_v03` 6회, 합계 8회다. 자료·prompt·모델 pin 또는 이 호출 계획이
+달라지면 실행하지 않고 실패한다.
+
+실제 호출은 비공개 Common IR을 외부 OpenAI API에 전송하므로 자료 전송 승인을 받은 뒤에만
+명시적인 `--execute-openai`로 실행한다. `OPENAI_API_KEY`는 출력하거나 보고서에 쓰지 않고
+환경 파일에서만 읽는다. 모델은 이 canary에 고정된 `gpt-5.6-terra`만 허용한다.
+
+```bash
+REPORT_DIR="$(mktemp -d /tmp/existing-a-routing-canary.XXXXXX)"
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --env-file backend/.env --project backend \
+  python backend/scripts/run_existing_a_routing_canary.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
+  --execute-openai \
+  --model gpt-5.6-terra \
+  --timeout-seconds 120 \
+  --output-dir "$REPORT_DIR"
+
+jq . "$REPORT_DIR/existing-a-routing-canary.v1.json"
+```
+
+SDK 자동 재시도는 0이며 호출 budget은 provider에 제어를 넘기기 전에 차감한다. 따라서 timeout
+또는 전송 실패도 `calls.attempted`에 포함되고 8회를 넘지 않는다. provider가 응답한 호출의
+token 사용량은 원문·응답·request ID 없이 숫자만 `calls.usage`에 기록한다.
+
+보고서의 세 상태는 서로 다른 의미다.
+
+- `execution_status`: 고정된 routing 호출 계획 자체의 성공 여부
+- `routing_retention_status`: generator v2가 현재 표현할 수 있는 Gold 기대 12개가 실제 A routing
+  이후에도 모두 남았는지 여부
+- `semantic_profile_status`: source-selection과 Profile 생성을 실행하지 않으므로 항상 `not_run`
+
+현재 Gold의 multi-occurrence 기대는 30개지만 generator v2로 표현 가능한 범위는 12개다.
+따라서 `generator_expressibility=12/30`, `routed_a_retention=12/12`가 나오더라도 전체 6건의
+의미 구조화가 성공했다는 뜻은 아니다. 나머지 18개와 최종 Profile 의미 품질은 다음 단계의
+ID·순서 비의존 semantic diff로 따로 검증해야 한다.
+
+2026-09-15 고정 자료·모델로 실제 실행한 결과는 다음과 같다.
+
+| 항목 | 결과 |
+|---|---:|
+| 실행 상태 | `succeeded` |
+| routing 보존 상태 | `passed` |
+| semantic Profile 상태 | `not_run` |
+| 호출 | 계획 8 / 시도 8 / provider 응답 8 |
+| 호출 구성 | section scope 2 / block router 6 |
+| token | prompt 107,768 / completion 18,526 / 합계 126,294 |
+| 누적 provider 지연시간 | 114,390 ms |
+| 표현 가능 기대 | 12 / 30 |
+| 실제 routing 보존 | 12 / 12 |
+| fatal 진단 | 0 |
+| Common IR block 경계 위반 후보 | 0 |
+
+이 표는 routing canary 결과이며 source-selection이나 Profile 의미 정확도의 통과 기록이 아니다.
+비용은 실행 계정에 적용되는 `gpt-5.6-terra` 단가가 별도로 확인되지 않았으므로 token 사용량만
+고정한다.
+
+관련 테스트:
+
+```bash
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend pytest -q \
+  backend/tests/test_existing_a_routing_canary.py \
+  backend/tests/test_existing_composite_shadow_integration.py \
+  backend/tests/test_worker_core_contract.py
+```

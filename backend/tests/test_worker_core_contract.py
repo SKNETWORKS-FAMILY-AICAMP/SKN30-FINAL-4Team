@@ -21,7 +21,10 @@ from pydantic import BaseModel
 
 from worker import vendor
 from worker.adapters.openai_embedding_client import OpenAIEmbeddingClient
-from worker.adapters.openai_llm_client import OpenAILLMClient
+from worker.adapters.openai_llm_client import (
+    OpenAICompletionTelemetry,
+    OpenAILLMClient,
+)
 from worker.contracts.fit_result import FitStatus
 from worker.contracts.sim_result import SimStatus
 from worker.config import OpenAIConfig
@@ -478,6 +481,109 @@ def test_openai_llm_records_usage_before_invalid_response_without_content_leak(
     assert "structured request completed" not in caplog.text
     assert sentinel not in caplog.text
     assert "private prompt content" not in caplog.text
+
+
+def test_openai_completion_telemetry_records_provider_completion_before_local_validation() -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    events: list[OpenAICompletionTelemetry] = []
+    valid = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(
+            chat=SimpleNamespace(completions=_FakeChatCompletions('{"value":"grounded"}'))
+        ),
+        telemetry_callback=events.append,
+    )
+    invalid = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(
+            chat=SimpleNamespace(completions=_FakeChatCompletions('{"wrong":1}'))
+        ),
+        telemetry_callback=events.append,
+    )
+
+    assert asyncio.run(
+        valid.generate_structured(
+            task_name="telemetry_valid",
+            messages=[Message(role="user", content="private prompt")],
+            response_schema=_ResultSchema,
+            model_profile="default",
+        )
+    ) == _ResultSchema(value="grounded")
+    with pytest.raises(LLMInvalidResponseError):
+        asyncio.run(
+            invalid.generate_structured(
+                task_name="telemetry_invalid",
+                messages=[Message(role="user", content="private prompt")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+
+    assert [(event.task_name, event.model, event.prompt_tokens,
+             event.completion_tokens, event.total_tokens, event.outcome) for event in events] == [
+        ("telemetry_valid", "gpt-test", 4, 2, 6, "provider_completed"),
+        ("telemetry_invalid", "gpt-test", 4, 2, 6, "provider_completed"),
+    ]
+    assert all(type(event.duration_ms) is int and event.duration_ms >= 0 for event in events)
+    assert set(events[0].__dataclass_fields__) == {
+        "task_name", "model", "prompt_tokens", "completion_tokens",
+        "total_tokens", "duration_ms", "outcome",
+    }
+    assert "private prompt" not in repr(events)
+
+
+def test_openai_completion_telemetry_skips_transport_failure_and_isolates_callback_failure() -> None:
+    from worker.ports.llm import LLMTimeoutError, Message
+
+    class TimeoutCompletions:
+        async def create(self, **_kwargs: object) -> object:
+            raise TimeoutError("offline transport failure")
+
+    completed_events: list[OpenAICompletionTelemetry] = []
+    unavailable = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=TimeoutCompletions())),
+        telemetry_callback=completed_events.append,
+    )
+    with pytest.raises(LLMTimeoutError):
+        asyncio.run(
+            unavailable.generate_structured(
+                task_name="telemetry_transport_failure",
+                messages=[Message(role="user", content="private prompt")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+    assert completed_events == []
+
+    callback_calls = 0
+
+    def broken_callback(_event: OpenAICompletionTelemetry) -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+        raise RuntimeError("telemetry sink must not change LLM outcome")
+
+    isolated = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(
+            chat=SimpleNamespace(completions=_FakeChatCompletions('{"value":"grounded"}'))
+        ),
+        telemetry_callback=broken_callback,
+    )
+    assert asyncio.run(
+        isolated.generate_structured(
+            task_name="telemetry_callback_failure",
+            messages=[Message(role="user", content="private prompt")],
+            response_schema=_ResultSchema,
+            model_profile="default",
+        )
+    ) == _ResultSchema(value="grounded")
+    assert callback_calls == 1
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,8 @@ the normal ``OPENAI_API_KEY`` environment variable through ``OpenAIConfig``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 import inspect
 import json
 import logging
@@ -36,6 +37,32 @@ from ..ports.llm import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class OpenAICompletionTelemetry:
+    """Safe provider-completion accounting with no request or response data.
+
+    This records only deployment and numeric provider usage after OpenAI has
+    returned a completion.  It deliberately has no message, raw JSON,
+    response-id, credential, or request-hash member.  A locally invalid JSON
+    Schema response still receives this event because the provider consumed
+    tokens before the local validator rejects it.
+    """
+
+    task_name: str
+    model: str
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    duration_ms: int
+    outcome: str = "provider_completed"
+
+
+def _usage_count(value: object) -> int | None:
+    """Accept only provider-shaped non-negative integer usage counters."""
+
+    return value if type(value) is int and value >= 0 else None
+
+
 class OpenAILLMClient:
     """Adapt OpenAI Chat Completions JSON Schema output to ``LLMClient``.
 
@@ -51,6 +78,7 @@ class OpenAILLMClient:
         model_profiles: Mapping[str, str],
         timeout_seconds: float = 60.0,
         client: Any | None = None,
+        telemetry_callback: Callable[[OpenAICompletionTelemetry], None] | None = None,
     ) -> None:
         if not api_key.strip():
             raise ValueError("OpenAI API key must not be blank")
@@ -66,6 +94,7 @@ class OpenAILLMClient:
 
         self._model_profiles = profiles
         self._timeout_seconds = float(timeout_seconds)
+        self._telemetry_callback = telemetry_callback
         # The vendored synchronous orchestration opens a short-lived event
         # loop for each structured call.  A long-lived AsyncOpenAI/httpx client
         # can become bound to the first such loop and fail on the next call.
@@ -128,20 +157,49 @@ class OpenAILLMClient:
             ) from None
 
         usage = getattr(completion, "usage", None)
+        prompt_tokens = _usage_count(getattr(usage, "prompt_tokens", None))
+        completion_tokens = _usage_count(
+            getattr(usage, "completion_tokens", None)
+        )
+        total_tokens = _usage_count(getattr(usage, "total_tokens", None))
+        duration_ms = max(0, round((time.perf_counter() - started_at) * 1000))
+        self._emit_completion_telemetry(
+            OpenAICompletionTelemetry(
+                task_name=task_name,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                duration_ms=duration_ms,
+            )
+        )
         logger.info(
             "OpenAI structured response received task=%s model=%s prompt_tokens=%s "
             "completion_tokens=%s total_tokens=%s duration_ms=%s",
             task_name,
             model,
-            getattr(usage, "prompt_tokens", None),
-            getattr(usage, "completion_tokens", None),
-            getattr(usage, "total_tokens", None),
-            round((time.perf_counter() - started_at) * 1000),
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            duration_ms,
         )
         # Record provider-side usage before local schema validation.  An
         # invalid response still consumed tokens, but must never be described
         # as a successful structured result in operator logs.
         return _structured_result(completion, response_schema)
+
+    def _emit_completion_telemetry(
+        self, telemetry: OpenAICompletionTelemetry
+    ) -> None:
+        """Call an optional accounting sink without changing LLM semantics."""
+
+        callback = self._telemetry_callback
+        if callback is None:
+            return
+        try:
+            callback(telemetry)
+        except Exception:  # telemetry must not fail a completed LLM request
+            return
 
 
 def _structured_result(completion: Any, response_schema: type[BaseModel]) -> BaseModel:
