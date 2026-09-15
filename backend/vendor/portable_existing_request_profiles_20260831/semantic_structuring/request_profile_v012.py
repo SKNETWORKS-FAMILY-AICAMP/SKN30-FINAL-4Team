@@ -26,6 +26,11 @@ from .common_ir_v1 import (
 )
 from .field_regions import RequestFieldRegion, build_field_regions
 from .models import CandidatePack, ComponentKind, SourceBlock, SourceRelation
+from .native_provenance import (
+    candidate_pack_block_index,
+    native_block_provenance,
+    parent_candidate_pack_lineage,
+)
 from .profile_v02 import (
     NUMERIC_CANDIDATE_EXTRACTOR_VERSION,
     SupportScaleMeasuresProjection,
@@ -668,10 +673,12 @@ def _value_span_candidate_map(pack: CandidatePack) -> dict[str, ValueSpanCandida
 
 def candidate_pack_artifact(pack: CandidatePack, document: dict[str, Any]) -> dict[str, Any]:
     identity = common_ir_v1_identity(document)
+    block_index = candidate_pack_block_index(pack)
     return {
         "candidate_pack_id": pack.pack_id,
         "candidate_pack_generator": pack.generator,
         "candidate_pack_generator_version": pack.generator_version,
+        **parent_candidate_pack_lineage(pack),
         "common_ir_document_id": pack.common_ir_document_id,
         "common_ir_source_sha256": identity["source_sha256"],
         "text_basis": TEXT_BASIS,
@@ -685,6 +692,7 @@ def candidate_pack_artifact(pack: CandidatePack, document: dict[str, Any]) -> di
                 "common_ir_block_id": block.common_ir_block_id,
                 **({"common_ir_cell_id": block.common_ir_cell_id} if block.common_ir_cell_id else {}),
                 "common_ir_occurrence_ids": list(block.common_ir_occurrence_ids),
+                **native_block_provenance(pack, block, block_index=block_index),
             }
             for block in pack.blocks
         ],
@@ -1101,6 +1109,7 @@ def _evidence(pack: CandidatePack, block: SourceBlock) -> dict[str, Any]:
     }
     if block.common_ir_cell_id:
         evidence["common_ir_cell_id"] = block.common_ir_cell_id
+    evidence.update(native_block_provenance(pack, block))
     return evidence
 
 

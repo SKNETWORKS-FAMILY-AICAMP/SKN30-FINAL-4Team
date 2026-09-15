@@ -24,6 +24,7 @@ from .explicit_support_cap_candidates import (
     extract_explicit_support_cap_candidates,
 )
 from .models import CandidatePack, ComponentKind, FactField
+from .native_provenance import native_block_provenance
 from .profile_v02 import (
     AggregationScope,
     CalculationBasis,
@@ -2710,6 +2711,10 @@ def _materialized_source_block(
         })
         if block.common_ir_cell_id is not None:
             materialized["common_ir_cell_id"] = block.common_ir_cell_id
+    # Native exact candidates remain exact CandidatePack source blocks, but
+    # their durable parent/slice graph is needed to recover the original
+    # Common IR text after this materialization boundary.
+    materialized.update(native_block_provenance(pack, block))
     return materialized
 
 

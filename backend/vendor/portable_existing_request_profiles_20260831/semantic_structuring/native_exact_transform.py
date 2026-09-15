@@ -12,7 +12,7 @@ import hashlib
 import json
 from typing import Any
 
-from .models import CandidatePack, SourceBlock
+from .models import CandidatePack, NATIVE_EXACT_TRANSFORM_GENERATOR, SourceBlock
 from .native_line_atoms import augment_pack_with_native_line_atoms
 from .native_span_composition import augment_pack_with_native_continuations
 
@@ -38,7 +38,6 @@ class NativeExactTransformOptions:
 
 DISABLED_NATIVE_EXACT_TRANSFORMS = NativeExactTransformOptions()
 ENABLED_NATIVE_EXACT_TRANSFORMS = NativeExactTransformOptions(enabled=True)
-NATIVE_EXACT_TRANSFORM_GENERATOR = "semantic_structuring.native_exact_transform"
 NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION = "1"
 NATIVE_EXACT_TRANSFORM_PACK_SUFFIX = "-native-exact-v1"
 

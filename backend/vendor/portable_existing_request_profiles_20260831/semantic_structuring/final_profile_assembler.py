@@ -90,6 +90,14 @@ def assemble_final_profile(
             })
             if source.get("common_ir_cell_id") is not None:
                 reference["common_ir_cell_id"] = source["common_ir_cell_id"]
+        # Native-derived CandidatePack blocks carry either one reversible
+        # parent slice (line atom) or every constituent slice (composite).
+        # Atomic evidence deliberately receives neither key so the historical
+        # Existing Profile shape remains unchanged.
+        if source.get("native_parent_span") is not None:
+            reference["native_parent_span"] = source["native_parent_span"]
+        if source.get("source_spans") is not None:
+            reference["source_spans"] = source["source_spans"]
         return reference
 
     components = selection.get("support_components", [])

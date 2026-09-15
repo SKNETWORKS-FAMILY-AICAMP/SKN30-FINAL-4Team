@@ -19,6 +19,9 @@ from semantic_structuring.native_exact_transform import (
     apply_native_exact_transforms,
     augment_pack_with_native_exact_transforms,
 )
+from semantic_structuring.final_profile_assembler import assemble_final_profile
+from semantic_structuring.request_profile_v012 import _evidence, candidate_pack_artifact
+from semantic_structuring.source_selection import _materialized_source_block
 
 
 def _block(block_id: str, text: str, order: int, *, kind: str = "paragraph") -> SourceBlock:
@@ -47,6 +50,20 @@ def _pack(*blocks: SourceBlock) -> CandidatePack:
     )
 
 
+def _document() -> dict[str, object]:
+    return {
+        "schema_version": "common_ir_v1",
+        "document": {
+            "document_id": "hwpx:PBLN-native-exact-test",
+            "source_kind": "hwpx",
+            "provenance": {
+                "source_sha256": "a" * 64,
+                "source_location": "synthetic://native-exact-test",
+            },
+        },
+    }
+
+
 def test_disabled_transform_returns_the_original_pack_without_augmentation() -> None:
     pack = _pack(_block("p0", "지원 대상은\n중소기업", 0))
     before = pack.model_dump(mode="json")
@@ -61,6 +78,311 @@ def test_disabled_transform_returns_the_original_pack_without_augmentation() -> 
     assert "source_spans" not in before["blocks"][0]
     assert "native_parent_block_id" not in before["blocks"][0]
     assert [block.block_id for block in actual.blocks] == ["p0"]
+
+
+def test_atomic_provenance_serialization_preserves_legacy_shape() -> None:
+    pack = _pack(_block("p0", "지원 대상은 중소기업", 0))
+    block = pack.blocks[0]
+
+    materialized = _materialized_source_block(pack, block, text=block.text)
+    evidence = _evidence(pack, block)
+    artifact = candidate_pack_artifact(pack, _document())
+
+    assert "native_parent_span" not in materialized
+    assert "source_spans" not in materialized
+    assert "native_parent_span" not in evidence
+    assert "source_spans" not in evidence
+    assert "parent_pack_id" not in artifact
+    assert "parent_generator" not in artifact
+    assert "parent_generator_version" not in artifact
+    assert "native_parent_span" not in artifact["blocks"][0]
+    assert "source_spans" not in artifact["blocks"][0]
+
+
+def test_native_provenance_survives_request_existing_and_pack_artifacts() -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(
+            _block("p0", "지원\n대상은", 0),
+            _block("p1", "중소기업이다.", 1),
+        ),
+        options=ENABLED_NATIVE_EXACT_TRANSFORMS,
+    )
+    line = next(block for block in pack.blocks if block.block_kind == "native_line_atom")
+    composite = next(block for block in pack.blocks if block.block_kind == "native_composite")
+
+    line_evidence = _evidence(pack, line)
+    composite_evidence = _evidence(pack, composite)
+    artifact = candidate_pack_artifact(pack, _document())
+    artifact_blocks = {block["source_block_id"]: block for block in artifact["blocks"]}
+
+    assert line_evidence["native_parent_span"] == {
+        "source_block_id": "p0",
+        "start_char": line.native_start_char,
+        "end_char": line.native_end_char,
+        "exact_text": line.text,
+    }
+    assert composite_evidence["source_spans"] == [
+        span.model_dump(mode="json") for span in composite.source_spans
+    ]
+    assert artifact_blocks[line.block_id]["native_parent_span"] == line_evidence["native_parent_span"]
+    assert artifact_blocks[composite.block_id]["source_spans"] == composite_evidence["source_spans"]
+    assert artifact["parent_pack_id"] == "native-exact-test-pack"
+    assert artifact["parent_generator"] == "semantic_structuring.common_ir_v1"
+    assert artifact["parent_generator_version"] == "1"
+
+    source = _materialized_source_block(pack, composite, text=composite.text)
+    profile = assemble_final_profile(
+        {
+            "selection": {"notice_id": pack.notice_id, "support_components": []},
+            "common_ir_identity": {
+                "document_id": pack.common_ir_document_id,
+                "source_kind": "hwpx",
+                "source_sha256": "a" * 64,
+            },
+            "materialized_evidence": [{
+                "fact_id": "purpose",
+                "field_name": "purpose_goal",
+                "status": "identified",
+                "source_blocks": [source],
+                "context_blocks": [],
+            }],
+        },
+        {
+            "notice_id": pack.notice_id,
+            "common_ir": {
+                "document_id": pack.common_ir_document_id,
+                "schema_version": "common_ir_v1",
+                "source_kind": "hwpx",
+                "source_sha256": "a" * 64,
+                "source_location": "synthetic://native-exact-test",
+            },
+        },
+    )
+    final_evidence = profile["comparison_profile"]["purpose_goal"][0]["evidence"][0]
+    assert final_evidence["source_spans"] == composite_evidence["source_spans"]
+
+
+def test_native_provenance_serialization_rechecks_composite_exact_spans() -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(
+            _block("p0", "지원 대상은", 0),
+            _block("p1", "중소기업이다.", 1),
+        ),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=False,
+            include_continuations=True,
+        ),
+    )
+    composite = next(block for block in pack.blocks if block.block_kind == "native_composite")
+    # ``model_copy`` intentionally bypasses Pydantic validation.  The
+    # serialization boundary must still refuse a forged slice rather than
+    # weakening the exact-span contract while preserving provenance.
+    forged = composite.model_copy(update={"text": "위조된 결합 텍스트"})
+    forged_pack = pack.model_copy(update={
+        "blocks": [forged if block.block_id == composite.block_id else block for block in pack.blocks],
+    })
+
+    with pytest.raises(ValueError, match="native composite provenance does not exactly match"):
+        _evidence(forged_pack, forged)
+
+
+@pytest.mark.parametrize(
+    "updates,error",
+    [
+        ({"native_start_char": -7}, "requires exact parent offsets"),
+        ({"common_ir_block_id": "forged"}, "does not exactly match its parent span"),
+        ({"relation": SourceRelation.FOLLOWING_CONTEXT}, "native candidate contract"),
+    ],
+)
+def test_native_provenance_serialization_rechecks_line_contract(
+    updates: dict[str, object], error: str,
+) -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(_block("p0", "abc\ndef", 0)),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=False,
+        ),
+    )
+    line = next(block for block in pack.blocks if block.block_kind == "native_line_atom")
+    forged = line.model_copy(update=updates)
+    forged_pack = pack.model_copy(update={
+        "blocks": [forged if block.block_id == line.block_id else block for block in pack.blocks],
+    })
+
+    with pytest.raises(ValueError, match=error):
+        _evidence(forged_pack, forged)
+
+
+def test_native_provenance_serialization_rejects_negative_composite_span() -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(
+            _block("p0", "지원 대상은", 0),
+            _block("p1", "중소기업이다.", 1),
+        ),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=False,
+            include_continuations=True,
+        ),
+    )
+    composite = next(block for block in pack.blocks if block.block_kind == "native_composite")
+    first_span = composite.source_spans[0]
+    forged_span = first_span.model_copy(update={"start_char": -len(first_span.exact_text)})
+    forged = composite.model_copy(update={
+        "source_spans": (forged_span, *composite.source_spans[1:]),
+    })
+    forged_pack = pack.model_copy(update={
+        "blocks": [forged if block.block_id == composite.block_id else block for block in pack.blocks],
+    })
+
+    with pytest.raises(ValueError, match="native composite span"):
+        _evidence(forged_pack, forged)
+
+
+def test_native_provenance_serialization_rejects_forged_composite_parent_kind() -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(
+            _block("p0", "지원 대상은", 0),
+            _block("p1", "중소기업이다.", 1),
+        ),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=False,
+            include_continuations=True,
+        ),
+    )
+    composite = next(block for block in pack.blocks if block.block_kind == "native_composite")
+    parent = next(block for block in pack.blocks if block.block_id == "p0")
+    forged_parent = parent.model_copy(update={"block_kind": "forged_kind"})
+    forged_pack = pack.model_copy(update={
+        "blocks": [
+            forged_parent if block.block_id == parent.block_id else block
+            for block in pack.blocks
+        ],
+    })
+
+    with pytest.raises(ValueError, match="native composite span"):
+        _evidence(forged_pack, composite)
+    with pytest.raises(ValueError, match="source kind is not eligible"):
+        CandidatePack.model_validate(forged_pack.model_dump(mode="python"))
+
+
+def test_native_heading_composite_remains_supported_and_auditable() -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(
+            _block("h0", "사업목적:", 0, kind="heading"),
+            _block("h1", "중소기업 지원 확대", 1, kind="heading"),
+        ),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=False,
+            include_continuations=True,
+        ),
+    )
+    composite = next(block for block in pack.blocks if block.block_kind == "native_composite")
+
+    assert composite.text == "사업목적: 중소기업 지원 확대"
+    assert _evidence(pack, composite)["source_spans"] == [
+        span.model_dump(mode="json") for span in composite.source_spans
+    ]
+
+
+@pytest.mark.parametrize(
+    "kind,updates,error",
+    [
+        (
+            "native_line_atom",
+            {
+                "native_parent_block_id": None,
+                "native_start_char": None,
+                "native_end_char": None,
+            },
+            "requires parent provenance",
+        ),
+        (
+            "native_line_atom",
+            {"native_parent_block_id": None},
+            "offsets require parent provenance",
+        ),
+        (
+            "native_composite",
+            {"source_spans": ()},
+            "requires source span provenance",
+        ),
+    ],
+)
+def test_native_provenance_serialization_rejects_removed_required_provenance(
+    kind: str, updates: dict[str, object], error: str,
+) -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(
+            _block("p0", "지원\n대상은", 0),
+            _block("p1", "중소기업이다.", 1),
+        ),
+        options=ENABLED_NATIVE_EXACT_TRANSFORMS,
+    )
+    original = next(block for block in pack.blocks if block.block_kind == kind)
+    forged = original.model_copy(update=updates)
+    forged_pack = pack.model_copy(update={
+        "blocks": [forged if block.block_id == original.block_id else block for block in pack.blocks],
+    })
+
+    with pytest.raises(ValueError, match=error):
+        _evidence(forged_pack, forged)
+
+
+@pytest.mark.parametrize(
+    "updates,error",
+    [
+        (
+            {
+                "parent_pack_id": None,
+                "parent_generator": None,
+                "parent_generator_version": None,
+            },
+            "requires parent lineage",
+        ),
+        ({"parent_pack_id": ""}, "requires complete parent lineage"),
+        ({"parent_generator_version": None}, "requires complete parent lineage"),
+    ],
+)
+def test_candidate_pack_artifact_rechecks_transformed_parent_lineage(
+    updates: dict[str, object], error: str,
+) -> None:
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(_block("p0", "지원\n대상은", 0)),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=False,
+        ),
+    )
+    forged = pack.model_copy(update=updates)
+
+    with pytest.raises(ValueError, match=error):
+        candidate_pack_artifact(forged, _document())
+
+
+def test_native_generator_requires_parent_lineage_even_without_derived_blocks() -> None:
+    transformed = augment_pack_with_native_exact_transforms(
+        _pack(_block("p0", "완결된 단일 문장이다.", 0)),
+        options=ENABLED_NATIVE_EXACT_TRANSFORMS,
+    )
+    assert not any(
+        block.source_spans or block.native_parent_block_id is not None
+        for block in transformed.blocks
+    )
+    forged = transformed.model_copy(update={
+        "parent_pack_id": None,
+        "parent_generator": None,
+        "parent_generator_version": None,
+    })
+
+    with pytest.raises(ValueError, match="require durable parent lineage"):
+        CandidatePack.model_validate(forged.model_dump(mode="python"))
 
 
 def test_enabled_transform_derives_lines_then_continuations_in_reviewed_order() -> None:

@@ -164,6 +164,10 @@ class ExtractionScope(StrEnum):
 NATIVE_EXACT_ATOMIC_BLOCK_KINDS = frozenset(
     {None, "paragraph", "text", "list_item", "body", "heading_body"}
 )
+NATIVE_EXACT_COMPOSITE_BLOCK_KINDS = frozenset(
+    {*NATIVE_EXACT_ATOMIC_BLOCK_KINDS, "heading"}
+)
+NATIVE_EXACT_TRANSFORM_GENERATOR = "semantic_structuring.native_exact_transform"
 
 
 class NativeSourceSpan(StrictModel):
@@ -289,11 +293,12 @@ class CandidatePack(StrictModel):
             block.source_spans or block.native_parent_block_id is not None
             for block in self.blocks
         )
-        if has_native_derived_blocks and not all(
-            value is not None for value in parent_lineage
-        ):
+        if (
+            has_native_derived_blocks
+            or self.generator == NATIVE_EXACT_TRANSFORM_GENERATOR
+        ) and not all(value is not None for value in parent_lineage):
             raise ValueError(
-                "native-derived CandidatePack blocks require durable parent lineage"
+                "native-transformed CandidatePack records require durable parent lineage"
             )
         if all(value is not None for value in parent_lineage) and (
             self.generator == self.parent_generator
@@ -384,6 +389,7 @@ class CandidatePack(StrictModel):
             spans = composite.source_spans
             if len(spans) not in {2, 3}:
                 raise ValueError("native composite requires two or three source_spans")
+            source_kinds: list[str | None] = []
             for span in spans:
                 matches = by_id.get(span.source_block_id, [])
                 if (
@@ -393,6 +399,7 @@ class CandidatePack(StrictModel):
                 ):
                     raise ValueError("native composite span must reference an atomic pack block")
                 original = matches[0]
+                source_kinds.append(original.block_kind)
                 if (
                     span.end_char <= span.start_char
                     or span.end_char > len(original.text)
@@ -406,8 +413,12 @@ class CandidatePack(StrictModel):
                     raise ValueError("native composite span does not exactly match its atomic block")
                 if original.relation != SourceRelation.CANDIDATE:
                     raise ValueError("native composite cannot promote context blocks")
-                if original.block_kind == "table_cell":
-                    raise ValueError("native composite cannot join table cells")
+                if original.block_kind not in NATIVE_EXACT_COMPOSITE_BLOCK_KINDS:
+                    raise ValueError("native composite source kind is not eligible")
+            if "heading" in source_kinds and any(
+                kind != "heading" for kind in source_kinds
+            ):
+                raise ValueError("native composite cannot mix heading and body sources")
             orders = [span.source_order for span in spans]
             if orders != sorted(orders) or len(set(orders)) != len(orders):
                 raise ValueError("native composite source_spans must be uniquely ordered")
