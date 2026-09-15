@@ -21,6 +21,10 @@
   [supabase/README.md](../supabase/README.md)
 - Existing KB 100건 검증·적재·embedding:
   [EXISTING_KB_BOOTSTRAP.md](../supabase/EXISTING_KB_BOOTSTRAP.md)
+- 사람 검토·교정된 Existing Gold 100건의 역할과 회귀 검증:
+  [EXISTING_GOLD100_REGRESSION_RUNBOOK.md](docs/EXISTING_GOLD100_REGRESSION_RUNBOOK.md)
+- PDF native/ODL/Surya 융합 및 원격 GPU 경계 설계:
+  [PDF_DOCUMENT_FUSION_DESIGN.md](docs/PDF_DOCUMENT_FUSION_DESIGN.md)
 
 브라우저는 Supabase·PostgreSQL·worker를 직접 호출하지 않는다. 프론트엔드에는 FastAPI
 주소만 전달하고, Supabase key·DB URL·OpenAI key는 모두 서버 환경변수로만 관리한다.
