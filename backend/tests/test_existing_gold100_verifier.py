@@ -304,17 +304,19 @@ def _install_native_line_atom(
     profile: dict[str, object],
     selection: dict[str, object],
     common_ir: dict[str, object],
+    *,
+    producer_version: str = verifier.NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
 ) -> None:
     """Turn the synthetic atomic fact into one lossless native line atom."""
 
     base_pack = verifier._existing_a_base_candidate_pack(
         common_ir, {"block-1"}, label="synthetic native line"
     )
-    transformed = verifier.augment_pack_with_native_exact_transforms(
+    transformed = verifier.replay_persisted_native_exact_transforms(
         base_pack,
-        options=verifier.NativeExactTransformOptions(
-            enabled=True, include_line_atoms=True, include_continuations=False,
-        ),
+        producer_version=producer_version,
+        include_line_atoms=True,
+        include_continuations=False,
     )
     line = next(block for block in transformed.blocks if block.native_parent_block_id is not None)
     derived_id = line.block_id
@@ -901,6 +903,22 @@ def test_rejects_native_line_with_invalid_transform_lineage(tmp_path: Path) -> N
 
     with pytest.raises(verifier.GoldVerificationError, match="unsupported transform version"):
         verifier.verify_profile_artifact_triple(profile, selection, common_ir, pblanc_id=pblanc_id)
+
+
+def test_verifier_replays_persisted_v1_native_lineage(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_native_line_atom(
+        profile,
+        selection,
+        common_ir,
+        producer_version=verifier.LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    )
+
+    verifier.verify_profile_artifact_triple(
+        profile, selection, common_ir, pblanc_id=pblanc_id
+    )
 
 
 @pytest.mark.parametrize("mutation", ["invented", "self_parent", "forged_occurrence"])

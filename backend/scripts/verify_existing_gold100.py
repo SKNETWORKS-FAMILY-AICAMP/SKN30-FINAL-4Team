@@ -27,8 +27,11 @@ from worker import vendor as _vendor  # noqa: F401 - install vendored contracts 
 from semantic_structuring.candidate_assembly import MAX_A_TABLE_CELL_CANDIDATES
 from semantic_structuring.common_ir_v1 import prepare_common_ir_v1
 from semantic_structuring.native_exact_transform import (
+    LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
     NativeExactTransformOptions,
     augment_pack_with_native_exact_transforms,
+    replay_persisted_native_exact_transforms,
 )
 from semantic_structuring.models import CandidatePack, SourceBlock
 
@@ -42,7 +45,16 @@ SELECTION_CONTRACT = "v0.2_anchor"
 TEXT_BASIS = "common_ir_v1_candidate_pack"
 DEFAULT_EXPECTED_NOTICE_COUNT = 100
 NATIVE_EXACT_TRANSFORM_GENERATOR = "semantic_structuring.native_exact_transform"
-_NATIVE_EXACT_TRANSFORM_VERSIONS = frozenset({"1:lines", "1:lines+continuations"})
+_NATIVE_EXACT_TRANSFORM_VERSIONS = frozenset(
+    {
+        f"{producer_version}:{variant}"
+        for producer_version in (
+            LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+            NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+        )
+        for variant in ("lines", "lines+continuations")
+    }
+)
 _NATIVE_DERIVED_BLOCK_PREFIXES = ("line:", "composite:")
 _LEGACY_RUNPOD_014_CANDIDATE_PACK_GENERATOR = "semantic_structuring.common_ir_v1"
 _LEGACY_RUNPOD_014_CANDIDATE_PACK_GENERATOR_VERSION = "1"
@@ -947,12 +959,13 @@ def regenerate_existing_native_candidate_pack(
         )
         _require_native_base_identity(base_pack, lineage, label=label)
         version = lineage["candidate_pack_generator_version"]
-        options = NativeExactTransformOptions(
-            enabled=True,
+        producer_version, variant = version.split(":", 1)
+        transformed = replay_persisted_native_exact_transforms(
+            base_pack,
+            producer_version=producer_version,
             include_line_atoms=True,
-            include_continuations=version == "1:lines+continuations",
+            include_continuations=variant == "lines+continuations",
         )
-        transformed = augment_pack_with_native_exact_transforms(base_pack, options=options)
     except GoldVerificationError:
         raise
     except Exception as error:  # noqa: BLE001 - normalize vendored input errors

@@ -59,10 +59,12 @@ from semantic_structuring.request_profile_v012 import (  # noqa: E402
     validate_request_type_pack_for_selection,
 )
 from semantic_structuring.native_exact_transform import (  # noqa: E402
+    LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
     NATIVE_EXACT_TRANSFORM_GENERATOR,
     NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
     NativeExactTransformOptions,
     augment_pack_with_native_exact_transforms,
+    replay_persisted_native_exact_transforms,
 )
 from semantic_structuring.run_request_profile_v012 import (  # noqa: E402
     REQUEST_SELECTION_PROMPT_VERSION,
@@ -436,33 +438,46 @@ def transform_request_candidate_pack(
         ) from error
 
 
-def request_native_exact_mode_from_lineage(
+def replay_persisted_request_native_exact_candidate_pack(
+    pack,
     *,
     generator: object,
     generator_version: object,
-) -> str:
-    """Recover the exact native variant recorded in a persisted profile.
+) -> Any:
+    """Rebuild recorded v1/v2 CandidatePack lineage without an env mode.
 
-    This has no environment fallback by design: cache resume must reconstruct
-    the historical CandidatePack, rather than the mode currently deployed.
+    This is the sole request-worker path allowed to choose a legacy producer.
+    New request transformations call ``transform_request_candidate_pack`` and
+    always use the current v2 producer.
     """
 
     if generator != NATIVE_EXACT_TRANSFORM_GENERATOR:
         raise RequestNativeExactCandidateModeError(
             "recorded request CandidatePack generator is unsupported"
         )
-    versions = {
-        f"{NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION}:lines": REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES,
-        (
-            f"{NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION}:lines+continuations"
-        ): REQUEST_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS,
-    }
-    mode = versions.get(generator_version)
-    if mode is None:
+    if not isinstance(generator_version, str):
         raise RequestNativeExactCandidateModeError(
             "recorded request CandidatePack generator version is unsupported"
         )
-    return mode
+    try:
+        producer_version, variant = generator_version.split(":", 1)
+    except ValueError as error:
+        raise RequestNativeExactCandidateModeError(
+            "recorded request CandidatePack generator version is unsupported"
+        ) from error
+    if producer_version not in {
+        LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+        NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    } or variant not in {"lines", "lines+continuations"}:
+        raise RequestNativeExactCandidateModeError(
+            "recorded request CandidatePack generator version is unsupported"
+        )
+    return replay_persisted_native_exact_transforms(
+        pack,
+        producer_version=producer_version,
+        include_line_atoms=True,
+        include_continuations=variant == "lines+continuations",
+    )
 
 
 def resolve_request_type(pack) -> dict[str, Any]:

@@ -13,11 +13,13 @@ from semantic_structuring.models import CandidatePack, SourceBlock, SourceRelati
 from semantic_structuring.native_exact_transform import (
     DISABLED_NATIVE_EXACT_TRANSFORMS,
     ENABLED_NATIVE_EXACT_TRANSFORMS,
+    LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
     NativeExactTransformOptions,
     NATIVE_EXACT_TRANSFORM_GENERATOR,
     NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
     apply_native_exact_transforms,
     augment_pack_with_native_exact_transforms,
+    replay_persisted_native_exact_transforms,
 )
 from semantic_structuring.final_profile_assembler import assemble_final_profile
 from semantic_structuring.request_profile_v012 import _evidence, candidate_pack_artifact
@@ -287,6 +289,51 @@ def test_native_heading_composite_remains_supported_and_auditable() -> None:
     assert composite.text == "사업목적: 중소기업 지원 확대"
     assert _evidence(pack, composite)["source_spans"] == [
         span.model_dump(mode="json") for span in composite.source_spans
+    ]
+
+
+@pytest.mark.parametrize(
+    "following_text",
+    [
+        "□ 별도 항목",
+        "▪ 하위 항목",
+        "2. 다음 항목",
+        "※ 각주 항목",
+    ],
+)
+def test_native_continuations_do_not_absorb_new_structural_following_items(
+    following_text: str,
+) -> None:
+    pack = _pack(
+        _block("p0", "지원 대상은", 0),
+        _block("p1", following_text, 1),
+    )
+
+    composites = native_span_composition.build_native_continuation_candidates(pack)
+
+    assert composites == []
+
+
+@pytest.mark.parametrize(
+    "left,right,expected",
+    [
+        ("지원 대상은 (", "중소기업)", "지원 대상은 ( 중소기업)"),
+        ("지원 대상은,", "중소기업이다.", "지원 대상은, 중소기업이다."),
+        ("지원 대상 및", "신청 자격", "지원 대상 및 신청 자격"),
+        ("사업 참여를 위", "한 기업", "사업 참여를 위 한 기업"),
+    ],
+)
+def test_native_continuations_keep_markerless_lexical_joins(
+    left: str, right: str, expected: str,
+) -> None:
+    composites = native_span_composition.build_native_continuation_candidates(
+        _pack(_block("p0", left, 0), _block("p1", right, 1))
+    )
+
+    assert len(composites) == 1
+    assert composites[0].text == expected
+    assert [span.source_block_id for span in composites[0].source_spans] == [
+        "p0", "p1",
     ]
 
 
@@ -598,7 +645,7 @@ def test_enabled_facade_is_idempotent_and_rejects_duplicate_ids() -> None:
     )
     assert twice.model_dump(mode="python") == once.model_dump(mode="python")
     assert once.pack_id.startswith(
-        "native-exact-test-pack-native-exact-v1-lines+continuations-"
+        "native-exact-test-pack-native-exact-v2-lines+continuations-"
     )
     assert len(once.pack_id.rsplit("-", 1)[1]) == 16
     assert once.generator == NATIVE_EXACT_TRANSFORM_GENERATOR
@@ -648,6 +695,38 @@ def test_enabled_facade_is_idempotent_and_rejects_duplicate_ids() -> None:
     )
     assert changed.pack_id != once.pack_id
 
+
+def test_v1_producer_replays_legacy_continuation_identity_while_v2_is_safe() -> None:
+    base = _pack(
+        _block("p0", "지원 대상은", 0),
+        _block("p1", "□ 별도 항목", 1),
+    )
+
+    legacy = replay_persisted_native_exact_transforms(
+        base,
+        producer_version=LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+        include_line_atoms=False,
+        include_continuations=True,
+    )
+    current = augment_pack_with_native_exact_transforms(
+        base,
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=False,
+            include_continuations=True,
+        ),
+    )
+
+    assert legacy.pack_id.startswith(
+        "native-exact-test-pack-native-exact-v1-continuations-"
+    )
+    assert legacy.generator_version == "1:continuations"
+    assert any(block.block_kind == "native_composite" for block in legacy.blocks)
+    assert current.pack_id.startswith(
+        "native-exact-test-pack-native-exact-v2-continuations-"
+    )
+    assert current.generator_version == "2:continuations"
+    assert not any(block.block_kind == "native_composite" for block in current.blocks)
 
 def test_enabled_facade_identity_is_stable_when_input_blocks_are_not_preordered() -> None:
     unordered = _pack(
@@ -710,6 +789,11 @@ def test_options_require_explicit_contract_object() -> None:
     pack = _pack(_block("p0", "지원 대상은\n중소기업", 0))
     with pytest.raises(TypeError, match="NativeExactTransformOptions"):
         augment_pack_with_native_exact_transforms(pack, options=deepcopy({"enabled": True}))  # type: ignore[arg-type]
+
+
+def test_public_transform_options_cannot_select_a_legacy_producer() -> None:
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        NativeExactTransformOptions(producer_version="1")  # type: ignore[call-arg]
 
 
 def test_enabled_transform_rejects_an_empty_transform_set_and_legacy_lineage() -> None:

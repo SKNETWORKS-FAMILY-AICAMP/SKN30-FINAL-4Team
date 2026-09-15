@@ -19,7 +19,7 @@ from .native_span_composition import augment_pack_with_native_continuations
 
 @dataclass(frozen=True, slots=True)
 class NativeExactTransformOptions:
-    """Versionless local switch for the bounded exact-native transforms."""
+    """Explicit, identity-bearing switch for bounded native transforms."""
 
     enabled: bool = False
     include_line_atoms: bool = True
@@ -38,8 +38,9 @@ class NativeExactTransformOptions:
 
 DISABLED_NATIVE_EXACT_TRANSFORMS = NativeExactTransformOptions()
 ENABLED_NATIVE_EXACT_TRANSFORMS = NativeExactTransformOptions(enabled=True)
-NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION = "1"
-NATIVE_EXACT_TRANSFORM_PACK_SUFFIX = "-native-exact-v1"
+NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION = "2"
+NATIVE_EXACT_TRANSFORM_PACK_SUFFIX = "-native-exact-v2"
+LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION = "1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +66,12 @@ def _transform_variant(options: NativeExactTransformOptions) -> str:
     if options.include_continuations:
         enabled.append("continuations")
     return "+".join(enabled)
+
+
+def _pack_suffix(producer_version: str) -> str:
+    if producer_version == NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION:
+        return NATIVE_EXACT_TRANSFORM_PACK_SUFFIX
+    return f"-native-exact-v{producer_version}"
 
 
 def _update_identity_digest(digest: Any, value: str) -> None:
@@ -117,10 +124,30 @@ def apply_native_exact_transforms(
     *,
     options: NativeExactTransformOptions,
 ) -> NativeExactTransformResult:
-    """Return the transformed pack plus its immutable, out-of-band origin."""
+    """Return a current-v2 transformed pack plus immutable parent lineage."""
+
+    return _apply_native_exact_transforms(
+        pack,
+        options=options,
+        producer_version=NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    )
+
+
+def _apply_native_exact_transforms(
+    pack: CandidatePack,
+    *,
+    options: NativeExactTransformOptions,
+    producer_version: str,
+) -> NativeExactTransformResult:
+    """Apply a selected producer version at the durable replay boundary."""
 
     if not isinstance(options, NativeExactTransformOptions):
         raise TypeError("options must be NativeExactTransformOptions")
+    if producer_version not in {
+        LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+        NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    }:
+        raise ValueError("native exact transform producer version is unsupported")
     parent_pack_id = pack.parent_pack_id or pack.pack_id
     result_identity = dict(
         parent_pack_id=parent_pack_id,
@@ -162,11 +189,11 @@ def apply_native_exact_transforms(
     )
     transformed = pack.model_copy(update={
         "pack_id": (
-            f"{parent_pack_id}{NATIVE_EXACT_TRANSFORM_PACK_SUFFIX}-"
+            f"{parent_pack_id}{_pack_suffix(producer_version)}-"
             f"{variant}-{source_digest[:16]}"
         ),
         "generator": NATIVE_EXACT_TRANSFORM_GENERATOR,
-        "generator_version": f"{NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION}:{variant}",
+        "generator_version": f"{producer_version}:{variant}",
         "parent_pack_id": parent_pack_id,
         "parent_generator": result_identity["parent_generator"],
         "parent_generator_version": result_identity["parent_generator_version"],
@@ -177,12 +204,40 @@ def apply_native_exact_transforms(
     if options.include_line_atoms:
         transformed = augment_pack_with_native_line_atoms(transformed)
     if options.include_continuations:
-        transformed = augment_pack_with_native_continuations(transformed)
+        transformed = augment_pack_with_native_continuations(
+            transformed,
+            # v1 did not recognize the following-item structural boundary.
+            # Its only supported use is exact persisted-pack replay.
+            block_structural_following_item=(
+                producer_version != LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION
+            ),
+        )
     # Both helpers intentionally return the original instance when they have
     # nothing to add.  Validate unconditionally so the model_copy above can
     # never return a graph whose transformed lineage violates CandidatePack.
     CandidatePack.model_validate(transformed.model_dump(mode="python"))
     return NativeExactTransformResult(pack=transformed, **result_identity)
+
+
+def replay_persisted_native_exact_transforms(
+    pack: CandidatePack,
+    *,
+    producer_version: str,
+    include_line_atoms: bool,
+    include_continuations: bool,
+) -> CandidatePack:
+    """Recreate a recorded v1/v2 pack; never use this for new production work."""
+
+    options = NativeExactTransformOptions(
+        enabled=True,
+        include_line_atoms=include_line_atoms,
+        include_continuations=include_continuations,
+    )
+    return _apply_native_exact_transforms(
+        pack,
+        options=options,
+        producer_version=producer_version,
+    ).pack
 
 
 def augment_pack_with_native_exact_transforms(

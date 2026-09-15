@@ -12,14 +12,47 @@ _TERMINAL = re.compile(r"[.!?。！？]|(?:다|함|됨|있음|없음|바람|가�
 _BARE_NUMBER = re.compile(r"^\s*(?:\d+[.)]|[①-⑳]|[가-하][.)])\s*$")
 _CONTINUATION_KINDS = {None, "paragraph", "text", "list_item", "body", "heading_body"}
 _LEADING_LAYOUT_MARKER = re.compile(r"^\s*(?:[-·◦□○●▪•]\s*)")
+# A continuation may cross an extractor's physical line split, but it must
+# never absorb the next independently-addressable list item.  Keep root and
+# nested markers separate from ``_LEADING_LAYOUT_MARKER``: the latter only
+# controls the exact slice exposed when the *first* source block is itself a
+# list item, while these patterns are a hard boundary for the following block.
+_ROOT_ITEM_MARKER = re.compile(
+    r"^\s*(?:[□■○●❍ㅇ◦▢]|[①-⑳]|\d{1,3}\s*[.)]|[가-하A-Za-z]\s*[.)])"
+)
+_NESTED_ITEM_MARKER = re.compile(r"^\s*(?:[▪•‣▸▶·ㆍ]|[-‐‑‒–—])")
+_FOOTNOTE_MARKER = re.compile(r"^\s*(?:※|\*{1,3})(?:\s|$)?")
 MAX_NATIVE_CONTINUATION_CANDIDATES = 10_000
 MAX_NATIVE_CONTINUATION_SPAN_REFERENCES = 30_000
 MAX_NATIVE_CONTINUATION_OCCURRENCE_REFERENCES = 100_000
 MAX_NATIVE_CONTINUATION_TEXT_BYTES = 32 * 1024 * 1024
 
 
-def _needs_next(block: SourceBlock, following: SourceBlock) -> bool:
+def _starts_new_structural_item(text: str) -> bool:
+    """Return whether ``text`` opens a new root/nested item or footnote.
+
+    This is intentionally a small, source-layout-only barrier.  It does not
+    decide whether either block is semantically relevant; it simply prevents
+    a lossless composite from making a following item look like the preceding
+    item's prose continuation.
+    """
+
+    return bool(
+        _ROOT_ITEM_MARKER.match(text)
+        or _NESTED_ITEM_MARKER.match(text)
+        or _FOOTNOTE_MARKER.match(text)
+    )
+
+
+def _needs_next(
+    block: SourceBlock,
+    following: SourceBlock,
+    *,
+    block_structural_following_item: bool,
+) -> bool:
     if block.relation != "candidate" or following.relation != "candidate":
+        return False
+    if block_structural_following_item and _starts_new_structural_item(following.text):
         return False
     text = block.text.rstrip()
     bare_number = bool(_BARE_NUMBER.fullmatch(text))
@@ -47,10 +80,15 @@ def _needs_next(block: SourceBlock, following: SourceBlock) -> bool:
         return False
     if not 0 < following.source_order - block.source_order <= 2:
         return False
+    following_prefixes = ("중인", "원하여", "하는", "및 ")
+    # Preserve the v1 lexical rule byte-for-byte for durable replay.  The v2
+    # boundary above rejects these as new structural items before this point.
+    if not block_structural_following_item:
+        following_prefixes = ("*", "※", *following_prefixes)
     return bool(
         bare_number
         or text.endswith(("및", "또는", "위해", "따라", "대하여", "체납", "지원", "제공", "지"))
-        or following.text.lstrip().startswith(("*", "※", "중인", "원하여", "하는", "및 "))
+        or following.text.lstrip().startswith(following_prefixes)
         or not _TERMINAL.search(text)
     )
 
@@ -89,9 +127,18 @@ def _span(block: SourceBlock, *, first: bool, separator_after: str) -> NativeSou
 
 
 def build_native_continuation_candidates(
-    pack: CandidatePack, *, max_spans: int = 3
+    pack: CandidatePack,
+    *,
+    max_spans: int = 3,
+    block_structural_following_item: bool = True,
 ) -> list[SourceBlock]:
-    """Return bounded composites; never rewrite constituent text."""
+    """Return bounded composites; never rewrite constituent text.
+
+    ``block_structural_following_item`` is an identity-affecting policy knob.
+    New callers must keep its safe default.  The ``False`` setting exists
+    solely to replay persisted v1 CandidatePacks which predate the structural
+    following-item barrier.
+    """
 
     if max_spans not in {2, 3}:
         raise ValueError("max_spans must be 2 or 3")
@@ -114,7 +161,11 @@ def build_native_continuation_candidates(
         group = [ordered[start]]
         while len(group) < max_spans and start + len(group) < len(ordered):
             following = ordered[start + len(group)]
-            if not _needs_next(group[-1], following):
+            if not _needs_next(
+                group[-1],
+                following,
+                block_structural_following_item=block_structural_following_item,
+            ):
                 break
             if following.block_kind == "table_cell" or group[-1].block_kind == "table_cell":
                 break
@@ -193,10 +244,21 @@ def build_native_continuation_candidates(
     return [by_id[key] for key in sorted(by_id)]
 
 
-def augment_pack_with_native_continuations(pack: CandidatePack) -> CandidatePack:
-    """Return ``pack`` plus validated, bounded native composites."""
+def augment_pack_with_native_continuations(
+    pack: CandidatePack,
+    *,
+    block_structural_following_item: bool = True,
+) -> CandidatePack:
+    """Return ``pack`` plus validated, bounded native composites.
 
-    composites = build_native_continuation_candidates(pack)
+    The non-default policy is reserved for deterministic persisted-v1 replay;
+    normal production augmentation always uses the structural barrier.
+    """
+
+    composites = build_native_continuation_candidates(
+        pack,
+        block_structural_following_item=block_structural_following_item,
+    )
     if not composites:
         return pack
     combined = [*pack.blocks, *composites]

@@ -12,6 +12,10 @@ from typing import Any
 from worker.analysis_job import _resumed_candidate_pack
 from worker.cpl import QUANTITY_CONTEXT_UNAVAILABLE, build_cpl_result, _with_quantities
 from worker.profiles import build_pack, transform_request_candidate_pack
+from semantic_structuring.native_exact_transform import (
+    LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+    replay_persisted_native_exact_transforms,
+)
 
 
 # 값이 된 것은 '최대 5,000만원' 뿐이고 '기업당' 은 그 앞 라벨에만 있다. 팩 원문을
@@ -216,6 +220,30 @@ def test_resumed_native_exact_pack_rebuilds_recorded_variant_without_env(
     assert pack.generator == transformed.generator
     assert pack.generator_version == transformed.generator_version
     assert pack.parent_pack_id == base.pack_id
+
+
+def test_resumed_native_exact_pack_rebuilds_persisted_v1_variant() -> None:
+    common_ir = _ir()
+    base = build_pack(common_ir)
+    persisted = replay_persisted_native_exact_transforms(
+        base,
+        producer_version=LEGACY_NATIVE_EXACT_TRANSFORM_GENERATOR_VERSION,
+        include_line_atoms=True,
+        include_continuations=False,
+    )
+    profile = _profile(candidate_pack={
+        **_candidate_pack_lineage(persisted),
+        "parent_pack_id": base.pack_id,
+        "parent_generator": base.generator,
+        "parent_generator_version": base.generator_version,
+    })
+
+    pack, reason = _resumed_candidate_pack(profile, common_ir)
+
+    assert reason is None
+    assert pack is not None
+    assert pack.pack_id == persisted.pack_id
+    assert pack.generator_version == "1:lines"
 
 
 def test_resumed_native_exact_pack_rejects_partial_or_tampered_parent_lineage() -> None:

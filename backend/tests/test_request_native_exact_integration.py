@@ -6,8 +6,10 @@ import pytest
 
 from worker import vendor  # noqa: F401 - install vendored semantic_structuring path
 from worker.profiles import (
+    RequestNativeExactCandidateModeError,
     StageError,
     _request_type_preflight_diagnostic,
+    normalize_request_native_exact_candidate_mode,
     structure_request_profile,
     transform_request_candidate_pack,
 )
@@ -64,6 +66,11 @@ def _checkbox_pack() -> CandidatePack:
         generator_version="1",
         common_ir_document_id="hwpx:request-native-test",
     )
+
+
+def test_public_native_exact_mode_rejects_persisted_replay_sentinels() -> None:
+    with pytest.raises(RequestNativeExactCandidateModeError, match="unsupported"):
+        normalize_request_native_exact_candidate_mode("_persisted-v1-lines")
 
 
 def test_two_line_checkbox_is_preflighted_from_base_not_transformed_duplicate() -> None:

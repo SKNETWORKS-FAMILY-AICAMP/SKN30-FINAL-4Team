@@ -35,7 +35,7 @@ from .profiles import (
     build_pack,
     make_vllm_selector,
     parse_to_common_ir,
-    request_native_exact_mode_from_lineage,
+    replay_persisted_request_native_exact_candidate_pack,
     structure_request_profile,
     transform_request_candidate_pack,
 )
@@ -1073,13 +1073,10 @@ def _resumed_candidate_pack(
         ):
             return None, "저장된 CandidatePack 부모 계보가 Common IR 재생성과 일치하지 않는다"
         try:
-            mode = request_native_exact_mode_from_lineage(
+            pack = replay_persisted_request_native_exact_candidate_pack(
+                base_pack,
                 generator=recorded["candidate_pack_generator"],
                 generator_version=recorded["candidate_pack_generator_version"],
-            )
-            pack = transform_request_candidate_pack(
-                base_pack,
-                native_exact_candidate_mode=mode,
             )
         except Exception:  # noqa: BLE001 - cached recovery remains best-effort
             return None, "저장된 CandidatePack 변형을 안전하게 재생성하지 못했다"
