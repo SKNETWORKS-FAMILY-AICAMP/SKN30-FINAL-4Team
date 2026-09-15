@@ -188,6 +188,8 @@ def _write_verified_gold(root: Path) -> str:
         "evidence": [
             {
                 "source_block_id": "block-1",
+                "section_id": "main_notice",
+                "source_occurrence_ids": ["occ-1"],
                 "common_ir_document_id": document_id,
                 "common_ir_block_id": "block-1",
                 "common_ir_occurrence_ids": ["occ-1"],
@@ -224,7 +226,30 @@ def _write_verified_gold(root: Path) -> str:
     }
     selection = {
         "selection_contract": gold_verifier.SELECTION_CONTRACT,
-        "selection": {"notice_id": notice_id},
+        "selection": {
+            "notice_id": notice_id,
+            "facts": [
+                {
+                    "fact_id": fact["fact_id"],
+                    "field_name": fact["field_name"],
+                    "status": fact["status"],
+                    "subject_role": None,
+                    "semantic_role": None,
+                    "canonical_role": None,
+                    "value_anchor": {
+                        "source_block_id": "block-1",
+                        "anchor_text": source_text,
+                    },
+                    "context_source_block_ids": [],
+                    "primary_component_id": None,
+                    "applicability_component_ids": [],
+                    "modifies_fact_ids": [],
+                    "recipient_fact_ids": [],
+                    "basis_fact_ids": [],
+                }
+            ],
+            "support_components": [],
+        },
         "source_block_texts": {"block-1": source_text},
         "common_ir_identity": {
             "document_id": document_id,
@@ -242,7 +267,27 @@ def _write_verified_gold(root: Path) -> str:
                 "fact_id": fact["fact_id"],
                 "field_name": fact["field_name"],
                 "status": fact["status"],
+                "subject_role": None,
+                "semantic_role": None,
+                "canonical_role": None,
+                "source_blocks": [
+                    {
+                        "source_block_id": "block-1",
+                        "text": source_text,
+                        "section_id": "main_notice",
+                        "source_occurrence_ids": ["occ-1"],
+                        "common_ir_document_id": document_id,
+                        "common_ir_block_id": "block-1",
+                        "common_ir_occurrence_ids": ["occ-1"],
+                    }
+                ],
                 "value_source": fact["value_source"],
+                "context_blocks": [],
+                "primary_component_id": None,
+                "applicability_component_ids": [],
+                "modifies_fact_ids": [],
+                "recipient_fact_ids": [],
+                "basis_fact_ids": [],
             }
         ],
         "materialized_components": [],

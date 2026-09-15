@@ -141,10 +141,11 @@ uv run --project backend pytest -q backend/tests/test_existing_profile_gold_comp
 - 개선과 악화를 함께 기록한다. 한 공고 개선을 위해 다른 94건을 바꾸면 자동 승인하지 않는다.
 - 의미 판정이 필요한 새 차이는 새 adjudication record를 만든 뒤 Gold 차기 버전에만 반영한다.
 
-현재 비교기는 동결된 자동 baseline과 Gold의 strict canonical 차이를 재현한다. 새 후보
-pipeline을 실제로 100건 재실행하고 ID 변화에 안전한 field/relationship 단위 의미 diff를 내는
-runner는 다음 구현 단계다. OpenAI를 호출하는 경우 별도 승인·모델 pin·prompt bundle·
-token/latency 기록이 필요하다. strict canonical 94/6 기준은 향후 의미 diff 지표로 덮어쓰지 않는다.
+4절의 strict canonical 비교기는 동결된 자동 baseline과 Gold의 원본 JSON 차이를 재현하고,
+8절의 semantic gate는 새 후보를 ID·set-like 순서 변화에 독립적으로 평가한다. 다음 구현 단계는
+공유 production transform을 확정한 뒤 새 pipeline으로 100건 후보 ZIP을 실제 생성해 semantic
+gate에 넣는 것이다. OpenAI를 호출하는 경우 별도 승인·모델 pin·prompt bundle·token/latency
+기록이 필요하다. strict canonical 94/6 기준은 semantic gate 결과로 덮어쓰지 않는다.
 
 ## 6. Composite 후보의 오프라인 shadow 검사
 
@@ -255,7 +256,7 @@ token 사용량은 원문·응답·request ID 없이 숫자만 `calls.usage`에 
 
 현재 Gold의 multi-occurrence 기대는 30개지만 generator v2로 표현 가능한 범위는 12개다.
 따라서 `generator_expressibility=12/30`, `routed_a_retention=12/12`가 나오더라도 전체 6건의
-의미 구조화가 성공했다는 뜻은 아니다. 나머지 18개와 최종 Profile 의미 품질은 다음 단계의
+의미 구조화가 성공했다는 뜻은 아니다. 나머지 18개와 최종 Profile 의미 품질은 8절의
 ID·순서 비의존 semantic diff로 따로 검증해야 한다.
 
 2026-09-15 고정 자료·모델로 실제 실행한 결과는 다음과 같다.
@@ -265,6 +266,7 @@ ID·순서 비의존 semantic diff로 따로 검증해야 한다.
 | 실행 상태 | `succeeded` |
 | routing 보존 상태 | `passed` |
 | semantic Profile 상태 | `not_run` |
+
 | 호출 | 계획 8 / 시도 8 / provider 응답 8 |
 | 호출 구성 | section scope 2 / block router 6 |
 | token | prompt 107,768 / completion 18,526 / 합계 126,294 |
@@ -286,4 +288,127 @@ uv run --project backend pytest -q \
   backend/tests/test_existing_a_routing_canary.py \
   backend/tests/test_existing_composite_shadow_integration.py \
   backend/tests/test_worker_core_contract.py
+```
+
+## 8. ID·순서 비의존 Profile 의미 회귀 비교
+
+`compare_existing_profile_semantics.py`는 자동 baseline(`B`), 사람 검토 Gold(`G`), 새
+후보(`C`)의 **Profile + source-selection + Common IR** 세 산출물을 함께 검증하고 비교한다.
+OpenAI·DB·Storage를 호출하지 않는 오프라인 검사다. 생성할 때마다 달라질 수 있는 Fact·
+component ID와 set-like 배열 순서는 비교에서 제외하지만, 원문 값·상태·역할·Common IR
+occurrence 근거·component membership·방향성 관계·지원 규모 projection은 보존한다.
+
+최종 통과 조건은 승인 delta를 부분적으로 세는 휴리스틱이 아니라 의미 multigraph의
+`C == G`다. 보고서에는 원문 대신 atom SHA-256과 종류·개수만 기록한다. 입력 ZIP 파일명이나
+Gold 디렉터리명도 복사하지 않고 corpus SHA-256·건수·역할만 남긴다.
+
+후보 ZIP은 공고마다 다음 세 JSON을 반드시 포함해야 한다.
+
+```text
+PBLN_<15자리>/pipeline/structured_profile.v0.2.json
+PBLN_<15자리>/pipeline/source_selection.json
+PBLN_<15자리>/pipeline/common_ir_v1/<한 개의 JSON>
+```
+
+후보의 Common IR은 Gold에서 복사하지 않는다. baseline의 동결 Common IR을 후보 Profile
+생성 입력으로 사용하고 후보 ZIP에도 그대로 포함해야 한다. 배포 경로인
+`document.provenance.source_location`만 달라질 수 있으며, 나머지 입력이 baseline과 다르면
+의미 비교 전에 실패한다.
+
+후보의 출처 정보도 후보가 스스로 주장한 문자열만으로 신뢰하지 않는다. baseline Common IR에서
+기본 projection → PDF inspector의 native table occurrence → native line atom → 최대 3개 native
+continuation composite 순으로 **결정적 source universe**를 다시 만들며, 후보는 그 ID·본문이
+정확히 같은 block의 부분집합만 쓸 수 있다. baseline 전용 legacy block이나 Gold 수동 교정
+`adj:*` block을 후보가 복사하는 것은 허용하지 않는다. source-selection의 선택값, materialized
+evidence, Profile fact/component도 서로 일치해야 한다. 지원 규모 수치는 locator의 원문 토큰을
+다시 해석해 measure 종류·단위·역할·값과 맞는지 확인한다. 새 후보의 component 이름은 해당
+component source block 안에 정확히 한 번 존재해야 하며, 숫자 locator는 더 큰 숫자의 일부가
+아니라 서버의 complete-token 규칙으로 독립 재열거된 span이어야 한다. 과거 B/G의 검토 delta는
+별도 calibration으로 읽되 이 새 후보 admission 규칙을 우회해 후보 합격으로 취급하지 않는다.
+
+이 source universe는 RunPod `0.1.4`의 section-scope·block-router 선택을 그대로 재현하는
+CandidatePack parity 검사가 아니다. 실제 router가 어떤 block을 노출했는지는 별도의 production
+parity 테스트 대상이다. 여기서는 후보가 사용한 값과 근거가 고정 Common IR에서 결정적으로
+재생성 가능한지만 fail-closed로 검증한다. 보고서의
+`normalization.candidate_source_admission.scope`도 이 범위를 명시한다.
+
+의미 비교에서 원문 위치의 공통 식별자는 `source_sha256 + occurrence_ids`다. 수동 교정 Gold가
+새 grouping block과 section을 만들었더라도 같은 원문 occurrence라면 새 파이프라인 결과와
+동일하게 비교하기 위해서다. CandidatePack block/offset과 Common IR block/cell/section은 버리는
+정보가 아니라 위 admission 단계에서 엄격히 검증하는 locator이며, 의미 atom에는 넣지 않는다.
+component의 local source locator도 현재 frozen raw-occurrence alias가 없어 검증 전용이고,
+component 의미 자체인 kind·이름·상태·소속 fact는 비교한다.
+
+의미를 버릴 위험이 있는 아직 지원하지 않는 구조는 조용히 무시하지 않고 실패한다. 현재
+`table_catalog`, `unresolved_relations`, 두 경계를 하나의 locator로 표현한 `range` measure가
+여기에 해당한다. `unresolved_observations[].reason`은 무시 대상이 아니라 보존되는 의미다.
+
+현재 transform은 원문에 없는 구두점을 삽입하거나 bullet을 제거해 새 문장을 만들지 않고,
+여러 표 셀의 관계를 임의의 문장으로 합성하지도 않는다. 예를 들어 `117175`의 주관/공동기관
+eligibility 교정값은 label과 body 사이의 `: ` 삽입 및 두 번째 bullet 제거가 필요하므로 현재
+계약으로는 exact source를 만들 수 없다. 이런 값은 `adj:*`를 예외 허용하지 않고, 향후
+`derived_text_basis + source_spans`와 표 관계를 포함한 versioned production transform 계약을
+정한 뒤 지원한다. 따라서 이 단계의 비교기는 B/G/C 의미 gate와 출처 검증 도구를 제공하지만,
+현 production pipeline이 Gold 100건을 전부 생성할 수 있다고 주장하지 않는다.
+
+100건 전체 후보를 검사하는 예시는 다음과 같다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team
+
+REPORT_DIR="$(mktemp -d /tmp/existing-semantic-bgc.XXXXXX)"
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend python backend/scripts/compare_existing_profile_semantics.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
+  --candidate-zip /path/to/candidate-existing-profile-100.zip \
+  --output-dir "$REPORT_DIR" \
+  --expected-reference-count 100 \
+  --expected-candidate-count 100
+
+jq . "$REPORT_DIR/existing-profile-semantic-bgc.v1.json"
+```
+
+교정 6건만 담은 후보 ZIP은 `--expected-candidate-count 6`과 아래 여섯
+`--notice-id`를 함께 준다. 요청 ID의 중복·누락은 허용하지 않는다.
+
+```text
+PBLN_000000000103645
+PBLN_000000000112425
+PBLN_000000000117175
+PBLN_000000000121019
+PBLN_000000000121309
+PBLN_000000000122023
+```
+
+종료 코드는 입력/계약 오류 `1`, 의미 불일치 `2`, 전건 통과 `0`이다. B/G의 검토 delta를
+재현하는 기준점은 후보 모드의 우회 조건이 아니라 명시적인 calibration 모드로만 실행한다.
+
+```bash
+REPORT_DIR="$(mktemp -d /tmp/existing-semantic-calibration.XXXXXX)"
+
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend python backend/scripts/compare_existing_profile_semantics.py \
+  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
+  --calibrate-baseline \
+  --output-dir "$REPORT_DIR" \
+  --expected-reference-count 100
+```
+
+calibration 결과는 정확히 `evaluation_kind=baseline_gold_calibration`, `selected=100`,
+`passed=94`, `failed=6`이고 의미 차이가 있으므로 종료 코드는 `2`다. 실제 후보 비교는 항상
+`evaluation_kind=candidate_gold_gate`이며 엄격한 source admission을 우회하지 않는다. 이
+94/6은 비교기 회귀 기준일 뿐 새 후보의 합격 결과가 아니다. 앞 절의 A-routing canary는
+source-selection과 Profile을 만들지 않으므로 이 검사기의 후보 ZIP으로 사용할 수 없다.
+
+검사기 테스트:
+
+```bash
+UV_CACHE_DIR=/tmp/prereview-uv-cache \
+uv run --project backend pytest -q \
+  backend/tests/test_existing_profile_semantic_diff.py \
+  backend/tests/test_existing_profile_gold_comparator.py \
+  backend/tests/test_existing_gold100_verifier.py
 ```

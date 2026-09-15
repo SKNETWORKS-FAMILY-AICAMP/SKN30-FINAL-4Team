@@ -171,6 +171,36 @@ def _require_string_list(value: object, label: str) -> list[str]:
     return result
 
 
+def _unordered_unique_strings(value: object, label: str) -> frozenset[str]:
+    """Validate one schema-declared set-like string collection."""
+
+    items = _require_string_list(value, label)
+    if len(items) != len(set(items)):
+        _fail(f"{label} must not contain duplicates")
+    return frozenset(items)
+
+
+def _unordered_unique_json_rows(value: object, label: str) -> tuple[str, ...]:
+    """Canonicalize one schema-declared set-like JSON-object collection."""
+
+    rows = _list(value, label)
+    encoded: list[str] = []
+    for index, raw_row in enumerate(rows):
+        row = _mapping(raw_row, f"{label}[{index}]")
+        encoded.append(
+            json.dumps(
+                row,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    if len(encoded) != len(set(encoded)):
+        _fail(f"{label} must not contain duplicate rows")
+    return tuple(sorted(encoded))
+
+
 def _read_csv(path: Path, label: str) -> list[dict[str, str]]:
     if not path.is_file() or path.is_symlink():
         _fail(f"{label} is missing or is not a regular file")
@@ -444,6 +474,8 @@ def _verify_common_ir_identity(
     }
     identity = _mapping(selection.get("common_ir_identity"), f"{label}.selection.common_ir_identity")
     _require_exact_keys(identity, expected, f"{label}.selection.common_ir_identity")
+    if set(identity) != set(expected):
+        _fail(f"{label}.selection.common_ir_identity has unsupported fields")
     for key, value in expected.items():
         if identity[key] != value:
             _fail(f"{label}.selection.common_ir_identity.{key} does not match common_ir_v1.json")
@@ -478,11 +510,16 @@ def _verify_common_ir_identity(
     profile_metadata = _mapping(profile.get("processing_metadata"), f"{label}.profile.processing_metadata")
     profile_lineage = _mapping(profile_metadata.get("candidate_pack"), f"{label}.profile.processing_metadata.candidate_pack")
     lineage_keys = ("candidate_pack_id", "common_ir_document_id", "common_ir_source_sha256", "text_basis")
+    lineage_optional_keys = {
+        "candidate_pack_generator", "candidate_pack_generator_version", "recovery_source",
+    }
     _require_exact_keys(selection_lineage, lineage_keys, f"{label}.selection.candidate_pack_lineage")
     _require_exact_keys(profile_lineage, lineage_keys, f"{label}.profile.processing_metadata.candidate_pack")
-    for key in lineage_keys:
-        if selection_lineage.get(key) != profile_lineage.get(key):
-            _fail(f"{label} candidate-pack lineage differs between selection and profile: {key}")
+    allowed_lineage_keys = set(lineage_keys) | lineage_optional_keys
+    if set(selection_lineage) - allowed_lineage_keys or set(profile_lineage) - allowed_lineage_keys:
+        _fail(f"{label} candidate-pack lineage has unsupported fields")
+    if selection_lineage != profile_lineage:
+        _fail(f"{label} candidate-pack lineage differs between selection and profile")
     if selection_lineage["common_ir_document_id"] != expected["document_id"]:
         _fail(f"{label} candidate-pack lineage document_id does not match Common IR")
     if selection_lineage["common_ir_source_sha256"] != expected["source_sha256"]:
@@ -546,12 +583,392 @@ def _validate_evidence(
         if common_ir_block_id not in block_occurrences:
             _fail(f"{evidence_label}.common_ir_block_id is absent from Common IR")
         occurrence_ids = _require_string_list(item["common_ir_occurrence_ids"], f"{evidence_label}.common_ir_occurrence_ids")
-        if not occurrence_ids or not set(occurrence_ids).issubset(block_occurrences[common_ir_block_id]):
-            _fail(f"{evidence_label} has unknown Common IR occurrence provenance")
+        source_spans = item.get("source_spans")
+        if source_spans is None:
+            if not occurrence_ids or not set(occurrence_ids).issubset(block_occurrences[common_ir_block_id]):
+                _fail(f"{evidence_label} has unknown Common IR occurrence provenance")
+        else:
+            spans = _list(source_spans, f"{evidence_label}.source_spans")
+            if len(spans) not in {2, 3}:
+                _fail(f"{evidence_label}.source_spans must contain two or three spans")
+            span_occurrences: list[str] = []
+            previous_order: int | None = None
+            span_sections: set[str] = set()
+            for span_index, raw_span in enumerate(spans):
+                span_label = f"{evidence_label}.source_spans[{span_index}]"
+                span = _mapping(raw_span, span_label)
+                _require_exact_keys(
+                    span,
+                    (
+                        "source_block_id", "exact_text", "start_char", "end_char",
+                        "separator_after", "source_order", "section_id",
+                        "common_ir_block_id", "common_ir_occurrence_ids",
+                    ),
+                    span_label,
+                )
+                _nonempty_string(span.get("source_block_id"), f"{span_label}.source_block_id")
+                _nonempty_string(span.get("exact_text"), f"{span_label}.exact_text")
+                start = span.get("start_char")
+                end = span.get("end_char")
+                if not _is_int(start) or not _is_int(end) or start < 0 or end <= start:
+                    _fail(f"{span_label} has invalid character offsets")
+                if span.get("separator_after") not in {"", " ", "\n"}:
+                    _fail(f"{span_label}.separator_after is unsupported")
+                source_order = span.get("source_order")
+                if not _is_int(source_order) or source_order < 0:
+                    _fail(f"{span_label}.source_order must be a non-negative integer")
+                if previous_order is not None and source_order <= previous_order:
+                    _fail(f"{evidence_label}.source_spans are not strictly ordered")
+                previous_order = source_order
+                section_id = _nonempty_string(span.get("section_id"), f"{span_label}.section_id")
+                span_sections.add(section_id)
+                span_block_id = _nonempty_string(
+                    span.get("common_ir_block_id"), f"{span_label}.common_ir_block_id"
+                )
+                if span_block_id not in block_occurrences:
+                    _fail(f"{span_label}.common_ir_block_id is absent from Common IR")
+                span_ids = _require_string_list(
+                    span.get("common_ir_occurrence_ids"),
+                    f"{span_label}.common_ir_occurrence_ids",
+                )
+                if not span_ids or not set(span_ids).issubset(block_occurrences[span_block_id]):
+                    _fail(f"{span_label} has unknown Common IR occurrence provenance")
+                span_occurrences.extend(span_ids)
+            if len(span_sections) != 1:
+                _fail(f"{evidence_label}.source_spans cross section boundaries")
+            if spans[-1].get("separator_after"):
+                _fail(f"{evidence_label}.source_spans have a trailing separator")
+            if common_ir_block_id != spans[0].get("common_ir_block_id"):
+                _fail(f"{evidence_label}.common_ir_block_id is not the first composite span")
+            if occurrence_ids != span_occurrences:
+                _fail(f"{evidence_label} composite occurrence provenance is incomplete")
     for relation_name in ("modifies_fact_ids", "recipient_fact_ids", "basis_fact_ids"):
         for relation_id in _require_string_list(fact.get(relation_name, []), f"{label}.{relation_name}"):
             if relation_id not in facts:
                 _fail(f"{label}.{relation_name} contains a dangling fact id: {relation_id}")
+
+
+def _profile_evidence_reference(
+    raw_source: object,
+    *,
+    include_text: bool,
+    label: str,
+) -> dict[str, Any]:
+    """Project one materialized source block exactly as the v0.2 assembler does."""
+
+    source = _mapping(raw_source, label)
+    required = (
+        "source_block_id",
+        "section_id",
+        "source_occurrence_ids",
+        "common_ir_document_id",
+        "common_ir_block_id",
+        "common_ir_occurrence_ids",
+        "text",
+    )
+    _require_exact_keys(source, required, label)
+    reference = {
+        "source_block_id": source["source_block_id"],
+        "section_id": source["section_id"],
+        "source_occurrence_ids": source["source_occurrence_ids"],
+        "common_ir_document_id": source["common_ir_document_id"],
+        "common_ir_block_id": source["common_ir_block_id"],
+        "common_ir_occurrence_ids": source["common_ir_occurrence_ids"],
+    }
+    if include_text:
+        reference["text"] = source["text"]
+    if source.get("common_ir_cell_id") is not None:
+        reference["common_ir_cell_id"] = source["common_ir_cell_id"]
+    if source.get("source_spans") is not None:
+        reference["source_spans"] = source["source_spans"]
+    return reference
+
+
+def _validate_selection_profile_materialization(
+    profile: Mapping[str, Any],
+    selection: Mapping[str, Any],
+    facts: Mapping[str, Mapping[str, Any]],
+    component_ids: set[str],
+    materialized_by_id: Mapping[str, Mapping[str, Any]],
+    *,
+    label: str,
+) -> None:
+    """Require selection, server materialization, and Profile to agree exactly."""
+
+    selection_payload = _mapping(selection.get("selection"), f"{label} source selection.selection")
+    source_block_texts = _mapping(
+        selection.get("source_block_texts"),
+        f"{label} source selection.source_block_texts",
+    )
+    selected_facts: dict[str, Mapping[str, Any]] = {}
+    for index, raw_fact in enumerate(_list(selection_payload.get("facts"), f"{label} selection.facts")):
+        selected_label = f"{label} selection.facts[{index}]"
+        selected = _mapping(raw_fact, selected_label)
+        fact_id = _nonempty_string(selected.get("fact_id"), f"{selected_label}.fact_id")
+        if fact_id in selected_facts:
+            _fail(f"{label} selection.facts has duplicate fact_id: {fact_id}")
+        selected_facts[fact_id] = selected
+    if set(selected_facts) != set(facts):
+        _fail(f"{label} selected fact ids do not exactly match profile fact ids")
+
+    direct_keys = (
+        "field_name",
+        "status",
+        "subject_role",
+        "semantic_role",
+        "canonical_role",
+    )
+    relation_keys = (
+        "applicability_component_ids",
+        "modifies_fact_ids",
+        "recipient_fact_ids",
+        "basis_fact_ids",
+    )
+    for fact_id, fact in facts.items():
+        item = materialized_by_id[fact_id]
+        selected = selected_facts[fact_id]
+        fact_label = f"{label} fact {fact_id}"
+        for key in direct_keys:
+            if selected.get(key) != item.get(key):
+                _fail(f"{fact_label} selection/materialized evidence differs: {key}")
+            if item.get(key) != fact.get(key):
+                _fail(f"{fact_label} materialized evidence/profile differs: {key}")
+        for key in relation_keys:
+            selected_relations = _unordered_unique_strings(
+                selected.get(key), f"{fact_label} selection.{key}"
+            )
+            materialized_relations = _unordered_unique_strings(
+                item.get(key), f"{fact_label} materialized.{key}"
+            )
+            profile_relations = _unordered_unique_strings(
+                fact.get(key), f"{fact_label} profile.{key}"
+            )
+            if selected_relations != materialized_relations:
+                _fail(f"{fact_label} selection/materialized evidence differs: {key}")
+            if materialized_relations != profile_relations:
+                _fail(f"{fact_label} materialized evidence/profile differs: {key}")
+
+        primary_component_id = item.get("primary_component_id")
+        if selected.get("primary_component_id") != primary_component_id:
+            _fail(f"{fact_label} selection/materialized evidence differs: primary_component_id")
+        if primary_component_id != fact.get("support_component_id"):
+            _fail(f"{fact_label} materialized evidence/profile differs: support_component_id")
+        expected_scope = "component" if primary_component_id is not None else "notice"
+        if fact.get("scope") != expected_scope:
+            _fail(f"{fact_label}.scope disagrees with its component ownership")
+
+        value_anchor = _mapping(selected.get("value_anchor"), f"{fact_label} selection.value_anchor")
+        value_source = _mapping(item.get("value_source"), f"{fact_label} materialized value_source")
+        if value_anchor.get("source_block_id") != value_source.get("source_block_id"):
+            _fail(f"{fact_label} value anchor and materialized source block differ")
+        if value_anchor.get("anchor_text") != fact.get("value_raw"):
+            _fail(f"{fact_label} value anchor and profile value_raw differ")
+        if value_source != fact.get("value_source"):
+            _fail(f"{fact_label} materialized evidence/profile differs: value_source")
+
+        source_blocks = _list(item.get("source_blocks"), f"{fact_label} materialized source_blocks")
+        if len(source_blocks) != 1:
+            _fail(f"{fact_label} must materialize exactly one v0.2 source block")
+        source_block = _mapping(
+            source_blocks[0], f"{fact_label} materialized source block"
+        )
+        if source_block.get("source_block_id") != value_source.get("source_block_id"):
+            _fail(f"{fact_label} value_source and materialized source block differ")
+        source_text = source_block.get("text")
+        if source_text != fact.get("value_raw"):
+            _fail(f"{fact_label} materialized source text and profile value_raw differ")
+        expected_evidence = [
+            _profile_evidence_reference(
+                source_blocks[0], include_text=False, label=f"{fact_label} materialized source block"
+            )
+        ]
+        if expected_evidence != fact.get("evidence"):
+            _fail(f"{fact_label} materialized source_blocks/profile evidence differ")
+
+        context_blocks = _list(item.get("context_blocks"), f"{fact_label} materialized context_blocks")
+        if _unordered_unique_strings(
+            [block.get("source_block_id") for block in context_blocks],
+            f"{fact_label} materialized context block ids",
+        ) != _unordered_unique_strings(
+            selected.get("context_source_block_ids"),
+            f"{fact_label} selected context block ids",
+        ):
+            _fail(f"{fact_label} selection/materialized context blocks differ")
+        expected_context = [
+            _profile_evidence_reference(
+                block,
+                include_text=True,
+                label=f"{fact_label} materialized context_blocks[{index}]",
+            )
+            for index, block in enumerate(context_blocks)
+        ]
+        if _unordered_unique_json_rows(
+            expected_context, f"{fact_label} materialized context evidence"
+        ) != _unordered_unique_json_rows(
+            fact.get("context_evidence"), f"{fact_label} profile context evidence"
+        ):
+            _fail(f"{fact_label} materialized context_blocks/profile context_evidence differ")
+
+        if fact.get("field_name") == "delivery_roles":
+            names = _list(item.get("organization_names"), f"{fact_label} organization_names")
+            sources = _list(item.get("organization_sources"), f"{fact_label} organization_sources")
+            if len(names) != len(sources):
+                _fail(f"{fact_label} organization names/sources lengths differ")
+            expected_organization_anchors: list[dict[str, str]] = []
+            for index, (raw_name, raw_source) in enumerate(
+                zip(names, sources, strict=True)
+            ):
+                name = _nonempty_string(
+                    raw_name, f"{fact_label} organization_names[{index}]"
+                )
+                source = _mapping(
+                    raw_source, f"{fact_label} organization_sources[{index}]"
+                )
+                source_block_id = _nonempty_string(
+                    source.get("source_block_id"),
+                    f"{fact_label} organization_sources[{index}].source_block_id",
+                )
+                expected_organization_anchors.append(
+                    {"source_block_id": source_block_id, "anchor_text": name}
+                )
+            if _unordered_unique_json_rows(
+                selected.get("organization_anchors"),
+                f"{fact_label} selection.organization_anchors",
+            ) != _unordered_unique_json_rows(
+                expected_organization_anchors,
+                f"{fact_label} materialized organization anchors",
+            ):
+                _fail(
+                    f"{fact_label} selection/materialized organization anchors differ"
+                )
+            expected_organizations = [
+                {"value_raw": name, "value_source": source}
+                for name, source in zip(names, sources, strict=True)
+            ]
+            if _unordered_unique_json_rows(
+                fact.get("organization_names"), f"{fact_label} profile organization_names"
+            ) != _unordered_unique_json_rows(
+                expected_organizations, f"{fact_label} materialized organization_names"
+            ):
+                _fail(f"{fact_label} materialized/profile organization names differ")
+            for key in ("role_raw", "role_source_block_id", "role_source", "canonical_role"):
+                if item.get(key) != fact.get(key):
+                    _fail(f"{fact_label} materialized evidence/profile differs: {key}")
+            role_raw = item.get("role_raw")
+            role_source = item.get("role_source")
+            role_source_block_id = item.get("role_source_block_id")
+            selected_role_anchor = selected.get("role_anchor")
+            if role_raw is None:
+                if (
+                    selected_role_anchor is not None
+                    or role_source is not None
+                    or role_source_block_id is not None
+                ):
+                    _fail(f"{fact_label} empty role has role-anchor provenance")
+            else:
+                role_text = _nonempty_string(role_raw, f"{fact_label} role_raw")
+                role_source_map = _mapping(
+                    role_source, f"{fact_label} role_source"
+                )
+                role_source_id = _nonempty_string(
+                    role_source_map.get("source_block_id"),
+                    f"{fact_label} role_source.source_block_id",
+                )
+                if role_source_block_id != role_source_id:
+                    _fail(
+                        f"{fact_label} role_source_block_id and role_source differ"
+                    )
+                expected_role_anchor = {
+                    "source_block_id": role_source_id,
+                    "anchor_text": role_text,
+                }
+                if selected_role_anchor != expected_role_anchor:
+                    _fail(
+                        f"{fact_label} selection/materialized role anchor differs"
+                    )
+
+    profile_components: dict[str, Mapping[str, Any]] = {}
+    for index, raw_component in enumerate(_list(profile.get("support_components"), f"{label} profile.support_components")):
+        component = _mapping(raw_component, f"{label} profile.support_components[{index}]")
+        component_id = _nonempty_string(component.get("support_component_id"), f"{label} profile component id")
+        profile_components[component_id] = component
+    selected_components: dict[str, Mapping[str, Any]] = {}
+    for index, raw_component in enumerate(_list(selection_payload.get("support_components"), f"{label} selection.support_components")):
+        component = _mapping(raw_component, f"{label} selection.support_components[{index}]")
+        component_id = _nonempty_string(component.get("support_component_id"), f"{label} selected component id")
+        if component_id in selected_components:
+            _fail(f"{label} selection.support_components has duplicate id: {component_id}")
+        selected_components[component_id] = component
+    materialized_components: dict[str, Mapping[str, Any]] = {}
+    for index, raw_component in enumerate(_list(selection.get("materialized_components"), f"{label} materialized_components")):
+        component = _mapping(raw_component, f"{label} materialized_components[{index}]")
+        component_id = _nonempty_string(component.get("support_component_id"), f"{label} materialized component id")
+        if component_id in materialized_components:
+            _fail(f"{label} materialized_components has duplicate id: {component_id}")
+        materialized_components[component_id] = component
+    if set(profile_components) != component_ids or set(selected_components) != component_ids or set(materialized_components) != component_ids:
+        _fail(f"{label} selected/materialized/profile component ids differ")
+    for component_id in sorted(component_ids):
+        selected = selected_components[component_id]
+        materialized = materialized_components[component_id]
+        profile_component = profile_components[component_id]
+        if selected.get("component_kind") != profile_component.get("component_kind"):
+            _fail(f"{label} component {component_id} selection/profile differs: component_kind")
+        for key in ("source_block_ids", "table_block_ids"):
+            if _unordered_unique_strings(
+                selected.get(key), f"{label} component {component_id} selection.{key}"
+            ) != _unordered_unique_strings(
+                profile_component.get(key), f"{label} component {component_id} profile.{key}"
+            ):
+                _fail(f"{label} component {component_id} selection/profile differs: {key}")
+        for key in ("name_raw", "name_source_block_id"):
+            if materialized.get(key) != profile_component.get(key):
+                _fail(f"{label} component {component_id} materialized/profile differs: {key}")
+        expected_name_status = "identified" if materialized.get("name_raw") else "not_extracted"
+        if profile_component.get("name_status") != expected_name_status:
+            _fail(f"{label} component {component_id} has inconsistent name_status")
+        selected_name_anchor = selected.get("name_anchor")
+        if materialized.get("name_raw") is None:
+            if selected_name_anchor is not None or materialized.get("name_source_block_id") is not None:
+                _fail(f"{label} component {component_id} empty name has anchor provenance")
+        else:
+            expected_name_anchor = {
+                "source_block_id": _nonempty_string(
+                    materialized.get("name_source_block_id"),
+                    f"{label} component {component_id} name_source_block_id",
+                ),
+                "anchor_text": _nonempty_string(
+                    materialized.get("name_raw"),
+                    f"{label} component {component_id} name_raw",
+                ),
+            }
+            if selected_name_anchor != expected_name_anchor:
+                _fail(f"{label} component {component_id} selection/materialized name anchor differs")
+            component_source_ids = set(
+                _unordered_unique_strings(
+                    selected.get("source_block_ids"),
+                    f"{label} component {component_id} selection.source_block_ids",
+                )
+            ) | set(
+                _unordered_unique_strings(
+                    selected.get("table_block_ids"),
+                    f"{label} component {component_id} selection.table_block_ids",
+                )
+            )
+            name_source_block_id = expected_name_anchor["source_block_id"]
+            if name_source_block_id not in component_source_ids:
+                _fail(
+                    f"{label} component {component_id} name anchor is outside its component sources"
+                )
+            source_text = source_block_texts.get(name_source_block_id)
+            if not isinstance(source_text, str):
+                _fail(
+                    f"{label} component {component_id} name anchor is absent from CandidatePack"
+                )
+            if source_text.count(expected_name_anchor["anchor_text"]) != 1:
+                _fail(
+                    f"{label} component {component_id} name anchor must occur exactly once in its source block"
+                )
 
 
 def _facts_from_profile(
@@ -600,20 +1017,33 @@ def _facts_from_profile(
     return facts, component_ids
 
 
-def _verify_profile_document(
-    profile_path: Path,
-    selection_path: Path,
-    common_ir_path: Path,
+def verify_profile_artifact_triple(
+    profile: Mapping[str, Any],
+    selection: Mapping[str, Any],
+    common_ir: Mapping[str, Any],
     *,
     pblanc_id: str,
+    allow_unnamespaced_notice_id: bool = False,
 ) -> tuple[int, Counter[str]]:
+    """Validate one in-memory Profile/selection/Common-IR artifact triple.
+
+    This is the notice-level contract used by the frozen Gold verifier.  It is
+    public so offline candidate evaluators can apply the same provenance and
+    exact-span checks to baseline and candidate artifacts before comparing
+    their meaning.  The function is read-only and performs no network or
+    filesystem I/O.
+    """
+
     label = f"notice {pblanc_id}"
-    profile = _load_json_object(profile_path, f"{label} profile")
-    selection = _load_json_object(selection_path, f"{label} source selection")
-    common_ir = _load_json_object(common_ir_path, f"{label} Common IR")
+    profile = _mapping(profile, f"{label} profile")
+    selection = _mapping(selection, f"{label} source selection")
+    common_ir = _mapping(common_ir, f"{label} Common IR")
     if profile.get("schema_version") != PROFILE_SCHEMA:
         _fail(f"{label} profile schema_version must be {PROFILE_SCHEMA!r}")
-    if profile.get("notice_id") != f"bizinfo:{pblanc_id}":
+    accepted_notice_ids = {f"bizinfo:{pblanc_id}"}
+    if allow_unnamespaced_notice_id:
+        accepted_notice_ids.add(pblanc_id)
+    if profile.get("notice_id") not in accepted_notice_ids:
         _fail(f"{label} profile.notice_id does not match its directory")
     if selection.get("selection_contract") != SELECTION_CONTRACT:
         _fail(f"{label} source selection contract must be {SELECTION_CONTRACT!r}")
@@ -667,6 +1097,15 @@ def _verify_profile_document(
     if materialized_component_ids != component_ids:
         _fail(f"{label} materialized component ids do not match profile components")
 
+    _validate_selection_profile_materialization(
+        profile,
+        selection,
+        facts,
+        component_ids,
+        materialized_by_id,
+        label=label,
+    )
+
     for index, raw_projection in enumerate(_list(profile.get("derived_projections", []), f"{label} profile.derived_projections")):
         projection = _mapping(raw_projection, f"{label} profile.derived_projections[{index}]")
         references: list[str] = []
@@ -677,6 +1116,24 @@ def _verify_profile_document(
         if missing:
             _fail(f"{label} derived projection has dangling source fact ids: {sorted(missing)}")
     return len(facts), Counter(str(fact["status"]) for fact in facts.values())
+
+
+def _verify_profile_document(
+    profile_path: Path,
+    selection_path: Path,
+    common_ir_path: Path,
+    *,
+    pblanc_id: str,
+) -> tuple[int, Counter[str]]:
+    """Load and validate one frozen notice triple."""
+
+    label = f"notice {pblanc_id}"
+    return verify_profile_artifact_triple(
+        _load_json_object(profile_path, f"{label} profile"),
+        _load_json_object(selection_path, f"{label} source selection"),
+        _load_json_object(common_ir_path, f"{label} Common IR"),
+        pblanc_id=pblanc_id,
+    )
 
 
 def _verify_sample_and_answer_set(

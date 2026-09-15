@@ -879,8 +879,23 @@ def write_comparison_report(
     *,
     output_dir: Path,
     gold_root: Path,
+    report_file_name: str = REPORT_FILE_NAME,
 ) -> Path:
-    """Atomically publish one report through an opened, no-follow directory FD."""
+    """Atomically publish one report through an opened, no-follow directory FD.
+
+    ``report_file_name`` is exposed for sibling offline evaluators that need
+    the same hardened publication boundary.  It must be one plain file name;
+    existing callers retain the historical default.
+    """
+
+    _require(
+        isinstance(report_file_name, str)
+        and report_file_name not in {"", ".", ".."}
+        and Path(report_file_name).name == report_file_name
+        and "/" not in report_file_name
+        and "\\" not in report_file_name,
+        "report file name must be one plain file name",
+    )
 
     supplied = output_dir.expanduser()
     lexical_output = Path(os.path.abspath(supplied))
@@ -915,7 +930,7 @@ def write_comparison_report(
     expected_gold = resolved_gold.stat(follow_symlinks=False)
     _require(stat.S_ISDIR(expected_gold.st_mode), "Gold root must be a directory")
 
-    report_path = resolved_output / REPORT_FILE_NAME
+    report_path = resolved_output / report_file_name
     output_chain: list[int] = []
     gold_chain: list[int] = []
     directory_descriptor: int | None = None
@@ -949,7 +964,7 @@ def write_comparison_report(
             not _directory_fd_is_within(directory_descriptor, gold_descriptor),
             "opened output directory is inside the read-only Gold root",
         )
-        temporary_name = f".{REPORT_FILE_NAME}.{secrets.token_hex(12)}.tmp"
+        temporary_name = f".{report_file_name}.{secrets.token_hex(12)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         temporary_descriptor = os.open(
             temporary_name,
@@ -968,14 +983,14 @@ def write_comparison_report(
         )
         os.link(
             temporary_name,
-            REPORT_FILE_NAME,
+            report_file_name,
             src_dir_fd=directory_descriptor,
             dst_dir_fd=directory_descriptor,
             follow_symlinks=False,
         )
         published = True
         if _directory_fd_is_within(directory_descriptor, gold_descriptor):
-            os.unlink(REPORT_FILE_NAME, dir_fd=directory_descriptor)
+            os.unlink(report_file_name, dir_fd=directory_descriptor)
             published = False
             raise ExistingProfileComparisonError(
                 "opened output directory moved inside the read-only Gold root during publish"
@@ -986,7 +1001,7 @@ def write_comparison_report(
         publish_complete = True
     except FileExistsError as error:
         raise ExistingProfileComparisonError(
-            f"comparison report already exists: {REPORT_FILE_NAME}"
+            f"comparison report already exists: {report_file_name}"
         ) from error
     except OSError as error:
         raise ExistingProfileComparisonError(f"cannot write comparison report: {error}") from error
@@ -1005,7 +1020,7 @@ def write_comparison_report(
                 pass
         if published and not publish_complete and directory_descriptor is not None:
             try:
-                os.unlink(REPORT_FILE_NAME, dir_fd=directory_descriptor)
+                os.unlink(report_file_name, dir_fd=directory_descriptor)
             except FileNotFoundError:
                 pass
             except OSError:

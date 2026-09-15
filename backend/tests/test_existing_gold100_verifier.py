@@ -104,6 +104,8 @@ def _write_gold(root: Path) -> str:
         "evidence": [
             {
                 "source_block_id": "block-1",
+                "section_id": "main_notice",
+                "source_occurrence_ids": ["occ-1"],
                 "common_ir_document_id": document_id,
                 "common_ir_block_id": "block-1",
                 "common_ir_occurrence_ids": ["occ-1"],
@@ -140,7 +142,30 @@ def _write_gold(root: Path) -> str:
     }
     selection = {
         "selection_contract": verifier.SELECTION_CONTRACT,
-        "selection": {"notice_id": pblanc_id},
+        "selection": {
+            "notice_id": pblanc_id,
+            "facts": [
+                {
+                    "fact_id": fact["fact_id"],
+                    "field_name": fact["field_name"],
+                    "status": fact["status"],
+                    "subject_role": None,
+                    "semantic_role": None,
+                    "canonical_role": None,
+                    "value_anchor": {
+                        "source_block_id": "block-1",
+                        "anchor_text": source_text,
+                    },
+                    "context_source_block_ids": [],
+                    "primary_component_id": None,
+                    "applicability_component_ids": [],
+                    "modifies_fact_ids": [],
+                    "recipient_fact_ids": [],
+                    "basis_fact_ids": [],
+                }
+            ],
+            "support_components": [],
+        },
         "source_block_texts": {"block-1": source_text},
         "common_ir_identity": {"document_id": document_id, "source_kind": "pdf", "source_sha256": source_sha},
         "candidate_pack_lineage": {
@@ -154,7 +179,27 @@ def _write_gold(root: Path) -> str:
                 "fact_id": fact["fact_id"],
                 "field_name": fact["field_name"],
                 "status": fact["status"],
+                "subject_role": None,
+                "semantic_role": None,
+                "canonical_role": None,
+                "source_blocks": [
+                    {
+                        "source_block_id": "block-1",
+                        "text": source_text,
+                        "section_id": "main_notice",
+                        "source_occurrence_ids": ["occ-1"],
+                        "common_ir_document_id": document_id,
+                        "common_ir_block_id": "block-1",
+                        "common_ir_occurrence_ids": ["occ-1"],
+                    }
+                ],
                 "value_source": fact["value_source"],
+                "context_blocks": [],
+                "primary_component_id": None,
+                "applicability_component_ids": [],
+                "modifies_fact_ids": [],
+                "recipient_fact_ids": [],
+                "basis_fact_ids": [],
             }
         ],
         "materialized_components": [],
@@ -230,6 +275,57 @@ def _write_gold(root: Path) -> str:
     return pblanc_id
 
 
+def _read_notice_triple(
+    root: Path, pblanc_id: str
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    notice = root / "notices" / pblanc_id
+    return tuple(
+        json.loads((notice / name).read_text(encoding="utf-8"))
+        for name in (
+            "existing_profile.v0.2.json",
+            "source_selection.v0.2.json",
+            "common_ir_v1.json",
+        )
+    )  # type: ignore[return-value]
+
+
+def _install_named_component(
+    profile: dict[str, object],
+    selection: dict[str, object],
+) -> None:
+    profile["support_components"] = [
+        {
+            "support_component_id": "component-1",
+            "component_kind": "support_package",
+            "name_raw": "명시적 지원 내용",
+            "name_status": "identified",
+            "name_source_block_id": "block-1",
+            "source_block_ids": ["block-1"],
+            "table_block_ids": [],
+            "facts": [],
+        }
+    ]
+    selection["selection"]["support_components"] = [  # type: ignore[index]
+        {
+            "support_component_id": "component-1",
+            "component_kind": "support_package",
+            "source_block_ids": ["block-1"],
+            "table_block_ids": [],
+            "name_anchor": {
+                "source_block_id": "block-1",
+                "anchor_text": "명시적 지원 내용",
+            },
+        }
+    ]
+    selection["materialized_components"] = [
+        {
+            "support_component_id": "component-1",
+            "name_raw": "명시적 지원 내용",
+            "name_source_block_id": "block-1",
+        }
+    ]
+
+
 def test_verifies_a_self_contained_synthetic_gold_freeze(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     root = tmp_path / "gold"
     _write_gold(root)
@@ -269,6 +365,178 @@ def test_rejects_provenance_tampering_even_when_artifacts_are_resealed(tmp_path:
 
     with pytest.raises(verifier.GoldVerificationError, match="common_ir_identity.source_sha256 does not match"):
         verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_rejects_selection_materialization_mismatch_even_when_resealed(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    selection_path = root / "notices" / pblanc_id / "source_selection.v0.2.json"
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    selection["materialized_evidence"][0]["semantic_role"] = "forged-role"
+    _write_json(selection_path, selection)
+
+    profile_manifest_path = root / "profile_manifest.json"
+    profile_manifest = json.loads(profile_manifest_path.read_text(encoding="utf-8"))
+    replacement_digest = _digest(selection_path)
+    profile_manifest["profiles"][0]["source"]["selection"]["sha256"] = replacement_digest
+    profile_manifest["profiles"][0]["frozen"]["selection"]["sha256"] = replacement_digest
+    _write_json(profile_manifest_path, profile_manifest)
+    _seal(root, pblanc_id)
+
+    with pytest.raises(verifier.GoldVerificationError, match="selection/materialized evidence"):
+        verifier.verify_gold_root(root, expected_notice_count=1)
+
+
+def test_rejects_delivery_organization_anchor_text_drift(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    fact = profile["comparison_profile"].pop("support_content")[0]  # type: ignore[index,union-attr]
+    fact["field_name"] = "delivery_roles"
+    fact["organization_names"] = [
+        {"value_raw": fact["value_raw"], "value_source": fact["value_source"]}
+    ]
+    fact.update(
+        {
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": None,
+        }
+    )
+    profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    selected = selection["selection"]["facts"][0]  # type: ignore[index]
+    selected["field_name"] = "delivery_roles"
+    selected["organization_anchors"] = [
+        {"source_block_id": "block-1", "anchor_text": "변조된 기관명"}
+    ]
+    selected["role_anchor"] = None
+    materialized = selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["field_name"] = "delivery_roles"
+    materialized.update(
+        {
+            "organization_names": [fact["value_raw"]],
+            "organization_sources": [fact["value_source"]],
+            "role_raw": None,
+            "role_source_block_id": None,
+            "role_source": None,
+            "canonical_role": None,
+        }
+    )
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="selection/materialized organization anchors differ",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_delivery_role_anchor_text_drift(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    fact = profile["comparison_profile"].pop("support_content")[0]  # type: ignore[index,union-attr]
+    fact["field_name"] = "delivery_roles"
+    fact.update(
+        {
+            "organization_names": [],
+            "role_raw": fact["value_raw"],
+            "role_source_block_id": "block-1",
+            "role_source": fact["value_source"],
+            "canonical_role": "operating_agency",
+        }
+    )
+    profile["comparison_profile"]["delivery_roles"] = [fact]  # type: ignore[index]
+    selected = selection["selection"]["facts"][0]  # type: ignore[index]
+    selected.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_anchors": [],
+            "role_anchor": {
+                "source_block_id": "block-1",
+                "anchor_text": "변조된 역할",
+            },
+            "canonical_role": "operating_agency",
+        }
+    )
+    materialized = selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized.update(
+        {
+            "field_name": "delivery_roles",
+            "organization_names": [],
+            "organization_sources": [],
+            "role_raw": fact["value_raw"],
+            "role_source_block_id": "block-1",
+            "role_source": fact["value_source"],
+            "canonical_role": "operating_agency",
+        }
+    )
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="selection/materialized role anchor differs",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_component_name_anchor_text_drift(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_named_component(profile, selection)
+    selection["selection"]["support_components"][0]["name_anchor"][  # type: ignore[index]
+        "anchor_text"
+    ] = "변조된 구성요소명"
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="selection/materialized name anchor differs",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_component_name_anchor_outside_component_sources(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_named_component(profile, selection)
+    profile["support_components"][0]["source_block_ids"] = ["other-block"]  # type: ignore[index]
+    selection["selection"]["support_components"][0]["source_block_ids"] = [  # type: ignore[index]
+        "other-block"
+    ]
+    selection["source_block_texts"]["other-block"] = "다른 구성요소"  # type: ignore[index]
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="name anchor is outside its component sources",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
+
+
+def test_rejects_ambiguous_component_name_anchor(tmp_path: Path) -> None:
+    root = tmp_path / "gold"
+    pblanc_id = _write_gold(root)
+    profile, selection, common_ir = _read_notice_triple(root, pblanc_id)
+    _install_named_component(profile, selection)
+    selection["source_block_texts"]["block-1"] = (  # type: ignore[index]
+        "명시적 지원 내용 / 명시적 지원 내용"
+    )
+
+    with pytest.raises(
+        verifier.GoldVerificationError,
+        match="name anchor must occur exactly once",
+    ):
+        verifier.verify_profile_artifact_triple(
+            profile, selection, common_ir, pblanc_id=pblanc_id
+        )
 
 
 def test_requires_the_explicit_expected_notice_count(tmp_path: Path) -> None:
