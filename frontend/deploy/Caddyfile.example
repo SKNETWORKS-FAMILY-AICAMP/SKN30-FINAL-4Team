@@ -5,7 +5,7 @@ app.example.com {
 
 	# Preserve /api/v1/... while forwarding through the Tailnet.
 	handle /api/* {
-		reverse_proxy 100.64.0.10:8001
+		reverse_proxy backend.tailnet.example:8001
 	}
 
 	# Do not publish the design-reference HTML copied from public/.
