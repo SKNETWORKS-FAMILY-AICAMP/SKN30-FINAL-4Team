@@ -1,10 +1,12 @@
 # PDF 문서 융합 및 원격 GPU 실행 설계
 
 - 상태: 리뷰 반영 설계 v0.2
-- 기준일: 2026-09-15
+- 기준일: 2026-09-16
 - 대상: Existing 공고와 Request 요청서가 공유하는 PDF 물리 추출·근거 계층
 - 리뷰: Opus 5 xhigh, Sol xhigh 독립 리뷰 및 Grok 레드팀 검토 반영
-- 구현 판정: 0~2단계만 GO. 원격 GPU·표 승격·Request PDF 개방은 각 gate 통과 전 NO-GO
+- 구현 판정: Stage 1/2 수직 단위, Stage 4A accelerator 계약·port·local fake와
+  Stage 4B one-step local coordinator는 구현됨. 실제 RunPod adapter·DB/runtime 연결·표
+  승격·Request PDF 개방은 각 gate 통과 전 NO-GO
 
 ## 1. 결정 요약
 
@@ -286,13 +288,15 @@ async result 보존 시간이 유한하므로 완료 결과를 즉시 우리 Sto
 
 ### 10.1 원격 계산 identity와 fence
 
-```text
-logical_compute_key = SHA-256(
-  source_sha256 || capability || page_image_sha256[] || page_range || mode ||
-  pipeline_revision || model_weights_sha256 || config_digest ||
-  coordinate_manifest_sha256
-)
-```
+`logical_compute_key`는 `LayoutComputeIdentity.compute_key_payload()`의 canonical digest다.
+source/page 범위, render manifest 메타데이터, 페이지별 hash·크기·MIME·pixel 크기와 정확한
+5-field coordinate sidecar binding, workload/mode, pinned producer identity가 입력이다. DB
+attempt/fence, signed URL·expiry와 Storage object 위치는 포함하지 않는다.
+
+`request_digest`는 schema version, `logical_compute_key`, render-manifest/page-image GET과
+결과 create-only PUT capability의 안정적 binding, request-wide resource cap을 묶은 canonical
+envelope digest다. raw signed URL과 expiry를 제외하므로 capability 갱신은 digest를 바꾸지
+않는다.
 
 - `logical_compute_key`: attempt가 바뀌어도 같은 계산을 식별한다.
 - `processing_run_pk`: 현재 DB lease/fenced commit 권한이다.
@@ -315,45 +319,60 @@ RunPod가 client idempotency를 보장한다고 가정하지 않는다. 외부 P
 ### 10.2 요청
 
 - logical compute key와 request digest
-- 허용된 Storage host·bucket·정확한 object에만 유효한 짧은 수명의 page-image signed GET
-- page image SHA-256와 coordinate manifest
-- 허용 capability와 page 범위
-- input/output schema, pipeline, model, config, worker image revision
-- 정확한 결과 object에만 유효한 짧은 수명의 immutable signed upload token
+- render manifest용 read-only GET capability와 정확한 manifest hash·크기·MIME
+- 페이지별 `image/png` read-only GET capability와 image SHA-256·크기·pixel 크기·coordinate binding
+- input/output schema, 전체 page 범위, workload/mode
+- engine/model weights·immutable revision·pipeline/config·worker image digest를 모두 포함한 producer identity
+- 정확한 결과 object에만 유효한 `application/json` create-only PUT capability
 - `executionTimeout`과 `ttl`; ttl은 queue 시간과 실행 시간을 모두 포함
 
 RunPod handler는 임의 URL을 받지 않는다. HTTPS, host/bucket/prefix allow-list, redirect
 금지, method/path 고정, expiry, 입력 size/hash/MIME를 검증한다. URL과 문서 본문은 로그에
 남기지 않는다.
 
+실제 provider adapter는 매 outbound `submit()` 직전에 deployment policy와 현재 시각으로
+`validate_accelerator_dispatch`를 실행한 뒤에만 wire payload를 만든다. capability 만료,
+host/bucket/prefix/method 또는 resource cap 검증이 실패하면 HTTP 호출은 0회여야 한다.
+coordinator의 request integrity 검사는 이 전송 경계 검사를 대신하지 않는다.
+
 ### 10.3 응답과 수용
 
-RunPod job 응답은 다음 artifact manifest만 반환한다.
+polling 응답은 `queued`/`running`일 때 결과 manifest 없이 반환할 수 있다. remote terminal
+상태는 `succeeded`, `content_failed`, `infra_retryable`, `cancelled`로 제한한다. terminal
+manifest는 다음 결속을 포함하며, `succeeded`만 result artifact를 포함한다.
 
 - external job ID와 terminal status
 - logical compute key와 request digest
 - artifact key, SHA-256, size, MIME, schema version
 - 입력 page image/coordinate manifest SHA-256
-- engine/model/config/worker image revision
+- engine id/version, model id/immutable revision/weights SHA-256, pipeline revision,
+  config SHA-256, worker image digest
 - timing과 공개 가능한 reason code
 
-EC2 worker가 service-role로 artifact를 가져오되 streaming size cap을 적용하고 SHA-256,
-MIME/magic, schema, source/page/좌표 결속을 다시 검증한다. callback body나 RunPod가 주장한
-hash만 신뢰하지 않는다. fence loss 시 best-effort `/cancel/{job_id}`를 호출하고, 취소 실패
-결과와 stale fence 결과는 DB에 commit하지 않는다.
+EC2 worker는 먼저 pure acceptance gate에서 succeeded status, logical key/request digest,
+source/page/render/producer lineage와 결과 object key, 선언된 size/MIME/schema cap을 검증한다.
+그 뒤 service-role로 artifact를 streaming 다운로드해 실제 byte 수와 SHA-256,
+`application/json` MIME/magic, `surya_layout_artifact/v1` canonical schema·geometry를 검증한다.
+callback body나 RunPod가 주장한 hash만 신뢰하지 않는다. fence loss 시 best-effort
+`/cancel/{job_id}`를 호출하고, 취소 실패 결과와 stale fence 결과는 DB에 commit하지 않는다.
 
 ### 10.4 자원·재시도
 
-GPU 제출 전 source bytes, page 수, page별/전체 rendered pixels, render 시간, 입력/출력
-artifact bytes와 예상 비용에 hard cap을 둔다. 초기 숫자는 Existing PDF 47건의 p99 측정
-후 문서화하며, cap이 정해지기 전 production traffic은 NO-GO다.
+GPU 제출 전 request-wide cap으로 page 수, manifest+page 입력 bytes, 전체 rendered pixels,
+output bytes, execution timeout, 전체 TTL을 명시한다. TTL은 execution timeout 이상이어야
+하고, 실제 사용량과 선언 cap 모두 deployment ceiling 이하여야 한다. GET capability들의
+aggregate bytes와 각 GET/PUT capability의 byte·MIME·expiry도 dispatch에서 검증한다. 초기
+숫자는 Existing PDF corpus의 p99 측정 후 문서화하며, cap이 정해지기 전 production
+traffic은 NO-GO다.
 
 실패는 구분한다.
 
 - `CONTENT_FAILED`: malformed/encrypted/PDF bomb/hash·schema·geometry mismatch. 자동 GPU 재시도
   없음.
 - `INFRA_RETRYABLE`: capacity/일시 네트워크/provider 5xx. 같은 logical key/job 재부착 우선.
-- `FENCE_LOST`: 계산 취소 시도 후 결과 폐기. 새 DB attempt의 콘텐츠 재시도 예산과 분리.
+- `CANCELLED`: remote terminal 상태이며 결과 artifact를 수용하지 않는다.
+- `FENCE_LOST`: remote status가 아니라 EC2 coordinator의 local outcome이다. 계산 취소를
+  best-effort로 시도하고 결과를 폐기하며, 새 DB attempt의 콘텐츠 재시도 예산과 분리한다.
 
 120초 lease와 30초 heartbeat를 GPU 기본값으로 간주하지 않는다. cold/warm queue·load·실행
 p50/p95/p99를 측정해 lease, polling, `executionTimeout`, `ttl`을 함께 정한다.
@@ -366,7 +385,8 @@ p50/p95/p99를 측정해 lease, polling, `executionTimeout`, `ttl`을 함께 정
 | 1 | native capture vendoring·pdf-inspector pin·baseline 재생 | 두 번 실행 byte hash 100% 동일; HWP/HWPX 변화 0 |
 | 2 | coordinate/render/extraction manifest와 순수 validator | rot 0/90/180/270, crop≠media 왕복 ≤0.5pt; tamper 100% 거절 |
 | 3 | default-off feature flag + ODL table-only cached shadow + reject ledger | Common IR/Profile/공개 API byte 변화 0; ambiguous/normalized-only 승격 0 |
-| 4 | Surya artifact contract와 local fake RunPod adapter | DB credential 부재; size/hash/schema/geometry/stale fence negative test 통과 |
+| 4A | Surya artifact/dispatch 계약, provider-neutral port와 local fake | DB credential 부재; capability·identity·resource cap·reattach 계약 테스트 통과 |
+| 4B | Existing PDF one-step local coordinator와 fake Storage/fence | pending 무루프 반환; 실제 bytes/hash/MIME/schema/geometry와 stale fence 검증 통과 |
 | 5 | 실제 RunPod async shadow | crash/reclaim 재부착, duplicate telemetry, cap 강제, cold/warm 분포 확보 |
 | 6 | 세 구조 결과 table agreement shadow | duplicate ownership/orphan 0; hard negative 전부 partial |
 | 7 | 승인된 Existing PDF allow-list에만 explicit table | Profile exact-span 100%; 비대상 Fact/evidence 변화 0 |
@@ -376,7 +396,19 @@ p50/p95/p99를 측정해 lease, polling, `executionTimeout`, `ttl`을 함께 정
 
 현재 코드는 pinned `pdf-inspector` native replay와 stage-2 contract에 더해,
 `pypdfium2==5.13.0`·PDFium `153.0.7999.0`·`pypdf==6.18.1`·
-`Pillow==12.3.0`으로 고정된 실제 200-DPI CPU renderer까지 포함한다. 다만
+`Pillow==12.3.0`으로 고정된 실제 200-DPI CPU renderer 및 Stage 4A의 provider-neutral
+Surya accelerator 계약·port·in-memory fake, Stage 4B의 Existing-PDF 전용 one-step local
+coordinator까지 포함한다. coordinator는 호출 한 번에 submit 또는 poll 하나만 수행하고,
+pending이면 대기 loop 없이 반환한다. 이전 job 교체는 앞선 호출에서 not-found 또는
+`infra_retryable`을 영속 확인한 caller만 명시적으로 승인하며, fence loss 시 알고 있는
+job을 best-effort cancel한다. 성공 결과도 trusted Storage에서 제한 크기로 다시 읽어 실제
+byte 수·SHA-256·MIME·canonical schema·geometry를 검증한 뒤에만 portable artifact로
+반환한다.
+
+Stage 4B는 의도적으로 standalone이다. 아직 production runtime/DB repository, 실제
+Storage reader, RunPod HTTP adapter와 연결하지 않았으며 공개 API도 바꾸지 않는다. 실제
+adapter의 `submit()`은 wire payload 생성 직전에 dispatch policy와 현재 시각을 주입해
+검증하는 Stage 5 전송 gate를 반드시 구현해야 한다. 다만
 PDF native→Common IR→Profile 전체 47건과 Gold 100건 통합 회귀를 아직 끝내지
 않았으므로 Stage 1/2 전체 GO를 주장하지 않는다. 다음 작은 수직 단위까지 완료된
 상태다.
@@ -388,6 +420,8 @@ PDF native→Common IR→Profile 전체 47건과 Gold 100건 통합 회귀를 �
 5. 회전·crop·비정상 좌표·tamper fixture
 6. 상속 MediaBox/CropBox/Rotate/UserUnit을 독립 해석하고 PDFium과 교차검증하는 renderer
 7. RGB PNG·페이지 좌표·원본 hash를 terminal render manifest에 no-overwrite로 결속
+8. provider 상태 재검증, fence 전후 검사, bounded artifact acceptance를 수행하는
+   Existing-PDF one-step local coordinator
 
 이 PR은 DB schema, production queue, Common IR/Profile 바이트와 공개 API를 바꾸지 않는다.
 
@@ -441,7 +475,8 @@ suite 통과라고 표현하지 않는다.
 
 ## 13. 공개 API와 프론트엔드 영향
 
-0~8단계 shadow는 공개 FastAPI DTO/OpenAPI snapshot을 바꾸지 않는다. 내부
+각 단계의 shadow 범위는 단계 표에 명시한 내부 산출물에 한정하며 공개 FastAPI
+DTO/OpenAPI snapshot을 바꾸지 않는다. 내부
 `partial_source_coverage`, fusion reason, external job status를 기존 public status enum에
 임의로 노출하지 않는다.
 
