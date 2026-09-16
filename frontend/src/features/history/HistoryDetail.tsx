@@ -10,6 +10,7 @@ export default function HistoryDetail({ historyId, onClose }: HistoryDetailProps
 
     return (
         <HistoryDetailView 
+            key={historyId}
             historyId={historyId} 
             onClose={onClose} 
         />

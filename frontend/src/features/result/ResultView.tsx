@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import AiChat from '../chat/AiChat'
-import Modal from '../../components/common/Modal'
-import { 
-    getCplLabel, 
-    getFitLabel, 
-    getCplBadge, 
-    getFitBadge, 
-    getSimStatusBadge, 
-    getAxisLabel, 
-    getEvidenceText 
+import Modal from '../../components/common/DetailModal'
+import {
+    getCplLabel,
+    getFitLabel,
+    getCplBadge,
+    getFitBadge,
+    getSimStatusBadge,
+    getAxisLabel,
+    getEvidenceText
 } from '../../utils/resultData'
 
 interface ResultViewProps {
@@ -24,7 +24,7 @@ interface ResultViewProps {
     isFetchingDetail: boolean
 }
 
-export default function ResultView({ 
+export default function ResultView({
     reportData,
     onExportPDF,
     onClose,
@@ -97,7 +97,7 @@ export default function ResultView({
                     <div className="flex flex-col bg-surface-container-lowest border border-outline-variant rounded p-lg">
                         <div className="flex justify-between items-start mb-md">
                             <div>
-                                <h3 className="font-title-sm text-title-sm text-on-surface">1. 요청자료 완전성·기초구조 점검</h3>
+                                <h3 className="font-title-sm text-title-sm text-on-surface">1. 요청자료 완전성 · 기초구조 점검</h3>
                                 <p className="font-body-sm text-body-sm text-on-surface-variant">현재 요청서에서 13개 주요 항목들을 확인합니다</p>
                             </div>
                         </div>
@@ -140,7 +140,7 @@ export default function ResultView({
                     <div className="flex flex-col bg-surface-container-lowest border border-outline-variant rounded p-lg">
                         <div className="flex justify-between items-start mb-md">
                             <div>
-                                <h3 className="font-title-sm text-title-sm text-on-surface">3. 기존 사업과의 유사·중복성 검토</h3>
+                                <h3 className="font-title-sm text-title-sm text-on-surface">3. 기존 사업과의 유사 · 중복성 검토</h3>
                                 <p className="font-body-sm text-body-sm text-on-surface-variant">기존 지원사업 데이터에서 비교가 필요한 후보를 검색합니다</p>
                             </div>
                         </div>
@@ -159,7 +159,7 @@ export default function ResultView({
                                             {candidate.title}
                                         </td>
                                         <td className="p-md text-center">
-                                            <button 
+                                            <button
                                                 onClick={() => onOpenCandidateDetail(candidate.sim_candidate_id)}
                                                 disabled={isFetchingDetail}
                                                 className={`w-[74px] px-3 py-1.5 border border-outline-variant rounded bg-surface hover:bg-white text-[12px] font-medium transition-colors cursor-pointer ${isFetchingDetail ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -171,7 +171,7 @@ export default function ResultView({
                                 ))}
                             </tbody>
                         </table>
-                        
+
                         {mlMessages.length > 0 && (
                             <div className="mt-md p-md bg-surface-container-low border border-outline-variant rounded-xs flex flex-col gap-xs">
                                 <div className="flex items-center gap-xs text-primary font-semibold text-body-sm mb-xs">
@@ -196,113 +196,107 @@ export default function ResultView({
             <AiChat caseId={caseInfo?.analysis_case_id || caseInfo?.id} readOnly={readOnlyChat} />
 
             {/* 유사 공고 후보 상세 모달 */}
-            <Modal 
+            <Modal
                 isOpen={isModalOpen}
                 onClose={onCloseModal}
                 title="유사 공고 후보 상세"
             >
                 {selectedItem ? (
-                    <div className="flex flex-col gap-md text-body-sm text-on-surface max-h-[70vh] overflow-y-auto pr-xs">
+                    <div className="flex flex-col gap-5 p-2">
                         {/* 메타데이터 영역 */}
-                        <div className="flex flex-col gap-xs pb-sm border-b border-outline-variant">
-                            <div><strong>사업명:</strong> {metadata.title || '공고명 없음'}</div>
-                            <div><strong>소관 부처:</strong> {metadata.ministry || '-'}</div>
-                            <div><strong>수행 기관:</strong> {metadata.executing_agency || '-'}</div>
-                            <div><strong>지원 분야:</strong> {metadata.support_field || '-'}</div>
-                            <div><strong>신청 기간:</strong> {metadata.apply_period || '-'}</div>
-                            {metadata.source_url && (
-                                <div>
-                                    <strong>원문 링크: </strong>
-                                    <a href={metadata.source_url} target="_blank" rel="noreferrer" className="text-primary underline">
-                                        바로가기
-                                    </a>
-                                </div>
-                            )}
+                        <div className="flex flex-col">
+                            <div className="flex items-start justify-between">
+                                <span className="text-[13px] font-bold text-[#4B7A75] mb-1.5">유사 후보</span>{getSimStatusBadge(comparison.status)}
+                            </div>
+                            <h2 className="text-[22px] font-bold text-[#1A1C1E] mb-2">{metadata.title || '공고명 없음'}</h2>
+                            <p className="text-[14px] text-[#43474E]">{comparison.summary || '요약 정보가 없습니다.'}</p>
                         </div>
 
-                        {/* 전체 비교 요약 */}
-                        <div className="bg-surface-container-low p-sm rounded border border-outline-variant flex justify-between items-center">
-                            <div>
-                                <div className="font-semibold mb-xs">종합 비교 요약</div>
-                                <div>{comparison.summary || '요약 정보가 없습니다.'}</div>
-                            </div>
-                            <div>{getSimStatusBadge(comparison.status)}</div>
-                        </div>
+                        <ul className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+                            {[
+                                { label: '지원 분야', value: metadata.support_field },
+                                { label: '소관 부처', value: metadata.ministry },
+                                { label: '수행 기관', value: metadata.executing_agency },
+                                { label: '신청 기간', value: metadata.apply_period },
+                                { label: '등록일', value: metadata.registered_at },
+                                {
+                                    label: '원문 링크',
+                                    value: metadata.source_url ? (
+                                        <a href={metadata.source_url} target="_blank" rel="noreferrer" className="text-primary flex items-center gap-xs text-[14px] font-bold">
+                                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>open_in_new</span> 바로가기
+                                        </a>
+                                    ) : '-'
+                                }
+                            ].map((item, idx) => (
+                                <li key={idx} className="bg-[#F8F9FA] p-3.5 rounded-xl flex flex-col gap-1">
+                                    <span className="text-[12px] font-medium text-[#74777F]">{item.label}</span>
+                                    <span className="text-[14px] font-bold text-[#1A1C1E]">{item.value || '-'}</span>
+                                </li>
+                            ))}
+                        </ul>
 
                         {/* 축별 비교 상세 카드 영역 */}
-                        <div className="flex flex-col gap-sm">
-                            <h4 className="font-title-sm text-title-sm">축별 비교 상세</h4>
-                            {Object.entries(axes).map(([axisKey, axisVal]: [string, any]) => {
-                                const axisTitle = getAxisLabel(axisKey)
-                                const commonPoints = axisVal.common_points || []
-                                const differences = axisVal.differences || []
-                                const requestIds = axisVal.request_evidence_ids || []
-                                const existingIds = axisVal.existing_evidence_ids || []
+                        {Object.entries(axes).map(([axisKey, axisVal]: [string, any]) => {
+                            const axisTitle = getAxisLabel(axisKey)
+                            const commonPoints = axisVal.common_points || []
+                            const differences = axisVal.differences || []
+                            const requestIds = axisVal.request_evidence_ids || []
+                            const existingIds = axisVal.existing_evidence_ids || []
 
-                                return (
-                                    <div key={axisKey} className="border border-outline-variant p-md rounded bg-surface flex flex-col gap-sm">
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-semibold text-xs text-primary">
-                                                {axisTitle}
-                                            </span>
+                            return (
+                                <div key={axisKey} className="border border-[#D1D5DB] rounded-2xl p-6 bg-white flex flex-col gap-5">
+                                    <div>
+                                        <div className="flex items-start justify-between">
+                                            <h3 className="text-[18px] font-bold text-[#1A1C1E] mb-1">{axisTitle}</h3>
                                             {getSimStatusBadge(axisVal.status)}
                                         </div>
-
-                                        <div>
-                                            <p className="font-medium mb-xs">{axisVal.summary}</p>
-                                            {axisVal.reason && (
-                                                <p className="text-xs text-on-surface-variant">{axisVal.reason}</p>
-                                            )}
-                                        </div>
-
-                                        {commonPoints.length > 0 && (
-                                            <div className="bg-surface-container-lowest p-sm rounded border border-outline-variant">
-                                                <span className="font-semibold text-xs text-on-surface block mb-xs">공통점</span>
-                                                <ul className="list-disc list-inside text-xs text-on-surface-variant flex flex-col gap-xxs">
-                                                    {commonPoints.map((cp: string, idx: number) => (
-                                                        <li key={idx}>{cp}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-
-                                        {differences.length > 0 && (
-                                            <div className="bg-surface-container-lowest p-sm rounded border border-outline-variant">
-                                                <span className="font-semibold text-xs text-on-surface block mb-xs">차이점</span>
-                                                <ul className="list-disc list-inside text-xs text-on-surface-variant flex flex-col gap-xxs">
-                                                    {differences.map((diff: string, idx: number) => (
-                                                        <li key={idx}>{diff}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-sm mt-xs pt-sm border-t border-outline-variant text-xs">
-                                            <div className="bg-surface-container-low p-sm rounded border border-outline-variant">
-                                                <span className="font-semibold text-primary block mb-xs">요청서 근거 원문</span>
-                                                <div className="text-on-surface-variant whitespace-pre-wrap">
-                                                    {requestIds.length > 0 ? (
-                                                        requestIds.map((id: string) => getEvidenceText(id, evidencesMap)).join('\n')
-                                                    ) : (
-                                                        '근거 값 없음'
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="bg-surface-container-low p-sm rounded border border-outline-variant">
-                                                <span className="font-semibold text-primary block mb-xs">기존 공고 근거 원문</span>
-                                                <div className="text-on-surface-variant whitespace-pre-wrap">
-                                                    {existingIds.length > 0 ? (
-                                                        existingIds.map((id: string) => getEvidenceText(id, evidencesMap)).join('\n')
-                                                    ) : (
-                                                        '근거 값 없음'
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <p className="text-[14px] text-[#43474E]">{axisVal.summary}</p>
                                     </div>
-                                )
-                            })}
-                        </div>
+
+                                    {commonPoints.length > 0 && (
+                                        <div className="bg-[#F8F9FA] p-4 rounded-xl flex flex-col gap-2">
+                                            <span className="text-[13px] font-bold text-[#1A1C1E]">공통점</span>
+                                            {commonPoints.map((cp: string, idx: number) => (
+                                                <div key={idx} className="flex items-start gap-1 text-[13px] text-[#374151]">
+                                                    <span className="text-[16px] leading-none select-none">•</span>
+                                                    <span>{cp}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {differences.length > 0 && (
+                                        <div className="bg-[#F8F9FA] p-4 rounded-xl flex flex-col gap-2">
+                                            <span className="text-[13px] font-bold text-[#1A1C1E]">차이점</span>
+                                            {differences.map((diff: string, idx: number) => (
+                                                <div key={idx} className='flex items-start gap-1 text-[13px] text-[#374151]'>
+                                                    <span className="text-[16px] leading-none select-none">•</span>
+                                                    <span>{diff}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {requestIds.length > 0 && (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-[13px] font-bold text-[#1A1C1E]">요청서 근거</span>
+                                            <div className="p-3.5 bg-[#F8F9FA] rounded-r-lg border-l-4 border-[#8292A1] text-[13px] text-[#374151] leading-relaxed">
+                                                {requestIds.map((id: string) => getEvidenceText(id, evidencesMap)).join('\n')}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {existingIds.length > 0 && (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-[13px] font-bold text-[#1A1C1E]">기존 공고 근거</span>
+                                            <div className="p-3.5 bg-[#F8F9FA] rounded-r-lg border-l-4 border-[#8292A1] text-[13px] text-[#374151] leading-relaxed">
+                                                {existingIds.map((id: string) => getEvidenceText(id, evidencesMap)).join('\n')}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
                     </div>
                 ) : (
                     <div className="py-xl text-center text-on-surface-variant">정보가 없습니다.</div>
