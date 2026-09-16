@@ -30,6 +30,7 @@ Frontend (HttpOnly Cookie)
 ## 현재 API 개요
 
 - `POST /api/v1/auth/sign-in`, `sign-up`, `refresh`, `sign-out`, `password-reset`, `update-password`
+- `GET /api/v1/auth/password-recovery/callback` — recovery 링크 검증, 인증 Cookie 설정 후 프론트로 redirect
 - `GET /api/v1/auth/me`
 - `POST /api/v1/analysis-runs` — 필수 UUID v4 `Idempotency-Key`, HWP/HWPX 업로드와 queued run 생성
 - `GET /api/v1/analysis-runs/{analysis_run_id}` — 작업 상태 폴링
@@ -184,8 +185,8 @@ v0.2 retrieval은 request에서 실제로 준비된 purpose/target/support 0~3�
 축 수 `|A|`의 평균으로 검색한다. `PREREVIEW_EXISTING_KB_REQUIRED=true`이면 활성 KB/검색
 결과 부재는 재시도/실패이고, `false`이면 분석은 `KB_EMPTY`로 정상 완료될 수 있다.
 
-OpenAI Request Profile 구조화는 Compose 기본 `gpt-5.6-terra`, 호출별 hard timeout
-120초, `OPENAI_MAX_REPAIRS=2`를 사용한다. repair 수는 DB queue 재시도 횟수가 아니다.
+OpenAI 공통 fallback과 Request Profile 구조화의 Compose 기본은 모두 `gpt-5.6-terra`다.
+호출별 hard timeout은 120초이며 `OPENAI_MAX_REPAIRS=2`를 사용한다. repair 수는 DB queue 재시도 횟수가 아니다.
 한 worker attempt 안에서 최초 구조화 호출 뒤 서버 검증 오류를 첨부한 수정 호출을 최대
 두 번 더 허용한다(따라서 최대 세 번). 긴 HWP/HWPX의 구조화 응답 시간을 유한하게
 보장하면서도, 한 번의 수정만으로 서로 다른 근거·컴포넌트 검증을 모두 해결하지 못한
@@ -209,7 +210,7 @@ docker run --rm --network none \
   python scripts/validate_synthetic_hwpx_fixtures.py --fixture-dir /fixtures
 ```
 
-2026-09-13 최신 Docker external acceptance는 run
+2026-09-13 수행한 Docker external acceptance에서는 run
 `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
 `c05d9ae0-d279-4839-8a86-102da0be18fd`로 완료됐다. analysis worker
 `4d6aae5d4c87:1:540b85e666be`와 chat worker `ea084ec9c993:1:c39815e56162`가 각각

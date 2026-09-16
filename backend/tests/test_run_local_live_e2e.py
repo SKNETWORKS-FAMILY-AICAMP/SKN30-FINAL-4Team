@@ -154,7 +154,7 @@ def test_configure_environment_defaults_request_profile_model_to_terra(
 
     MODULE._configure_environment(backend_env, supabase_env)
 
-    assert environment["OPENAI_LLM_MODEL"] == "gpt-5.6-luna"
+    assert environment["OPENAI_LLM_MODEL"] == "gpt-5.6-terra"
     assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
 
 
