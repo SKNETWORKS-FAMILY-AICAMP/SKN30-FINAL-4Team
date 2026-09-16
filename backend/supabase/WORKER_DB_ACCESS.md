@@ -1,6 +1,6 @@
 # Worker PostgreSQL 접근 경계
 
-마지막 감사: 2026-09-10
+마지막 감사: 2026-09-16
 
 ## 현재 지원 경로
 
@@ -11,15 +11,19 @@ Supabase HTTP service key와 PostgreSQL DSN/role은 서로 다른 자격증명�
 
 현재 worker가 사용하는 DB 범위는 다음과 같다.
 
-- `workspace.claim_next_analysis_run`, `heartbeat_analysis_run`,
-  `fail_analysis_run`, `persist_analysis_result_core`
-- `workspace.ingest_request_profile_core`
-- `workspace.analysis_run_dispatch`, request profile, artifact와 lineage read/write
-- `retrieval.embedding_configuration` read와 Existing 후보 match function
+- analysis queue: `workspace.claim_next_analysis_run`, `heartbeat_analysis_run`,
+  `fail_analysis_run`, `persist_analysis_result_core_v2`
+- analysis 저장: `workspace.ingest_request_profile_core`,
+  `record_analysis_embedding_provenance_v2`, source artifact·lineage read/write
+- retrieval: `retrieval.embedding_configuration` read와 partial-axis Existing match function
+- chat queue: `workspace.claim_next_conversation_message_v2`,
+  `heartbeat_conversation_message_v2`, `complete_conversation_message_v2`,
+  `fail_conversation_message_v2`
 - 위 SECURITY INVOKER function 내부에서 접근하는 `workspace`, `result`, `ops`, `kb` 객체
 
-migration 17, 19, 21~25의 명시적 worker function/table grant와 과거 완료 함수 폐기 계약을
-적용한다. 활성 함수의 grant 대상은 `service_role`이다.
+현재 배포는 migration 01~40 전체가 적용된 DB를 전제로 한다. worker queue·저장 권한은
+migration 17·19·21~27과 v0.2 migration 34~36·40에서 누적되며, 활성 함수의 grant 대상은
+`service_role`이다.
 배포 DSN은 staging runtime validation을 통과한 trusted DB role을 사용하고 PostgreSQL 포트를
 인터넷에 공개하지 않는다.
 
