@@ -116,8 +116,8 @@ export const getSimStatusBadge = (status: string) => {
 export const AXIS_LABELS: Record<string, string> = {
     purpose: '사업 목적',
     target: '지원 대상',
-    support: '지원 내용·수단',
-    delivery: '수행·전달체계',
+    support: '지원 내용 · 수단',
+    delivery: '수행 · 전달체계',
 }
 
 export const getAxisLabel = (key: string): string => {
