@@ -23,6 +23,17 @@ from .render_manifest import (
     assemble_render_manifest,
     validate_render_manifest_files,
 )
+from .surya_layout_artifact import (
+    REGION_LABELS_V1,
+    SCHEMA_VERSION as SURYA_LAYOUT_ARTIFACT_SCHEMA_VERSION,
+    SuryaLayoutArtifact,
+    SuryaLayoutArtifactError,
+    SuryaLayoutPage,
+    SuryaLayoutRegion,
+    SuryaProducerIdentity,
+    parse_surya_layout_artifact_bytes,
+    validate_surya_layout_artifact,
+)
 
 __all__ = [
     "AffineTransform",
@@ -39,4 +50,13 @@ __all__ = [
     "RenderedPageInput",
     "assemble_render_manifest",
     "validate_render_manifest_files",
+    "REGION_LABELS_V1",
+    "SURYA_LAYOUT_ARTIFACT_SCHEMA_VERSION",
+    "SuryaLayoutArtifact",
+    "SuryaLayoutArtifactError",
+    "SuryaLayoutPage",
+    "SuryaLayoutRegion",
+    "SuryaProducerIdentity",
+    "parse_surya_layout_artifact_bytes",
+    "validate_surya_layout_artifact",
 ]
