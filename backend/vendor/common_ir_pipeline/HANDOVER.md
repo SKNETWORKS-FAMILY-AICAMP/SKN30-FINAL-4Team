@@ -29,6 +29,8 @@ src/common_ir_pipeline/
                             pinned pdf-inspector capture validation and source binding
   workers/pdf_inspector_capture.py
                             whole-document native capture child process
+  workers/pdfium_renderer.py
+                            pinned 200-DPI CPU render + coordinate/render manifest
   pdf_fusion/              coordinate/render manifests and immutable byte binding
   pdf_fusion/schemas/      cross-language JSON Schemas for those manifests
   run_rhwp_e2e.py           original HWP/HWPX -> rhwp -> Common IR runner
@@ -148,6 +150,34 @@ backend/vendor/common_ir_pipeline/.venv/bin/python \
 SHA-256·크기와 결속된 native artifact를 재조립할 때만 사용한다. schema marker가
 없는 historical/unbound JSON은 production Common IR 생성에 사용할 수 없다.
 replay 명령은 subprocess hard limit을 적용하므로 Linux/WSL(POSIX)에서 실행한다.
+
+RunPod/Surya에 전달할 canonical page image는 별도 `pdf-render` extra와 안전
+wrapper로 만든다. renderer 모듈을 FastAPI나 장기 실행 worker에서 직접 호출하지
+않는다.
+
+```bash
+uv sync --locked --project backend/vendor/common_ir_pipeline --extra pdf-render
+mkdir -p /abs/path/render-outputs
+backend/vendor/common_ir_pipeline/.venv/bin/python \
+  backend/scripts/render_existing_pdf_pages.py \
+  --pdf /abs/path/notice.pdf \
+  --output-dir /abs/path/render-outputs/PBLN_000000000000000
+```
+
+실행 환경은 Linux/WSL(POSIX)이며 `util-linux`의 `/usr/bin/prlimit`을 포함해야 한다.
+
+출력은 `rendered/page-XXXX.png`와 `render_manifest.json`이다. terminal
+manifest가 있을 때만 완결된 artifact set으로 취급한다. 같은 workspace를
+덮어쓰거나 실패한 workspace에 재시도하지 않는다. 이 단계는 CPU-only이고
+OCR 문자열을 만들지 않으며 Request PDF를 허용하지 않는다. 원격 Surya는
+이 PNG와 결속 manifest만 읽고 PDF를 다시 렌더하지 않는다. wrapper는 private
+stage에서 child renderer에 wall timeout·process-group cleanup·POSIX resource
+limit을 적용하고, 부모가 source/page/hash/geometry를 재검증한 뒤 terminal
+manifest를 마지막에 발행한다.
+
+단, process group은 parser RCE sandbox가 아니다. 운영에서는 renderer wrapper
+자체를 비특권 전용 container/PID namespace+cgroup 안에서 실행하고 network와
+DB/Storage credential을 제거한다. host에서 직접 실행하는 명령은 offline 검증용이다.
 
 ```bash
 common-ir-pdf-native \

@@ -44,6 +44,43 @@ parser 버전, resource limit 및 native coverage가 기록된다. 이 경로는
 Storage, OpenAI, OCR/ODL/Surya를 호출하지 않으며 Request PDF를 허용하지 않는다.
 subprocess hard limit을 사용하는 Linux/WSL(POSIX) 환경에서 실행해야 한다.
 
+### Canonical Existing PDF page render
+
+Surya 같은 원격 visual worker에 보낼 페이지 이미지는 서버 CPU에서 한 번만
+렌더한다. 이 경로는 Existing/shadow 검증 전용이며 Request 업로드 형식을
+확장하지 않는다.
+
+```bash
+uv sync --locked --project backend/vendor/common_ir_pipeline --extra pdf-render
+
+mkdir -p /abs/path/render-outputs
+backend/vendor/common_ir_pipeline/.venv/bin/python \
+  backend/scripts/render_existing_pdf_pages.py \
+  --pdf /abs/path/source.pdf \
+  --output-dir /abs/path/render-outputs/PBLN_000000000000000
+```
+
+호스트/전용 image에는 `util-linux`의 `/usr/bin/prlimit`이 반드시 있어야 한다.
+
+`pdf-render` extra는 `pypdfium2==5.13.0`, `pypdf==6.18.1`,
+`Pillow==12.3.0`을 고정한다. renderer는 전체 PDF를 200 DPI RGB PNG로
+렌더하고 `rendered/page-XXXX.png`와 terminal `render_manifest.json`을
+만든다. 원본·페이지 이미지 hash, 상속된 MediaBox/CropBox/Rotate/UserUnit,
+PDF-user-space↔pixel affine, renderer/codec identity가 manifest에 결속된다.
+공개 진입점은 위 wrapper뿐이다. wrapper는 renderer를 disposable subprocess로
+격리하고 wall timeout·process-group kill·POSIX resource limit을 적용한 뒤, 부모
+프로세스가 모든 hash와 좌표를 다시 검증한다. 성공 manifest가 없는 출력은
+불완전한 실패 산출물이며 재사용하지 않는다.
+
+이 subprocess 경계는 crash·hang·일반 descendant·자원 폭주를 제한하지만 악성 코드
+실행을 막는 보안 sandbox는 아니다. `setsid()`로 process group을 이탈한 프로세스까지
+격리해야 하는 운영 배포는 비특권 전용 container/PID namespace+cgroup에서 실행하고,
+network·DB/Storage credential을 주지 않아야 한다.
+
+이 명령은 OCR·Surya·OpenDataLoader·네트워크·DB를 호출하지 않는다. RunPod는
+검증된 PNG를 입력으로만 받아야 하며 원본 PDF를 다시 열거나 렌더하면 안 된다.
+GPU는 이 CPU 렌더 단계가 아니라 후속 Surya 추론에 사용한다.
+
 ## Optional PDF OCR/layout diagnostic worker
 
 Install this only in an environment that is meant to render PDFs and run OCR

@@ -14,6 +14,14 @@ hwp = ["rhwp-python"]
 # Existing 공고의 오프라인 native PDF 재생 전용이다. 운영 Request worker의
 # 허용 형식에는 이 extra를 추가하지 않는다.
 pdf = ["pdf-inspector==1.17.0"]
+# Existing PDF의 canonical page-image/coordinate artifact 생성 전용이다.
+# PDFium은 rasterizer이고 pypdf는 상속 page box와 UserUnit을 독립적으로
+# 해석한다. Pillow도 PNG byte identity를 위해 exact pin한다.
+pdf-render = [
+  "pypdfium2==5.13.0",
+  "pypdf==6.18.1",
+  "Pillow==12.3.0",
+]
 # OCR is deliberately optional.  The worker emits geometry-only diagnostic
 # sidecars; neither its dependencies nor model weights are required by the
 # native PDF Common IR path.

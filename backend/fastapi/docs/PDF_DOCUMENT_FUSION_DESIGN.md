@@ -374,17 +374,47 @@ p50/p95/p99를 측정해 lease, polling, `executionTimeout`, `ttl`을 함께 정
 | 9 | Request PDF | 별도 실제 corpus와 frontend/OpenAPI/MIME 계약 승인 전 NO-GO |
 | 10 | OCR semantic Common IR v2 | 별도 RFC/schema/migration/privacy/UI 승인 전 NO-GO |
 
-현재 코드는 stage 0과 stage-2 contract slice만 닫는다. Stage 1/2 전체 완료를
-주장하지 않는다: pinned `pdf-inspector`, native replay, 실제 renderer는 이후
-gate로 남아 있다. 첫 구현 PR은 다음 작은 수직 단위로 제한한다.
+현재 코드는 pinned `pdf-inspector` native replay와 stage-2 contract에 더해,
+`pypdfium2==5.13.0`·PDFium `153.0.7999.0`·`pypdf==6.18.1`·
+`Pillow==12.3.0`으로 고정된 실제 200-DPI CPU renderer까지 포함한다. 다만
+PDF native→Common IR→Profile 전체 47건과 Gold 100건 통합 회귀를 아직 끝내지
+않았으므로 Stage 1/2 전체 GO를 주장하지 않는다. 다음 작은 수직 단위까지 완료된
+상태다.
 
 1. corpus baseline manifest schema와 고정 도구
 2. `pdf_coordinate_manifest/v1` schema/validator
 3. `user_to_pixel`, `pixel_to_user`, sidecar binding 순수 함수
 4. source hash를 포함한 deterministic render manifest
 5. 회전·crop·비정상 좌표·tamper fixture
+6. 상속 MediaBox/CropBox/Rotate/UserUnit을 독립 해석하고 PDFium과 교차검증하는 renderer
+7. RGB PNG·페이지 좌표·원본 hash를 terminal render manifest에 no-overwrite로 결속
 
 이 PR은 DB schema, production queue, Common IR/Profile 바이트와 공개 API를 바꾸지 않는다.
+
+### 11.1 CPU renderer 측정값
+
+2026-09-16 현재 서버에서 실제 공고 PDF 47건(총 474쪽)을 안전 wrapper로 두 번씩
+200 DPI 렌더했다. 47/47 모두 성공했고 두 실행의 원본·PNG·manifest가 전부
+byte-identical했다. 첫 실행의 문서 시간은 p50 3.161초, p95 10.723초,
+p99/최대 15.524초였고, PNG 총량은 228,649,272 bytes(약 218.1 MiB)였다.
+8쪽 smoke에서 최대 RSS는 약 92 MiB였다. 과거 100건 구조 실험의 935쪽 기록에서도
+raw page render 중앙값은 0.269초, 문서 중앙값은 2.66초였다. wrapper 수치는
+subprocess 시작·source copy·hash/PNG 구조/좌표 재검증·durable publication까지 포함한
+현 장비 측정값이지 SLA가 아니다.
+
+평균 전송량은 문서당 약 4.86 MB, 페이지당 약 482 KB였다. 따라서 PNG bytes를 API
+JSON body로 중계하지 않고, 계약대로 page별 짧은 수명의 signed GET과 hash/size를
+RunPod에 전달한다.
+
+따라서 PDF page render는 EC2/server CPU에서 수행한다. GPU renderer를 추가하지
+않으며 GPU 자원은 후속 Surya layout/table/diagram 추론에만 사용한다. native capture와
+canonical render는 같은 source hash에 결속된 독립 분기라 필요하면 병렬 실행할 수 있다.
+
+renderer module을 FastAPI/장기 실행 worker가 in-process로 호출하지 않는다. 안전 wrapper가
+private stage, wall timeout, POSIX resource limit, parent-side artifact cap·재검증과
+manifest-last publication을 소유한다. process-group kill은 crash/hang 경계이지 parser RCE
+sandbox가 아니므로 운영 renderer는 비특권 전용 container/PID namespace+cgroup과 no-network
+정책을 추가한다.
 
 기존 `common-ir-pdf-ocr-layout` CLI는 삭제하지 않되 EC2/local renderer 진단용으로만
 허용한다. RunPod fusion worker로 사용하는 것은 금지한다.
