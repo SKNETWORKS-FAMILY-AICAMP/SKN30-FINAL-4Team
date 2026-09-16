@@ -32,6 +32,9 @@ npm run dev
 npm run build
 ```
 
+운영 프론트 서버의 Caddy 설정, 정적 파일 반영, 검증 및 롤백 절차는
+[배포 가이드](deploy/README.md)를 참고합니다.
+
 ## 🛠️ 기술 스택
 
 ![React](https://shields.io/badge/react%2019.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)
