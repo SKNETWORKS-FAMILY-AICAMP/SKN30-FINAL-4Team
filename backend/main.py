@@ -140,6 +140,11 @@ def create_app() -> FastAPI:
     # auth HTTP transport is injectable so tests never need a network call.
     app.state.supabase_auth_transport = None
     app.state.auth_allowed_origins = parse_allowed_origins(os.getenv("PREREVIEW_AUTH_ALLOWED_ORIGINS", ""))
+    # Product deployments are invite/admin-provisioned by default. This API
+    # guard is defense in depth; Supabase GoTrue must also set DISABLE_SIGNUP.
+    app.state.auth_signup_enabled = os.getenv(
+        "PREREVIEW_AUTH_SIGNUP_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
     app.state.auth_cookie_secure = os.getenv("PREREVIEW_AUTH_COOKIE_SECURE", "false" if app.state.offline_mode else "true").lower() in {"1", "true", "yes"}
     app.state.auth_cookie_samesite = os.getenv("PREREVIEW_AUTH_COOKIE_SAMESITE", "lax")
     app.state.auth_cookie_domain = os.getenv("PREREVIEW_AUTH_COOKIE_DOMAIN", "")

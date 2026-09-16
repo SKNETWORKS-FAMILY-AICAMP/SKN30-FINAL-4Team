@@ -29,8 +29,9 @@ Frontend (HttpOnly Cookie)
 
 ## 현재 API 개요
 
-- `POST /api/v1/auth/sign-in`, `sign-up`, `refresh`, `sign-out`, `password-reset`, `update-password`
-- `GET /api/v1/auth/password-recovery/callback` — recovery 링크 검증, 인증 Cookie 설정 후 프론트로 redirect
+- `POST /api/v1/auth/sign-in`, `refresh`, `sign-out`, `password-reset`, `password-recovery/verify`, `update-password`
+- `POST /api/v1/auth/sign-up` — 기본 비활성화; GoTrue의 `DISABLE_SIGNUP=true`가 주 방어선
+- `GET /api/v1/auth/password-recovery/callback` — 세션을 만들지 않고 fragment를 보존해 프론트로 redirect
 - `GET /api/v1/auth/me`
 - `POST /api/v1/analysis-runs` — 필수 UUID v4 `Idempotency-Key`, HWP/HWPX 업로드와 queued run 생성
 - `GET /api/v1/analysis-runs/{analysis_run_id}` — 작업 상태 폴링

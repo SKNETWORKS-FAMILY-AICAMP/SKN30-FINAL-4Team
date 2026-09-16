@@ -33,6 +33,7 @@ def auth_app(handler: httpx.MockTransport) -> object:
     app.state.supabase_anon_key = "test-anon-key"
     app.state.supabase_auth_transport = handler
     app.state.auth_allowed_origins = frozenset({ORIGIN})
+    app.state.auth_signup_enabled = False
     app.state.auth_cookie_secure = False
     app.state.auth_cookie_samesite = "lax"
     app.state.auth_password_reset_callback_url = (
@@ -284,6 +285,7 @@ def test_sign_up_requires_display_name_and_sends_it_as_data() -> None:
 
     async def run() -> None:
         app = auth_app(httpx.MockTransport(provider))
+        app.state.auth_signup_enabled = True
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as api:
             missing = await api.post(
                 "/api/v1/auth/sign-up",
@@ -301,6 +303,35 @@ def test_sign_up_requires_display_name_and_sends_it_as_data() -> None:
 
     asyncio.run(run())
     assert len(seen) == 1
+
+
+def test_sign_up_is_disabled_by_default_without_calling_provider() -> None:
+    calls = 0
+
+    def provider(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={})
+
+    async def run() -> None:
+        app = auth_app(httpx.MockTransport(provider))
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as api:
+            response = await api.post(
+                "/api/v1/auth/sign-up",
+                headers={"Origin": ORIGIN},
+                json={
+                    "email": "user@example.com",
+                    "password": "correct-password",
+                    "display_name": "홍길동",
+                },
+            )
+            assert response.status_code == 403
+
+    asyncio.run(run())
+    assert calls == 0
 
 
 def test_state_changes_fail_closed_without_a_trusted_origin() -> None:
@@ -387,18 +418,40 @@ def test_refresh_rotates_cookies_and_password_reset_is_non_enumerating() -> None
     assert refresh_tokens == ["root-legacy", "new-refresh-1"]
 
 
-def test_password_recovery_callback_works_in_a_fresh_browser() -> None:
+def test_password_recovery_callback_never_mints_a_session() -> None:
     requests: list[httpx.Request] = []
 
     def provider(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        if request.url.path == "/auth/v1/recover":
-            assert request.url.params["redirect_to"] == (
-                "https://frontend.example.test/api/v1/auth/password-recovery/callback"
-            )
-            assert json.loads(request.content) == {"email": "user@example.com"}
-            return httpx.Response(200, json={})
+        return httpx.Response(500)
 
+    async def run() -> None:
+        app = auth_app(httpx.MockTransport(provider))
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://email-browser",
+            follow_redirects=False,
+        ) as email_browser:
+            callback = await email_browser.get(
+                "/api/v1/auth/password-recovery/callback"
+            )
+            assert callback.status_code == 303
+            assert callback.headers["location"] == (
+                "https://frontend.example.test/password-reset/update"
+            )
+            assert callback.headers["cache-control"] == "private, no-store"
+            assert callback.headers["referrer-policy"] == "no-referrer"
+            assert "set-cookie" not in callback.headers
+
+    asyncio.run(run())
+    assert requests == []
+
+
+def test_password_recovery_verify_requires_trusted_origin_and_sets_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
         assert request.url.path == "/auth/v1/verify"
         assert request.method == "POST"
         assert json.loads(request.content) == {
@@ -411,54 +464,42 @@ def test_password_recovery_callback_works_in_a_fresh_browser() -> None:
                 "access_token": "recovery-access",
                 "refresh_token": "recovery-refresh",
                 "expires_in": 3600,
+                "expires_at": ACCESS_EXPIRES_AT,
             },
         )
 
     async def run() -> None:
         app = auth_app(httpx.MockTransport(provider))
-        # The reset request and email click deliberately use separate cookie
-        # jars. The email token itself is sufficient proof, so another browser
-        # or device can complete recovery.
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://request-browser",
-        ) as requester:
-            reset = await requester.post(
-                "/api/v1/auth/password-reset",
-                headers={"Origin": ORIGIN},
-                json={"email": "user@example.com"},
-            )
-            assert reset.status_code == 200
-            assert "set-cookie" not in reset.headers
-
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://email-browser",
-            follow_redirects=False,
         ) as email_browser:
-            callback = await email_browser.get(
-                "/api/v1/auth/password-recovery/callback",
-                params={"token_hash": "recovery-token-hash"},
+            untrusted = await email_browser.post(
+                "/api/v1/auth/password-recovery/verify",
+                json={"token_hash": "recovery-token-hash"},
             )
-            assert callback.status_code == 303
-            assert callback.headers["location"] == (
-                "https://frontend.example.test/password-reset/update"
+            assert untrusted.status_code == 403
+            assert requests == []
+
+            verified = await email_browser.post(
+                "/api/v1/auth/password-recovery/verify",
+                headers={"Origin": ORIGIN},
+                json={"token_hash": "recovery-token-hash"},
             )
-            assert callback.headers["cache-control"] == "private, no-store"
-            assert callback.headers["referrer-policy"] == "no-referrer"
+            assert verified.status_code == 200
+            assert verified.json() == {
+                "access_token_expires_at": ACCESS_EXPIRES_AT_ISO
+            }
             assert email_browser.cookies.get("pre_review_access") == "recovery-access"
             assert email_browser.cookies.get(
                 "pre_review_refresh", path="/api/v1/auth"
             ) == "recovery-refresh"
 
     asyncio.run(run())
-    assert [request.url.path for request in requests] == [
-        "/auth/v1/recover",
-        "/auth/v1/verify",
-    ]
+    assert len(requests) == 1
 
 
-def test_password_recovery_callback_redirects_rejected_token_to_frontend_error() -> None:
+def test_password_recovery_verify_rejects_invalid_token_without_cookie() -> None:
     def provider(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/auth/v1/verify"
         return httpx.Response(403, json={"message": "expired or already used"})
@@ -468,20 +509,14 @@ def test_password_recovery_callback_redirects_rejected_token_to_frontend_error()
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://email-browser",
-            follow_redirects=False,
         ) as email_browser:
-            callback = await email_browser.get(
-                "/api/v1/auth/password-recovery/callback",
-                params={"token_hash": "expired-token-hash"},
+            response = await email_browser.post(
+                "/api/v1/auth/password-recovery/verify",
+                headers={"Origin": ORIGIN},
+                json={"token_hash": "expired-token-hash"},
             )
-            assert callback.status_code == 303
-            assert callback.headers["location"] == (
-                "https://frontend.example.test/password-reset/update"
-                "?error=invalid_or_expired"
-            )
-            assert callback.headers["cache-control"] == "private, no-store"
-            assert callback.headers["referrer-policy"] == "no-referrer"
-            assert "set-cookie" not in callback.headers
+            assert response.status_code == 400
+            assert "set-cookie" not in response.headers
 
     asyncio.run(run())
 
@@ -742,11 +777,11 @@ def test_openapi_exposes_typed_auth_success_models_and_write_only_passwords() ->
     assert response_ref("/api/v1/auth/refresh", "200").endswith(
         "/AuthSessionResponse"
     )
-    assert "/api/v1/auth/password-recovery/exchange" not in paths
     callback = paths["/api/v1/auth/password-recovery/callback"]["get"]
-    assert callback["parameters"][0]["name"] == "token_hash"
-    assert callback["parameters"][0]["in"] == "query"
+    assert "parameters" not in callback
     assert "303" in callback["responses"]
+    verify = paths["/api/v1/auth/password-recovery/verify"]["post"]
+    assert "200" in verify["responses"]
     assert "PreReviewRecoveryVerifierCookie" not in schema["components"]["securitySchemes"]
 
     schemas = schema["components"]["schemas"]
@@ -759,11 +794,13 @@ def test_openapi_exposes_typed_auth_success_models_and_write_only_passwords() ->
     credentials = schemas["CredentialsRequest"]
     sign_up = schemas["SignUpRequest"]
     update_password = schemas["UpdatePasswordRequest"]
+    recovery_verify = schemas["PasswordRecoveryVerifyRequest"]
     assert "display_name" not in credentials["properties"]
     assert sign_up["properties"]["display_name"]["maxLength"] == 100
     assert "display_name" in sign_up["required"]
     assert sign_up["properties"]["password"]["minLength"] == 8
     assert update_password["properties"]["password"]["minLength"] == 8
+    assert recovery_verify["properties"]["token_hash"]["writeOnly"] is True
     for request_model in (credentials, sign_up, update_password):
         password = request_model["properties"]["password"]
         assert password["format"] == "password"

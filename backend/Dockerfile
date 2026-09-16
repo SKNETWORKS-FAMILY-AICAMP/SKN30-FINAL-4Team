@@ -49,4 +49,8 @@ COPY --from=pristine-identity /tmp/prereview-build-id .prereview-build-id
 
 EXPOSE 8000
 
+# The API and chat worker need no root privileges at runtime. Compose provides
+# a bounded /tmp tmpfs for upload spooling and transient client state.
+USER 10001:10001
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-concurrency", "32"]
