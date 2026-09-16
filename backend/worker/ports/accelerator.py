@@ -32,7 +32,15 @@ class AcceleratorJobNotFoundError(LookupError):
 
 
 class AcceleratorPort(Protocol):
-    """The small submit/poll/cancel surface a future provider adapter must implement."""
+    """The small submit/poll/cancel surface a provider adapter must implement.
+
+    A production ``submit`` implementation owns the outbound security gate:
+    it must inject deployment policy and a timezone-aware clock, call
+    ``validate_accelerator_dispatch`` immediately before materializing the
+    wire payload, and make no transport call when validation fails.  Request
+    integrity checks in an orchestration layer do not replace that adapter
+    boundary.  ``InMemoryAccelerator`` follows the same rule for offline tests.
+    """
 
     def submit(self, request: SuryaLayoutRequest) -> AcceleratorJobStatus: ...
 
