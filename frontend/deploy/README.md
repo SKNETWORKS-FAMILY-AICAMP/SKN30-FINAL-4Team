@@ -16,7 +16,7 @@
 |---|---|---|
 | 공개 도메인 | `app.example.com` | 실제 DNS 이름으로 교체 |
 | 정적 파일 경로 | `/srv/app` | Caddy가 읽을 빌드 배포 경로 |
-| 백엔드 | `100.64.0.10:8001` | 실제 Tailnet IP와 API 포트로 교체 |
+| 백엔드 | `backend.tailnet.example:8001` | 실제 Tailnet IP 또는 MagicDNS 이름과 API 포트로 교체 |
 | 저장소 Caddy 예제 | `frontend/deploy/Caddyfile.example` | 실제 주소를 포함하지 않는 커밋 대상 |
 | 로컬 Caddy 설정 | `frontend/deploy/Caddyfile.local` | 실제 주소를 넣는 Git 제외 파일 |
 | 운영 Caddy 설정 | `/etc/caddy/Caddyfile` | Caddy 서비스가 읽는 파일 |
@@ -35,9 +35,9 @@ cp frontend/deploy/Caddyfile.example frontend/deploy/Caddyfile.local
 `frontend/deploy/Caddyfile.local`의 다음 세 값을 실제 환경에 맞게 바꾼다.
 
 ```text
-app.example.com      -> 실제 공개 도메인
-100.64.0.10:8001     -> 실제 Tailnet 백엔드 주소
-/srv/app             -> 실제 정적 파일 경로
+app.example.com                 -> 실제 공개 도메인
+backend.tailnet.example:8001    -> 실제 Tailnet 백엔드 주소
+/srv/app                        -> 실제 정적 파일 경로
 ```
 
 설정을 검증하고 운영 경로에 설치한다.
@@ -160,14 +160,15 @@ sudo journalctl -u caddy -n 100 --no-pager
 
 ### API가 `502 Bad Gateway`인 경우
 
-`BACKEND_TAILNET_IP`를 실제 백엔드 Tailnet IP로 바꾼 뒤 프론트 서버에서 확인한다.
+`BACKEND_TAILNET_HOST`를 실제 백엔드 Tailnet IP 또는 MagicDNS 이름으로 바꾼 뒤 프론트
+서버에서 확인한다.
 
 ```bash
-BACKEND_TAILNET_IP=100.64.0.10
+BACKEND_TAILNET_HOST=backend.tailnet.example
 tailscale status
-tailscale ping "$BACKEND_TAILNET_IP"
-curl -fsS "http://${BACKEND_TAILNET_IP}:8001/health/live"
-curl -fsS "http://${BACKEND_TAILNET_IP}:8001/health/ready"
+tailscale ping "$BACKEND_TAILNET_HOST"
+curl -fsS "http://${BACKEND_TAILNET_HOST}:8001/health/live"
+curl -fsS "http://${BACKEND_TAILNET_HOST}:8001/health/ready"
 ```
 
 백엔드 health가 실패하면 프론트 빌드나 Caddy 정적 파일 문제가 아니다. 백엔드 API bind,
