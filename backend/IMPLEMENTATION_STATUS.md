@@ -1,6 +1,6 @@
-# Backend rebuild 구현 현황
+# Backend 구현·검증 기록
 
-마지막 갱신: 2026-09-14
+마지막 갱신: 2026-09-16
 
 ## 현재 선택한 운영 구조
 
@@ -14,6 +14,15 @@ Frontend (HttpOnly Cookie)
 Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase나 Edge Function을 직접
 호출하지 않는다. Redis/RQ, external worker HTTP dispatch/callback, SSE/Realtime은 현재
 운영 경로에서 사용하지 않는다.
+
+## 2026-09-16 후속 변경
+
+- 공통 `OPENAI_LLM_MODEL`과 Request Profile 기본값을 모두 `gpt-5.6-terra`로 통일했다.
+  FIT·SIM·채팅은 단계별 override가 없으면 공통 Terra를 사용한다.
+- Model 1은 자동 재시도하지 않는다. Model 2와 Model 3은 실행 예외 시 해당 모델만 한 번
+  재시도하며, 최종 non-OK 결과의 공개 message는 `null`로 반환해 다른 분석 결과를 유지한다.
+- 아래 날짜가 붙은 E2E의 모델명·run ID·image SHA는 당시 실행 기록이다. 현재 release의
+  검증을 대신하지 않으며, 배포 시 clean checkout에서 external E2E를 다시 수행한다.
 
 ## 2026-09-14 통합 상태
 
@@ -72,7 +81,7 @@ lifecycle/result/retrieval/chat/admission은 `33`~`37`, atomic upload finalizati
     `INPUT_EVIDENCE_MISSING`으로 acceptance 실패했다. 문서에 금액·수량 원문 근거가
     부족한 fixture 특성에 따른 기대 가능한 거부이며, 인프라 실패와 구분된다.
 - 2026-09-13 전용 Docker worker external live E2E를 실제 DB와 OpenAI로 완료했다.
-  - 최신 run `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
+  - 해당 검증 run `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
     `c05d9ae0-d279-4839-8a86-102da0be18fd`
   - analysis worker `4d6aae5d4c87:1:540b85e666be`, chat worker
     `ea084ec9c993:1:c39815e56162`가 각각 한 번의 DB queue attempt로 완료됐다.
@@ -367,7 +376,7 @@ SUPABASE_ANON_KEY=<server-only>
 SUPABASE_SECRET_KEY=<server-only>
 DATABASE_URL=<server-only>
 OPENAI_API_KEY=<worker-only>
-OPENAI_LLM_MODEL=gpt-5.6-luna
+OPENAI_LLM_MODEL=gpt-5.6-terra
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
 PREREVIEW_MODEL1_RUNTIME_UID=<numeric-owner-uid>

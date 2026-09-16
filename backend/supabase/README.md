@@ -1,5 +1,9 @@
 # Self-hosted Supabase 운영 안내
 
+새 서버 구성과 DB·Storage 이전은 [데이터베이스 신규 환경 구성 가이드](DATABASE_SETUP_GUIDE.md),
+현재 EC2의 일상 기동·중지는
+[EC2 서버 운영 매뉴얼](../../docs/operations/EC2_SERVER_OPERATIONS.md)에서 시작한다.
+
 이 디렉터리는 PreReview용 self-hosted Supabase의 migration, pgvector Compose override,
 Storage 정책과 검증 도구를 관리한다. 실행 중 DB·Storage 객체·Docker volume·실제 `.env`
 비밀값은 Git에 넣지 않는다.

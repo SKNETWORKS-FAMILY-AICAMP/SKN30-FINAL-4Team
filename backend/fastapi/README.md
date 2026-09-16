@@ -15,7 +15,7 @@
   [WORKER_RESULT_PERSISTENCE_CONTRACT.md](docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md)
 - worker 구현 경계·레거시 제외 범위:
   [WORKER_INTEGRATION_ASSESSMENT.md](docs/WORKER_INTEGRATION_ASSESSMENT.md)
-- 전체 구현 현황과 미완료 범위:
+- 구현·검증 기록과 남은 범위:
   [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md)
 - Supabase 인프라 배포·영속 데이터 운영:
   [supabase/README.md](../supabase/README.md)

@@ -300,7 +300,7 @@ def build_settings(
         ),
         (
             "OPENAI_LLM_MODEL",
-            _optional(provider, "OPENAI_LLM_MODEL", "gpt-5.6-luna", label=provider_label),
+            _optional(provider, "OPENAI_LLM_MODEL", "gpt-5.6-terra", label=provider_label),
         ),
         (
             "OPENAI_REQUEST_PROFILE_MODEL",

@@ -257,7 +257,7 @@ SUPABASE_DB_URL=
 # worker 전용 OpenAI
 OPENAI_API_KEY=<openai-api-key>
 # 모든 LLM 단계의 fallback. 단계별 override가 비어 있으면 이 모델을 사용한다.
-OPENAI_LLM_MODEL=gpt-5.6-luna
+OPENAI_LLM_MODEL=gpt-5.6-terra
 # Request Profile 구조화는 별도 모델을 권장한다.
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 # 아래 단계별 override는 필요할 때만 설정한다.
@@ -809,8 +809,8 @@ external polling 기본 제한은 분석 1800초, 채팅 600초다. 문서 크�
 호출을 중단하지 않고 E2E가 public 상태를 기다리는 시간만 바꾼다.
 
 live E2E는 `OPENAI_REQUEST_PROFILE_MODEL`을 shell 값, 이어서 `backend/.env`
-값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. `OPENAI_LLM_MODEL`은
-계속 다른 단계의 fallback(예: `gpt-5.6-luna`)으로 둘 수 있다.
+값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. 현재 운영 기본은
+`OPENAI_LLM_MODEL`도 `gpt-5.6-terra`이며, 필요한 경우 단계별 override로 분리할 수 있다.
 
 스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인한다. `inline`은 자신이
 생성한 target만 claim하며 예상과 다른 run/message가 반환되면 claim transaction을
@@ -900,7 +900,7 @@ Request Profile에는 Terra를 사용했고 worker 로그에서 최초 1회와 �
 `sha256:0847b036…`는 `1000:1000` 정상 기동·ML preflight와 강제 `0:0` 실행의 exit code
 2를 확인했다. 이 후속 변경은 위 OpenAI provider/pipeline 경로를 바꾸지 않는다.
 산출물 수·run/case ID·입력 SHA-256 같은 검증 기록은
-[Backend 구현 현황](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
+[Backend 구현·검증 기록](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
 
 ### Swagger/OpenAPI로 프론트 작업하기
 
@@ -1066,5 +1066,5 @@ Nginx를 사용하는 경우 [nginx reverse-proxy example](../../deploy/nginx/pr
 - 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
 - PDF 보고서·PDF OCR API
 
-최신 완료·미완료 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
+구현·검증 기록과 남은 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
 확인한다.
