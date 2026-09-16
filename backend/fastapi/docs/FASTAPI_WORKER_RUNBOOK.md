@@ -257,7 +257,7 @@ SUPABASE_DB_URL=
 # worker 전용 OpenAI
 OPENAI_API_KEY=<openai-api-key>
 # 모든 LLM 단계의 fallback. 단계별 override가 비어 있으면 이 모델을 사용한다.
-OPENAI_LLM_MODEL=gpt-5.6-luna
+OPENAI_LLM_MODEL=gpt-5.6-terra
 # Request Profile 구조화는 별도 모델을 권장한다.
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 # 아래 단계별 override는 필요할 때만 설정한다.
@@ -809,8 +809,8 @@ external polling 기본 제한은 분석 1800초, 채팅 600초다. 문서 크�
 호출을 중단하지 않고 E2E가 public 상태를 기다리는 시간만 바꾼다.
 
 live E2E는 `OPENAI_REQUEST_PROFILE_MODEL`을 shell 값, 이어서 `backend/.env`
-값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. `OPENAI_LLM_MODEL`은
-계속 다른 단계의 fallback(예: `gpt-5.6-luna`)으로 둘 수 있다.
+값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. 현재 운영 기본은
+`OPENAI_LLM_MODEL`도 `gpt-5.6-terra`이며, 필요한 경우 단계별 override로 분리할 수 있다.
 
 스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인한다. `inline`은 자신이
 생성한 target만 claim하며 예상과 다른 run/message가 반환되면 claim transaction을
