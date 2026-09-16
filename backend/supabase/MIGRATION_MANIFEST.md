@@ -1,6 +1,6 @@
 # Supabase migration manifest
 
-마지막 감사: 2026-09-13
+마지막 감사: 2026-09-16
 현재 버전: v0.2 (migration 40)
 
 이 manifest는 `backend/supabase/migrations`의 순차 SQL과 현재

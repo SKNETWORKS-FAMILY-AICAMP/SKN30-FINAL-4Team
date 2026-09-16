@@ -16,7 +16,7 @@ Frontend → FastAPI → Supabase Auth / Postgres / private Storage
 - Frontend는 `/functions/v1/*`를 직접 호출하지 않는다.
 - FastAPI는 `POST /api/v1/analysis-runs`에서 원본을 private Storage에 올리고 run을 생성한다.
 - worker는 `workspace.claim_next_analysis_run()`을 polling하고 DB/Storage에 내부 연결한다.
-- 결과 완료는 callback이 아니라 `workspace.persist_analysis_result_core()`의 fenced transaction이다.
+- 결과 완료는 callback이 아니라 `workspace.persist_analysis_result_core_v2()`의 fenced transaction이다.
 - 진행 상태는 FastAPI `GET /api/v1/analysis-runs/{id}` polling으로 조회한다. Realtime/SSE는 미사용이다.
 
 ## 사용하면 안 되는 레거시 계약

@@ -1,6 +1,6 @@
 # 데이터 스키마 및 보관 아키텍처
 
-기준일: 2026-09-10
+기준일: 2026-09-16
 
 ## 현재 운영 경계
 
@@ -20,13 +20,13 @@ Frontend ──HttpOnly Cookie──> FastAPI
 ## 스키마의 기준 파일
 
 - 전체 현황과 적용 순서: `backend/supabase/MIGRATION_MANIFEST.md`
-- 순차 migration: `backend/supabase/migrations/01`~`24`
+- 순차 migration: `backend/supabase/migrations/01`~`40`
 - self-hosted 운영: `backend/supabase/README.md`
 - Existing 100건 bootstrap: `backend/supabase/EXISTING_KB_BOOTSTRAP.md`
 - worker DB 경계: `backend/supabase/WORKER_DB_ACCESS.md`
 
-현재 application table은 60개이며 `app`, `ops`, `kb`, `workspace`, `result`,
-`retrieval` 여섯 data-bearing schema를 사용한다. `api` schema는 owner-scoped View/RPC
+application table은 `app`, `ops`, `kb`, `workspace`, `result`, `retrieval` 여섯 data-bearing
+schema에 둔다. `api` schema는 owner-scoped View/RPC
 계약이며 table을 갖지 않는다. 정확한 table·index 수와 migration별 역할은 manifest를
 단일 기준으로 삼는다.
 
@@ -63,8 +63,8 @@ result                                  비교 결과와 읽기 모델
    └─ report_artifact
 
 retrieval
-├─ embedding_configuration
-└─ existing_profile_embedding
+├─ embedding_configuration → existing_profile_embedding
+└─ classification_configuration → existing_profile_classification
 ```
 
 ## 파일과 JSON 저장 원칙
@@ -115,13 +115,13 @@ PostgreSQL이 Redis/RQ 없이 durable queue 역할을 한다. worker는
 `workspace.claim_next_analysis_run()`으로 claim하고 30초 heartbeat, 120초 lease,
 최대 두 번의 시도를 사용한다. `ops.processing_run.processing_run_pk`가 fencing token이다.
 
-완료는 `workspace.persist_analysis_result_core()` 하나로 결과 materialisation과
+완료는 `workspace.persist_analysis_result_core_v2()` 하나로 결과 materialisation과
 `succeeded` 전이를 같은 transaction에서 수행한다. migration 24는 결과 없이 상태만
 성공으로 바꾸던 과거 `complete_analysis_run` 함수를 제거한다. stale worker의 token은
 `NULL`을 받고 결과를 변경하지 못한다.
 
 요청 원본은 DB `uploading` 예약 → Storage upload → source artifact와 `queued`의 원자
-finalize 순서로 저장한다. `Idempotency-Key` UUID가 run 식별자이며 모호한 DB commit은
+finalize 순서로 저장한다. `Idempotency-Key` UUID는 동일 업로드의 재전송 식별자이며, 응답의 `analysis_run_id`와는 별개다. 저장 객체 경로는 이 키로 안정적으로 정하며 모호한 DB commit은
 read-back한다. Storage 쓰기 결과가 모호하면 exact object의 byte SHA-256·길이·MIME을
 재검증하고, 확인되지 않은 객체는 보상 삭제하지 않는다. 15분이 지난 `uploading`과 실패한
 정확 경로 삭제는 다음 업로드가 제한된 batch로 재시도한다. 전체 보존기한을 보장하는 독립

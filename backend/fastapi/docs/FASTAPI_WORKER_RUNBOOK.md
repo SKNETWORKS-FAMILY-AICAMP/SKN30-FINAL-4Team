@@ -900,7 +900,7 @@ Request Profile에는 Terra를 사용했고 worker 로그에서 최초 1회와 �
 `sha256:0847b036…`는 `1000:1000` 정상 기동·ML preflight와 강제 `0:0` 실행의 exit code
 2를 확인했다. 이 후속 변경은 위 OpenAI provider/pipeline 경로를 바꾸지 않는다.
 산출물 수·run/case ID·입력 SHA-256 같은 검증 기록은
-[Backend 구현 현황](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
+[Backend 구현·검증 기록](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
 
 ### Swagger/OpenAPI로 프론트 작업하기
 
@@ -1066,5 +1066,5 @@ Nginx를 사용하는 경우 [nginx reverse-proxy example](../../deploy/nginx/pr
 - 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
 - PDF 보고서·PDF OCR API
 
-최신 완료·미완료 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
+구현·검증 기록과 남은 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
 확인한다.
