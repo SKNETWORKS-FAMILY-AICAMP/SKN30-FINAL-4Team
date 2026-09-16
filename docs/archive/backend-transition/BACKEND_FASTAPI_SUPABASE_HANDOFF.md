@@ -93,7 +93,7 @@ production-ready로 표시하지 않는다. 기존 legacy 응답 모양을 backe
   `display_name`도 표시한다.
 
 프론트 구현의 유일한 사람용 계약은
-[프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)다. exact DTO shape는 배포 대상의
+[프론트엔드 API 명세](../../../backend/fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md)다. exact DTO shape는 배포 대상의
 `/openapi.json`에서 확인한다. `FASTAPI_RESPONSE_CONTRACT.json`은 mock용 비규범 예시이며
 별도 계약이 아니다.
 
@@ -193,6 +193,6 @@ raw `판단보류` 1건이다. 새 서버에서는 동일 운영 절차를 별�
 PDF 생성은 현재 구현·E2E 완료 범위가 아니다. 추가 운영 범위는 worker readiness의 queue lag/heartbeat 관측,
 `ops.model_invocation` 호출 감사 기록, request-temp 및 만료 결과 cleanup이다.
 
-공개 API 상세는 [0.FASTAPI_FRONTEND_API_SPEC.md](0.FASTAPI_FRONTEND_API_SPEC.md),
-worker payload는 [WORKER_RESULT_PERSISTENCE_CONTRACT.md](WORKER_RESULT_PERSISTENCE_CONTRACT.md)를
+공개 API 상세는 [0.FASTAPI_FRONTEND_API_SPEC.md](../../../backend/fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md),
+worker payload는 [WORKER_RESULT_PERSISTENCE_CONTRACT.md](../../../backend/fastapi/docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md)를
 따른다.
