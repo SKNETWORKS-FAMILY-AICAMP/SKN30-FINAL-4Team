@@ -67,13 +67,25 @@ class OpenAIEmbeddingClient:
             )
             if inspect.isawaitable(response):  # bounded offline async fake
                 response = await response
-        except APITimeoutError:
-            raise EmbeddingTimeoutError("OpenAI embedding request timed out") from None
-        except (APIConnectionError, APIStatusError, APIError):
-            raise EmbeddingUnavailableError("OpenAI embedding request failed") from None
-        except TimeoutError:
-            raise EmbeddingTimeoutError("OpenAI embedding request timed out") from None
         except Exception as error:
+            _log_embedding_failure(
+                error,
+                model_name=self._model_name,
+                texts=texts,
+                started_at=started_at,
+            )
+            if isinstance(error, APITimeoutError):
+                raise EmbeddingTimeoutError(
+                    "OpenAI embedding request timed out"
+                ) from None
+            if isinstance(error, APIError):
+                raise EmbeddingUnavailableError(
+                    "OpenAI embedding request failed"
+                ) from None
+            if isinstance(error, TimeoutError):
+                raise EmbeddingTimeoutError(
+                    "OpenAI embedding request timed out"
+                ) from None
             raise EmbeddingUnavailableError(
                 f"OpenAI embedding request failed: {type(error).__name__}"
             ) from None
@@ -133,3 +145,46 @@ def _embedding_rows(response: Any, *, expected_count: int) -> tuple[str, list[li
         raise EmbeddingInvalidResponseError(
             "OpenAI returned an invalid embedding response"
         ) from None
+
+
+def _log_embedding_failure(
+    error: Exception,
+    *,
+    model_name: str,
+    texts: list[str],
+    started_at: float,
+) -> None:
+    """Record provider failure metadata without document or provider details."""
+
+    status_code = _status_code(error)
+    input_bytes = [len(text.encode("utf-8")) for text in texts]
+    logger.warning(
+        "OpenAI embedding request failed error_class=%s status_code=%s model=%s "
+        "input_count=%s input_bytes_total=%s input_bytes_max=%s duration_ms=%s "
+        "retryable=%s",
+        type(error).__name__,
+        status_code,
+        model_name,
+        len(texts),
+        sum(input_bytes),
+        max(input_bytes, default=0),
+        max(0, round((time.perf_counter() - started_at) * 1000)),
+        _is_retryable(error, status_code=status_code),
+    )
+
+
+def _status_code(error: Exception) -> int | None:
+    if not isinstance(error, APIStatusError):
+        return None
+    value = getattr(error, "status_code", None)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _is_retryable(error: Exception, *, status_code: int | None) -> bool:
+    if isinstance(error, (APITimeoutError, APIConnectionError, TimeoutError)):
+        return True
+    if isinstance(error, APIStatusError):
+        return status_code in {408, 409, 429} or (
+            status_code is not None and status_code >= 500
+        )
+    return False

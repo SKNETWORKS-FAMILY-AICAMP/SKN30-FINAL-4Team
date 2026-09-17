@@ -524,6 +524,119 @@ def test_live_e2e_hardens_provider_logging_before_external_work(
             logger.setLevel(original_level)
 
 
+def test_external_audit_failure_is_not_hidden_by_missing_worker_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def __init__(self, status_code: int, payload: dict[str, str]) -> None:
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self) -> dict[str, str]:
+            return self._payload
+
+    class Client:
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def post(self, path: str, **_kwargs: object) -> Response:
+            if path == "/api/v1/auth/sign-in":
+                return Response(200, {"status": "ok"})
+            assert path == "/api/v1/analysis-runs"
+            return Response(
+                202,
+                {"analysis_run_id": "run-id", "status": "queued"},
+            )
+
+    async def create_user() -> tuple[str, str, str]:
+        return "user-id", "user@example.test", "password"
+
+    async def api_build_identity(
+        _client: object, *, expected_build_id: str
+    ) -> str:
+        return expected_build_id
+
+    async def poll_analysis(**_kwargs: object) -> tuple[dict[str, str], int]:
+        return {"status": "succeeded"}, 1
+
+    audit_failure = MODULE.E2EFailure("durable analysis audit failed")
+
+    def reject_audit(*_args: object, **_kwargs: object) -> None:
+        raise audit_failure
+
+    manifest_worker_ids: list[str | None] = []
+
+    def partial_manifest(**kwargs: object) -> dict[str, object]:
+        worker_id = kwargs["analysis_worker_id"]
+        assert worker_id is None or isinstance(worker_id, str)
+        manifest_worker_ids.append(worker_id)
+        return {"analysis_worker_id": worker_id}
+
+    captured_manifests: list[object] = []
+
+    async def capture_trace(**kwargs: object) -> bool:
+        captured_manifests.append(kwargs["execution_manifest"])
+        return True
+
+    monkeypatch.setenv("DATABASE_URL", "not-used")
+    monkeypatch.setitem(
+        sys.modules,
+        "worker.main",
+        SimpleNamespace(configure_runtime_logging=lambda **_kwargs: None),
+    )
+    # Replace only the script module references.  Mutating the process-wide
+    # asyncio/httpx modules makes this test order-dependent: worker.main imports
+    # OpenAI, which must still be able to subclass the real httpx.AsyncClient.
+    monkeypatch.setattr(
+        MODULE,
+        "asyncio",
+        SimpleNamespace(to_thread=_inline_to_thread),
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_require_clean_checkout_build_context_digest",
+        lambda: "a" * 64,
+    )
+    monkeypatch.setattr(MODULE, "_assert_queues_quiescent", lambda _url: None)
+    monkeypatch.setattr(MODULE, "_create_confirmed_test_user", create_user)
+    monkeypatch.setattr(
+        MODULE,
+        "httpx",
+        SimpleNamespace(AsyncClient=lambda **_kwargs: Client()),
+    )
+    monkeypatch.setattr(MODULE, "_external_api_build_identity", api_build_identity)
+    monkeypatch.setattr(
+        MODULE,
+        "_poll_external_analysis_until_terminal",
+        poll_analysis,
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_require_external_analysis_worker_audit",
+        reject_audit,
+    )
+    monkeypatch.setattr(MODULE, "_partial_execution_manifest", partial_manifest)
+    monkeypatch.setattr(MODULE, "_capture_analysis_failure_trace", capture_trace)
+
+    with pytest.raises(MODULE.E2EFailure, match="durable analysis audit failed") as error:
+        asyncio.run(
+            MODULE._run(
+                Path("request.hwpx"),
+                worker_mode="external",
+                api_base_url="https://api.example.test",
+                source_content=HWPX,
+                source_mime_type="application/vnd.hancom.hwpx",
+            )
+        )
+
+    assert error.value is audit_failure
+    assert manifest_worker_ids == [None]
+    assert captured_manifests == [{"analysis_worker_id": None}]
+
+
 class _DelegateRepository:
     def __init__(self, job_pk: str | None) -> None:
         self.job_pk = job_pk

@@ -2466,6 +2466,10 @@ async def _run(
         if not isinstance(run_id, str) or payload.get("status") != "queued":
             raise E2EFailure("FastAPI upload response contract is invalid")
 
+        # The external audit can fail before it yields a durable worker
+        # identity.  Keep failure tracing total so that provenance capture
+        # never replaces the original E2E failure with UnboundLocalError.
+        worker_id: str | None = None
         try:
             if worker_mode == "external":
                 state, analysis_poll_count = await _poll_external_analysis_until_terminal(
@@ -2480,7 +2484,7 @@ async def _run(
                 )
                 worker_outcome: str | None = "external"
                 worker_attempts: int | None = analysis_worker_audit.attempt_count
-                worker_id: str | None = analysis_worker_audit.final_worker_id
+                worker_id = analysis_worker_audit.final_worker_id
                 worker_attempt_worker_ids: list[str] | None = list(
                     analysis_worker_audit.attempt_worker_ids
                 )
