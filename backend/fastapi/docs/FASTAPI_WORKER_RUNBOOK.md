@@ -818,24 +818,27 @@ OpenAI 비용이 발생하므로 배포마다 자동으로 실행하지 않는�
 로컬 Supabase·migration 01~42·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
 환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue → analysis
 worker → 결과 조회 → cookie 인증·trusted Origin 채팅 POST → chat-worker → 메시지 GET
-polling을 한 번에 검증할 수 있다. DB에 저장된 Model 1·2·3 status가 모두 `OK`인지도
-직접 확인하므로, ML이 `UNAVAILABLE`인 채로 분석만 성공한 경우에는 E2E 성공으로 보지
-않는다. PDF는 받지 않고 HWP·HWPX만 받는다.
+polling → report-worker 상태 polling → 소유자 PDF 다운로드를 한 번에 검증할 수 있다.
+DB에 저장된 Model 1·2·3 status가 모두 `OK`인지도 직접 확인하므로, ML이
+`UNAVAILABLE`인 채로 분석만 성공한 경우에는 E2E 성공으로 보지 않는다. 입력은
+HWP·HWPX만 받으며 생성된 PDF는 메모리에서 응답 계약을 검증한 뒤 디스크에 저장하지 않고
+폐기한다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team/backend
-# inline: 이 프로세스가 analysis/chat queue를 직접 claim해 host Python으로 실행한다.
-uv run python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
+# inline: 이 process가 analysis/chat queue를 직접 claim한다.
+# report-worker는 별도로 기동된 상태여야 한다.
+uv run --extra dev python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
 
-# external: 실행 중인 Docker API와 worker/chat-worker를 실제 HTTP로 사용한다.
+# external: 실행 중인 Docker API와 worker/chat-worker/report-worker를 사용한다.
 # Docker 배포 확인에는 이 모드를 사용한다. HTTP는 loopback API에서만 허용한다.
-uv run python scripts/run_local_live_e2e.py \
+uv run --extra dev python scripts/run_local_live_e2e.py \
   --worker-mode external \
   --api-base-url http://127.0.0.1:8001 \
   --file /safe/local/request.hwpx
 
 # 기본 위치와 다른 보안 설정 파일을 쓰는 경우만 명시한다.
-uv run python scripts/run_local_live_e2e.py \
+uv run --extra dev python scripts/run_local_live_e2e.py \
   --worker-mode external \
   --api-base-url http://127.0.0.1:8001 \
   --file /safe/local/request.hwpx \
@@ -843,7 +846,7 @@ uv run python scripts/run_local_live_e2e.py \
   --supabase-env /safe/local/supabase.env
 ```
 
-`external`은 release gate다. 먼저 checkout이 clean한지 확인한 뒤 API와 chat-worker 이미지를
+`external`은 release gate다. 먼저 checkout이 clean한지 확인한 뒤 API와 세 worker 이미지를
 다시 build한다. Dockerfile은 operator-supplied build arg를 받지 않고, pristine stage에서 `COPY .`
 직후·pip install 전에 backend context 전체(빈 directory와 mode 포함)의 canonical
 path·kind·mode·content SHA-256을 계산한다. final runtime image는 이 provenance artifact만 받는다.
@@ -870,7 +873,8 @@ untracked 파일을 바꾸지 않고 trace는 repo 밖에 저장한다. `--api-b
 보존한다. 생성한 계정의 email/password, 원문 byte, 질문/답변 본문, 전체 모델 출력은
 터미널에 출력하지 않는다. 성공 JSON에는 ID, 상태, DB 감사 이력에서 확인한 실제
 worker ID와 시도별 worker ID·attempt 수, 채팅 근거 참조 수, Model 1·2·3의 `OK`
-status처럼 안전한 요약값만 담긴다. 다만 구조화·비교·채팅을 위해 테스트 파일에서 추출한
+status, PDF 상태·byte 크기처럼 안전한 요약값만 담긴다. PDF 본문과 Storage key,
+요청/응답 header 전체는 출력하지 않는다. 다만 구조화·비교·채팅을 위해 테스트 파일에서 추출한
 텍스트는 설정된 OpenAI API로 전송된다. 외부 전송이 허용된 합성/비식별 테스트 파일만
 사용한다.
 
@@ -879,41 +883,46 @@ status처럼 안전한 요약값만 담긴다. 다만 구조화·비교·채팅�
 shell에 이미 설정된 값이 우선하며 값 자체는 출력하지 않는다. `external` 모드는 배포된
 API가 보유한 signing secret을 사용하므로 E2E process가 그 값을 읽지 않는다.
 
-`inline`은 E2E Python process가 자신이 만든 job만 DB queue에서 직접 claim해 host
-runtime으로 수행한다. `external`은 job을 FastAPI에 업로드한 뒤 이미 기동된 Docker
-`worker`와 `chat-worker`가 처리한 상태를 public API로 polling한 뒤, 해당 target의
-`ops.processing_run` 감사 이력과 queue attempt 수를 대조한다. `external`에는 배포된
+`inline`은 E2E Python process가 자신이 만든 analysis/chat job만 DB queue에서 직접 claim해
+host runtime으로 수행한다. PDF는 실제 Chromium/Storage 경계를 통과하도록 별도로
+기동한 `report-worker`가 처리하며 두 모드 모두 같은 로그인 Cookie와 case로 상태와
+다운로드를 검증한다. `external`은 job을 FastAPI에 업로드한 뒤 이미 기동된 Docker
+`worker`, `chat-worker`, `report-worker`가 처리한 상태를 public API로 polling한 뒤,
+해당 target의 `ops.processing_run` 감사 이력과 queue attempt 수를 대조한다. `external`에는 배포된
 `--api-base-url`이 반드시 필요하므로 ASGI API와 외부 worker를 섞은 실행은 허용하지 않는다.
 이 모드는 API·Cookie·Storage·DB queue의 실제 연결과 실행 worker ID를 검증한다. 다만
 worker ID 자체에는 image digest가 없으므로, 아래처럼 다른 producer/worker가 없는 전용
 검증 창에서 대상 Compose replica만 실행 중이라는 전제가 필요하다.
 
-external polling 기본 제한은 분석 1800초, 채팅 600초다. 문서 크기·후보 수·provider
+polling 기본 제한은 분석 1800초, 채팅 600초, PDF 600초다. 문서 크기·후보 수·provider
 지연 때문에 더 긴 검증 창이 필요하면 `--analysis-poll-timeout-seconds`와
-`--chat-poll-timeout-seconds`에 양의 초 단위 값을 명시한다. 이 값은 worker나 OpenAI
+`--chat-poll-timeout-seconds`, `--report-poll-timeout-seconds`에 양의 초 단위 값을
+명시한다. 이 값은 worker나 OpenAI
 호출을 중단하지 않고 E2E가 public 상태를 기다리는 시간만 바꾼다.
 
 live E2E는 `OPENAI_REQUEST_PROFILE_MODEL`을 shell 값, 이어서 `backend/.env`
 값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. 현재 운영 기본은
 `OPENAI_LLM_MODEL`도 `gpt-5.6-terra`이며, 필요한 경우 단계별 override로 분리할 수 있다.
 
-스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인한다. `inline`은 자신이
+스크립트는 시작 전에 analysis/chat/report queue가 모두 비어 있는지 확인한다. `inline`은 자신이
 생성한 target만 claim하며 예상과 다른 run/message가 반환되면 claim transaction을
 rollback하고 fail-closed한다. `external`은 queue를 직접 claim하지 않고 public 상태를
 polling한 뒤 target의 영구 실행 이력에서 실제 worker ID, 순차 attempt 번호, 이전 실패와
-최종 성공, 최대 두 번의 상한을 검증한다.
+최종 성공을 검증한다. analysis/chat은 현재 계약의 2회 상한, PDF는 migration
+41의 3회 상한과 public `retry_count`를 함께 검증한다.
 
-`inline`은 worker runtime을 직접 실행하므로 재현 검증 중에는 `worker`와
-`chat-worker` 컨테이너를 일시 중지하고 다른 업로드/채팅을 막아야 한다. 사전검사 뒤
+`inline`은 analysis/chat runtime을 직접 실행하므로 재현 검증 중에는 `worker`와
+`chat-worker` 컨테이너를 일시 중지하되 `report-worker`는 기동하고, 다른 업로드/채팅을
+막아야 한다. 사전검사 뒤
 다른 producer/worker가 끼어드는 경쟁을 script가 원격에서 막을 수는 없으므로, 이 작업
-차단은 필수다. `external`은 반대로 검증할 Compose의 두 worker만 실행한 채 사용하고,
+차단은 필수다. `external`은 반대로 검증할 Compose의 세 worker만 실행한 채 사용하고,
 다른 host worker·복제본·업로드 producer는 잠시 중지해야 한다. 시작 시 queue가 비었는지는
 검사하지만 그 뒤의 경쟁을 원격에서 차단하지는 못하기 때문이다. 이 일시 중지는 Supabase
 stack이나 영속 volume을 내리는 작업이 아니다.
 
 성공 시 stdout JSON의 `execution_manifest`에는 입력 SHA-256, Git commit, worktree dirty
 여부와 tracked diff/untracked content를 내용 노출 없이 식별하는 source-state SHA-256,
-analysis/chat worker identity(외부 모드의 Docker image ID 포함), 각 실제 container에서
+analysis/chat/report worker identity(외부 모드의 Docker image ID 포함), 각 실제 container에서
 allow-list로 읽은 LLM/embedding 모델·repair 상한과 성공한 실행 시도에 고정된 exact
 embedding configuration이 들어간다. 실행 종료 뒤 active 설정이 바뀌어도 E2E 기록은
 바뀌지 않는다. `--trace-dir DIR`를 지정하면 다음 재현 자료도
@@ -943,10 +952,12 @@ Git에 커밋하지 않는다.
 | `POST /api/v1/analysis-cases/{id}/messages` | trusted Origin 채팅 create, `202 generating` |
 | `GET /api/v1/analysis-cases/{id}/messages/{assistant_id}` | assistant 단건 polling과 completed |
 | `GET /api/v1/analysis-cases/{id}/messages` | completed chat history 재조회 |
+| `GET /api/v1/analysis-cases/{id}/report/status` | generating polling, ready/download 조합, retry 상태와 private Cookie cache 경계 |
+| `GET /api/v1/analysis-cases/{id}/report.pdf` | `200 application/pdf`, 실제 PDF parse·분석 대상명, 고정 파일명, 길이·private/no-store/nosniff |
 | `POST /api/v1/analysis-sessions/{id}/close` | 소유 session close와 `204` |
 
 `sign-up`, `refresh`, `sign-out`, `password-reset`, `update-password`, `auth/me`,
-실패한 assistant `retry`, active-session compatibility `GET`, PDF endpoint는 이 live
+실패한 assistant `retry`, active-session compatibility `GET`은 이 live
 스크립트의 coverage에 포함되지 않는다. 이 목록은 API 전체 지원 범위가 아니라 E2E 실행
 manifest가 증명하는 endpoint coverage다.
 

@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pypdf==6.18.1"]
 
 [tool.setuptools.packages.find]
 # ``prereview_runpod_worker`` is a deployment-only package.  Including it

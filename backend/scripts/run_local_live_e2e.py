@@ -15,6 +15,7 @@ import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
+from io import BytesIO
 import ipaddress
 import json
 import math
@@ -57,10 +58,14 @@ SOURCE_MIME_TYPES = {
     ".hwpx": "application/vnd.hancom.hwpx",
 }
 MAX_WORKER_ATTEMPTS = 2
+MAX_REPORT_WORKER_ATTEMPTS = 3
+MAX_REPORT_PDF_BYTES = 25 * 1024 * 1024
 ANALYSIS_POLL_INTERVAL_SECONDS = 0.5
 ANALYSIS_POLL_TIMEOUT_SECONDS = 1800
 CHAT_POLL_INTERVAL_SECONDS = 0.25
 CHAT_POLL_TIMEOUT_SECONDS = 600
+REPORT_POLL_INTERVAL_SECONDS = 2.0
+REPORT_POLL_TIMEOUT_SECONDS = 600
 E2E_CHAT_QUESTION = "이번 분석 결과를 요약하고 근거를 알려주세요."
 _BUILD_ID_PATTERN = re.compile(r"[0-9a-f]{64}")
 ML_ENVIRONMENT_KEYS = (
@@ -150,7 +155,14 @@ SELECT
         SELECT count(*)::integer
         FROM result.conversation_message
         WHERE role = 'assistant' AND status = 'generating'
-    ) AS active_chat_messages
+    ) AS active_chat_messages,
+    (
+        SELECT count(*)::integer
+        FROM workspace.report_pdf_dispatch AS dispatch
+        JOIN result.report_artifact AS report
+          ON report.report_artifact_pk = dispatch.report_artifact_pk
+        WHERE report.status = 'generating'
+    ) AS active_report_jobs
 """
 _ML_RESULT_SQL = """
 SELECT ml_result
@@ -197,6 +209,27 @@ JOIN ops.processing_run AS processing
      = dispatch.analysis_case_pk::text
 WHERE dispatch.assistant_message_pk = %s::uuid
   AND dispatch.analysis_case_pk = %s::uuid
+ORDER BY processing.started_at, processing.created_at, processing.processing_run_pk
+"""
+_REPORT_WORKER_AUDIT_SQL = """
+SELECT
+    dispatch.attempt_count,
+    report.retry_count,
+    processing.status,
+    processing.run_metadata
+FROM workspace.report_pdf_dispatch AS dispatch
+JOIN result.report_artifact AS report
+  ON report.report_artifact_pk = dispatch.report_artifact_pk
+JOIN ops.processing_run AS processing
+  ON processing.run_type = 'report_pdf'
+ AND processing.run_metadata ->> 'report_artifact_id'
+     = dispatch.report_artifact_pk::text
+ AND processing.run_metadata ->> 'analysis_case_id'
+     = dispatch.analysis_case_pk::text
+ AND processing.run_metadata ->> 'source_analysis_run_id'
+     = dispatch.source_analysis_run_id::text
+WHERE dispatch.analysis_case_pk = %s::uuid
+  AND dispatch.source_analysis_run_id = %s::uuid
 ORDER BY processing.started_at, processing.created_at, processing.processing_run_pk
 """
 _E2E_CHAT_QUEUE_ADVISORY_LOCK = 7_612_330_026
@@ -929,6 +962,7 @@ def _execution_manifest(
     worker_mode: str,
     analysis_worker_id: str,
     chat_worker_id: str,
+    report_worker_id: str,
     database_url: str,
     analysis_run_id: str,
     deployed_api_build_id: str | None = None,
@@ -962,6 +996,11 @@ def _execution_manifest(
             "worker_id": chat_worker_id,
             "image_id": _docker_image_identity(chat_worker_id),
         }
+        report_runtime: dict[str, object] = {
+            "kind": "docker",
+            "worker_id": report_worker_id,
+            "image_id": _docker_image_identity(report_worker_id),
+        }
         models: dict[str, object] = {
             "analysis_worker": _model_configuration_manifest(
                 _external_worker_model_environment(analysis_worker_id),
@@ -987,6 +1026,10 @@ def _execution_manifest(
         }
         analysis_runtime = {**common, "worker_id": analysis_worker_id}
         chat_runtime = {**common, "worker_id": chat_worker_id}
+        report_runtime = {
+            "kind": "database-audited-external",
+            "worker_id": report_worker_id,
+        }
         models = _model_configuration_manifest()
         api_runtime = {"kind": "in-process", "build_id": revision}
     return {
@@ -997,6 +1040,7 @@ def _execution_manifest(
         "api": api_runtime,
         "analysis_worker": analysis_runtime,
         "chat_worker": chat_runtime,
+        "report_worker": report_runtime,
         "models": models,
         "embedding_configuration": _analysis_embedding_configuration(
             database_url,
@@ -1289,19 +1333,24 @@ def _assert_queues_quiescent(database_url: str) -> None:
         raise E2EFailure("Local E2E queue preflight returned an invalid result")
     analysis_count = row.get("active_analysis_runs")
     chat_count = row.get("active_chat_messages")
+    report_count = row.get("active_report_jobs")
     if (
         not isinstance(analysis_count, int)
         or isinstance(analysis_count, bool)
         or not isinstance(chat_count, int)
         or isinstance(chat_count, bool)
+        or not isinstance(report_count, int)
+        or isinstance(report_count, bool)
         or analysis_count < 0
         or chat_count < 0
+        or report_count < 0
     ):
         raise E2EFailure("Local E2E queue preflight returned an invalid result")
-    if analysis_count or chat_count:
+    if analysis_count or chat_count or report_count:
         raise E2EFailure(
-            "Local E2E requires empty analysis and chat queues; "
-            f"active analysis={analysis_count}, chat={chat_count}"
+            "Local E2E requires empty analysis, chat, and report queues; "
+            f"active analysis={analysis_count}, chat={chat_count}, "
+            f"report={report_count}"
         )
 
 
@@ -1499,6 +1548,51 @@ def _require_external_chat_worker_audit(
     return _WorkerAttemptAudit(
         final_worker_id=worker_ids[-1],
         attempt_count=len(rows),
+        attempt_worker_ids=tuple(worker_ids),
+    )
+
+
+def _require_report_worker_audit(
+    database_url: str,
+    *,
+    case_id: str,
+    run_id: str,
+) -> _WorkerAttemptAudit:
+    """Prove the bounded PDF worker history for this exact analysis run."""
+
+    rows = _worker_audit_rows(
+        database_url,
+        query=_REPORT_WORKER_AUDIT_SQL,
+        params=(case_id, run_id),
+        subject="report",
+    )
+    attempt_count = _audit_int(rows[0].get("attempt_count"), subject="report")
+    retry_count = _audit_int(rows[0].get("retry_count"), subject="report")
+    if (
+        not 1 <= attempt_count <= MAX_REPORT_WORKER_ATTEMPTS
+        or retry_count != attempt_count - 1
+        or len(rows) != attempt_count
+    ):
+        raise E2EFailure("Local E2E report worker audit is invalid")
+
+    worker_ids: list[str] = []
+    for expected_attempt, row in enumerate(rows, start=1):
+        if (
+            _audit_int(row.get("attempt_count"), subject="report")
+            != attempt_count
+            or _audit_int(row.get("retry_count"), subject="report")
+            != retry_count
+        ):
+            raise E2EFailure("Local E2E report worker audit is invalid")
+        attempt_no, worker_id = _audit_metadata(row, subject="report")
+        expected_status = "succeeded" if expected_attempt == attempt_count else "failed"
+        if attempt_no != expected_attempt or row.get("status") != expected_status:
+            raise E2EFailure("Local E2E report worker audit is invalid")
+        worker_ids.append(worker_id)
+
+    return _WorkerAttemptAudit(
+        final_worker_id=worker_ids[-1],
+        attempt_count=attempt_count,
         attempt_worker_ids=tuple(worker_ids),
     )
 
@@ -1833,6 +1927,158 @@ async def _assistant_message_state(
     return message
 
 
+async def _report_status(
+    client: httpx.AsyncClient,
+    case_id: str,
+) -> dict[str, object]:
+    """Read and validate the small public PDF lifecycle contract."""
+
+    response = await client.get(
+        f"/api/v1/analysis-cases/{case_id}/report/status"
+    )
+    if response.status_code != 200:
+        raise E2EFailure(
+            f"FastAPI report status polling failed with HTTP {response.status_code}"
+        )
+    _require_private_cookie_response(response, subject="report status")
+    media_type = (
+        response.headers.get("content-type", "").partition(";")[0].strip().lower()
+    )
+    if media_type != "application/json":
+        raise E2EFailure("FastAPI report status polling response is invalid")
+    try:
+        report = response.json()
+    except ValueError:
+        raise E2EFailure("FastAPI report status polling response is invalid") from None
+    if (
+        not isinstance(report, dict)
+        or set(report)
+        != {"status", "can_download", "can_regenerate", "retry_count"}
+        or report.get("status") not in {"generating", "ready", "failed"}
+        or not isinstance(report.get("can_download"), bool)
+        or report.get("can_regenerate") is not False
+    ):
+        raise E2EFailure("FastAPI report status polling response is invalid")
+    retry_count = report.get("retry_count")
+    if (
+        not isinstance(retry_count, int)
+        or isinstance(retry_count, bool)
+        or not 0 <= retry_count < MAX_REPORT_WORKER_ATTEMPTS
+        or (report["status"] != "ready" and report["can_download"] is not False)
+    ):
+        raise E2EFailure("FastAPI report status polling response is invalid")
+    return report
+
+
+async def _poll_report_until_ready(
+    *,
+    client: httpx.AsyncClient,
+    case_id: str,
+    timeout_seconds: float | None = None,
+) -> tuple[dict[str, object], int]:
+    """Wait through the owner-scoped API until the PDF is downloadable."""
+
+    effective_timeout = (
+        REPORT_POLL_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
+    if effective_timeout <= 0:
+        raise E2EFailure("PDF report polling timed out")
+    polls = 0
+    try:
+        async with asyncio.timeout(effective_timeout):
+            while True:
+                report = await _report_status(client, case_id)
+                polls += 1
+                status = report["status"]
+                if status == "ready":
+                    if report["can_download"] is not True:
+                        raise E2EFailure("ready PDF report is not downloadable")
+                    return report, polls
+                if status == "failed":
+                    raise E2EFailure("PDF report worker reached a terminal failure")
+                await asyncio.sleep(REPORT_POLL_INTERVAL_SECONDS)
+    except TimeoutError:
+        raise E2EFailure("PDF report polling timed out") from None
+
+
+def _require_private_cookie_response(response: object, *, subject: str) -> None:
+    """Require the per-user cache boundary on a successful API response."""
+
+    headers = getattr(response, "headers", {})
+    cache_directives = {
+        directive.strip().lower()
+        for directive in headers.get("cache-control", "").split(",")
+        if directive.strip()
+    }
+    vary_tokens = {
+        token.strip().lower()
+        for token in headers.get("vary", "").split(",")
+        if token.strip()
+    }
+    if (
+        not {"private", "no-store"}.issubset(cache_directives)
+        or "cookie" not in vary_tokens
+    ):
+        raise E2EFailure(f"FastAPI {subject} response is not private")
+
+
+async def _download_ready_report(
+    *,
+    client: httpx.AsyncClient,
+    case_id: str,
+    expected_subject: str,
+) -> int:
+    """Download the ready PDF and return only its safe byte-count summary."""
+
+    response = await client.get(f"/api/v1/analysis-cases/{case_id}/report.pdf")
+    if response.status_code != 200:
+        raise E2EFailure(
+            f"FastAPI report download failed with HTTP {response.status_code}"
+        )
+    _require_private_cookie_response(response, subject="report download")
+    content = response.content
+    media_type = (
+        response.headers.get("content-type", "").partition(";")[0].strip().lower()
+    )
+    content_length = response.headers.get("content-length")
+    try:
+        has_valid_content_length = (
+            content_length is None or int(content_length) == len(content)
+        )
+    except (TypeError, ValueError):
+        has_valid_content_length = False
+    if (
+        media_type != "application/pdf"
+        or response.headers.get("content-disposition")
+        != 'attachment; filename="pre-review-report.pdf"'
+        or response.headers.get("x-content-type-options", "").lower() != "nosniff"
+        or not has_valid_content_length
+        or not isinstance(content, bytes)
+        or not content
+        or len(content) > MAX_REPORT_PDF_BYTES
+        or not content.startswith(b"%PDF-")
+    ):
+        raise E2EFailure("FastAPI report download response is invalid")
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        raise E2EFailure(
+            "PDF parser is unavailable; install the backend dev dependencies"
+        ) from None
+    try:
+        reader = PdfReader(BytesIO(content), strict=True)
+        if len(reader.pages) < 1:
+            raise ValueError("PDF has no pages")
+        extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        compact_expected = re.sub(r"\s+", "", expected_subject)
+        compact_actual = re.sub(r"\s+", "", extracted_text)
+        if not compact_expected or compact_expected not in compact_actual:
+            raise ValueError("PDF does not contain the analysis subject")
+    except Exception:
+        raise E2EFailure("FastAPI report download response is invalid") from None
+    return len(content)
+
+
 async def _poll_external_analysis_until_terminal(
     *,
     client: httpx.AsyncClient,
@@ -2129,6 +2375,7 @@ async def _run(
     request_origin: str = TEST_ORIGIN,
     analysis_poll_timeout_seconds: float = ANALYSIS_POLL_TIMEOUT_SECONDS,
     chat_poll_timeout_seconds: float = CHAT_POLL_TIMEOUT_SECONDS,
+    report_poll_timeout_seconds: float = REPORT_POLL_TIMEOUT_SECONDS,
     trace_dir: Path | None = None,
     source_content: bytes | None = None,
     source_mime_type: str | None = None,
@@ -2528,6 +2775,40 @@ async def _run(
         ):
             raise E2EFailure("FastAPI chat history omitted the completed turn")
 
+        report_status, report_poll_count = await _poll_report_until_ready(
+            client=client,
+            case_id=case_id,
+            timeout_seconds=report_poll_timeout_seconds,
+        )
+        report_worker_audit = await asyncio.to_thread(
+            _require_report_worker_audit,
+            os.environ["DATABASE_URL"],
+            case_id=case_id,
+            run_id=run_id,
+        )
+        report_worker_id = report_worker_audit.final_worker_id
+        report_worker_attempts = report_worker_audit.attempt_count
+        report_worker_attempt_worker_ids = list(
+            report_worker_audit.attempt_worker_ids
+        )
+        if report_status["retry_count"] != report_worker_audit.attempt_count - 1:
+            raise E2EFailure("PDF report public and durable retry counts differ")
+        case_summary = body.get("case")
+        if not isinstance(case_summary, Mapping):
+            raise E2EFailure("FastAPI result case response is invalid")
+        expected_report_subject = (
+            case_summary.get("program_name")
+            or case_summary.get("original_filename")
+            or "분석 리포트"
+        )
+        if not isinstance(expected_report_subject, str):
+            raise E2EFailure("FastAPI result case response is invalid")
+        report_pdf_size_bytes = await _download_ready_report(
+            client=client,
+            case_id=case_id,
+            expected_subject=expected_report_subject,
+        )
+
         analysis_session_id = chat_turn["analysis_session_id"]
         close_response = await client.post(
             f"/api/v1/analysis-sessions/{analysis_session_id}/close",
@@ -2591,6 +2872,7 @@ async def _run(
             worker_mode=worker_mode,
             analysis_worker_id=worker_id,
             chat_worker_id=chat_worker_id,
+            report_worker_id=report_worker_id,
             database_url=os.environ["DATABASE_URL"],
             analysis_run_id=run_id,
             deployed_api_build_id=deployed_api_build_id,
@@ -2620,6 +2902,16 @@ async def _run(
             "chat_worker_attempt_worker_ids": chat_worker_attempt_worker_ids,
             "chat_poll_count": chat_poll_count,
             "chat_reference_count": chat_reference_count,
+            "report": {
+                "status": report_status["status"],
+                "can_download": report_status["can_download"],
+                "retry_count": report_status["retry_count"],
+                "poll_count": report_poll_count,
+                "pdf_size_bytes": report_pdf_size_bytes,
+            },
+            "report_worker_id": report_worker_id,
+            "report_worker_attempts": report_worker_attempts,
+            "report_worker_attempt_worker_ids": report_worker_attempt_worker_ids,
             "candidate_detail_checked": candidate_id,
             "active_history_excluded_case": True,
             "closed_history_included_case": True,
@@ -2697,7 +2989,7 @@ def main() -> int:
         default="inline",
         help=(
             "inline claims only this E2E job in-process (default); external polls "
-            "already-running analysis and chat workers without claiming jobs"
+            "already-running analysis, chat, and report workers without claiming jobs"
         ),
     )
     parser.add_argument(
@@ -2730,6 +3022,15 @@ def main() -> int:
         help=(
             "external chat polling deadline in seconds "
             f"(default: {CHAT_POLL_TIMEOUT_SECONDS})"
+        ),
+    )
+    parser.add_argument(
+        "--report-poll-timeout-seconds",
+        type=_positive_timeout_seconds,
+        default=REPORT_POLL_TIMEOUT_SECONDS,
+        help=(
+            "PDF report polling deadline in seconds "
+            f"(default: {REPORT_POLL_TIMEOUT_SECONDS})"
         ),
     )
     args = parser.parse_args()
@@ -2778,6 +3079,7 @@ def main() -> int:
             request_origin=request_origin,
             analysis_poll_timeout_seconds=args.analysis_poll_timeout_seconds,
             chat_poll_timeout_seconds=args.chat_poll_timeout_seconds,
+            report_poll_timeout_seconds=args.report_poll_timeout_seconds,
             trace_dir=args.trace_dir.resolve() if args.trace_dir is not None else None,
             source_content=source_content,
             source_mime_type=source_mime_type,

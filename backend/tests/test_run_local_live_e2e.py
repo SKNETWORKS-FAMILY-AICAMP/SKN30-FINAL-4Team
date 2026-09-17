@@ -109,6 +109,40 @@ def test_poll_timeout_accepts_a_positive_value() -> None:
     assert MODULE._positive_timeout_seconds("123.5") == 123.5
 
 
+def test_main_forwards_the_report_poll_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "request.hwpx"
+    source.write_bytes(HWPX)
+    captured: dict[str, object] = {}
+
+    async def run(path: Path, **kwargs: object) -> dict[str, str]:
+        captured["path"] = path
+        captured.update(kwargs)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(MODULE, "_configure_environment", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(MODULE, "_run", run)
+    monkeypatch.setattr(
+        MODULE.sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--file",
+            str(source),
+            "--report-poll-timeout-seconds",
+            "17.5",
+        ],
+    )
+
+    assert MODULE.main() == 0
+    assert captured["path"] == source.resolve()
+    assert captured["report_poll_timeout_seconds"] == 17.5
+    assert json.loads(capsys.readouterr().out) == {"status": "ok"}
+
+
 def test_configure_environment_carries_ml_settings_and_preserves_shell_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1441,6 +1475,360 @@ def test_assistant_message_state_rejects_an_invalid_matching_message(
         asyncio.run(MODULE._assistant_message_state(client, "case-id", "assistant-id"))
 
 
+class _ReportResponse:
+    def __init__(
+        self,
+        *,
+        status_code: int = 200,
+        payload: object = None,
+        headers: dict[str, str] | None = None,
+        content: bytes = b"",
+    ) -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.headers = (
+            {
+                "content-type": "application/json",
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+            }
+            if headers is None
+            else headers
+        )
+        self.content = content
+
+    def json(self) -> object:
+        return self._payload
+
+
+class _ReportClient:
+    def __init__(self, responses: list[_ReportResponse]) -> None:
+        self._responses = list(responses)
+        self.paths: list[str] = []
+
+    async def get(self, path: str) -> _ReportResponse:
+        self.paths.append(path)
+        return self._responses.pop(0)
+
+
+def _report_payload(
+    status: str,
+    *,
+    can_download: bool = False,
+    retry_count: int = 0,
+) -> dict[str, object]:
+    return {
+        "status": status,
+        "can_download": can_download,
+        "can_regenerate": False,
+        "retry_count": retry_count,
+    }
+
+
+def test_report_polling_waits_for_ready_and_requires_downloadable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _ReportClient(
+        [
+            _ReportResponse(payload=_report_payload("generating")),
+            _ReportResponse(
+                payload=_report_payload(
+                    "ready", can_download=True, retry_count=1
+                )
+            ),
+        ]
+    )
+    monkeypatch.setattr(MODULE, "REPORT_POLL_INTERVAL_SECONDS", 0)
+
+    report, polls = asyncio.run(
+        MODULE._poll_report_until_ready(client=client, case_id="case-id")
+    )
+
+    assert report == _report_payload("ready", can_download=True, retry_count=1)
+    assert polls == 2
+    assert client.paths == [
+        "/api/v1/analysis-cases/case-id/report/status",
+        "/api/v1/analysis-cases/case-id/report/status",
+    ]
+
+
+def test_report_polling_rejects_terminal_failure() -> None:
+    client = _ReportClient(
+        [_ReportResponse(payload=_report_payload("failed", retry_count=2))]
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="terminal failure"):
+        asyncio.run(
+            MODULE._poll_report_until_ready(client=client, case_id="case-id")
+        )
+
+
+def test_report_polling_rejects_ready_without_download() -> None:
+    client = _ReportClient(
+        [_ReportResponse(payload=_report_payload("ready", can_download=False))]
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="not downloadable"):
+        asyncio.run(
+            MODULE._poll_report_until_ready(client=client, case_id="case-id")
+        )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**_report_payload("generating"), "unexpected": "field"},
+        _report_payload("unexpected"),
+        _report_payload("generating", can_download=True),
+        {**_report_payload("ready", can_download=True), "can_regenerate": True},
+        {**_report_payload("ready", can_download=True), "retry_count": True},
+        {**_report_payload("ready", can_download=True), "retry_count": 3},
+    ],
+)
+def test_report_status_rejects_invalid_contract(payload: object) -> None:
+    client = _ReportClient([_ReportResponse(payload=payload)])
+
+    with pytest.raises(MODULE.E2EFailure, match="polling response is invalid"):
+        asyncio.run(MODULE._report_status(client, "case-id"))
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {
+            "content-type": "text/plain",
+            "cache-control": "private, no-store",
+            "vary": "Cookie",
+        },
+        {
+            "content-type": "application/json",
+            "cache-control": "private",
+            "vary": "Cookie",
+        },
+        {
+            "content-type": "application/json",
+            "cache-control": "private, no-store",
+            "vary": "Origin",
+        },
+    ],
+)
+def test_report_status_requires_private_json_headers(
+    headers: dict[str, str],
+) -> None:
+    client = _ReportClient(
+        [_ReportResponse(payload=_report_payload("generating"), headers=headers)]
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="report status"):
+        asyncio.run(MODULE._report_status(client, "case-id"))
+
+
+def test_report_polling_is_bounded() -> None:
+    client = _ReportClient(
+        [_ReportResponse(payload=_report_payload("generating"))]
+    )
+
+    with pytest.raises(MODULE.E2EFailure, match="report polling timed out"):
+        asyncio.run(
+            MODULE._poll_report_until_ready(
+                client=client,
+                case_id="case-id",
+                timeout_seconds=0,
+            )
+        )
+
+    assert client.paths == []
+
+
+def _valid_pdf_bytes(subject: str = "FixtureProgram") -> bytes:
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    buffer = BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {
+            NameObject("/Font"): DictionaryObject(
+                {NameObject("/F1"): writer._add_object(font)}
+            )
+        }
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(
+        f"BT /F1 12 Tf 72 720 Td ({subject}) Tj ET".encode("ascii")
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def test_report_download_requires_the_safe_pdf_response_contract() -> None:
+    pdf = _valid_pdf_bytes()
+    client = _ReportClient(
+        [
+            _ReportResponse(
+                headers={
+                    "content-type": "application/pdf",
+                    "content-disposition": (
+                        'attachment; filename="pre-review-report.pdf"'
+                    ),
+                    "cache-control": "private, no-store",
+                    "vary": "Origin, Cookie",
+                    "x-content-type-options": "nosniff",
+                    "content-length": str(len(pdf)),
+                },
+                content=pdf,
+            )
+        ]
+    )
+
+    size = asyncio.run(
+        MODULE._download_ready_report(
+            client=client,
+            case_id="case-id",
+            expected_subject="Fixture Program",
+        )
+    )
+
+    assert size == len(pdf)
+    assert client.paths == ["/api/v1/analysis-cases/case-id/report.pdf"]
+
+
+def test_report_download_requires_http_200() -> None:
+    client = _ReportClient([_ReportResponse(status_code=404)])
+
+    with pytest.raises(MODULE.E2EFailure, match="failed with HTTP 404"):
+        asyncio.run(
+            MODULE._download_ready_report(
+                client=client,
+                case_id="case-id",
+                expected_subject="FixtureProgram",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("headers", "content"),
+    [
+        ({}, b"%PDF-1.7\nfixture"),
+        (
+            {
+                "content-type": "text/plain",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+            },
+            b"%PDF-1.7\nfixture",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="unsafe.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+            },
+            b"%PDF-1.7\nfixture",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+            },
+            b"%PDF-1.7\nfixture",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "",
+            },
+            b"%PDF-1.7\nfixture",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+            },
+            _valid_pdf_bytes("WrongProgram"),
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+            },
+            b"not-a-pdf",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+            },
+            b"%PDF-1.7\nstructurally-invalid",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Origin",
+                "x-content-type-options": "nosniff",
+            },
+            b"%PDF-1.7\nfixture",
+        ),
+        (
+            {
+                "content-type": "application/pdf",
+                "content-disposition": 'attachment; filename="pre-review-report.pdf"',
+                "cache-control": "private, no-store",
+                "vary": "Cookie",
+                "x-content-type-options": "nosniff",
+                "content-length": "999",
+            },
+            b"%PDF-1.7\nfixture",
+        ),
+    ],
+)
+def test_report_download_rejects_an_invalid_response(
+    headers: dict[str, str],
+    content: bytes,
+) -> None:
+    client = _ReportClient([_ReportResponse(headers=headers, content=content)])
+
+    with pytest.raises(MODULE.E2EFailure, match="report download response"):
+        asyncio.run(
+            MODULE._download_ready_report(
+                client=client,
+                case_id="case-id",
+                expected_subject="FixtureProgram",
+            )
+        )
+
+
 def test_external_chat_polling_waits_for_a_completed_public_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1816,6 +2204,101 @@ def test_external_analysis_worker_audit_rejects_inexact_history(
         )
 
 
+def test_report_worker_audit_reports_bounded_durable_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _rows_database(
+        monkeypatch,
+        [
+            {
+                "attempt_count": 3,
+                "retry_count": 2,
+                "status": "failed",
+                "run_metadata": {"attempt_no": 1, "worker_id": "report-a:10"},
+            },
+            {
+                "attempt_count": 3,
+                "retry_count": 2,
+                "status": "failed",
+                "run_metadata": {"attempt_no": 2, "worker_id": "report-b:20"},
+            },
+            {
+                "attempt_count": 3,
+                "retry_count": 2,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 3, "worker_id": "report-c:30"},
+            },
+        ],
+    )
+
+    audit = MODULE._require_report_worker_audit(
+        "postgresql://test",
+        case_id="case-id",
+        run_id="run-id",
+    )
+
+    assert audit.final_worker_id == "report-c:30"
+    assert audit.attempt_count == 3
+    assert audit.attempt_worker_ids == (
+        "report-a:10",
+        "report-b:20",
+        "report-c:30",
+    )
+    assert "ops.processing_run" in calls[0][0]
+    assert "processing.run_type = 'report_pdf'" in calls[0][0]
+    assert "claim_next" not in calls[0][0]
+    assert calls[0][1] == ("case-id", "run-id")
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            {
+                "attempt_count": 4,
+                "retry_count": 3,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 4, "worker_id": "report-a"},
+            }
+        ],
+        [
+            {
+                "attempt_count": 1,
+                "retry_count": 1,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "report-a"},
+            }
+        ],
+        [
+            {
+                "attempt_count": 2,
+                "retry_count": 1,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 1, "worker_id": "report-a"},
+            },
+            {
+                "attempt_count": 2,
+                "retry_count": 1,
+                "status": "succeeded",
+                "run_metadata": {"attempt_no": 2, "worker_id": "report-b"},
+            },
+        ],
+    ],
+)
+def test_report_worker_audit_rejects_invalid_history(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: list[dict[str, object]],
+) -> None:
+    _rows_database(monkeypatch, rows)
+
+    with pytest.raises(MODULE.E2EFailure, match="report worker audit is invalid"):
+        MODULE._require_report_worker_audit(
+            "postgresql://test",
+            case_id="case-id",
+            run_id="run-id",
+        )
+
+
 def test_external_chat_worker_audit_reports_exact_reset_cycle_history(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1936,9 +2419,38 @@ def test_chat_reference_count_requires_nonzero_valid_references(
 @pytest.mark.parametrize(
     ("row", "error"),
     [
-        ({"active_analysis_runs": 0, "active_chat_messages": 0}, None),
-        ({"active_analysis_runs": 1, "active_chat_messages": 0}, "analysis=1, chat=0"),
-        ({"active_analysis_runs": 0, "active_chat_messages": 2}, "analysis=0, chat=2"),
+        (
+            {
+                "active_analysis_runs": 0,
+                "active_chat_messages": 0,
+                "active_report_jobs": 0,
+            },
+            None,
+        ),
+        (
+            {
+                "active_analysis_runs": 1,
+                "active_chat_messages": 0,
+                "active_report_jobs": 0,
+            },
+            "analysis=1, chat=0, report=0",
+        ),
+        (
+            {
+                "active_analysis_runs": 0,
+                "active_chat_messages": 2,
+                "active_report_jobs": 0,
+            },
+            "analysis=0, chat=2, report=0",
+        ),
+        (
+            {
+                "active_analysis_runs": 0,
+                "active_chat_messages": 0,
+                "active_report_jobs": 1,
+            },
+            "analysis=0, chat=0, report=1",
+        ),
     ],
 )
 def test_queue_preflight_allows_only_quiescent_queues(
@@ -1956,6 +2468,7 @@ def test_queue_preflight_allows_only_quiescent_queues(
 
     assert "workspace.analysis_run" in calls[0][0]
     assert "result.conversation_message" in calls[0][0]
+    assert "workspace.report_pdf_dispatch" in calls[0][0]
 
 
 def test_live_ml_results_require_all_models_to_finish_ok(
@@ -2088,6 +2601,7 @@ def test_execution_manifest_records_reproducible_non_secret_identity(
         worker_mode="inline",
         analysis_worker_id="analysis-worker",
         chat_worker_id="chat-worker",
+        report_worker_id="report-worker",
         database_url="not-used",
         analysis_run_id="run-id",
     )
@@ -2101,13 +2615,17 @@ def test_execution_manifest_records_reproducible_non_secret_identity(
     assert manifest["api"] == {"kind": "in-process", "build_id": "a" * 40}
     assert manifest["analysis_worker"]["kind"] == "host-python"
     assert manifest["chat_worker"]["worker_id"] == "chat-worker"
+    assert manifest["report_worker"] == {
+        "kind": "database-audited-external",
+        "worker_id": "report-worker",
+    }
     assert manifest["models"]["provider"] == "openai"
     assert manifest["embedding_configuration"] == {
         "configuration_id": "embedding-v2"
     }
 
 
-def test_external_manifest_resolves_both_immutable_worker_images(
+def test_external_manifest_resolves_all_immutable_worker_images(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(MODULE, "_git_commit", lambda: "b" * 40)
@@ -2146,15 +2664,21 @@ def test_external_manifest_resolves_both_immutable_worker_images(
         worker_mode="external",
         analysis_worker_id="a" * 12 + ":1:x",
         chat_worker_id="b" * 12 + ":2:y",
+        report_worker_id="c" * 12 + ":3:z",
         database_url="not-used",
         analysis_run_id="run-id",
         deployed_api_build_id="b" * 64,
     )
 
-    assert seen == ["a" * 12 + ":1:x", "b" * 12 + ":2:y"]
+    assert seen == [
+        "a" * 12 + ":1:x",
+        "b" * 12 + ":2:y",
+        "c" * 12 + ":3:z",
+    ]
     assert model_worker_ids == ["a" * 12 + ":1:x", "b" * 12 + ":2:y"]
     assert manifest["analysis_worker"]["image_id"].startswith("sha256:")
     assert manifest["chat_worker"]["kind"] == "docker"
+    assert manifest["report_worker"]["image_id"].startswith("sha256:")
     assert manifest["git_dirty"] is False
     assert manifest["api"] == {"kind": "deployed-http", "build_id": "b" * 64}
     assert manifest["models"] == {
@@ -2179,6 +2703,41 @@ def test_external_manifest_resolves_both_immutable_worker_images(
             "max_repairs": 4,
         },
     }
+
+
+def test_external_manifest_rejects_a_non_container_report_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(MODULE, "_git_commit", lambda: "b" * 40)
+    monkeypatch.setattr(
+        MODULE, "_git_source_state", lambda _revision: (False, "e" * 64)
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_require_clean_checkout_build_context_digest",
+        lambda: "b" * 64,
+    )
+
+    def image_id(worker_id: str) -> str:
+        if worker_id == "host-report-worker":
+            raise MODULE.E2EFailure(
+                "External worker is not a running Docker container"
+            )
+        return "sha256:" + ("c" * 64)
+
+    monkeypatch.setattr(MODULE, "_docker_image_identity", image_id)
+
+    with pytest.raises(MODULE.E2EFailure, match="not a running Docker container"):
+        MODULE._execution_manifest(
+            source_content=b"fixture",
+            worker_mode="external",
+            analysis_worker_id="a" * 12 + ":1:x",
+            chat_worker_id="b" * 12 + ":2:y",
+            report_worker_id="host-report-worker",
+            database_url="not-used",
+            analysis_run_id="run-id",
+            deployed_api_build_id="b" * 64,
+        )
 
 
 def test_external_execution_manifest_explicitly_rejects_vllm_until_runtime_contract_exists(
@@ -2214,6 +2773,7 @@ def test_external_execution_manifest_explicitly_rejects_vllm_until_runtime_contr
             worker_mode="external",
             analysis_worker_id="a" * 12 + ":1:x",
             chat_worker_id="b" * 12 + ":2:y",
+            report_worker_id="c" * 12 + ":3:z",
             database_url="not-used",
             analysis_run_id="run-id",
             deployed_api_build_id="b" * 64,
@@ -2362,6 +2922,7 @@ def test_external_manifest_rejects_a_dirty_checkout(
             worker_mode="external",
             analysis_worker_id="analysis-worker",
             chat_worker_id="chat-worker",
+            report_worker_id="report-worker",
             database_url="not-used",
             analysis_run_id="run-id",
             deployed_api_build_id="a" * 64,
