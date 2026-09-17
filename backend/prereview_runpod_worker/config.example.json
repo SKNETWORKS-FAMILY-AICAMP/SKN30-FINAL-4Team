@@ -1,0 +1,58 @@
+{
+  "schema_version": "prereview.runpod-surya-worker/v1",
+  "storage_scopes": [
+    {
+      "method": "GET",
+      "origin": "https://storage-host.example.invalid",
+      "endpoint_path_template": "/storage/v1/object/sign/{bucket}/{object_key}",
+      "bucket": "request-temp",
+      "object_key_prefix": "accelerator/input/"
+    },
+    {
+      "method": "PUT",
+      "origin": "https://storage-host.example.invalid",
+      "endpoint_path_template": "/storage/v1/object/upload/sign/{bucket}/{object_key}",
+      "bucket": "request-temp",
+      "object_key_prefix": "accelerator/surya-layout/"
+    }
+  ],
+  "dispatch_policy": {
+    "max_ttl_seconds": 1800,
+    "max_execution_timeout_seconds": 180,
+    "max_page_count": 20,
+    "max_total_input_bytes": 268435456,
+    "max_total_rendered_pixels": 300000000,
+    "max_capability_bytes": 67108864,
+    "allowed_mime_types": [
+      "application/json",
+      "image/png"
+    ]
+  },
+  "producer": {
+    "engine_id": "surya",
+    "engine_version": "0.22.1",
+    "model_id": "datalab-to/surya-ocr-2",
+    "model_revision": "3b3d4cdf88d6928b0acdc75181b13206ea67c4a3",
+    "model_weights_sha256": "5755f82a997dd0b111964fa8b31cc2daef7aeb7a706bbd17d73d6a93ef3f723e",
+    "pipeline_revision": "0000000000000000000000000000000000000000",
+    "config_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "worker_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "http": {
+    "hard_max_bytes": 268435456,
+    "connect_timeout_seconds": 10.0,
+    "read_timeout_seconds": 60.0,
+    "write_timeout_seconds": 60.0,
+    "pool_timeout_seconds": 5.0,
+    "proxy_url": "http://127.0.0.1:1056"
+  },
+  "output": {
+    "max_output_bytes": 16777216,
+    "max_terminal_output_bytes": 1048576,
+    "max_regions_per_page": 200
+  },
+  "surya_endpoint": {
+    "url": "http://127.0.0.1:8000/v1",
+    "allowed_origins": []
+  }
+}

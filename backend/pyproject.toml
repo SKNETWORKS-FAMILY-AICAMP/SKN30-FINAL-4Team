@@ -26,7 +26,10 @@ dependencies = [
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "worker*"]
+# ``prereview_runpod_worker`` is a deployment-only package.  Including it
+# here makes the same checked-out backend installable in the Docker-free
+# RunPod venv without making it part of the API/DB runtime composition.
+include = ["app*", "worker*", "prereview_runpod_worker*"]
 
 [tool.uv.sources]
 common-ir-pipeline = { path = "vendor/common_ir_pipeline" }

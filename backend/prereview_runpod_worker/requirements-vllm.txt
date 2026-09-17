@@ -1,0 +1,14 @@
+# Isolated local vLLM server environment.
+#
+# Do not combine this with requirements-worker.txt.  vLLM 0.20.1 owns a
+# Torch 2.11 / CUDA 13.0 runtime; the client venv instead reuses the pod's
+# preinstalled Torch 2.8 / CUDA 12.8 runtime.
+vllm==0.20.1
+torch==2.11.0
+
+# vLLM's default Transformers 4.57.6 cannot load the Surya tokenizer whose
+# tokenizer_class is TokenizersBackend.  These are a deliberate compatibility
+# override and must be confirmed by the smoke test after every image update.
+transformers==5.16.1
+huggingface-hub==1.31.0
+tokenizers==0.23.1
