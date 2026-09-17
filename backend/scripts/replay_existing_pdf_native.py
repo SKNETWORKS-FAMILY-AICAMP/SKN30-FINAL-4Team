@@ -38,6 +38,9 @@ NATIVE_NAME = "native.json"
 COMMON_IR_NAME = "common_ir.json"
 MANIFEST_NAME = "manifest.json"
 PUBLISHED_NAMES = (SOURCE_NAME, NATIVE_NAME, COMMON_IR_NAME, MANIFEST_NAME)
+RENDER_MANIFEST_NAME = "render_manifest.json"
+SURYA_LAYOUT_ARTIFACT_NAME = "surya_layout_artifact.json"
+MAX_SURYA_LAYOUT_ARTIFACT_BYTES = 16 * 1024 * 1024
 CAPTURE_MODULE = "common_ir_pipeline.workers.pdf_inspector_capture"
 ADAPTER_MODULE = "common_ir_pipeline.adapters.pdf_native"
 DEFAULT_TIMEOUT_SECONDS = 300.0
@@ -398,7 +401,58 @@ def _regular_file_sha256_and_size(
     return digest.hexdigest(), observed_size
 
 
-def _require_relative_artifact_references(common_ir: Mapping[str, Any]) -> None:
+def _stage_regular_sidecar(
+    source: Path,
+    destination: Path,
+    *,
+    max_bytes: int,
+    label: str,
+) -> tuple[str, int]:
+    """Copy one stable, non-symlink sidecar into the private replay root."""
+    identity = _regular_file_identity(source)
+    if identity[2] < 1 or identity[2] > max_bytes:
+        raise ExistingPdfReplayError(f"{label} exceeds its size limit")
+    input_descriptor: int | None = None
+    output_descriptor: int | None = None
+    digest = sha256()
+    copied = 0
+    try:
+        input_descriptor = os.open(source, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+        output_descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.fchmod(output_descriptor, 0o600)
+        with os.fdopen(input_descriptor, "rb") as input_stream, os.fdopen(output_descriptor, "wb") as output_stream:
+            input_descriptor = output_descriptor = None
+            before = os.fstat(input_stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ExistingPdfReplayError(f"{label} must be a regular file")
+            while chunk := input_stream.read(1024 * 1024):
+                copied += len(chunk)
+                if copied > max_bytes:
+                    raise ExistingPdfReplayError(f"{label} exceeds its size limit")
+                digest.update(chunk)
+                output_stream.write(chunk)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+            after = os.fstat(input_stream.fileno())
+    except OSError as error:
+        raise ExistingPdfReplayError(f"cannot stage {label}: {error}") from error
+    finally:
+        if input_descriptor is not None:
+            os.close(input_descriptor)
+        if output_descriptor is not None:
+            os.close(output_descriptor)
+    observed = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+    final = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+    if observed != identity or final != identity or copied != identity[2]:
+        raise ExistingPdfReplayError(f"{label} changed while being staged")
+    return digest.hexdigest(), copied
+
+
+def _require_relative_artifact_references(
+    common_ir: Mapping[str, Any],
+    *,
+    allowed_raw_artifact_ids: Sequence[str] = (NATIVE_NAME,),
+) -> None:
     document = common_ir.get("document")
     if not isinstance(document, Mapping):
         raise ExistingPdfReplayError("Common IR document object is missing")
@@ -406,8 +460,8 @@ def _require_relative_artifact_references(common_ir: Mapping[str, Any]) -> None:
     if not isinstance(provenance, Mapping) or provenance.get("source_location") != SOURCE_NAME:
         raise ExistingPdfReplayError("Common IR source_location must be the relative source.pdf path")
     raw_ids = document.get("raw_artifact_ids")
-    if raw_ids != [NATIVE_NAME]:
-        raise ExistingPdfReplayError("Common IR raw_artifact_ids must contain only native.json")
+    if raw_ids != list(allowed_raw_artifact_ids):
+        raise ExistingPdfReplayError("Common IR raw_artifact_ids do not match staged artifacts")
     for value in [provenance.get("source_location"), *raw_ids]:
         path = PurePosixPath(value)
         if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
@@ -421,6 +475,7 @@ def _validate_common_ir_output(
     source_sha256: str,
     page_count: int,
     pinned_inspector_version: str,
+    allowed_raw_artifact_ids: Sequence[str] = (NATIVE_NAME,),
 ) -> None:
     """Re-check adapter output before it becomes a published artifact."""
 
@@ -461,7 +516,7 @@ def _validate_common_ir_output(
     for key, expected in expected_provenance.items():
         if provenance.get(key) != expected:
             raise ExistingPdfReplayError(f"adapter output provenance.{key} is not source-bound")
-    _require_relative_artifact_references(common_ir)
+    _require_relative_artifact_references(common_ir, allowed_raw_artifact_ids=allowed_raw_artifact_ids)
 
 
 def _build_manifest(
@@ -474,6 +529,8 @@ def _build_manifest(
     staging: Path,
     capture_limits: Mapping[str, Any],
     pinned_inspector_version: str,
+    render_manifest: Mapping[str, Any] | None = None,
+    surya_layout_artifact: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     document = common_ir["document"]
     provenance = document["provenance"]
@@ -493,35 +550,59 @@ def _build_manifest(
     )
     native_path = staging / NATIVE_NAME
     common_ir_path = staging / COMMON_IR_NAME
+    artifacts: dict[str, Any] = {
+        "source_pdf": {
+            "path": SOURCE_NAME,
+            "sha256": source_sha256,
+            "size_bytes": source_size,
+        },
+        "native_capture": {
+            "path": NATIVE_NAME,
+            "sha256": _sha256_file(native_path),
+            "size_bytes": native_path.stat().st_size,
+            "method": native.get("method"),
+            "version": native.get("version"),
+            "page_count": native.get("process_result", {}).get("page_count"),
+        },
+        "common_ir": {
+            "path": COMMON_IR_NAME,
+            "sha256": _sha256_file(common_ir_path),
+            "size_bytes": common_ir_path.stat().st_size,
+            "schema_version": common_ir.get("schema_version"),
+            "generator": provenance.get("generator"),
+            "generator_version": provenance.get("generator_version"),
+            "page_count": document.get("page_count"),
+        },
+    }
+    if render_manifest is not None:
+        render_path = staging / RENDER_MANIFEST_NAME
+        artifacts["render_manifest"] = {
+            "path": RENDER_MANIFEST_NAME,
+            "sha256": _sha256_file(render_path),
+            "size_bytes": render_path.stat().st_size,
+            "schema_version": render_manifest.get("schema_version"),
+            "source_pdf_sha256": render_manifest.get("source_pdf_sha256"),
+            "page_count": render_manifest.get("page_count"),
+        }
+    if surya_layout_artifact is not None:
+        artifact_path = staging / SURYA_LAYOUT_ARTIFACT_NAME
+        artifacts["surya_layout_artifact"] = {
+            "path": SURYA_LAYOUT_ARTIFACT_NAME,
+            "sha256": _sha256_file(artifact_path),
+            "size_bytes": artifact_path.stat().st_size,
+            "schema_version": surya_layout_artifact.get("schema_version"),
+            "source_sha256": surya_layout_artifact.get("source_sha256"),
+            "render_manifest_sha256": surya_layout_artifact.get("render_manifest_sha256"),
+            "logical_compute_key": surya_layout_artifact.get("logical_compute_key"),
+            "producer": surya_layout_artifact.get("producer"),
+            "requested_pages": surya_layout_artifact.get("requested_pages"),
+        }
     return {
         "schema_version": SCHEMA_VERSION,
         "scope": "existing_kb_offline_only",
         "notice_id": notice_id,
         "whole_document": True,
-        "artifacts": {
-            "source_pdf": {
-                "path": SOURCE_NAME,
-                "sha256": source_sha256,
-                "size_bytes": source_size,
-            },
-            "native_capture": {
-                "path": NATIVE_NAME,
-                "sha256": _sha256_file(native_path),
-                "size_bytes": native_path.stat().st_size,
-                "method": native.get("method"),
-                "version": native.get("version"),
-                "page_count": native.get("process_result", {}).get("page_count"),
-            },
-            "common_ir": {
-                "path": COMMON_IR_NAME,
-                "sha256": _sha256_file(common_ir_path),
-                "size_bytes": common_ir_path.stat().st_size,
-                "schema_version": common_ir.get("schema_version"),
-                "generator": provenance.get("generator"),
-                "generator_version": provenance.get("generator_version"),
-                "page_count": document.get("page_count"),
-            },
-        },
+        "artifacts": artifacts,
         "pipeline": {
             "capture_module": CAPTURE_MODULE,
             "adapter_module": ADAPTER_MODULE,
@@ -562,7 +643,12 @@ def _capture_api_call(capture_api: ModuleType, operation: str, function, *args, 
         raise ExistingPdfReplayError(f"native capture {operation} failed: {error}") from error
 
 
-def _publish(staging: Path, output_directory: Path) -> None:
+def _publish(
+    staging: Path,
+    output_directory: Path,
+    *,
+    published_names: Sequence[str] = PUBLISHED_NAMES,
+) -> None:
     if output_directory.exists() or output_directory.is_symlink():
         raise ExistingPdfReplayError("output directory already exists; replay never overwrites")
     output_descriptor: int | None = None
@@ -593,7 +679,7 @@ def _publish(staging: Path, output_directory: Path) -> None:
     try:
         # manifest.json is intentionally last: a partial publication is never
         # mistaken for a terminal successful replay.
-        for name in PUBLISHED_NAMES:
+        for name in published_names:
             source_info = os.stat(name, dir_fd=staging_descriptor, follow_symlinks=False)
             if not stat.S_ISREG(source_info.st_mode):
                 raise ExistingPdfReplayError(f"staged artifact is missing or unsafe: {name}")
@@ -641,6 +727,8 @@ def replay_existing_pdf(
     source_pdf: Path,
     output_directory: Path,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    surya_layout_artifact: Path | None = None,
+    render_manifest: Path | None = None,
 ) -> dict[str, Any]:
     """Build and publish one closed, deterministic Existing-PDF replay directory."""
 
@@ -650,6 +738,8 @@ def replay_existing_pdf(
         raise ExistingPdfReplayError(
             f"timeout-seconds must be greater than 0 and at most {MAX_TIMEOUT_SECONDS:g}"
         )
+    if (surya_layout_artifact is None) != (render_manifest is None):
+        raise ExistingPdfReplayError("--surya-layout-artifact and --render-manifest must be provided together")
     output_directory = output_directory.expanduser()
     if output_directory.exists() or output_directory.is_symlink():
         raise ExistingPdfReplayError("output directory already exists; replay never overwrites")
@@ -674,6 +764,30 @@ def replay_existing_pdf(
             staging / SOURCE_NAME,
             max_bytes=capture_limits_manifest["max_source_bytes"],
         )
+        staged_render_manifest: dict[str, Any] | None = None
+        staged_surya_layout_artifact: dict[str, Any] | None = None
+        staged_raw_artifact_ids = [NATIVE_NAME]
+        published_names: tuple[str, ...] = PUBLISHED_NAMES
+        if surya_layout_artifact is not None and render_manifest is not None:
+            _stage_regular_sidecar(
+                render_manifest.expanduser(), staging / RENDER_MANIFEST_NAME,
+                max_bytes=MAX_SURYA_LAYOUT_ARTIFACT_BYTES, label="render manifest",
+            )
+            _stage_regular_sidecar(
+                surya_layout_artifact.expanduser(), staging / SURYA_LAYOUT_ARTIFACT_NAME,
+                max_bytes=MAX_SURYA_LAYOUT_ARTIFACT_BYTES, label="Surya layout artifact",
+            )
+            staged_render_manifest = _json_object(
+                staging / RENDER_MANIFEST_NAME, max_bytes=MAX_SURYA_LAYOUT_ARTIFACT_BYTES,
+            )
+            staged_surya_layout_artifact = _json_object(
+                staging / SURYA_LAYOUT_ARTIFACT_NAME, max_bytes=MAX_SURYA_LAYOUT_ARTIFACT_BYTES,
+            )
+            staged_raw_artifact_ids.extend((RENDER_MANIFEST_NAME, SURYA_LAYOUT_ARTIFACT_NAME))
+            published_names = (
+                SOURCE_NAME, NATIVE_NAME, RENDER_MANIFEST_NAME,
+                SURYA_LAYOUT_ARTIFACT_NAME, COMMON_IR_NAME, MANIFEST_NAME,
+            )
         _run_command(
             (
                 sys.executable,
@@ -714,22 +828,28 @@ def replay_existing_pdf(
         )
         _replace_with_canonical_file(staging / NATIVE_NAME, native_bytes)
 
+        adapter_command = [
+            sys.executable,
+            "-m",
+            ADAPTER_MODULE,
+            "--notice-id",
+            notice_id,
+            "--native",
+            NATIVE_NAME,
+            "--source-path",
+            SOURCE_NAME,
+            "--source-sha256",
+            source_sha256,
+            "--output",
+            COMMON_IR_NAME,
+        ]
+        if staged_surya_layout_artifact is not None:
+            adapter_command.extend((
+                "--render-manifest", RENDER_MANIFEST_NAME,
+                "--surya-layout-artifact", SURYA_LAYOUT_ARTIFACT_NAME,
+            ))
         _run_command(
-            (
-                sys.executable,
-                "-m",
-                ADAPTER_MODULE,
-                "--notice-id",
-                notice_id,
-                "--native",
-                NATIVE_NAME,
-                "--source-path",
-                SOURCE_NAME,
-                "--source-sha256",
-                source_sha256,
-                "--output",
-                COMMON_IR_NAME,
-            ),
+            tuple(adapter_command),
             cwd=staging,
             timeout_seconds=timeout_seconds,
             environment=environment,
@@ -759,6 +879,7 @@ def replay_existing_pdf(
             source_sha256=source_sha256,
             page_count=native["process_result"]["page_count"],
             pinned_inspector_version=capture_api.PINNED_PDF_INSPECTOR_VERSION,
+            allowed_raw_artifact_ids=staged_raw_artifact_ids,
         )
         common_ir_bytes = _capture_api_call(
             capture_api,
@@ -777,6 +898,8 @@ def replay_existing_pdf(
             staging=staging,
             capture_limits=capture_limits_manifest,
             pinned_inspector_version=capture_api.PINNED_PDF_INSPECTOR_VERSION,
+            render_manifest=staged_render_manifest,
+            surya_layout_artifact=staged_surya_layout_artifact,
         )
         manifest_bytes = _capture_api_call(
             capture_api,
@@ -785,7 +908,7 @@ def replay_existing_pdf(
             manifest,
         )
         _write_exclusive_file(staging / MANIFEST_NAME, manifest_bytes)
-        _publish(staging, output_directory)
+        _publish(staging, output_directory, published_names=published_names)
         return manifest
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -796,6 +919,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--notice-id", required=True)
     parser.add_argument("--pdf", type=Path, required=True, help="one complete native-text PDF")
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--render-manifest",
+        type=Path,
+        help="canonical trusted render manifest; required with --surya-layout-artifact",
+    )
+    parser.add_argument(
+        "--surya-layout-artifact",
+        type=Path,
+        help="optional canonical textless surya_layout_artifact/v1 sidecar",
+    )
     parser.add_argument(
         "--timeout-seconds",
         type=float,
@@ -814,6 +947,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             source_pdf=args.pdf,
             output_directory=args.output_dir,
             timeout_seconds=args.timeout_seconds,
+            render_manifest=args.render_manifest,
+            surya_layout_artifact=args.surya_layout_artifact,
         )
     except ExistingPdfReplayError as error:
         parser.error(str(error))
@@ -822,7 +957,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "output_dir": str(args.output_dir),
                 "notice_id": manifest["notice_id"],
-                "artifacts": list(PUBLISHED_NAMES),
+                "artifacts": [entry["path"] for entry in manifest["artifacts"].values()],
             },
             ensure_ascii=False,
         )

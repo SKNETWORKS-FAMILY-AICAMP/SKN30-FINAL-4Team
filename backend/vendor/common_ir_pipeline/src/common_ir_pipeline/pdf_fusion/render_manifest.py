@@ -33,6 +33,9 @@ _SHA256_LENGTH = 64
 # Initial safety limits only.  Tune these from trusted renderer-corpus p99s
 # before production rollout.
 MAX_PNG_FILE_BYTES = 64 * 1024 * 1024
+# Even empty PNG chunks consume parsing and CRC work.  The pinned renderer
+# emits only a handful, so this keeps a max-size file from amplifying CPU.
+MAX_PNG_CHUNK_COUNT = 10_000
 MAX_PNG_DIMENSION_PX = 20_000
 MAX_PNG_TOTAL_PIXELS = 100_000_000
 # A render-manifest page is deliberately narrower than the whole PNG format:
@@ -202,32 +205,24 @@ def _inspect_pdf(path: Path) -> tuple[str, int]:
     return digest, size
 
 
-def _inspect_png(path: Path) -> tuple[str, int, int, int]:
-    """Hash and structurally validate one bounded PNG from its opened bytes.
+def inspect_png_bytes(data: bytes) -> tuple[str, int, int, int]:
+    """Hash and structurally validate one bounded rendered PNG byte sequence.
 
     The initial renderer contract accepts only non-interlaced 8-bit RGB/RGBA
     PNGs.  It validates the complete concatenated IDAT zlib stream without
     materializing decompressed pixels: output is bounded by the expected
     filtered scanline size and consumed in small chunks.  It deliberately
     does not apply PNG filters or decode pixels into an image buffer.
+
+    This is the public validation boundary for an already-bounded remote
+    download. It does not perform I/O, follow URLs, or retain decompressed
+    pixels. The returned tuple is ``(sha256, size_bytes, width_px,
+    height_px)`` and has the same meaning as immutable page fields in a
+    :class:`PdfRenderManifest`.
     """
-    try:
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        with os.fdopen(descriptor, "rb") as handle:
-            before = os.fstat(handle.fileno())
-            if not stat.S_ISREG(before.st_mode):
-                raise PdfRenderManifestError("bound artifact must be a regular file")
-            if before.st_size > MAX_PNG_FILE_BYTES:
-                raise PdfRenderManifestError("rendered PNG exceeds the compressed-file safety cap")
-            data = handle.read(MAX_PNG_FILE_BYTES + 1)
-            after = os.fstat(handle.fileno())
-    except OSError as error:
-        raise PdfRenderManifestError("failed to read rendered PNG") from error
-    before_identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
-    after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
-    if before_identity != after_identity:
-        raise PdfRenderManifestError("bound artifact changed while it was being read")
-    if len(data) != before.st_size or len(data) > MAX_PNG_FILE_BYTES:
+    if not isinstance(data, bytes):
+        raise PdfRenderManifestError("rendered PNG bytes must be immutable bytes")
+    if len(data) > MAX_PNG_FILE_BYTES:
         raise PdfRenderManifestError("rendered PNG exceeds the compressed-file safety cap")
     if not data.startswith(b"\x89PNG\r\n\x1a\n"):
         raise PdfRenderManifestError("rendered page image must have a PNG signature")
@@ -242,6 +237,7 @@ def _inspect_png(path: Path) -> tuple[str, int, int, int]:
     scanline_payload_bytes = 0
     rows_started = 0
     remaining_scanline_payload_bytes = 0
+    chunk_count = 0
 
     def consume_decoded_bytes(decoded: bytes) -> None:
         """Check output size and PNG filter bytes without retaining pixels."""
@@ -287,6 +283,9 @@ def _inspect_png(path: Path) -> tuple[str, int, int, int]:
     while offset < len(data):
         if len(data) - offset < 12:
             raise PdfRenderManifestError("rendered PNG has a truncated chunk")
+        chunk_count += 1
+        if chunk_count > MAX_PNG_CHUNK_COUNT:
+            raise PdfRenderManifestError("rendered PNG chunk count exceeds safety cap")
         length = struct.unpack(">I", data[offset:offset + 4])[0]
         chunk_type = data[offset + 4:offset + 8]
         if any(not (65 <= byte <= 90 or 97 <= byte <= 122) for byte in chunk_type):
@@ -344,6 +343,29 @@ def _inspect_png(path: Path) -> tuple[str, int, int, int]:
     if decoded_bytes != expected_decompressed_bytes or rows_started != height or remaining_scanline_payload_bytes != 0:
         raise PdfRenderManifestError("rendered PNG IDAT size does not match declared scanlines")
     return sha256(data).hexdigest(), len(data), width, height
+
+
+def _inspect_png(path: Path) -> tuple[str, int, int, int]:
+    """Open a stable local PNG, then apply :func:`inspect_png_bytes`."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise PdfRenderManifestError("bound artifact must be a regular file")
+            if before.st_size > MAX_PNG_FILE_BYTES:
+                raise PdfRenderManifestError("rendered PNG exceeds the compressed-file safety cap")
+            data = handle.read(MAX_PNG_FILE_BYTES + 1)
+            after = os.fstat(handle.fileno())
+    except OSError as error:
+        raise PdfRenderManifestError("failed to read rendered PNG") from error
+    before_identity = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+    after_identity = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+    if before_identity != after_identity:
+        raise PdfRenderManifestError("bound artifact changed while it was being read")
+    if len(data) != before.st_size:
+        raise PdfRenderManifestError("rendered PNG exceeds the compressed-file safety cap")
+    return inspect_png_bytes(data)
 
 
 @dataclass(frozen=True, slots=True)

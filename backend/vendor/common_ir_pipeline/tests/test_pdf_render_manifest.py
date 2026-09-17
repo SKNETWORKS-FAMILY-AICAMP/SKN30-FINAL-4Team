@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 
 from jsonschema import Draft202012Validator
@@ -19,6 +20,7 @@ from common_ir_pipeline.pdf_fusion.render_manifest import (
     PdfRenderManifestError,
     RenderedPageInput,
     assemble_render_manifest,
+    inspect_png_bytes,
     validate_render_manifest_files,
 )
 
@@ -140,6 +142,70 @@ class PdfRenderManifestTests(unittest.TestCase):
                 RenderedPageInput(page_one_path, page_one_coordinate),
             ),
         )
+
+    def test_inspect_png_bytes_matches_file_path_validation(self) -> None:
+        """Remote bytes and the established local file boundary agree exactly."""
+        page_path, _ = self.make_page(1, page_count=1)
+        image_bytes = page_path.read_bytes()
+        self.assertEqual(
+            (digest(image_bytes), len(image_bytes), 200, 400),
+            inspect_png_bytes(image_bytes),
+        )
+        # The existing file-path route remains the public manifest regression.
+        manifest = assemble_render_manifest(
+            artifact_root=self.root,
+            source_pdf_path=self.source,
+            pages=(
+                RenderedPageInput(
+                    page_path,
+                    coordinate_manifest(
+                        source_sha256=digest(self.source.read_bytes()),
+                        page=1,
+                        page_count=1,
+                        image_sha256=digest(image_bytes),
+                    ),
+                ),
+            ),
+        )
+        self.assertEqual(manifest, validate_render_manifest_files(manifest, artifact_root=self.root))
+
+    def test_inspect_png_bytes_rejects_remote_tamper_oversize_trailing_and_corruption(self) -> None:
+        valid = png_bytes(b"remote-page")
+        tampered = valid[:-1] + bytes([valid[-1] ^ 0x01])
+        cases: tuple[tuple[str, bytes, str], ...] = (
+            ("tampered-crc", tampered, "checksum"),
+            ("trailing", valid + b"unexpected", "trailing bytes"),
+            ("corrupt-signature", b"not png", "PNG signature"),
+        )
+        for name, image_bytes, expected_error in cases:
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(PdfRenderManifestError, expected_error):
+                    inspect_png_bytes(image_bytes)
+
+        with patch(
+            "common_ir_pipeline.pdf_fusion.render_manifest.MAX_PNG_FILE_BYTES",
+            len(valid) - 1,
+        ):
+            with self.assertRaisesRegex(PdfRenderManifestError, "compressed-file safety cap"):
+                inspect_png_bytes(valid)
+
+    def test_inspect_png_bytes_enforces_chunk_count_safety_cap(self) -> None:
+        """Empty ancillary chunks cannot amplify PNG validation CPU work."""
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        image_data = zlib.compress(b"\x00\x00\x00\x00")
+        image_bytes = (
+            PNG_SIGNATURE
+            + _chunk(b"IHDR", ihdr)
+            + _chunk(b"tEXt", b"")
+            + _chunk(b"tEXt", b"")
+            + _chunk(b"IDAT", image_data)
+            + _chunk(b"IEND", b"")
+        )
+        with patch("common_ir_pipeline.pdf_fusion.render_manifest.MAX_PNG_CHUNK_COUNT", 5):
+            self.assertEqual((digest(image_bytes), len(image_bytes), 1, 1), inspect_png_bytes(image_bytes))
+        with patch("common_ir_pipeline.pdf_fusion.render_manifest.MAX_PNG_CHUNK_COUNT", 4):
+            with self.assertRaisesRegex(PdfRenderManifestError, "chunk count exceeds safety cap"):
+                inspect_png_bytes(image_bytes)
 
     def test_assembles_canonical_deterministic_document_manifest_and_validates_bytes(self) -> None:
         manifest = self.build_two_page_manifest()

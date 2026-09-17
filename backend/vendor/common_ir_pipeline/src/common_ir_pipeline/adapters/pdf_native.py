@@ -48,14 +48,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
 import statistics
 from pathlib import Path
 
+from common_ir_pipeline.pdf_fusion.coordinate_manifest import pixel_to_user_bbox
 from common_ir_pipeline.pdf_fusion.native_capture import (
     NativeCaptureError,
     load_native_capture_file,
     validate_native_capture,
+)
+from common_ir_pipeline.pdf_fusion.render_manifest import PdfRenderManifest, PdfRenderManifestError
+from common_ir_pipeline.pdf_fusion.surya_layout_artifact import (
+    MAX_ARTIFACT_BYTES,
+    SuryaLayoutArtifact,
+    SuryaLayoutArtifactError,
+    parse_surya_layout_artifact_bytes,
 )
 from common_ir_pipeline.schema import validation_errors
 from common_ir_pipeline.shared import detect_boundary_markers, make_provenance, new_document_shell
@@ -66,6 +76,58 @@ LINE_GAP_HEIGHT_RATIO = 0.55  # vertical gap larger than this * line height -> n
 _NATIVE_OCC_RE = re.compile(r"^occ:inspector:p(\d+):t(\d+)$")
 _IMAGE_PLACEHOLDER_RE = re.compile(r"\[Image:\s*[^\]]+\]")
 _OCR_LAYOUT_SIDECAR_SCHEMA = "common_ir_v1_pdf_ocr_layout_diagnostic_v1"
+
+
+def _read_stable_regular_bytes(path: Path, *, max_bytes: int, label: str) -> bytes:
+    """Read one bounded sidecar without accepting a final-path symlink.
+
+    The native adapter is also used outside the private replay staging area,
+    so this boundary cannot rely on the caller having opened the sidecar
+    safely.  A single descriptor and before/after identity check prevent a
+    file swap from changing the bytes that are subsequently bound to the
+    source PDF and render manifest.
+    """
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = None
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError(f"{label} must be a regular file")
+            if before.st_size < 1 or before.st_size > max_bytes:
+                raise ValueError(f"{label} exceeds its size limit")
+            raw = stream.read(max_bytes + 1)
+            after = os.fstat(stream.fileno())
+    except OSError as error:
+        raise ValueError(f"cannot read {label}: {error}") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    identity = lambda info: (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    if len(raw) > max_bytes or len(raw) != before.st_size or identity(before) != identity(after):
+        raise ValueError(f"{label} changed while being read")
+    return raw
+
+
+def _trusted_render_manifest(path: Path, *, source_sha256: str) -> PdfRenderManifest:
+    """Load the renderer's canonical manifest and bind it to this PDF.
+
+    Page PNG files were verified at rendering time.  This adapter consumes the
+    canonical manifest as the trusted coordinate authority and does not try to
+    reinterpret pixel geometry from DPI or PDF dimensions.
+    """
+    raw = _read_stable_regular_bytes(path, max_bytes=MAX_ARTIFACT_BYTES, label="render manifest")
+    try:
+        value = json.loads(raw.decode("utf-8"))
+        manifest = PdfRenderManifest.from_dict(value)
+    except (UnicodeDecodeError, json.JSONDecodeError, PdfRenderManifestError, TypeError, ValueError) as error:
+        raise ValueError(f"invalid render manifest: {error}") from error
+    if raw != manifest.canonical_json():
+        raise ValueError("render manifest must use canonical JSON")
+    if manifest.source_pdf_sha256 != source_sha256:
+        raise ValueError("render manifest source_pdf_sha256 does not match the source PDF")
+    return manifest
 
 
 def _semantic_text(text: str | None) -> str:
@@ -647,6 +709,95 @@ def carry_ocr_layout_diagnostic_blocks(sidecar: dict, sidecar_path: Path, source
     return blocks
 
 
+def carry_surya_layout_artifact_blocks(
+    artifact: SuryaLayoutArtifact,
+    *,
+    render_manifest: PdfRenderManifest,
+    artifact_path: Path,
+) -> list[dict]:
+    """Project accepted Surya geometry into deliberately non-semantic blocks.
+
+    ``surya_layout_artifact/v1`` contains only labels and geometry.  Its
+    already-validated pixel bboxes are converted with the *trusted* per-page
+    affine manifest, then carried as ``layout_candidate`` evidence.  In
+    particular, this function never creates text, occurrences with text,
+    cells, or relations; a later, separately reviewed promotion may decide
+    whether any layout evidence has semantic meaning.
+    """
+    if artifact.source_sha256 != render_manifest.source_pdf_sha256:
+        raise ValueError("Surya artifact source_sha256 does not match trusted render manifest")
+    coordinates = {page.page: page.coordinate_manifest for page in render_manifest.pages}
+    blocks: list[dict] = []
+    for page_index, artifact_page in enumerate(artifact.pages):
+        coordinate = coordinates.get(artifact_page.page)
+        if coordinate is None:  # defensive: parse_surya_layout_artifact_bytes checked this already.
+            raise ValueError("Surya artifact references a page absent from trusted render manifest")
+        for region_index, region in enumerate(artifact_page.regions):
+            try:
+                bbox = [float(value) for value in pixel_to_user_bbox(coordinate, region.bbox_px)]
+            except Exception as error:  # CoordinateManifestError has no value outside this boundary.
+                raise ValueError(f"Surya artifact region {region.region_id} cannot bind to PDF coordinates") from error
+            block_id = f"surya-layout:{region.region_id}"
+            occurrence_id = f"{block_id}:geometry"
+            location = f"{artifact_path}#/pages/{page_index}/regions/{region_index}"
+            provenance = make_provenance(
+                "surya_layout_textless_geometry",
+                artifact_page.page,
+                bbox,
+                "pdf_user_space",
+                location,
+            )
+            blocks.append({
+                "block_id": block_id,
+                "kind": "layout_candidate",
+                "structure_status": "partial",
+                "text": "",
+                "text_occurrence_ids": [occurrence_id],
+                "page": artifact_page.page,
+                "section_path": f"page[{artifact_page.page}]",
+                "occurrences": [{
+                    "occurrence_id": occurrence_id,
+                    "role": "layout_region",
+                    "provenance": provenance,
+                }],
+                "boundary_markers": [],
+                "source_block_label": f"surya_layout:{region.label}",
+                "provenance": provenance,
+                "_sort_key": (artifact_page.page, -bbox[3]),
+            })
+    return blocks
+
+
+def _load_bound_surya_layout_artifact(
+    path: Path,
+    *,
+    render_manifest: PdfRenderManifest,
+) -> SuryaLayoutArtifact:
+    """Strictly accept a canonical Surya layout artifact for this render.
+
+    The portable contract requires an expected producer/logical computation
+    when accepting a remote response.  This offline replay has no capability
+    request object (and deliberately accepts no network credentials), so its
+    producer binding is the exact, canonical producer identity embedded in
+    the immutable sidecar.  Source hash, render-manifest digest, requested
+    pages, per-page image binding, and coordinate round trips are still
+    independently checked against the locally trusted render manifest.
+    """
+    raw = _read_stable_regular_bytes(path, max_bytes=MAX_ARTIFACT_BYTES, label="Surya layout artifact")
+    try:
+        value = json.loads(raw.decode("utf-8"))
+        unbound = SuryaLayoutArtifact.from_dict(value)
+        return parse_surya_layout_artifact_bytes(
+            raw,
+            render_manifest=render_manifest,
+            expected_logical_compute_key=unbound.logical_compute_key,
+            expected_producer=unbound.producer,
+            expected_requested_pages=unbound.requested_pages,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, SuryaLayoutArtifactError, TypeError, ValueError) as error:
+        raise ValueError(f"invalid Surya layout artifact: {error}") from error
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--notice-id", required=True)
@@ -654,6 +805,11 @@ def main() -> None:
     parser.add_argument("--source-path", type=Path, help="original PDF file; defaults to native source_path only when it resolves locally")
     parser.add_argument("--source-sha256", help="SHA-256 of --source-path; validated against the readable original when supplied")
     parser.add_argument("--render-manifest", type=Path, help="optional archived render/layout manifest")
+    parser.add_argument(
+        "--surya-layout-artifact",
+        type=Path,
+        help="optional canonical textless surya_layout_artifact/v1; requires --render-manifest",
+    )
     parser.add_argument("--enriched-common-ir", type=Path, help="optional archived table/diagram layout sidecar")
     parser.add_argument("--ocr-layout-diagnostic", type=Path, help="optional textless sidecar from common-ir-pdf-ocr-layout; source hash is verified")
     parser.add_argument("--diagram-relations-pdf-base", type=Path, help="optional output of promote_pdf_only_explicit_diagram_edges.py, for relations[]")
@@ -695,10 +851,20 @@ def main() -> None:
         parser.error(
             "--source-sha256 does not match the source-bound native capture"
         )
+    if args.surya_layout_artifact and not args.render_manifest:
+        parser.error("--surya-layout-artifact requires --render-manifest")
+    trusted_render: PdfRenderManifest | None = None
+    if args.render_manifest:
+        try:
+            trusted_render = _trusted_render_manifest(
+                args.render_manifest,
+                source_sha256=bound_source_sha256,
+            )
+        except ValueError as error:
+            parser.error(str(error))
     document_id = f"pdf:{args.notice_id}"
     native_text_pages = {item["page"] for item in native["text_items"] if _is_substantive_text(item.get("text"))}
     eligibility = "eligible_native_text" if native_text_pages else "excluded_image_only"
-    render = json.loads(args.render_manifest.read_text(encoding="utf-8")) if args.render_manifest else {"pages": []}
     enriched = json.loads(args.enriched_common_ir.read_text(encoding="utf-8")) if args.enriched_common_ir else {"blocks": []}
     raw_artifact_ids = [str(args.native)]
     if args.render_manifest:
@@ -707,9 +873,11 @@ def main() -> None:
         raw_artifact_ids.append(str(args.enriched_common_ir))
     if args.ocr_layout_diagnostic:
         raw_artifact_ids.append(str(args.ocr_layout_diagnostic))
+    if args.surya_layout_artifact:
+        raw_artifact_ids.append(str(args.surya_layout_artifact))
     if args.diagram_relations_pdf_base:
         raw_artifact_ids.append(str(args.diagram_relations_pdf_base))
-    page_count = native.get("process_result", {}).get("page_count") or len(render.get("pages", []))
+    page_count = native.get("process_result", {}).get("page_count") or (trusted_render.page_count if trusted_render else 0)
     # native's own "method"/"version" are the native extractor's identity
     # (e.g. "pdf_inspector"/"1.17.0") as captured at extraction time --
     # preserved independently of this adapter's own generator/generator_version
@@ -752,6 +920,21 @@ def main() -> None:
         ocr_layout_blocks = carry_ocr_layout_diagnostic_blocks(
             ocr_layout, args.ocr_layout_diagnostic, doc["document"]["provenance"]["source_sha256"],
         )
+    surya_layout_blocks = []
+    if args.surya_layout_artifact:
+        assert trusted_render is not None  # argparse contract above.
+        try:
+            surya_artifact = _load_bound_surya_layout_artifact(
+                args.surya_layout_artifact,
+                render_manifest=trusted_render,
+            )
+            surya_layout_blocks = carry_surya_layout_artifact_blocks(
+                surya_artifact,
+                render_manifest=trusted_render,
+                artifact_path=args.surya_layout_artifact,
+            )
+        except ValueError as error:
+            parser.error(str(error))
 
     # Nested-table containment (see _pdf_nested_table_relations) is computed
     # last, after table_diagram_blocks is final, and appended rather than
@@ -760,7 +943,7 @@ def main() -> None:
     nested_table_relations = _pdf_nested_table_relations(table_diagram_blocks)
     relations = relations + nested_table_relations
 
-    all_blocks = paragraph_blocks + table_diagram_blocks + extra_diagram_blocks + ocr_layout_blocks
+    all_blocks = paragraph_blocks + table_diagram_blocks + extra_diagram_blocks + ocr_layout_blocks + surya_layout_blocks
     all_blocks.sort(key=lambda b: b["_sort_key"])
     for order, block in enumerate(all_blocks):
         block["reading_order"] = order
@@ -783,6 +966,7 @@ def main() -> None:
         "paragraph_or_heading_blocks": len(paragraph_blocks), "table_or_diagram_blocks": len(table_diagram_blocks),
         "extra_diagram_evidence_blocks": len(extra_diagram_blocks),
         "ocr_layout_diagnostic_blocks": len(ocr_layout_blocks),
+        "surya_layout_artifact_blocks": len(surya_layout_blocks),
         "conflicts": 0,
         "relations": len(relations), "pdf_nested_table_relations": len(nested_table_relations),
         "supplementary_cell_occurrences_added": supplied, "validation_errors": 0,

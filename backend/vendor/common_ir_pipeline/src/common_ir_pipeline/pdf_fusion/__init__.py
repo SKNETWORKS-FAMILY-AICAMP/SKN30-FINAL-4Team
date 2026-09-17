@@ -21,6 +21,7 @@ from .render_manifest import (
     RenderedPage,
     RenderedPageInput,
     assemble_render_manifest,
+    inspect_png_bytes,
     validate_render_manifest_files,
 )
 from .surya_layout_artifact import (
@@ -49,6 +50,7 @@ __all__ = [
     "RenderedPage",
     "RenderedPageInput",
     "assemble_render_manifest",
+    "inspect_png_bytes",
     "validate_render_manifest_files",
     "REGION_LABELS_V1",
     "SURYA_LAYOUT_ARTIFACT_SCHEMA_VERSION",

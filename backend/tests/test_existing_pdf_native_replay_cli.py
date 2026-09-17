@@ -101,7 +101,14 @@ def _install_fake_pipeline(
         elif MODULE.ADAPTER_MODULE in command:
             notice_id = command[command.index("--notice-id") + 1]
             source_hash = command[command.index("--source-sha256") + 1]
-            (cwd / "common_ir.json").write_bytes(_canonical(_common_ir(notice_id, source_hash)))
+            common_ir = _common_ir(notice_id, source_hash)
+            if "--surya-layout-artifact" in command:
+                common_ir["document"]["raw_artifact_ids"] = [
+                    MODULE.NATIVE_NAME,
+                    MODULE.RENDER_MANIFEST_NAME,
+                    MODULE.SURYA_LAYOUT_ARTIFACT_NAME,
+                ]
+            (cwd / "common_ir.json").write_bytes(_canonical(common_ir))
             if mutate_source_after_adapter:
                 (cwd / "source.pdf").write_bytes(b"%PDF-1.7\nmutated by adapter child\n")
             if mutate_native_after_adapter:
@@ -198,6 +205,58 @@ def test_replay_publishes_only_relative_deterministic_artifacts(
         assert "LD_PRELOAD" not in environment
     assert "--source-relative-path" in calls[0][0]
     assert not any(part.startswith("--page") for command, _, _ in calls for part in command)
+
+
+def test_replay_stages_optional_surya_sidecar_and_records_its_lineage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "notice.pdf"
+    source.write_bytes(b"%PDF-1.7\nfixed test bytes\n")
+    render_manifest = tmp_path / "render.json"
+    render_manifest.write_bytes(_canonical({"schema_version": "pdf_render_manifest/v1"}))
+    artifact = tmp_path / "surya.json"
+    artifact.write_bytes(_canonical({
+        "schema_version": "surya_layout_artifact/v1",
+        "source_sha256": "a" * 64,
+        "render_manifest_sha256": "b" * 64,
+        "logical_compute_key": "c" * 64,
+        "producer": {"engine_id": "surya"},
+        "requested_pages": [1],
+    }))
+    calls = _install_fake_pipeline(monkeypatch)
+    output = tmp_path / "output"
+
+    manifest = MODULE.replay_existing_pdf(
+        notice_id="PBLN_123", source_pdf=source, output_directory=output,
+        render_manifest=render_manifest, surya_layout_artifact=artifact,
+    )
+
+    assert sorted(path.name for path in output.iterdir()) == sorted((
+        MODULE.SOURCE_NAME, MODULE.NATIVE_NAME, MODULE.RENDER_MANIFEST_NAME,
+        MODULE.SURYA_LAYOUT_ARTIFACT_NAME, MODULE.COMMON_IR_NAME, MODULE.MANIFEST_NAME,
+    ))
+    adapter_command = next(command for command, _, _ in calls if MODULE.ADAPTER_MODULE in command)
+    assert adapter_command[adapter_command.index("--render-manifest") + 1] == MODULE.RENDER_MANIFEST_NAME
+    assert adapter_command[adapter_command.index("--surya-layout-artifact") + 1] == MODULE.SURYA_LAYOUT_ARTIFACT_NAME
+    assert str(render_manifest) not in adapter_command
+    assert str(artifact) not in adapter_command
+    lineage = manifest["artifacts"]["surya_layout_artifact"]
+    assert lineage["path"] == MODULE.SURYA_LAYOUT_ARTIFACT_NAME
+    assert lineage["logical_compute_key"] == "c" * 64
+    assert lineage["producer"] == {"engine_id": "surya"}
+    assert stat.S_IMODE((output / MODULE.SURYA_LAYOUT_ARTIFACT_NAME).stat().st_mode) == 0o600
+
+
+def test_replay_requires_render_manifest_with_surya_sidecar(tmp_path: Path) -> None:
+    source = tmp_path / "notice.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    sidecar = tmp_path / "surya.json"
+    sidecar.write_bytes(b"{}")
+    with pytest.raises(MODULE.ExistingPdfReplayError, match="provided together"):
+        MODULE.replay_existing_pdf(
+            notice_id="PBLN_123", source_pdf=source, output_directory=tmp_path / "output",
+            surya_layout_artifact=sidecar,
+        )
 
 
 def test_existing_output_is_never_clobbered(
@@ -388,7 +447,7 @@ def test_common_ir_must_not_leak_absolute_or_extra_artifact_paths(tmp_path: Path
 
     payload = _common_ir("PBLN_123", "0" * 64)
     payload["document"]["raw_artifact_ids"].append("sidecar.json")
-    with pytest.raises(MODULE.ExistingPdfReplayError, match="only native.json"):
+    with pytest.raises(MODULE.ExistingPdfReplayError, match="do not match staged artifacts"):
         MODULE._require_relative_artifact_references(payload)
 
 
