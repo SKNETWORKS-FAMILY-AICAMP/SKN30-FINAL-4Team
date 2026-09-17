@@ -75,6 +75,52 @@
         "common_ir_path": {
           "type": "string",
           "pattern": "^pipeline/common_ir_v1/PBLN_[0-9]+\\.(hwp|hwpx|pdf)\\.json$"
+        },
+        "pdf_fusion": {
+          "$ref": "#/$defs/pdfFusion"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["pdf_fusion"] },
+          "then": {
+            "properties": {
+              "input_path": {
+                "pattern": "^[^/\\\\]+\\.pdf$"
+              },
+              "common_ir_path": {
+                "pattern": "^pipeline/common_ir_v1/PBLN_[0-9]+\\.pdf\\.json$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "pdfFusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_capture_path",
+        "render_manifest_path",
+        "surya_layout_artifact_path",
+        "replay_manifest_path",
+        "rendered_pages_path"
+      ],
+      "properties": {
+        "native_capture_path": {
+          "const": "pipeline/pdf_fusion/native_capture.json"
+        },
+        "render_manifest_path": {
+          "const": "pipeline/pdf_fusion/render_manifest.json"
+        },
+        "surya_layout_artifact_path": {
+          "const": "pipeline/pdf_fusion/surya_layout_artifact.json"
+        },
+        "replay_manifest_path": {
+          "const": "pipeline/pdf_fusion/replay_manifest.json"
+        },
+        "rendered_pages_path": {
+          "const": "pipeline/pdf_fusion/rendered"
         }
       }
     },

@@ -23,11 +23,19 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.retrieval.embedding_inputs import assemble_embedding_inputs
 try:
     from .existing_kb_pack import PackValidationError, validate_directory
-    from .ingest_existing_profile import all_facts
+    from .ingest_existing_profile import (
+        PDF_FUSION_DESCRIPTOR,
+        all_facts,
+        artifact_storage_object_key,
+    )
     from .local_supabase_env import LocalSupabaseEnvError, load_local_supabase_settings
 except ImportError:  # direct ``python scripts/...`` execution
     from existing_kb_pack import PackValidationError, validate_directory
-    from ingest_existing_profile import all_facts
+    from ingest_existing_profile import (
+        PDF_FUSION_DESCRIPTOR,
+        all_facts,
+        artifact_storage_object_key,
+    )
     from local_supabase_env import LocalSupabaseEnvError, load_local_supabase_settings
 
 
@@ -92,31 +100,112 @@ def _expected(root: Path) -> dict[str, dict[str, Any]]:
         source_document = profile["source_documents"][0]
         source_sha256 = source_document["common_ir"]["source_sha256"]
         paths = {
-            "source": notice_dir / "attachments" / record["analysis"]["input_path"],
-            "common_ir": notice_dir / record["analysis"]["common_ir_path"],
-            "candidate_pack": notice_dir / "pipeline" / "source_selection.json",
-            "structured_profile": profile_path,
-            "format_ir": record_path,
+            "source": (
+                "source",
+                notice_dir / "attachments" / record["analysis"]["input_path"],
+                None,
+            ),
+            "common_ir": (
+                "common_ir",
+                notice_dir / record["analysis"]["common_ir_path"],
+                None,
+            ),
+            "candidate_pack": (
+                "candidate_pack",
+                notice_dir / "pipeline" / "source_selection.json",
+                None,
+            ),
+            "structured_profile": ("structured_profile", profile_path, None),
+            "format_ir": ("format_ir", record_path, None),
         }
+        pdf_fusion = record.get("analysis", {}).get("pdf_fusion")
+        if pdf_fusion is not None:
+            if pdf_fusion != PDF_FUSION_DESCRIPTOR:
+                raise ValueError("validated PDF fusion descriptor changed unexpectedly")
+            fusion_root = notice_dir / "pipeline" / "pdf_fusion"
+            render_manifest_path = notice_dir / pdf_fusion["render_manifest_path"]
+            render_manifest = json.loads(render_manifest_path.read_text(encoding="utf-8"))
+            paths.update(
+                {
+                    "parser_raw:native_capture": (
+                        "parser_raw",
+                        notice_dir / pdf_fusion["native_capture_path"],
+                        "native_capture",
+                    ),
+                    "format_ir:render_manifest": (
+                        "format_ir",
+                        render_manifest_path,
+                        "render_manifest",
+                    ),
+                    "parser_raw:surya_layout": (
+                        "parser_raw",
+                        notice_dir / pdf_fusion["surya_layout_artifact_path"],
+                        "surya_layout",
+                    ),
+                    "format_ir:replay_manifest": (
+                        "format_ir",
+                        notice_dir / pdf_fusion["replay_manifest_path"],
+                        "replay_manifest",
+                    ),
+                }
+            )
+            for page in render_manifest["pages"]:
+                page_number = int(page["page"])
+                paths[f"parser_raw:rendered_page_{page_number:04d}"] = (
+                    "parser_raw",
+                    fusion_root / page["image_relative_path"],
+                    f"rendered_page_{page_number:04d}",
+                )
         artifacts: dict[str, dict[str, Any]] = {}
-        for artifact_type, artifact_path in paths.items():
+        for artifact_identity, (
+            artifact_type,
+            artifact_path,
+            storage_namespace,
+        ) in paths.items():
             content_sha256 = _digest(artifact_path)
             suffix = artifact_path.suffix.lower().lstrip(".") or "bin"
-            storage_object_key = "/".join(
-                (
-                    profile["notice_id"],
-                    source_profile_id,
-                    source_sha256,
-                    artifact_type,
-                    f"{content_sha256}.{suffix}",
-                )
+            storage_object_key = artifact_storage_object_key(
+                notice_id=profile["notice_id"],
+                source_profile_id=source_profile_id,
+                source_sha256=source_sha256,
+                artifact_type=artifact_type,
+                content_sha256=content_sha256,
+                suffix=suffix,
+                storage_namespace=storage_namespace,
             )
-            artifacts[artifact_type] = {
+            artifacts[artifact_identity] = {
+                "artifact_type": artifact_type,
                 "storage_bucket": "existing-kb",
                 "storage_object_key": storage_object_key,
                 "content_sha256": content_sha256,
                 "size_bytes": artifact_path.stat().st_size,
             }
+        if pdf_fusion is None:
+            lineage_identities = EXPECTED_LINEAGE_EDGES
+        else:
+            rendered_identities = sorted(
+                identity
+                for identity in artifacts
+                if identity.startswith("parser_raw:rendered_page_")
+            )
+            lineage_identities = {
+                ("source", "parser_raw:native_capture", "input_to"),
+                ("format_ir:render_manifest", "parser_raw:surya_layout", "input_to"),
+                ("parser_raw:native_capture", "common_ir", "input_to"),
+                ("parser_raw:surya_layout", "common_ir", "input_to"),
+                ("common_ir", "format_ir:replay_manifest", "input_to"),
+                ("common_ir", "candidate_pack", "input_to"),
+                ("candidate_pack", "structured_profile", "input_to"),
+                ("structured_profile", "format_ir", "input_to"),
+            }
+            lineage_identities.update(
+                ("source", identity, "input_to")
+                for identity in rendered_identities
+            )
+            lineage_identities.update(
+                (identity, "format_ir:render_manifest", "input_to")
+                for identity in rendered_identities
+            )
         facts = all_facts(profile)
         components = profile.get("support_components", [])
         projections = Counter(
@@ -129,11 +218,11 @@ def _expected(root: Path) -> dict[str, dict[str, Any]]:
             "artifacts": artifacts,
             "lineage_edges": {
                 (
-                    artifacts[parent_type]["storage_object_key"],
-                    artifacts[child_type]["storage_object_key"],
+                    artifacts[parent_identity]["storage_object_key"],
+                    artifacts[child_identity]["storage_object_key"],
                     relation_type,
                 )
-                for parent_type, child_type, relation_type in EXPECTED_LINEAGE_EDGES
+                for parent_identity, child_identity, relation_type in lineage_identities
             },
             "facts": len(facts),
             "support_components": len(components),
@@ -210,13 +299,21 @@ def _artifact_contract_matches(
 
     if len(actual_artifacts) != len(expected_artifacts):
         return False
-    by_type: dict[str, list[dict[str, Any]]] = {}
+    by_object_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for artifact in actual_artifacts:
-        by_type.setdefault(str(artifact["artifact_type"]), []).append(artifact)
-    if set(by_type) != set(expected_artifacts):
+        identity = (
+            str(artifact.get("storage_bucket")),
+            str(artifact.get("storage_object_key")),
+        )
+        by_object_key.setdefault(identity, []).append(artifact)
+    expected_by_object_key = {
+        (str(wanted["storage_bucket"]), str(wanted["storage_object_key"])): wanted
+        for wanted in expected_artifacts.values()
+    }
+    if set(by_object_key) != set(expected_by_object_key):
         return False
-    for artifact_type, wanted in expected_artifacts.items():
-        rows = by_type[artifact_type]
+    for object_identity, wanted in expected_by_object_key.items():
+        rows = by_object_key[object_identity]
         if len(rows) != 1:
             return False
         actual = rows[0]
@@ -231,6 +328,7 @@ def _artifact_contract_matches(
                 )
                 == wanted[key]
                 for key in (
+                    "artifact_type",
                     "storage_bucket",
                     "storage_object_key",
                     "content_sha256",
@@ -245,17 +343,22 @@ def _artifact_contract_matches(
 
 
 def _profile_artifact_refs_match(row: dict[str, Any]) -> bool:
-    by_type = {
-        artifact["artifact_type"]: artifact
+    candidates = [
+        artifact
         for artifact in row.get("artifacts", [])
-    }
-    candidate = by_type.get("candidate_pack")
-    structured = by_type.get("structured_profile")
+        if artifact.get("artifact_type") == "candidate_pack"
+    ]
+    structured_profiles = [
+        artifact
+        for artifact in row.get("artifacts", [])
+        if artifact.get("artifact_type") == "structured_profile"
+    ]
     return bool(
-        candidate
-        and structured
-        and str(candidate["artifact_pk"]) == str(row["candidate_pack_artifact_pk"])
-        and str(structured["artifact_pk"])
+        len(candidates) == 1
+        and len(structured_profiles) == 1
+        and str(candidates[0]["artifact_pk"])
+        == str(row["candidate_pack_artifact_pk"])
+        and str(structured_profiles[0]["artifact_pk"])
         == str(row["structured_artifact_pk"])
     )
 
@@ -377,7 +480,7 @@ def verify_storage_objects(
     }
     open_request = opener or _NO_REDIRECT_OPENER.open
     for source_profile_id, profile in expected.items():
-        for artifact_type, artifact in profile["artifacts"].items():
+        for artifact_identity, artifact in profile["artifacts"].items():
             bucket = quote(str(artifact["storage_bucket"]), safe="")
             object_key = quote(str(artifact["storage_object_key"]), safe="/")
             request = Request(
@@ -392,16 +495,16 @@ def verify_storage_objects(
                     )
             except HTTPError as error:
                 error.close()
-                failures.append(f"{source_profile_id}:{artifact_type}")
+                failures.append(f"{source_profile_id}:{artifact_identity}")
                 continue
             except (URLError, OSError, StorageVerificationError):
-                failures.append(f"{source_profile_id}:{artifact_type}")
+                failures.append(f"{source_profile_id}:{artifact_identity}")
                 continue
             if (
                 actual_size != int(artifact["size_bytes"])
                 or actual_sha256 != artifact["content_sha256"]
             ):
-                failures.append(f"{source_profile_id}:{artifact_type}")
+                failures.append(f"{source_profile_id}:{artifact_identity}")
                 continue
             verified += 1
     return {

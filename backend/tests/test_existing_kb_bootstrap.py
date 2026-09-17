@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from email.message import Message
 from hashlib import sha256
 from io import BytesIO
@@ -13,6 +14,7 @@ from zipfile import ZipFile, ZipInfo
 
 import pytest
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import BaseHandler, Request, build_opener
 from urllib.response import addinfourl
 
@@ -39,6 +41,7 @@ from ingest_existing_profile import (
     SupabaseStorage,
     _NoRedirectHandler as ImporterNoRedirectHandler,
     insert_profile_children,
+    register_pdf_fusion_artifacts,
     run_transaction,
     upsert_delivery_roles,
 )
@@ -107,7 +110,7 @@ def _write_pack(root: Path) -> Path:
     }
     profile = {
         "schema_version": "existing_program_profile/v0.2",
-        "notice_id": notice_id,
+        "notice_id": f"bizinfo:{notice_id}",
         "source_profile_id": f"pdf:{notice_id}",
         "source_documents": [
             {
@@ -413,6 +416,123 @@ def test_batch_import_is_non_mutating_without_execute(tmp_path: Path) -> None:
     assert json.loads(completed.stdout)["status"] == "validated_only"
 
 
+def test_importer_keeps_legacy_source_to_common_ir_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_artifact(*_: Any, **__: Any) -> Any:
+        raise AssertionError("legacy packages must not register PDF fusion artifacts")
+
+    monkeypatch.setattr(single_cli, "artifact", unexpected_artifact)
+    source = {"artifact_pk": "source"}
+    common_ir = {"artifact_pk": "common-ir"}
+
+    lineage = register_pdf_fusion_artifacts(
+        object(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        record={"analysis": {}},
+        notice_dir=Path("/unused"),
+        source_format="pdf",
+        source_version_pk="source-version",
+        source_sha256="a" * 64,
+        notice_id="PBLN_1",
+        source_profile_id="pdf:PBLN_1",
+        source_artifact=source,
+        common_ir_artifact=common_ir,
+    )
+
+    assert lineage == [(source, common_ir)]
+
+
+def test_importer_registers_pdf_fusion_artifacts_and_complete_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notice = tmp_path / "PBLN_1"
+    fusion = notice / "pipeline" / "pdf_fusion"
+    rendered = fusion / "rendered"
+    rendered.mkdir(parents=True)
+    (fusion / "native_capture.json").write_text("{}", encoding="utf-8")
+    (fusion / "surya_layout_artifact.json").write_text(
+        json.dumps({"logical_compute_key": "b" * 64}), encoding="utf-8"
+    )
+    (fusion / "replay_manifest.json").write_text("{}", encoding="utf-8")
+    (rendered / "page-0001.png").write_bytes(b"same-page-bytes")
+    (rendered / "page-0002.png").write_bytes(b"same-page-bytes")
+    (fusion / "render_manifest.json").write_text(
+        json.dumps(
+            {
+                "pages": [
+                    {"page": 1, "image_relative_path": "rendered/page-0001.png"},
+                    {"page": 2, "image_relative_path": "rendered/page-0002.png"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[dict[str, Any]] = []
+
+    def fake_artifact(*_: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return {
+            "artifact_pk": kwargs["storage_namespace"],
+            "artifact_logical_id": kwargs["logical_id"],
+        }
+
+    monkeypatch.setattr(single_cli, "artifact", fake_artifact)
+    source = {"artifact_pk": "source"}
+    common_ir = {"artifact_pk": "common-ir"}
+
+    lineage = register_pdf_fusion_artifacts(
+        object(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        record={
+            "analysis": {
+                "pdf_fusion": dict(single_cli.PDF_FUSION_DESCRIPTOR),
+            }
+        },
+        notice_dir=notice,
+        source_format="pdf",
+        source_version_pk="source-version",
+        source_sha256="a" * 64,
+        notice_id="PBLN_1",
+        source_profile_id="pdf:PBLN_1",
+        source_artifact=source,
+        common_ir_artifact=common_ir,
+    )
+
+    assert [call["artifact_type"] for call in calls] == [
+        "parser_raw",
+        "parser_raw",
+        "parser_raw",
+        "format_ir",
+        "parser_raw",
+        "format_ir",
+    ]
+    assert [call["storage_namespace"] for call in calls] == [
+        "native_capture",
+        "rendered_page_0001",
+        "rendered_page_0002",
+        "render_manifest",
+        "surya_layout",
+        "replay_manifest",
+    ]
+    assert calls[4]["logical_id"] == "b" * 64
+    assert [
+        (parent["artifact_pk"], child["artifact_pk"])
+        for parent, child in lineage
+    ] == [
+        ("source", "native_capture"),
+        ("source", "rendered_page_0001"),
+        ("source", "rendered_page_0002"),
+        ("rendered_page_0001", "render_manifest"),
+        ("rendered_page_0002", "render_manifest"),
+        ("render_manifest", "surya_layout"),
+        ("native_capture", "common-ir"),
+        ("surya_layout", "common-ir"),
+        ("common-ir", "replay_manifest"),
+    ]
+
+
 class FakeDatabase:
     def __init__(self) -> None:
         self.rows: dict[str, list[dict[str, Any]]] = {
@@ -575,13 +695,13 @@ def test_post_verifier_covers_every_preserved_child_count() -> None:
 def _verified_profile_row(wanted: dict[str, Any]) -> dict[str, Any]:
     artifacts = []
     artifact_pks: dict[str, str] = {}
-    for ordinal, (artifact_type, descriptor) in enumerate(
+    for ordinal, (artifact_identity, descriptor) in enumerate(
         wanted["artifacts"].items(), start=1
     ):
         artifact_pk = f"artifact-{ordinal}"
-        artifact_pks[artifact_type] = artifact_pk
+        artifact_pks[artifact_identity] = artifact_pk
         artifacts.append(
-            {"artifact_pk": artifact_pk, "artifact_type": artifact_type, **descriptor}
+            {"artifact_pk": artifact_pk, **descriptor}
         )
     return {
         "profile_sha256": wanted["profile_sha256"],
@@ -592,6 +712,142 @@ def _verified_profile_row(wanted: dict[str, Any]) -> dict[str, Any]:
         "structured_artifact_pk": artifact_pks["structured_profile"],
         **{field: wanted[field] for field in PRESERVED_COUNT_FIELDS},
     }
+
+
+def _add_minimal_pdf_fusion_for_verifier(notice: Path) -> None:
+    """Add the already-validated artifact layout consumed by `_expected`."""
+
+    fusion = notice / "pipeline" / "pdf_fusion"
+    rendered = fusion / "rendered"
+    rendered.mkdir(parents=True)
+    (fusion / "native_capture.json").write_text(
+        json.dumps({"artifact": "native"}), encoding="utf-8"
+    )
+    (fusion / "surya_layout_artifact.json").write_text(
+        json.dumps({"artifact": "surya"}), encoding="utf-8"
+    )
+    (fusion / "replay_manifest.json").write_text(
+        json.dumps({"artifact": "replay"}), encoding="utf-8"
+    )
+    (rendered / "page-0001.png").write_bytes(b"page-one")
+    (rendered / "page-0002.png").write_bytes(b"page-two")
+    (fusion / "render_manifest.json").write_text(
+        json.dumps(
+            {
+                "pages": [
+                    {"page": 1, "image_relative_path": "rendered/page-0001.png"},
+                    {"page": 2, "image_relative_path": "rendered/page-0002.png"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source = next((notice / "attachments").iterdir())
+    (fusion / "source.pdf").write_bytes(source.read_bytes())
+    record_path = notice / "pipeline" / "ingestion_record.v0.1.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["analysis"]["pdf_fusion"] = dict(single_cli.PDF_FUSION_DESCRIPTOR)
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+
+def test_post_verifier_accepts_pdf_fusion_duplicate_types_and_exact_dag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = tmp_path / "pack"
+    notice = _write_pack(pack)
+    _add_minimal_pdf_fusion_for_verifier(notice)
+    monkeypatch.setattr(
+        verify_cli,
+        "assemble_embedding_inputs",
+        lambda _profile: {
+            scope: SimpleNamespace(input_sha256=f"hash-{scope}")
+            for scope in EXPECTED_EMBEDDING_SCOPES
+        },
+    )
+
+    expected = _expected(pack)
+    source_profile_id, wanted = next(iter(expected.items()))
+    artifacts = wanted["artifacts"]
+    artifact_type_counts = Counter(
+        artifact["artifact_type"] for artifact in artifacts.values()
+    )
+
+    assert len(artifacts) == 11
+    assert artifact_type_counts["parser_raw"] == 4
+    assert artifact_type_counts["format_ir"] == 3
+    assert len(wanted["lineage_edges"]) == 12
+    assert "/parser_raw/native_capture/" in artifacts[
+        "parser_raw:native_capture"
+    ]["storage_object_key"]
+    assert "/parser_raw/rendered_page_0002/" in artifacts[
+        "parser_raw:rendered_page_0002"
+    ]["storage_object_key"]
+
+    row = _verified_profile_row(wanted)
+    valid = evaluate_bootstrap(
+        expected, {source_profile_id: row}, {}, require_embeddings=False
+    )
+    assert valid["status"] == "valid"
+
+    row["artifacts"] = [
+        artifact
+        for artifact in row["artifacts"]
+        if artifact["storage_object_key"]
+        != artifacts["parser_raw:rendered_page_0002"]["storage_object_key"]
+    ]
+    invalid = evaluate_bootstrap(
+        expected, {source_profile_id: row}, {}, require_embeddings=False
+    )
+    assert invalid["mismatched_artifacts"]["examples"] == [source_profile_id]
+
+
+def test_storage_verifier_checks_every_pdf_fusion_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = tmp_path / "pack"
+    notice = _write_pack(pack)
+    _add_minimal_pdf_fusion_for_verifier(notice)
+    monkeypatch.setattr(
+        verify_cli,
+        "assemble_embedding_inputs",
+        lambda _profile: {
+            scope: SimpleNamespace(input_sha256=f"hash-{scope}")
+            for scope in EXPECTED_EMBEDDING_SCOPES
+        },
+    )
+    expected = _expected(pack)
+    artifacts = next(iter(expected.values()))["artifacts"]
+    bytes_by_sha256 = {
+        sha256(path.read_bytes()).hexdigest(): path.read_bytes()
+        for path in notice.rglob("*")
+        if path.is_file()
+    }
+    responses = {
+        "http://storage.invalid/storage/v1/object/"
+        + quote(str(artifact["storage_bucket"]), safe="")
+        + "/"
+        + quote(str(artifact["storage_object_key"]), safe="/"): bytes_by_sha256[
+            artifact["content_sha256"]
+        ]
+        for artifact in artifacts.values()
+    }
+    requested: list[str] = []
+
+    def open_success(request: Any, *, timeout: int) -> FakeDownload:
+        assert timeout == 60
+        requested.append(request.full_url)
+        return FakeDownload(responses[request.full_url])
+
+    result = verify_storage_objects(
+        expected,
+        supabase_url="http://storage.invalid",
+        service_role_key="not-printed-secret",
+        opener=open_success,
+    )
+
+    assert result["status"] == "valid"
+    assert result["verified_artifacts"] == 11
+    assert set(requested) == set(responses)
 
 
 def test_post_verifier_checks_artifact_bytes_lineage_and_profile_refs(

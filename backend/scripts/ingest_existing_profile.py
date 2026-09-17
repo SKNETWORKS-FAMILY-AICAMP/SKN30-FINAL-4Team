@@ -12,7 +12,7 @@ import json
 import mimetypes
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -34,6 +34,13 @@ EXISTING_SPECIFIC = {
 }
 CURRENT_VERSION_ACTIVATION_LOCK = "pre-review-existing-kb-current-and-embedding-v1"
 CLASSIFICATION_ACTIVATION_LOCK = "pre-review-existing-kb-current-and-classification-v1"
+PDF_FUSION_DESCRIPTOR = {
+    "native_capture_path": "pipeline/pdf_fusion/native_capture.json",
+    "render_manifest_path": "pipeline/pdf_fusion/render_manifest.json",
+    "surya_layout_artifact_path": "pipeline/pdf_fusion/surya_layout_artifact.json",
+    "replay_manifest_path": "pipeline/pdf_fusion/replay_manifest.json",
+    "rendered_pages_path": "pipeline/pdf_fusion/rendered",
+}
 
 
 def _lock_current_version_activation(database: "KnowledgeBase") -> None:
@@ -214,14 +221,48 @@ def digest(path: Path) -> str:
     return value.hexdigest()
 
 
+def artifact_storage_object_key(
+    *,
+    notice_id: str,
+    source_profile_id: str,
+    source_sha256: str,
+    artifact_type: str,
+    content_sha256: str,
+    suffix: str,
+    storage_namespace: str | None = None,
+) -> str:
+    """Build the canonical content-addressed Storage key for one KB artifact."""
+
+    key_parts = [notice_id, source_profile_id, source_sha256, artifact_type]
+    if storage_namespace is not None:
+        if (
+            not storage_namespace
+            or storage_namespace in {".", ".."}
+            or "/" in storage_namespace
+            or "\\" in storage_namespace
+        ):
+            raise ValueError("storage_namespace must be one safe path segment")
+        key_parts.append(storage_namespace)
+    key_parts.append(f"{content_sha256}.{suffix}")
+    return "/".join(key_parts)
+
+
 def artifact(
     storage: SupabaseStorage, database: KnowledgeBase, *, source_version_pk: str, source_sha256: str, notice_id: str,
     source_profile_id: str, artifact_type: str, logical_id: str | None, path: Path,
-    schema_version: str | None,
+    schema_version: str | None, storage_namespace: str | None = None,
 ) -> dict[str, Any]:
     content_sha256 = digest(path)
     suffix = path.suffix.lower().lstrip(".") or "bin"
-    key = "/".join((notice_id, source_profile_id, source_sha256, artifact_type, f"{content_sha256}.{suffix}"))
+    key = artifact_storage_object_key(
+        notice_id=notice_id,
+        source_profile_id=source_profile_id,
+        source_sha256=source_sha256,
+        artifact_type=artifact_type,
+        content_sha256=content_sha256,
+        suffix=suffix,
+        storage_namespace=storage_namespace,
+    )
     storage.upload(key, path)
     existing = database.one("artifact", storage_bucket="existing-kb", storage_object_key=key)
     if existing:
@@ -233,6 +274,188 @@ def artifact(
         "mime_type": mimetypes.guess_type(path.name)[0], "size_bytes": path.stat().st_size,
         "schema_version": schema_version,
     })
+
+
+def _json_artifact(path: Path) -> dict[str, Any]:
+    """Load one already pack-validated JSON artifact as an object."""
+
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PackValidationError(f"cannot read PDF fusion artifact: {path}") from error
+    if not isinstance(value, dict):
+        raise PackValidationError(f"PDF fusion artifact must be an object: {path}")
+    return value
+
+
+def register_pdf_fusion_artifacts(
+    storage: SupabaseStorage,
+    database: KnowledgeBase,
+    *,
+    record: dict[str, Any],
+    notice_dir: Path,
+    source_format: str,
+    source_version_pk: str,
+    source_sha256: str,
+    notice_id: str,
+    source_profile_id: str,
+    source_artifact: dict[str, Any],
+    common_ir_artifact: dict[str, Any],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Register the optional PDF fusion evidence and return its lineage DAG.
+
+    ``existing_kb_pack`` owns the complete cross-artifact validation.  This
+    trusted writer nevertheless accepts only the fixed, versioned package
+    layout so a record cannot redirect a privileged Storage upload elsewhere.
+    Packages created before PDF fusion omit the descriptor and retain the
+    original direct ``source -> common_ir`` edge.
+    """
+
+    descriptor = record.get("analysis", {}).get("pdf_fusion")
+    if descriptor is None:
+        return [(source_artifact, common_ir_artifact)]
+    if source_format != "pdf":
+        raise PackValidationError("analysis.pdf_fusion is only valid for PDF sources")
+    if descriptor != PDF_FUSION_DESCRIPTOR:
+        raise PackValidationError("analysis.pdf_fusion paths do not match the fixed package layout")
+
+    fusion_root = notice_dir / "pipeline" / "pdf_fusion"
+    native_path = notice_dir / descriptor["native_capture_path"]
+    render_manifest_path = notice_dir / descriptor["render_manifest_path"]
+    surya_path = notice_dir / descriptor["surya_layout_artifact_path"]
+    replay_path = notice_dir / descriptor["replay_manifest_path"]
+    rendered_root = notice_dir / descriptor["rendered_pages_path"]
+    for path in (native_path, render_manifest_path, surya_path, replay_path):
+        if not path.is_file():
+            raise PackValidationError(f"required PDF fusion artifact is missing: {path}")
+    if not rendered_root.is_dir():
+        raise PackValidationError(f"required PDF fusion directory is missing: {rendered_root}")
+
+    render_manifest = _json_artifact(render_manifest_path)
+    pages = render_manifest.get("pages")
+    if not isinstance(pages, list) or not pages:
+        raise PackValidationError("PDF render manifest pages must be a non-empty array")
+
+    page_inputs: list[tuple[int, Path]] = []
+    seen_pages: set[int] = set()
+    seen_paths: set[str] = set()
+    for entry in pages:
+        if not isinstance(entry, dict):
+            raise PackValidationError("PDF render manifest page entry must be an object")
+        page = entry.get("page")
+        relative_value = entry.get("image_relative_path")
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            raise PackValidationError("PDF render manifest page number is invalid")
+        if not isinstance(relative_value, str):
+            raise PackValidationError("PDF render manifest image path is invalid")
+        relative = PurePosixPath(relative_value)
+        if (
+            relative.is_absolute()
+            or not relative.parts
+            or relative.parts[0] != "rendered"
+            or any(part in {"", ".", ".."} for part in relative.parts)
+            or "\\" in relative_value
+        ):
+            raise PackValidationError("PDF render manifest image path is outside rendered_pages_path")
+        page_path = fusion_root.joinpath(*relative.parts)
+        try:
+            page_path.relative_to(rendered_root)
+        except ValueError as error:
+            raise PackValidationError(
+                "PDF render manifest image path is outside rendered_pages_path"
+            ) from error
+        if page in seen_pages or relative_value in seen_paths or not page_path.is_file():
+            raise PackValidationError("PDF render manifest page artifacts are incomplete or duplicated")
+        seen_pages.add(page)
+        seen_paths.add(relative_value)
+        page_inputs.append((page, page_path))
+
+    native = artifact(
+        storage,
+        database,
+        source_version_pk=source_version_pk,
+        source_sha256=source_sha256,
+        notice_id=notice_id,
+        source_profile_id=source_profile_id,
+        artifact_type="parser_raw",
+        logical_id="pdf-native-capture",
+        path=native_path,
+        schema_version="pdf_inspector_native_capture/v1",
+        storage_namespace="native_capture",
+    )
+    rendered_pages = [
+        artifact(
+            storage,
+            database,
+            source_version_pk=source_version_pk,
+            source_sha256=source_sha256,
+            notice_id=notice_id,
+            source_profile_id=source_profile_id,
+            artifact_type="parser_raw",
+            logical_id=f"pdf-render-page:{page}",
+            path=path,
+            schema_version=None,
+            storage_namespace=f"rendered_page_{page:04d}",
+        )
+        for page, path in page_inputs
+    ]
+    render_manifest_artifact = artifact(
+        storage,
+        database,
+        source_version_pk=source_version_pk,
+        source_sha256=source_sha256,
+        notice_id=notice_id,
+        source_profile_id=source_profile_id,
+        artifact_type="format_ir",
+        logical_id="pdf-render-manifest",
+        path=render_manifest_path,
+        schema_version="pdf_render_manifest/v1",
+        storage_namespace="render_manifest",
+    )
+    surya_payload = _json_artifact(surya_path)
+    surya = artifact(
+        storage,
+        database,
+        source_version_pk=source_version_pk,
+        source_sha256=source_sha256,
+        notice_id=notice_id,
+        source_profile_id=source_profile_id,
+        artifact_type="parser_raw",
+        logical_id=surya_payload.get("logical_compute_key") or "surya-layout",
+        path=surya_path,
+        schema_version="surya_layout_artifact/v1",
+        storage_namespace="surya_layout",
+    )
+    replay = artifact(
+        storage,
+        database,
+        source_version_pk=source_version_pk,
+        source_sha256=source_sha256,
+        notice_id=notice_id,
+        source_profile_id=source_profile_id,
+        artifact_type="format_ir",
+        logical_id="pdf-native-replay-manifest",
+        path=replay_path,
+        schema_version="existing_pdf_native_replay/v1",
+        storage_namespace="replay_manifest",
+    )
+
+    lineage = [(source_artifact, native)]
+    lineage.extend((source_artifact, page_artifact) for page_artifact in rendered_pages)
+    lineage.extend(
+        (page_artifact, render_manifest_artifact)
+        for page_artifact in rendered_pages
+    )
+    lineage.extend(
+        (
+            (render_manifest_artifact, surya),
+            (native, common_ir_artifact),
+            (surya, common_ir_artifact),
+            # The replay manifest describes the completed evidence fusion run.
+            (common_ir_artifact, replay),
+        )
+    )
+    return lineage
 
 
 def all_facts(profile: dict[str, Any]) -> list[dict[str, Any]]:
@@ -498,7 +721,27 @@ def ingest_record(
     candidate = artifact(storage, database, source_version_pk=source_version["source_version_pk"], source_sha256=source_sha256, notice_id=notice_id, source_profile_id=source_profile_id, artifact_type="candidate_pack", logical_id=profile["processing_metadata"]["candidate_pack"]["candidate_pack_id"], path=selection_path, schema_version="source_selection/v0.2")
     structured = artifact(storage, database, source_version_pk=source_version["source_version_pk"], source_sha256=source_sha256, notice_id=notice_id, source_profile_id=source_profile_id, artifact_type="structured_profile", logical_id=source_profile_id, path=profile_path, schema_version=profile["schema_version"])
     ingestion = artifact(storage, database, source_version_pk=source_version["source_version_pk"], source_sha256=source_sha256, notice_id=notice_id, source_profile_id=source_profile_id, artifact_type="format_ir", logical_id="ingestion_record", path=record_path, schema_version=record["schema_version"])
-    for parent, child in ((source, common_ir), (common_ir, candidate), (candidate, structured), (structured, ingestion)):
+    lineage = register_pdf_fusion_artifacts(
+        storage,
+        database,
+        record=record,
+        notice_dir=notice_dir,
+        source_format=source_document["format"],
+        source_version_pk=source_version["source_version_pk"],
+        source_sha256=source_sha256,
+        notice_id=notice_id,
+        source_profile_id=source_profile_id,
+        source_artifact=source,
+        common_ir_artifact=common_ir,
+    )
+    lineage.extend(
+        (
+            (common_ir, candidate),
+            (candidate, structured),
+            (structured, ingestion),
+        )
+    )
+    for parent, child in lineage:
         database.insert("artifact_lineage", {"parent_artifact_pk": parent["artifact_pk"], "child_artifact_pk": child["artifact_pk"], "relation_type": "input_to"}, on_conflict_ignore=True)
 
     profile_sha256 = digest(profile_path)

@@ -25,10 +25,28 @@ from typing import Any, Iterable
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+# Direct CLI/importer execution can otherwise resolve a stale site-packages
+# copy before the checked-in fusion contracts.  The worker bootstrap is the
+# single repository-owned path precedence rule used by production as well.
+from worker import vendor as _worker_vendor  # noqa: E402,F401
+
+
 PACK_SCHEMA = "prereview_existing_kb_pack/v0.1"
 INGESTION_SCHEMA = "bizinfo_existing_ingestion_record/v0.1"
 PROFILE_SCHEMA = "existing_program_profile/v0.2"
 COMMON_IR_SCHEMA = "common_ir_v1"
+PDF_FUSION_PATHS = {
+    "native_capture_path": "pipeline/pdf_fusion/native_capture.json",
+    "render_manifest_path": "pipeline/pdf_fusion/render_manifest.json",
+    "surya_layout_artifact_path": "pipeline/pdf_fusion/surya_layout_artifact.json",
+    "replay_manifest_path": "pipeline/pdf_fusion/replay_manifest.json",
+    "rendered_pages_path": "pipeline/pdf_fusion/rendered",
+}
+PDF_FUSION_SOURCE_COPY = "pipeline/pdf_fusion/source.pdf"
 ALLOWED_SOURCE_FORMATS = frozenset({"hwp", "hwpx", "pdf"})
 ALLOWED_FACT_STATUSES = frozenset({"identified", "partial"})
 ALLOWED_FACT_SCOPES = frozenset({"notice", "component"})
@@ -179,6 +197,323 @@ def _source_magic(path: Path, source_format: str) -> None:
     _require(prefix.startswith(expected), f"source signature is not {source_format}: {path}")
 
 
+def _exact_object_keys(
+    value: object,
+    expected: Iterable[str],
+    *,
+    label: str,
+) -> dict[str, Any]:
+    _require(isinstance(value, dict), f"{label} must be an object")
+    expected_keys = set(expected)
+    actual_keys = set(value)
+    _require(
+        actual_keys == expected_keys,
+        f"{label} keys mismatch: missing={sorted(expected_keys-actual_keys)!r}, "
+        f"extra={sorted(actual_keys-expected_keys)!r}",
+    )
+    return value
+
+
+def _positive_integer(value: object, *, label: str) -> int:
+    _require(
+        isinstance(value, int) and not isinstance(value, bool) and value > 0,
+        f"{label} must be a positive integer",
+    )
+    return value
+
+
+def _validate_pdf_fusion(
+    directory: Path,
+    *,
+    notice_id: str,
+    analysis: dict[str, Any],
+    source_path: Path,
+    source_hash: str,
+    common_ir_path: Path,
+    common_ir: dict[str, Any],
+) -> set[str]:
+    """Validate the optional, self-contained Existing-PDF fusion lineage."""
+
+    descriptor = analysis.get("pdf_fusion")
+    if descriptor is None:
+        return set()
+    descriptor = _exact_object_keys(
+        descriptor,
+        PDF_FUSION_PATHS,
+        label=f"{notice_id}: analysis.pdf_fusion",
+    )
+    for key, expected in PDF_FUSION_PATHS.items():
+        _require(
+            descriptor.get(key) == expected,
+            f"{notice_id}: analysis.pdf_fusion.{key} must be {expected!r}",
+        )
+    _require(
+        source_path.suffix.casefold() == ".pdf",
+        f"{notice_id}: analysis.pdf_fusion is available only for PDF sources",
+    )
+
+    fusion_root = directory / "pipeline" / "pdf_fusion"
+    native_path = directory / PDF_FUSION_PATHS["native_capture_path"]
+    render_path = directory / PDF_FUSION_PATHS["render_manifest_path"]
+    surya_path = directory / PDF_FUSION_PATHS["surya_layout_artifact_path"]
+    replay_path = directory / PDF_FUSION_PATHS["replay_manifest_path"]
+    rendered_root = directory / PDF_FUSION_PATHS["rendered_pages_path"]
+    source_copy_path = directory / PDF_FUSION_SOURCE_COPY
+    for path, label in (
+        (native_path, "native capture"),
+        (render_path, "render manifest"),
+        (surya_path, "Surya layout artifact"),
+        (replay_path, "replay manifest"),
+        (source_copy_path, "fusion source copy"),
+    ):
+        _require(
+            path.is_file() and not path.is_symlink(),
+            f"{notice_id}: {label} must be a regular non-symlink file",
+        )
+    _require(
+        rendered_root.is_dir() and not rendered_root.is_symlink(),
+        f"{notice_id}: rendered_pages_path must be a regular non-symlink directory",
+    )
+    _require(
+        _digest_path(source_copy_path) == source_hash
+        and source_copy_path.stat().st_size == source_path.stat().st_size,
+        f"{notice_id}: fusion source copy differs from the authoritative attachment",
+    )
+
+    native = _json_object(native_path)
+    render_value = _json_object(render_path)
+    surya_value = _json_object(surya_path)
+    replay = _json_object(replay_path)
+    try:
+        from common_ir_pipeline.pdf_fusion.native_capture import (
+            NativeCaptureError,
+            validate_native_capture,
+        )
+        from common_ir_pipeline.pdf_fusion.render_manifest import (
+            PdfRenderManifest,
+            PdfRenderManifestError,
+            validate_render_manifest_files,
+        )
+        from common_ir_pipeline.pdf_fusion.surya_layout_artifact import (
+            SuryaLayoutArtifact,
+            SuryaLayoutArtifactError,
+            validate_surya_layout_artifact,
+        )
+    except ImportError as error:
+        raise PackValidationError(
+            "common-ir-pipeline PDF fusion validators are required; "
+            "run this with the backend environment"
+        ) from error
+
+    try:
+        validated_native = validate_native_capture(
+            native,
+            source_pdf=source_path,
+            expected_notice_id=notice_id,
+            expected_source_relative_path="source.pdf",
+        )
+        render_manifest = PdfRenderManifest.from_dict(render_value)
+        surya_artifact = SuryaLayoutArtifact.from_dict(surya_value)
+    except (NativeCaptureError, PdfRenderManifestError, SuryaLayoutArtifactError) as error:
+        raise PackValidationError(
+            f"{notice_id}: invalid PDF fusion artifact: {error}"
+        ) from error
+
+    page_count = _positive_integer(
+        validated_native.get("process_result", {}).get("page_count"),
+        label=f"{notice_id}: native capture page_count",
+    )
+    _require(
+        render_manifest.source_pdf_relative_path == "source.pdf",
+        f"{notice_id}: render manifest source path must be 'source.pdf'",
+    )
+    _require(
+        render_manifest.source_pdf_sha256 == source_hash
+        and render_manifest.source_pdf_size_bytes == source_path.stat().st_size,
+        f"{notice_id}: render manifest source binding mismatch",
+    )
+    _require(
+        render_manifest.page_count == page_count,
+        f"{notice_id}: native/render page_count mismatch",
+    )
+    try:
+        validate_render_manifest_files(render_manifest, artifact_root=fusion_root)
+    except PdfRenderManifestError as error:
+        raise PackValidationError(
+            f"{notice_id}: render manifest/file binding mismatch: {error}"
+        ) from error
+    render_digest = render_manifest.manifest_sha256()
+    _require(
+        _digest_path(render_path) == render_digest,
+        f"{notice_id}: render manifest must use canonical JSON bytes",
+    )
+
+    expected_page_paths: set[str] = set()
+    for rendered_page in render_manifest.pages:
+        relative = PurePosixPath(rendered_page.image_relative_path)
+        _require(
+            relative.parent == PurePosixPath("rendered")
+            and relative.suffix.casefold() == ".png",
+            f"{notice_id}: rendered page must be directly below rendered_pages_path",
+        )
+        page_path = fusion_root.joinpath(*relative.parts)
+        _require(
+            page_path.is_file() and not page_path.is_symlink(),
+            f"{notice_id}: rendered page is missing or is not a regular file: {relative}",
+        )
+        expected_page_paths.add(
+            f"pipeline/pdf_fusion/{rendered_page.image_relative_path}"
+        )
+    actual_page_paths = {
+        path.relative_to(directory).as_posix()
+        for path in rendered_root.rglob("*")
+        if path.is_file()
+    }
+    _require(
+        actual_page_paths == expected_page_paths,
+        f"{notice_id}: rendered page set mismatch: "
+        f"missing={sorted(expected_page_paths-actual_page_paths)!r}, "
+        f"extra={sorted(actual_page_paths-expected_page_paths)!r}",
+    )
+
+    expected_pages = tuple(range(1, page_count + 1))
+    try:
+        validate_surya_layout_artifact(
+            surya_artifact,
+            render_manifest=render_manifest,
+            expected_logical_compute_key=surya_artifact.logical_compute_key,
+            expected_producer=surya_artifact.producer,
+            expected_requested_pages=expected_pages,
+        )
+    except SuryaLayoutArtifactError as error:
+        raise PackValidationError(
+            f"{notice_id}: Surya/render binding mismatch: {error}"
+        ) from error
+    surya_digest = surya_artifact.artifact_sha256()
+    _require(
+        _digest_path(surya_path) == surya_digest,
+        f"{notice_id}: Surya layout artifact must use canonical JSON bytes",
+    )
+
+    replay = _exact_object_keys(
+        replay,
+        {"schema_version", "scope", "notice_id", "whole_document", "artifacts", "pipeline", "coverage"},
+        label=f"{notice_id}: replay manifest",
+    )
+    _require(
+        replay.get("schema_version") == "existing_pdf_native_replay/v1"
+        and replay.get("scope") == "existing_kb_offline_only"
+        and replay.get("notice_id") == notice_id
+        and replay.get("whole_document") is True,
+        f"{notice_id}: replay manifest identity mismatch",
+    )
+    replay_artifacts = _exact_object_keys(
+        replay.get("artifacts"),
+        {"source_pdf", "native_capture", "common_ir", "render_manifest", "surya_layout_artifact"},
+        label=f"{notice_id}: replay manifest artifacts",
+    )
+
+    def require_replay_file(
+        key: str,
+        *,
+        replay_relative_path: str,
+        actual_path: Path,
+    ) -> dict[str, Any]:
+        entry = replay_artifacts.get(key)
+        _require(isinstance(entry, dict), f"{notice_id}: replay artifacts.{key} must be an object")
+        _require(
+            entry.get("path") == replay_relative_path,
+            f"{notice_id}: replay artifacts.{key}.path mismatch",
+        )
+        _require(
+            entry.get("sha256") == _digest_path(actual_path)
+            and entry.get("size_bytes") == actual_path.stat().st_size,
+            f"{notice_id}: replay artifacts.{key} hash/size mismatch",
+        )
+        return entry
+
+    replay_source = require_replay_file(
+        "source_pdf", replay_relative_path="source.pdf", actual_path=source_path
+    )
+    replay_native = require_replay_file(
+        "native_capture", replay_relative_path="native.json", actual_path=native_path
+    )
+    replay_common_ir = require_replay_file(
+        "common_ir", replay_relative_path="common_ir.json", actual_path=common_ir_path
+    )
+    replay_render = require_replay_file(
+        "render_manifest", replay_relative_path="render_manifest.json", actual_path=render_path
+    )
+    replay_surya = require_replay_file(
+        "surya_layout_artifact",
+        replay_relative_path="surya_layout_artifact.json",
+        actual_path=surya_path,
+    )
+    _require(
+        replay_source.get("sha256") == source_hash,
+        f"{notice_id}: replay source binding mismatch",
+    )
+    _require(
+        replay_native.get("method") == validated_native.get("method")
+        and replay_native.get("version") == validated_native.get("version")
+        and replay_native.get("page_count") == page_count,
+        f"{notice_id}: replay native-capture identity mismatch",
+    )
+    common_document = common_ir.get("document")
+    _require(isinstance(common_document, dict), f"{notice_id}: Common IR document missing")
+    common_provenance = common_document.get("provenance")
+    _require(isinstance(common_provenance, dict), f"{notice_id}: Common IR provenance missing")
+    _require(
+        replay_common_ir.get("schema_version") == COMMON_IR_SCHEMA
+        and replay_common_ir.get("page_count") == page_count
+        and replay_common_ir.get("generator") == common_provenance.get("generator")
+        and replay_common_ir.get("generator_version") == common_provenance.get("generator_version"),
+        f"{notice_id}: replay Common IR producer/page binding mismatch",
+    )
+    _require(
+        replay_render.get("schema_version") == render_manifest.schema_version
+        and replay_render.get("source_pdf_sha256") == source_hash
+        and replay_render.get("page_count") == page_count
+        and replay_render.get("sha256") == render_digest,
+        f"{notice_id}: replay render-manifest binding mismatch",
+    )
+    _require(
+        replay_surya.get("schema_version") == surya_artifact.schema_version
+        and replay_surya.get("source_sha256") == source_hash
+        and replay_surya.get("render_manifest_sha256") == render_digest
+        and replay_surya.get("logical_compute_key") == surya_artifact.logical_compute_key
+        and replay_surya.get("producer") == surya_artifact.producer.to_dict()
+        and replay_surya.get("requested_pages") == list(expected_pages)
+        and replay_surya.get("sha256") == surya_digest,
+        f"{notice_id}: replay Surya producer/page binding mismatch",
+    )
+    pipeline = replay.get("pipeline")
+    _require(isinstance(pipeline, dict), f"{notice_id}: replay pipeline must be an object")
+    _require(
+        pipeline.get("capture_module") == "common_ir_pipeline.workers.pdf_inspector_capture"
+        and pipeline.get("adapter_module") == "common_ir_pipeline.adapters.pdf_native"
+        and pipeline.get("pdf_inspector_version") == validated_native.get("version"),
+        f"{notice_id}: replay pipeline producer mismatch",
+    )
+    coverage = replay.get("coverage")
+    _require(isinstance(coverage, dict), f"{notice_id}: replay coverage must be an object")
+    _require(
+        coverage.get("document_page_count") == page_count,
+        f"{notice_id}: replay coverage page_count mismatch",
+    )
+    _require(
+        common_document.get("page_count") == page_count
+        and common_document.get("raw_artifact_ids")
+        == ["native.json", "render_manifest.json", "surya_layout_artifact.json"],
+        f"{notice_id}: Common IR does not declare the PDF fusion artifact lineage",
+    )
+    return {
+        *(path for key, path in PDF_FUSION_PATHS.items() if key != "rendered_pages_path"),
+        PDF_FUSION_SOURCE_COPY,
+        *expected_page_paths,
+    }
+
+
 def _facts(profile: dict[str, Any], notice_id: str) -> list[dict[str, Any]]:
     comparison = profile.get("comparison_profile")
     components = profile.get("support_components")
@@ -205,7 +540,10 @@ def _validate_profile(
     profile: dict[str, Any], selection: dict[str, Any], notice_id: str
 ) -> tuple[int, int, Counter[str], Counter[str]]:
     _require(profile.get("schema_version") == PROFILE_SCHEMA, f"{notice_id}: unsupported Profile schema")
-    _require(profile.get("notice_id") == notice_id, f"{notice_id}: Profile notice_id mismatch")
+    _require(
+        profile.get("notice_id") == f"bizinfo:{notice_id}",
+        f"{notice_id}: Profile notice_id mismatch",
+    )
 
     components = profile.get("support_components")
     assert isinstance(components, list)
@@ -507,6 +845,16 @@ def _validate_notice(
     _require(profile_pack.get("common_ir_document_id") == document_id, f"{notice_id}: Profile candidate-pack Common IR mismatch")
     _require(profile_pack.get("common_ir_source_sha256") == source_hash, f"{notice_id}: Profile candidate-pack SHA-256 mismatch")
 
+    pdf_fusion_paths = _validate_pdf_fusion(
+        directory,
+        notice_id=notice_id,
+        analysis=analysis,
+        source_path=attachments[0],
+        source_hash=source_hash,
+        common_ir_path=common_irs[0],
+        common_ir=common_ir,
+    )
+
     facts, delivery_roles, projections, relational_rows = _validate_profile(
         profile, selection, notice_id
     )
@@ -517,6 +865,7 @@ def _validate_notice(
         "pipeline/source_selection.json",
         "pipeline/structured_profile.v0.2.json",
         f"pipeline/common_ir_v1/{expected_common_ir_name}",
+        *pdf_fusion_paths,
     }
     actual_paths = {
         path.relative_to(directory).as_posix()
