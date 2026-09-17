@@ -40,7 +40,7 @@ export default function UploadView({ isUploading, isDragging, analysisStatus, on
                 className={`border-2 border-dashed rounded-xl p-xl flex flex-col items-center justify-center text-center transition-all cursor-pointer mb-xl h-80 shrink-0 ${isDragging ? "border-primary bg-primary-container/10 scale-[1.01] shadow-md" : "border-outline-variant hover:bg-surface-container-low hover:border-primary bg-surface"
                     }`}
             >
-                <input type="file" ref={fileInputRef} onChange={onFileSelect} accept=".hwp,.hwpx,.pdf,.docx" className="hidden" />
+                <input type="file" ref={fileInputRef} onChange={onFileSelect} accept=".hwp,.hwpx" className="hidden" />
                 
                 {/* 💡 pointer-events-none 추가하여 내부 요소가 마우스 이벤트를 방해하지 않도록 처리 */}
                 <div className="pointer-events-none flex flex-col items-center justify-center w-full">

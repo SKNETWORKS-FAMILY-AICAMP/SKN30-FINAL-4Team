@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import UploadView from './UploadView'
 import { analysisService } from '../../services/analysisService'
 import AlertModal from '../../components/common/AlertModal'
 import { usePolling } from '../../hooks/usePolling'
+import { useFileDrop } from '../../hooks/useFileDrop'
 
 interface UploadProps {
     initialViewState?: 'upload' | 'analyzing'
@@ -12,11 +13,9 @@ interface UploadProps {
 
 export default function Upload({ initialViewState = 'upload', runId, onAnalysisComplete }: UploadProps) {
     const [isUploading, setIsUploading] = useState(initialViewState === 'analyzing')
-    const [isDragging, setIsDragging] = useState(false)
     const [analysisStatus, setAnalysisStatus] = useState<string>(initialViewState === 'analyzing' ? 'running' : 'uploading')
     const [alertMessage, setAlertMessage] = useState<string | null>(null)
     const [targetRunId, setTargetRunId] = useState<string | null>(initialViewState === 'analyzing' && runId ? runId : null)
-    const fileInputRef = useRef<HTMLInputElement | null>(null)
 
     // 💡 분석 중(analyzing) 상태로 진입하고 runId가 있으면 폴링 대상 설정
     useEffect(() => {
@@ -83,6 +82,13 @@ export default function Upload({ initialViewState = 'upload', runId, onAnalysisC
     )
 
     const handleProcessFile = async (file: File) => {
+        const ext = file.name.split('.').pop()?.toLowerCase()
+        if (ext !== 'hwp' && ext !== 'hwpx') {
+            setAlertMessage('HWP, HWPX 파일만 지원합니다.')
+            resetFileInput()
+            return
+        }
+
         setIsUploading(true)
         setAnalysisStatus('uploading')
 
@@ -103,45 +109,23 @@ export default function Upload({ initialViewState = 'upload', runId, onAnalysisC
             setIsUploading(false)
             setAnalysisStatus('uploading')
 
-            if (fileInputRef.current) {
-                fileInputRef.current.value = ''
-            }
+            resetFileInput()
         }
     }
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            handleProcessFile(e.target.files[0])
-        }
-    }
-
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragging(true)
-    }
-
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragging(false)
-    }
-
-    const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragging(false)
-        
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            const droppedFile = e.dataTransfer.files[0]
-            handleProcessFile(droppedFile)
-            e.dataTransfer.clearData()
-        }
-    }
-
-    const handleDropZoneClick = () => {
-        fileInputRef.current?.click()
-    }
+    const {
+        isDragging,
+        fileInputRef,
+        handleDragOver,
+        handleDragLeave,
+        handleFileDrop,
+        handleFileSelect,
+        handleDropZoneClick,
+        resetFileInput,
+    } = useFileDrop({
+        onFileSelected: handleProcessFile,
+        disabled: isUploading,
+    })
 
     return (
         <>
