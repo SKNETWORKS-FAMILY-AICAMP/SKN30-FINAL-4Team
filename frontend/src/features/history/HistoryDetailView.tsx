@@ -14,7 +14,7 @@ export default function HistoryDetailView({ historyId, onClose }: HistoryDetailV
                 <button 
                     type="button"
                     onClick={onClose}
-                    className="absolute top-0 right-0 w-16 h-16 flex items-center justify-center bg-primary-container text-on-tertiary hover:bg-primary transition-all z-50 cursor-pointer"
+                    className="absolute top-0 right-0 w-16 h-16 flex items-center justify-center bg-primary-container text-on-tertiary hover:bg-primary transition-all z-50"
                     title="닫기"
                 >
                     <span className="material-symbols-outlined text-[24px]">close</span>

@@ -265,7 +265,7 @@ def test_hwp_and_hwpx_create_durable_pollable_runs() -> None:
     with api:
         for user_id, filename, payload, mime in (
             (USER_ID, "요청서.hwp", HWP, "application/x-hwp"),
-            (OTHER_USER_ID, "요청서.hwpx", HWPX, "application/vnd.hancom.hwpx"),
+            (OTHER_USER_ID, "요청서.hwpx", HWPX, "application/vnd.hancom.hwp"),
         ):
             response = api.post(
                 "/api/v1/analysis-runs",
@@ -290,6 +290,7 @@ def test_hwp_and_hwpx_create_durable_pollable_runs() -> None:
             )
             assert source.declared_mime_type == mime
             assert storage.objects[(source.bucket, source.object_key)][0] == payload
+            assert storage.objects[(source.bucket, source.object_key)][1] == source.mime_type
 
             polled = api.get(
                 f"/api/v1/analysis-runs/{run_id}",
@@ -785,13 +786,18 @@ def test_upload_requires_trusted_origin_and_matching_magic() -> None:
         "application/hwp+zip",
         "application/x-hwp+zip",
         "application/vnd.hancom.hwpx",
+        # Hancom Office registers this HWP MIME for HWPX on some Windows
+        # installations; File.type therefore depends on file association.
+        "application/vnd.hancom.hwp",
         "application/zip",
         "application/octet-stream",
         "",
         "  Application/X-HWP+ZIP ; charset=binary  ",
+        "image/png",
+        "application/pdf",
     ],
 )
-def test_hwpx_accepts_browser_mime_variants(mime_type: str) -> None:
+def test_hwpx_filename_gate_ignores_untrusted_browser_mime(mime_type: str) -> None:
     upload = UploadFile(
         BytesIO(HWPX),
         filename="request.hwpx",
@@ -801,18 +807,24 @@ def test_hwpx_accepts_browser_mime_variants(mime_type: str) -> None:
     assert _safe_filename(upload) == ("request.hwpx", ".hwpx")
 
 
-@pytest.mark.parametrize("mime_type", ["image/png", "application/pdf"])
-def test_hwpx_rejects_clearly_different_mime_types(mime_type: str) -> None:
-    upload = UploadFile(
-        BytesIO(HWPX),
-        filename="request.hwpx",
-        headers=Headers({"content-type": mime_type}),
-    )
+def test_untrusted_browser_mime_cannot_bypass_hwpx_content_validation() -> None:
+    api, repository, storage = configured_client()
+    with api:
+        response = api.post(
+            "/api/v1/analysis-runs",
+            headers=headers(),
+            files={
+                "file": (
+                    "request.hwpx",
+                    b"not-a-zip",
+                    "application/vnd.hancom.hwp",
+                )
+            },
+        )
 
-    with pytest.raises(HTTPException) as caught:
-        _safe_filename(upload)
-
-    assert caught.value.status_code == 415
+    assert response.status_code == 415
+    assert not storage.objects
+    assert repository.events == []
 
 
 def test_upload_requires_uuid_idempotency_key() -> None:

@@ -225,7 +225,7 @@ export default function AiChatView({
                                         <button
                                             type="button"
                                             onClick={() => onRetryMessage(msg.assistantMessageId)}
-                                            className="self-start mt-1 px-2 py-1 bg-error text-on-error rounded text-xs flex items-center gap-1 cursor-pointer hover:opacity-90"
+                                            className="self-start mt-1 px-2 py-1 bg-error text-on-error rounded text-xs flex items-center gap-1 hover:opacity-90"
                                         >
                                             <span className="material-symbols-outlined text-[14px]">refresh</span>
                                             재시도
@@ -264,7 +264,7 @@ export default function AiChatView({
                             <button
                                 type="button"
                                 onClick={onSendMessage}
-                                className="bg-primary text-on-primary rounded-lg hover:opacity-90 transition-opacity shadow-sm flex items-center justify-center w-10 h-10 shrink-0 cursor-pointer self-end mb-0.5"
+                                className="bg-primary text-on-primary rounded-lg hover:opacity-90 transition-opacity shadow-sm flex items-center justify-center w-10 h-10 shrink-0 self-end mb-0.5"
                             >
                                 <span className="material-symbols-outlined text-[20px]">send</span>
                             </button>

@@ -51,7 +51,7 @@ export default function PasswordResetUpdateView({
                     <button
                         type="button"
                         onClick={onSubmit}
-                        className="w-full bg-primary-container text-on-primary font-title-sm text-[16px] py-3 rounded-lg hover:bg-primary-container/90 transition-colors cursor-pointer mt-md"
+                        className="w-full bg-primary-container text-on-primary font-title-sm text-[16px] py-3 rounded-lg hover:bg-primary-container/90 transition-colors mt-md"
                     >
                         변경 완료
                     </button>

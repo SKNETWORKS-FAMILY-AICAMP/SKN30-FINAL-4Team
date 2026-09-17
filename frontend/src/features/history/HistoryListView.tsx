@@ -61,7 +61,7 @@ export default function HistoryListView({ histories, hasMore, totalCount, onHist
                         <button
                             type="button"
                             onClick={onLoadMore}
-                            className="w-full py-sm border border-outline-variant rounded-lg text-body-sm text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-all flex items-center justify-center gap-xs cursor-pointer"
+                            className="w-full py-sm border border-outline-variant rounded-lg text-body-sm text-on-surface-variant hover:bg-surface-container-low hover:text-primary transition-all flex items-center justify-center gap-xs"
                         >
                             더보기 <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>expand_more</span>
                         </button>

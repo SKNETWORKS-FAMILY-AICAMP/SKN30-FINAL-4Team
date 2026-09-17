@@ -26,7 +26,7 @@ Browser
 
 | 영역 | 현재 구현 | 기준 파일 |
 |---|---|---|
-| FastAPI upload | HWP/HWPX MIME·magic·50 MiB 검사, `PREREVIEW_HTTP_MAX_BODY_BYTES` 전체 multipart cap, `Idempotency-Key` 기반 `uploading` 예약, private Storage upload, source artifact+`queued` 원자 확정, stale cleanup 재시도 | `app/api/v1/analysis_runs.py`, `app/services/analysis_runs.py`, `app/middleware/request_body_limit.py` |
+| FastAPI upload | HWP/HWPX 확장자·실제 바이트 구조·50 MiB 검사 (browser MIME은 진단 metadata로만 보존), `PREREVIEW_HTTP_MAX_BODY_BYTES` 전체 multipart cap, `Idempotency-Key` 기반 `uploading` 예약, private Storage upload, source artifact+`queued` 원자 확정, stale cleanup 재시도 | `app/api/v1/analysis_runs.py`, `app/services/analysis_runs.py`, `app/middleware/request_body_limit.py` |
 | queue | PostgreSQL `FOR UPDATE SKIP LOCKED`, 30초 heartbeat, 120초 lease, 최대 2 attempts, migration 37 analysis/chat 공용 admission cap과 full 시 503 | `supabase/migrations/21_analysis_worker_queue.sql`, `supabase/migrations/37_v02_global_queue_admission.sql`, `worker/postgres_repository.py` |
 | worker runtime | 상주 polling, SIGTERM graceful stop, 별도 DB connection heartbeat, stale fence 차단 | `worker/runtime.py`, `worker/main.py` |
 | source/profile | private Storage download/hash 확인, Common IR·Request Profile upload, source → Common IR → Profile lineage와 request projection 등록 | `worker/analysis_job.py`, `worker/postgres_analysis_store.py`, `worker/supabase_storage.py` |
