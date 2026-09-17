@@ -10,7 +10,7 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 ## 현재 수량
 
 - 순차 migration: 41개 (`01`~`41`)
-- SQL 물리 행 수: 12,334 (`wc -l`, 주석/빈 줄 포함)
+- SQL 물리 행 수: 12,362 (`wc -l`, 주석/빈 줄 포함)
 - 애플리케이션 table: 66개
 - data-bearing schema: 6개 (`app`, `ops`, `kb`, `workspace`, `result`, `retrieval`)
 - contract schema: 1개 (`api`, table 없이 View/RPC)
@@ -64,7 +64,7 @@ Frontend → FastAPI → Supabase, same-server PostgreSQL polling worker 구조�
 | 38 | `38_model1_runtime_manifest_refresh.sql` | 39 | 0 | 0 | 현재 Model 1 runtime manifest를 새 inactive immutable configuration으로 등록; 과거 분류 row 보존 |
 | 39 | `39_v02_atomic_upload_finalization.sql` | 201 | 0 | 0 | 만료 upload finalise도 전역 admission lock 아래 re-admit; full이면 cleanup_pending source key 반환 |
 | 40 | `40_v02_embedding_execution_provenance.sql` | 110 | 0 | 0 | analysis attempt가 실제 선택한 embedding configuration/zero-axis null snapshot을 fenced processing metadata에 영속 |
-| 41 | `41_report_pdf_worker_queue.sql` | 858 | 2 | 4 | fenced PDF render queue, private artifact download state, orphan/retention Storage cleanup |
+| 41 | `41_report_pdf_worker_queue.sql` | 886 | 2 | 4 | future-completion-only fenced PDF queue, private artifact download state, orphan/retention Storage cleanup |
 
 합계는 66 table, 92 index다. SQL 파일이 바뀌면 이 표의 행 수도 함께 갱신하되, 행 수는
 스키마 정확성을 대신하는 검증이 아니다.

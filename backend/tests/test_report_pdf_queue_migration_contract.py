@@ -28,15 +28,32 @@ def test_pdf_queue_is_private_and_one_pdf_artifact_is_owned_by_each_case() -> No
     assert "REVOKE ALL ON TABLE workspace.report_pdf_dispatch" in sql
 
 
-def test_ready_case_trigger_and_live_backfill_enqueue_exactly_one_pdf() -> None:
+def test_ready_case_trigger_enqueues_only_future_completions() -> None:
     sql = MIGRATION.read_text(encoding="utf-8")
     assert "workspace.enqueue_pdf_report_for_ready_case" in sql
     assert "AFTER INSERT OR UPDATE OF case_status, analysis_completed_at" in sql
     assert "NEW.case_status <> 'ready'" in sql
+    assert "OLD.case_status = 'ready'" in sql
+    assert "OLD.analysis_completed_at IS NOT DISTINCT FROM NEW.analysis_completed_at" in sql
     assert "ON CONFLICT (analysis_case_pk) WHERE (report_type = 'pdf')" in sql
     assert "INSERT INTO workspace.report_pdf_dispatch" in sql
-    assert "analysis_completed_at IS NOT NULL" in sql
-    assert "retention_expires_at > clock_timestamp()" in sql
+    assert "Do not enqueue pre-migration completed cases" in sql
+    after_trigger = sql[
+        sql.index("CREATE TRIGGER trg_result_analysis_case_enqueue_pdf_report") :
+        sql.index("-- Worker queue RPCs")
+    ]
+    assert "INSERT INTO result.report_artifact" not in after_trigger
+    assert "INSERT INTO workspace.report_pdf_dispatch" not in after_trigger
+    assert sql.count("INSERT INTO result.report_artifact") == 1
+    assert sql.count("INSERT INTO workspace.report_pdf_dispatch") == 1
+    assert "'status', 'failed', 'can_download', false" in sql
+
+
+def test_projection_base_declares_a_full_replay_refresh_guard() -> None:
+    sql = MIGRATION.read_text(encoding="utf-8")
+    assert "procedure.oid = to_regprocedure(" in sql
+    assert "v_projection_source NOT LIKE '%public_analysis_projection_v2_base%'" in sql
+    assert "DROP FUNCTION IF EXISTS api.public_analysis_projection_v2_base" in sql
 
 
 def test_claim_exposes_only_public_projection_all_sim_details_and_source_run() -> None:
@@ -92,7 +109,16 @@ def test_every_transition_is_fenced_and_ready_persists_immutable_metadata() -> N
     assert "dispatch.lease_expires_at > v_now" in sql
     assert "next_attempt_at = CASE WHEN delete_attempt_count < 1" in sql
     assert "FOR UPDATE OF dispatch, owned_report SKIP LOCKED" in sql
-    assert "RETURN QUERY\n    WITH candidate AS (" in sql
+    orphan_start = sql.index("orphan_candidate AS (")
+    orphan = sql[
+        orphan_start : sql.index("\n    candidate AS (", orphan_start)
+    ]
+    assert "FROM workspace.report_pdf_dispatch" in orphan
+    assert "FROM result.report_artifact" in orphan
+    assert "report.expires_at > v_now" in orphan
+    assert "NOT EXISTS (SELECT 1 FROM linked_candidate)" in orphan
+    assert "FOR UPDATE OF cleanup SKIP LOCKED" in orphan
+    assert "RETURN QUERY\n    WITH linked_candidate AS (" in sql
     assert "candidate.expired_processing_run_pk" in sql
     assert "failed_processing AS (" in sql
     assert "fenced_dispatch AS (" in sql

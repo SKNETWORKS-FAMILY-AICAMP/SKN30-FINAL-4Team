@@ -19,7 +19,8 @@ Frontend (HttpOnly Cookie)
       ├─ Supabase Auth
       ├─ Postgres / pgvector / private Storage
       ├─ workspace.analysis_run (queued) → analysis worker → CPL/FIT/SIM/ML
-      └─ conversation message (generating) → chat worker → grounded answer
+      ├─ conversation message (generating) → chat worker → grounded answer
+      └─ report artifact (generating) → report worker → private PDF
 ```
 
 - Redis/RQ, 브라우저의 Supabase 직접 호출, 현재 런타임의 Edge Function dispatch/callback은 사용하지 않는다.
@@ -49,6 +50,8 @@ Frontend (HttpOnly Cookie)
 
 PDF 생성은 별도 `report-worker`가 분석 완료 건을 Chromium으로 렌더링해 private Storage에 저장한다.
 보고서 조회 API는 소유권·보존기간·hash를 검증한 뒤에만 반환한다. 메시지 POST/retry는 `202 Accepted`이며 별도 `chat-worker`가 저장된 분석 결과만 근거로 답한다.
+PDF migration 적용 전에 이미 완료된 분석은 자동 생성 대상이 아니며, 적용 이후 새로
+완료되거나 실제로 재분석되어 완료 상태가 갱신된 case만 PDF queue에 등록된다.
 이력 응답의 `next_cursor`는 opaque 값이므로 수정하지 않고 그대로 다음 요청에 전달한다. cursor
 서명 비밀값을 교체하면 이미 발급한 cursor는 의도적으로 무효가 된다.
 
@@ -156,7 +159,8 @@ ML child를 완전한 sandbox로 만드는 기능은 아니다. 운영 시에는
 [FastAPI·worker 운영 가이드](fastapi/docs/FASTAPI_WORKER_RUNBOOK.md)에 정리되어 있다.
 
 `api`만 떠 있고 worker가 없으면 요청은 `queued`에 머문다. 배포 확인 시 `/health/ready`
-만 보지 말고 `docker compose ps worker chat-worker`와 최근 `ops.processing_run`도 함께 확인한다.
+만 보지 말고 `docker compose ps worker chat-worker report-worker`와 최근
+`ops.processing_run`도 함께 확인한다.
 
 `/health/live`는 프로세스 생존만, `/health/ready`는 online 의존성 설정 여부를
 나타낸다.

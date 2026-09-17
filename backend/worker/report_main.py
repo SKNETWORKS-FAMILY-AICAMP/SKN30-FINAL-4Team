@@ -23,6 +23,7 @@ from worker.supabase_storage import SupabaseWorkerStorage
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_TEMPLATE_DIR = Path(__file__).resolve().parent / "reporting" / "templates"
+REPORT_CLEANUP_INTERVAL_SECONDS = 60.0
 
 
 class ReportWorkerConfigurationError(RuntimeError):
@@ -107,6 +108,12 @@ def _worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:12]}"
 
 
+def _next_cleanup_deadline(*, now: float, cleaned: bool) -> float:
+    """Drain cleanup work immediately; back off only after an empty/error sweep."""
+
+    return now if cleaned else now + REPORT_CLEANUP_INTERVAL_SECONDS
+
+
 def main() -> int:
     load_dotenv(override=False)
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
@@ -144,17 +151,23 @@ def main() -> int:
         lease_seconds=settings.lease_seconds,
         idle_poll_seconds=settings.idle_poll_seconds, logger=LOGGER,
     )
+    next_cleanup_at = 0.0
     try:
         with runtime.install_signal_handlers():
             while not runtime.stop_requested:
-                try:
-                    cleaned = repository.cleanup_once(
-                        storage=storage, worker_id=worker_id,
-                        lease_seconds=settings.lease_seconds,
+                cleaned = False
+                now = time.monotonic()
+                if now >= next_cleanup_at:
+                    try:
+                        cleaned = repository.cleanup_once(
+                            storage=storage, worker_id=worker_id,
+                            lease_seconds=settings.lease_seconds,
+                        )
+                    except Exception:
+                        LOGGER.exception("PDF report storage cleanup failed")
+                    next_cleanup_at = _next_cleanup_deadline(
+                        now=now, cleaned=cleaned
                     )
-                except Exception:
-                    cleaned = False
-                    LOGGER.exception("PDF report storage cleanup failed")
                 outcome = runtime.run_once()
                 if not cleaned and outcome in (RunOutcome.IDLE, RunOutcome.UNAVAILABLE):
                     time.sleep(settings.idle_poll_seconds)

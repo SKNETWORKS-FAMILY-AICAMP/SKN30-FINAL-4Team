@@ -1,6 +1,7 @@
 # PreReview EC2 서버 운영 매뉴얼
 
-공용 Linux 계정 `prereview`로 현재 EC2의 Supabase, FastAPI, analysis worker, chat worker를
+공용 Linux 계정 `prereview`로 현재 EC2의 Supabase, FastAPI, analysis worker, chat worker,
+PDF report worker를
 기동·중지·점검하는 절차다.
 
 ## 1. 경로와 서비스
@@ -13,7 +14,7 @@ Supabase: /home/prereview/workspace/SKN30-FINAL-4Team-develop/.runtime/supabase-
 
 | Compose project | 서비스 | 영속 데이터 |
 |---|---|---|
-| `backend` | FastAPI, analysis worker, chat worker | 없음 |
+| `backend` | FastAPI, analysis worker, chat worker, PDF report worker | 없음 |
 | `supabase` | PostgreSQL, Auth, Storage, gateway, pooler | DB와 Storage |
 
 Backend를 재생성해도 DB는 삭제되지 않는다. Supabase에 `down -v`를 실행하면 안 된다.
@@ -44,13 +45,14 @@ docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 ```
 
-정상 운영 시 Backend에는 다음 세 컨테이너가 모두 `Up`이어야 한다.
+정상 운영 시 Backend에는 다음 네 컨테이너가 모두 `Up`이어야 한다.
 
 | 컨테이너 | 역할 | 기대 프로세스 |
 |---|---|---|
 | `backend-api-1` | FastAPI | `uvicorn main:app` |
 | `backend-worker-1` | 분석 queue worker | `python -m worker.main` |
 | `backend-chat-worker-1` | 채팅 queue worker | `python -m worker.chat_main` |
+| `backend-report-worker-1` | PDF queue worker | `python -m worker.report_main` |
 
 Backend만 모아서 확인한다.
 
@@ -60,6 +62,7 @@ docker ps --filter 'name=backend-' \
 docker top backend-api-1
 docker top backend-worker-1
 docker top backend-chat-worker-1
+docker top backend-report-worker-1
 ```
 
 Supabase의 애플리케이션 필수 컨테이너는 다음과 같다.
@@ -109,6 +112,7 @@ curl -fsS http://127.0.0.1:8001/health/ready
 docker compose -p backend logs --tail=100 api
 docker compose -p backend logs --tail=100 worker
 docker compose -p backend logs --tail=100 chat-worker
+docker compose -p backend logs --tail=100 report-worker
 ```
 
 `ready`는 실제 DB 쿼리와 worker 생존까지 보장하지 않는다. queue도 확인한다.
@@ -119,50 +123,57 @@ SELECT status, count(*)
 FROM workspace.analysis_run
 GROUP BY status
 ORDER BY status;
+
+SELECT report.status, count(*)
+FROM result.report_artifact AS report
+WHERE report.report_type = 'pdf'
+GROUP BY report.status
+ORDER BY report.status;
 "
 ```
 
-`uploading`, `queued`, `running`이 있으면 worker를 바로 내리지 않는다.
+`uploading`, `queued`, `running`이 있으면 analysis worker를 바로 내리지 않는다. PDF 배포·재기동
+전에는 `ops.processing_run`의 `run_type='report_pdf' AND status='running'`도 확인한다.
 
 ## 4. Backend 기동·재생성
 
 ```bash
 cd /home/prereview/workspace/SKN30-FINAL-4Team-develop/backend
 docker compose -p backend config --quiet
-docker compose -p backend up -d --build api worker chat-worker
+docker compose -p backend up -d --build api worker chat-worker report-worker
 docker compose -p backend ps
 ```
 
 이미 최신 이미지가 빌드되어 있으면 다음과 같이 교체한다.
 
 ```bash
-docker compose -p backend up -d --no-build api worker chat-worker
+docker compose -p backend up -d --no-build api worker chat-worker report-worker
 ```
 
 `.env`만 바뀌었다면 단순 `restart`로 반영되지 않는다.
 
 ```bash
-docker compose -p backend up -d --force-recreate api worker chat-worker
+docker compose -p backend up -d --force-recreate api worker chat-worker report-worker
 ```
 
 프로세스만 다시 시작할 때 사용한다.
 
 ```bash
-docker compose -p backend restart api worker chat-worker
+docker compose -p backend restart api worker chat-worker report-worker
 ```
 
 ## 5. Backend 중지
 
 ```bash
 cd /home/prereview/workspace/SKN30-FINAL-4Team-develop/backend
-docker compose -p backend stop -t 600 api worker chat-worker
+docker compose -p backend stop -t 600 api worker chat-worker report-worker
 ```
 
 일부만 조작할 때 서비스 이름을 지정한다.
 
 ```bash
-docker compose -p backend stop -t 600 worker chat-worker
-docker compose -p backend up -d worker chat-worker
+docker compose -p backend stop -t 600 worker chat-worker report-worker
+docker compose -p backend up -d worker chat-worker report-worker
 ```
 
 Backend에서도 일반적으로 `down`은 필요 없다. `down -v`는 사용하지 않는다.
@@ -214,10 +225,35 @@ git status --short --branch
 git switch develop
 git pull --ff-only origin develop
 git rev-parse --short HEAD
+
 cd backend
 docker compose -p backend config --quiet
-docker compose -p backend up -d --build api worker chat-worker
+docker compose -p backend up -d --build api worker chat-worker report-worker
 ```
+
+migration 적용은 평상시 코드 업데이트 명령에 포함하지 않는다. 이 저장소의
+`apply_migrations.sh`에는 ledger가 없어 매번 `01`~현재 migration을 전부 재실행하므로,
+신규 migration이 있는 배포에서만 `backend/supabase/MIGRATION_MANIFEST.md`의 적용 gate를
+따른다. 동일 Supabase/image 조합의 staging 검증, `pg_dump -Fc`와 Storage backup, 활성
+queue drain, backend 4개 service 정지, 적용 Git SHA 기록을 마친 뒤 다음을 1회 실행하고
+서비스를 다시 기동한다. 각 `cd`는 현재 shell 위치와 무관하게 그대로 실행한다.
+
+```bash
+cd /home/prereview/workspace/SKN30-FINAL-4Team-develop/backend
+docker compose -p backend stop -t 600 api worker chat-worker report-worker
+
+cd /home/prereview/workspace/SKN30-FINAL-4Team-develop
+SUPABASE_DIR="$PWD/.runtime/supabase-dev" \
+  backend/supabase/apply_migrations.sh
+
+cd backend
+docker compose -p backend up -d --build api worker chat-worker report-worker
+```
+
+migration 41은 적용 이전에 이미 완료된 분석을 PDF queue에 넣지 않는다. 적용 이후 새로
+완료되거나 실제로 재분석되어 완료 상태가 갱신된 case만 PDF 생성 대상이다. 최초
+`report-worker` 이미지는 Chromium·한글 font를 포함하므로 API 이미지보다 크고 빌드에 시간이
+더 걸릴 수 있다. 기동 전 서버의 디스크·메모리 여유를 확인한다.
 
 ## 8. 장애 대응
 
@@ -241,6 +277,7 @@ docker exec backend-api-1 python -c \
 ```bash
 docker logs --tail=100 backend-worker-1
 docker compose -p backend ps worker
+docker compose -p backend ps report-worker
 ```
 
 `Model 1 runtime manifest SHA-256 mismatch`라면 hash를 임의 변경하지 않는다. `serving.zip`,

@@ -6,7 +6,12 @@ from uuid import uuid4
 
 import pytest
 
-from worker.report_main import ReportWorkerConfigurationError, ReportWorkerSettings
+from worker.report_main import (
+    REPORT_CLEANUP_INTERVAL_SECONDS,
+    ReportWorkerConfigurationError,
+    ReportWorkerSettings,
+    _next_cleanup_deadline,
+)
 from worker.reporting.contracts import ReportPayloadV1
 from worker.reporting.handler import ReportJobHandler
 from worker.reporting.renderer import PersistentChromiumRenderer, ReportRenderError
@@ -209,3 +214,26 @@ def test_report_worker_rejects_a_limit_above_the_storage_contract() -> None:
     }
     with pytest.raises(ReportWorkerConfigurationError, match="must not exceed"):
         ReportWorkerSettings.from_env(env)
+
+
+def test_report_worker_deployment_is_hardened_and_cleanup_is_throttled() -> None:
+    backend_root = Path(__file__).parents[1]
+    compose = (backend_root / "compose.yaml").read_text(encoding="utf-8")
+    report_section = compose.split("\n  report-worker:\n", 1)[1]
+    dockerfile = (backend_root / "Dockerfile.report-worker").read_text(encoding="utf-8")
+
+    assert 'command: ["python", "-m", "worker.report_main"]' in report_section
+    assert "ports:" not in report_section
+    assert "read_only: true" in report_section
+    assert "no-new-privileges:true" in report_section
+    assert "cap_drop:\n      - ALL" in report_section
+    assert "mem_limit:" in report_section
+    assert "USER 10001:10001" in dockerfile
+
+
+def test_report_cleanup_drains_backlog_and_backs_off_after_empty_sweep() -> None:
+    now = 1234.5
+    assert _next_cleanup_deadline(now=now, cleaned=True) == now
+    assert _next_cleanup_deadline(now=now, cleaned=False) == (
+        now + REPORT_CLEANUP_INTERVAL_SECONDS
+    )

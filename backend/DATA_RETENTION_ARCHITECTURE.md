@@ -10,7 +10,7 @@ Frontend ──HttpOnly Cookie──> FastAPI
                                 ├─ PostgreSQL + pgvector
                                 └─ private Storage
                                        ↑
-                              same-server polling worker
+                              same-server polling workers
 ```
 
 브라우저는 Supabase Auth, PostgREST, Storage, Realtime, Edge Function을 직접 호출하지 않는다.
@@ -20,7 +20,7 @@ Frontend ──HttpOnly Cookie──> FastAPI
 ## 스키마의 기준 파일
 
 - 전체 현황과 적용 순서: `backend/supabase/MIGRATION_MANIFEST.md`
-- 순차 migration: `backend/supabase/migrations/01`~`40`
+- 순차 migration: `backend/supabase/migrations/01`~`41`
 - self-hosted 운영: `backend/supabase/README.md`
 - Existing 100건 bootstrap: `backend/supabase/EXISTING_KB_BOOTSTRAP.md`
 - worker DB 경계: `backend/supabase/WORKER_DB_ACCESS.md`
@@ -101,13 +101,16 @@ Request Profile을 보관한다.
 
 ### `analysis-reports`
 
-추후 생성할 PDF 보고서를 private 객체로 보관한다.
+별도 PDF report worker가 분석 결과를 Chromium으로 렌더링한 private PDF를 보관한다.
 
 ```text
-{user_id}/{analysis_case_pk}/{report_type}/{content_sha256}.{ext}
+{user_id}/{analysis_case_pk}/pdf/{processing_run_pk}.pdf
 ```
 
-현재 보고서 생성 API/worker는 미구현이다.
+브라우저는 Storage 경로나 signed URL을 받지 않는다. FastAPI의 소유자 범위 다운로드 API가
+보존기간·크기·PDF magic·SHA-256을 검증한 뒤에만 반환한다. migration 41 적용 전에 이미
+완료된 case는 자동 PDF 생성 대상이 아니며, 적용 이후 완료 또는 재분석 완료된 case만
+queue에 들어간다.
 
 ## queue와 결과 원자성
 
@@ -158,7 +161,7 @@ Existing embedding 스크립트는 로컬 Profile의 exact byte SHA-256이 현�
 | Existing KB | 버전 이력 영구 보존 | 삭제 대상 아님 |
 | Workspace | `expires_at`, `cleanup_pending` 존재 | 미구현 |
 | Result | 90일 read window, 만료 후 API read 차단 | 미구현 |
-| Report | expiry column 존재 | 생성·정리 worker 미구현 |
+| Report | result 보존기간과 동일, 만료 후 API read 차단 | report worker가 orphan/만료 Storage PDF를 fenced 삭제; DB 감사 tombstone은 유지 |
 | 감사 | `ops.cleanup_event` 존재 | 기록 scheduler 미구현 |
 
 `ON DELETE CASCADE`는 DB 하위 행만 삭제하며 Storage 객체는 지우지 않는다. 향후 cleanup은

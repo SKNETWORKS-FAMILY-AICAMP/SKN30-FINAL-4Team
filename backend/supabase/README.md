@@ -239,7 +239,8 @@ generic writer는 `40001`을 받으면 **해당 transaction 전체를 rollback�
 migration 21~26은 Redis/RQ 없이 PostgreSQL을 analysis durable queue와 fenced 결과 저장
 경계로 쓴다. v0.2의 FastAPI lifecycle/read boundary는 migration 33, raw/public result
 projection은 34, partial-axis retrieval은 35, chat idempotency/queue는 36, analysis/chat
-공용 전역 admission/backpressure는 37에서 추가한다.
+공용 전역 admission/backpressure는 37, fenced PDF queue와 private report lifecycle은
+41에서 추가한다.
 
 | 영역 | 역할 |
 |---|---|
@@ -267,10 +268,15 @@ limit)`는 purpose/target/support 중 worker가 실제 만든 1~3축만 검사�
 않는다. `PREREVIEW_EXISTING_KB_REQUIRED=true`이면 active KB/retrieval 부재는 fail-closed이고,
 `false`이면 `KB_EMPTY` 완료를 허용한다.
 
-FastAPI와 worker가 migration 33~40의 `workspace.*_v2`/`api.rpc_*_v2`를 호출할 때에도
+FastAPI와 worker가 migration 33~41의 `workspace.*_v2`/`api.rpc_*_v2` 및 PDF queue RPC를 호출할 때에도
 browser는 그 RPC에 직접 접근하지 않는다. 이 함수와 partial retrieval은 `service_role`만
 실행할 수 있으며, FastAPI는 검증한 user UUID를 인자로 넘겨 owner-scoped public DTO만
 반환한다.
+
+migration 41은 적용 이전에 이미 완료된 분석 case를 PDF queue로 backfill하지 않는다.
+적용 이후 새로 완료되거나 실제 재분석 완료로 상태가 갱신된 case만 trigger가 enqueue한다.
+과거 case는 공개 projection에서 `report.status='failed'`, `can_download=false`로 표시하며
+Storage 객체나 dispatch row를 만들지 않는다.
 
 ## EC2 최초 배포
 

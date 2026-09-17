@@ -1,5 +1,10 @@
 # Pre-review 프론트 API 계약 v1.0
 
+> **폐기된 초기 계약 문서:** 현재 프론트 구현 기준으로 사용하지 않는다. 현재 endpoint,
+> Cookie 인증, PDF 보고서 계약은
+> [`backend/fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md`](../backend/fastapi/docs/0.FASTAPI_FRONTEND_API_SPEC.md)를
+> 유일한 사람용 계약으로 사용하고, 최종 구조는 배포 API의 `/openapi.json`으로 확인한다.
+
 ## 1. 로그인
 
 `POST /api/v1/auth/login`

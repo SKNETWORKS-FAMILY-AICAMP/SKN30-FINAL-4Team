@@ -1,9 +1,9 @@
 # FastAPI·worker 배포 및 운영 가이드
 
-마지막 문서 동기화: 2026-09-14
+마지막 문서 동기화: 2026-09-17
 
 이 날짜의 통합 checkout에서는 공식 `supabase/postgres:17.6.1.169` 임시 DB의 기존
-`01`~`38` fresh 검증 상태에 `39`~`40`을 upgrade하고 전체 `01`~`40` replay를 검증했다.
+`01`~`38` fresh 검증 상태에 `39`~`41`을 upgrade하고 전체 `01`~`41` replay를 검증했다.
 현재 로컬 DB 적용, 실제 repository SQL, queue/provenance runtime contract와 두 세션
 `40001` lock retry도 통과했다. Existing 100건 Model 1 실제 추론 backfill은 100건 모두
 `OK`이고 idempotent 재실행은 100건 모두 skip됐다. 활성 결과는 `신뢰` 99건과 raw
@@ -285,6 +285,18 @@ PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/mode
 PREREVIEW_MODEL1_RUNTIME_UID=1000
 PREREVIEW_MODEL1_RUNTIME_GID=1000
 PREREVIEW_ML_TIMEOUT_SECONDS=180
+
+# PDF report worker (host 직접 실행용 .env.host.local에서만 절대경로 설정)
+PREREVIEW_REPORT_CHROMIUM_EXECUTABLE=
+PREREVIEW_REPORT_WORKER_HEARTBEAT_SECONDS=30
+PREREVIEW_REPORT_WORKER_LEASE_SECONDS=120
+PREREVIEW_REPORT_WORKER_IDLE_POLL_SECONDS=1
+PREREVIEW_REPORT_RENDER_TIMEOUT_SECONDS=60
+PREREVIEW_REPORT_STORAGE_TIMEOUT_SECONDS=30
+PREREVIEW_REPORT_DATABASE_CONNECT_TIMEOUT_SECONDS=10
+PREREVIEW_REPORT_MAX_BYTES=26214400
+PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY=2
+PREREVIEW_REPORT_WORKER_MEMORY_LIMIT=1g
 ```
 
 ### 환경 변수와 사용 주체
@@ -299,6 +311,14 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `PREREVIEW_API_LIMIT_CONCURRENCY` | Compose | - | 선택(기본 32) | Compose가 Uvicorn `--limit-concurrency`로 전달하는 replica별 동시 연결 상한 |
 | `PREREVIEW_REPORT_MAX_BYTES` | O | O (report-worker) | 선택(기본·상한 25 MiB) | API 다운로드, worker 렌더 결과, DB/Storage가 공유하는 PDF byte 상한 |
 | `PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY` | O | - | 선택(기본 2, 상한 8) | replica별 in-memory PDF 검증·다운로드 동시 처리 수 |
+| `PREREVIEW_REPORT_WORKER_HEARTBEAT_SECONDS` | - | O (report-worker) | 선택(기본 30초) | PDF claim heartbeat |
+| `PREREVIEW_REPORT_WORKER_LEASE_SECONDS` | - | O (report-worker) | 선택(기본 120초, 30~3600초) | PDF processing fence lease |
+| `PREREVIEW_REPORT_WORKER_IDLE_POLL_SECONDS` | - | O (report-worker) | 선택(기본 1초) | 유휴 queue polling 간격 |
+| `PREREVIEW_REPORT_RENDER_TIMEOUT_SECONDS` | - | O (report-worker) | 선택(기본 60초) | 작업별 Chromium render timeout |
+| `PREREVIEW_REPORT_STORAGE_TIMEOUT_SECONDS` | - | O (report-worker) | 선택(기본 30초) | private Storage 요청 timeout |
+| `PREREVIEW_REPORT_DATABASE_CONNECT_TIMEOUT_SECONDS` | - | O (report-worker) | 선택(기본 10초) | PostgreSQL 연결 timeout |
+| `PREREVIEW_REPORT_CHROMIUM_EXECUTABLE` | - | O (report-worker) | 호스트 실행 시 필수 | Chromium/Chrome 실행 파일 절대경로. Compose는 `/usr/bin/chromium`을 주입 |
+| `PREREVIEW_REPORT_WORKER_MEMORY_LIMIT` | Compose | - | 선택(기본 1 GiB) | Chromium 전용 컨테이너 memory limit |
 | `PREREVIEW_GLOBAL_QUEUE_MAX` | O | - | 선택(기본 25) | 모든 API replica의 analysis upload + chat create/retry가 공유하는 PostgreSQL admission cap(1~10000) |
 | `PREREVIEW_CURSOR_SIGNING_SECRET` | O | - | online pagination 시 필수 | analysis/conversation history의 signed opaque cursor. 비어 있으면 해당 pagination은 503 |
 | `PREREVIEW_AUTH_ALLOWED_ORIGINS` | O | - | 브라우저 사용 시 필수 | 프론트의 정확한 origin 목록, 와일드카드 금지 |
@@ -655,10 +675,16 @@ docker compose ps
 `docker compose config --quiet`은 문법과 필수 interpolation만 검사한다. `--quiet`을 빼면
 치환된 비밀값이 터미널에 표시될 수 있으므로 결과를 공유하지 않는다. 처음에는 이미지가
 ML CPU dependency를 내려받고 Model 2/3 artifact 검증까지 수행하므로 일반 API 이미지보다
-빌드 시간이 길 수 있다.
+빌드 시간이 길 수 있다. `report-worker` 이미지도 Chromium과 한글 font를 포함하므로
+별도 디스크·메모리 여유를 확인한다. 기본 runtime memory limit은 1 GiB, `/tmp` tmpfs는
+512 MiB다.
+
+migration 41은 적용 전에 이미 완료된 분석을 PDF queue로 backfill하지 않는다. 배포 이후
+새로 완료되거나 실제 재분석 완료로 case 상태가 갱신된 건만 trigger가 enqueue한다. 따라서
+배포 직후 과거 완료 건을 일괄 렌더링하는 backlog는 생기지 않는다.
 
 네 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
-analysis worker와 chat worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
+analysis worker, chat worker, report worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
 `8001`이며 `.env`의 `PREREVIEW_API_PORT`로 바꿀 수 있다. 기본 bind 주소는 `127.0.0.1`이다.
 
 ## 5. 코드·설정 변경 후 재기동
@@ -704,6 +730,7 @@ curl -fsS http://127.0.0.1:8001/health/live
 curl -fsS http://127.0.0.1:8001/health/ready
 docker compose logs --tail=100 api
 docker compose logs --tail=100 worker
+docker compose logs --tail=100 chat-worker
 docker compose logs --tail=100 report-worker
 ```
 
@@ -711,6 +738,7 @@ docker compose logs --tail=100 report-worker
 - `/health/ready`: online 환경변수와 repository 조립 여부를 확인한다.
 - 현재 `/health/ready`는 실제 DB·Storage 연결이나 worker 생존까지 검사하지 않는다.
 - `api`만 정상이고 `worker`가 없으면 업로드된 요청은 계속 `queued`에 남는다.
+- `report-worker`가 없으면 새 분석 결과의 `report.status`는 `generating`에 남는다.
 
 Supabase Studio의 SQL Editor에서는 비밀값 없이 다음 상태를 확인할 수 있다.
 
@@ -728,8 +756,10 @@ LIMIT 20;
 
 최종 확인은 테스트 계정으로 로그인해 작은 HWP/HWPX 하나를 업로드한 뒤
 `GET /api/v1/analysis-runs/{analysis_run_id}`를 polling하여 `succeeded`와
-`analysis_case_id`가 반환되는지 보는 것이다. OpenAI 비용이 발생하므로 배포마다 자동으로
-실행하지 않는다.
+`analysis_case_id`가 반환되는지 보는 것이다. 이어 결과 조회의
+`report.can_download=true`와 소유자 Cookie를 포함한
+`GET /api/v1/analysis-cases/{analysis_case_id}/report.pdf`의 `200 application/pdf`를 확인한다.
+OpenAI 비용이 발생하므로 배포마다 자동으로 실행하지 않는다.
 
 ### Operator용 HWP/HWPX live E2E
 
@@ -978,7 +1008,7 @@ fragment를 지운 뒤 trusted-Origin verify POST로 세션 Cookie를 교환한�
 
 ## 7. 호스트 Python으로 개발 실행
 
-Docker를 사용하지 않는 개발 실행에서는 API, analysis worker, chat worker를 서로 다른
+Docker를 사용하지 않는 개발 실행에서는 API, analysis worker, chat worker, report worker를 서로 다른
 터미널에서 실행한다.
 `prepare_local_backend_env.py`가 기본으로 만드는 `.env`는 컨테이너용
 `host.docker.internal` 주소를 사용하므로 호스트 프로세스에서 그대로 쓰지 않는다.
@@ -1002,9 +1032,12 @@ uv run python -m dotenv -f .env.host.local run -- python -m worker.main
 
 # 터미널 3: conversation queue
 uv run python -m dotenv -f .env.host.local run -- python -m worker.chat_main
+
+# 터미널 4: PDF report queue (.env.host.local에 Chromium 절대경로 필요)
+uv run python -m dotenv -f .env.host.local run -- python -m worker.report_main
 ```
 
-세 프로세스 모두 프로젝트의 `backend` 디렉터리에서 실행한다. `.env.host.local`도 비밀
+네 프로세스 모두 프로젝트의 `backend` 디렉터리에서 실행한다. `.env.host.local`도 비밀
 파일이므로 Git에 넣지 않는다. 이 이름은 기본 `.gitignore`의 `.env.*.local` 규칙으로
 제외된다.
 
@@ -1070,7 +1103,7 @@ Nginx를 사용하는 경우 [nginx reverse-proxy example](../../deploy/nginx/pr
 - `request-temp` 및 만료 결과의 reference-aware cleanup
 - worker heartbeat/queue lag를 포함한 readiness
 - 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
-- PDF 보고서·PDF OCR API
+- PDF 입력·OCR API와 PDF 보고서 재생성 API
 
 구현·검증 기록과 남은 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
 확인한다.

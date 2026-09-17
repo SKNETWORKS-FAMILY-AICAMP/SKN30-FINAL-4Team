@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Migration 41: fenced, asynchronous PDF report queue
 --
--- A completed live analysis case owns exactly one current ``pdf`` artifact.
+-- A case completed after this migration owns exactly one current ``pdf`` artifact.
 -- The analysis materialiser commits the case, the public result projection,
 -- and this dispatch row together.  A separate report worker leases the row
 -- and may publish storage metadata only with its processing-run fence token.
@@ -13,8 +13,23 @@ BEGIN;
 -- button state. Preserve its large, audited projection as a base function and
 -- narrow only the report member to the latest PDF artifact.
 DO $$
+DECLARE
+    v_projection_source TEXT;
 BEGIN
-    IF to_regprocedure('api.public_analysis_projection_v2_base(uuid,uuid)') IS NULL THEN
+    SELECT procedure.prosrc
+      INTO v_projection_source
+      FROM pg_proc AS procedure
+     WHERE procedure.oid = to_regprocedure(
+         'api.public_analysis_projection_v2(uuid,uuid)'
+     );
+    IF v_projection_source IS NULL THEN
+        RAISE EXCEPTION 'PUBLIC_ANALYSIS_PROJECTION_V2_IS_MISSING';
+    END IF;
+    -- apply_migrations.sh replays migration 34 before this file. Refresh the
+    -- base whenever 34 has replaced the public wrapper with its full body;
+    -- reapplying migration 41 alone leaves the existing wrapper/base intact.
+    IF v_projection_source NOT LIKE '%public_analysis_projection_v2_base%' THEN
+        DROP FUNCTION IF EXISTS api.public_analysis_projection_v2_base(UUID, UUID);
         ALTER FUNCTION api.public_analysis_projection_v2(UUID, UUID)
             RENAME TO public_analysis_projection_v2_base;
     END IF;
@@ -58,7 +73,10 @@ BEGIN
         v_payload,
         '{report}',
         COALESCE(v_report, jsonb_build_object(
-            'status', 'generating', 'can_download', false,
+            -- Pre-migration completed cases deliberately have no PDF job.
+            -- Keep the existing public enum/shape without claiming that an
+            -- unqueued legacy report is still generating.
+            'status', 'failed', 'can_download', false,
             'can_regenerate', false, 'retry_count', 0
         )),
         true
@@ -89,8 +107,6 @@ BEGIN
 END;
 $$;
 
--- One current PDF per case; other report types remain possible. A partial
--- index avoids imposing a new uniqueness rule on historical non-PDF rows.
 SET LOCAL ROLE supabase_storage_admin;
 
 UPDATE storage.buckets
@@ -99,6 +115,8 @@ UPDATE storage.buckets
 
 SET LOCAL ROLE postgres;
 
+-- One current PDF per case; other report types remain possible. A partial
+-- index avoids imposing a new uniqueness rule on historical non-PDF rows.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_result_report_artifact_one_pdf_per_case
     ON result.report_artifact (analysis_case_pk)
  WHERE report_type = 'pdf';
@@ -312,37 +330,9 @@ AFTER INSERT OR UPDATE OF case_status, analysis_completed_at
 ON result.analysis_case
 FOR EACH ROW EXECUTE FUNCTION workspace.enqueue_pdf_report_for_ready_case();
 
--- Backfill current, retained completed cases without changing an already
--- ready/failed artifact.  Fresh installations receive the same state as a
--- future analysis completion; production installations do not lose a report
--- which may already have been materialised manually.
-INSERT INTO result.report_artifact (
-    analysis_case_pk, report_type, storage_bucket, storage_object_key,
-    content_sha256, mime_type, size_bytes, status, retry_count,
-    completed_at, error_code, error_message, expires_at
-)
-SELECT analysis_case_pk, 'pdf', NULL, NULL, NULL, NULL, NULL,
-       'generating', 0, NULL, NULL, NULL, retention_expires_at
-  FROM result.analysis_case
- WHERE case_status = 'ready'
-   AND analysis_completed_at IS NOT NULL
-   AND retention_expires_at > clock_timestamp()
-ON CONFLICT (analysis_case_pk) WHERE (report_type = 'pdf') DO NOTHING;
-
-INSERT INTO workspace.report_pdf_dispatch (
-    report_artifact_pk, analysis_case_pk, source_analysis_run_id
-)
-SELECT report.report_artifact_pk, analysis_case.analysis_case_pk,
-       analysis_case.source_analysis_run_id
-  FROM result.report_artifact AS report
-  JOIN result.analysis_case
-    ON analysis_case.analysis_case_pk = report.analysis_case_pk
- WHERE report.report_type = 'pdf'
-   AND report.status = 'generating'
-   AND analysis_case.case_status = 'ready'
-   AND analysis_case.analysis_completed_at IS NOT NULL
-   AND analysis_case.retention_expires_at > clock_timestamp()
-ON CONFLICT (report_artifact_pk) DO NOTHING;
+-- Do not enqueue pre-migration completed cases. Only a future INSERT or an
+-- actual completion/re-materialisation UPDATE fires the trigger above. This
+-- avoids a deployment-time Chromium backlog for historical results.
 
 -- --------------------------------------------------------------------------
 -- Worker queue RPCs.  Browser/API roles cannot execute these functions.
@@ -752,7 +742,7 @@ BEGIN
     ON CONFLICT DO NOTHING;
 
     RETURN QUERY
-    WITH candidate AS (
+    WITH linked_candidate AS (
         SELECT cleanup.report_pdf_object_cleanup_pk,
                CASE
                    WHEN dispatch.processing_run_pk = cleanup.processing_run_pk
@@ -784,6 +774,43 @@ BEGIN
          ORDER BY cleanup.next_attempt_at, cleanup.report_pdf_object_cleanup_pk
          LIMIT 1
          FOR UPDATE OF dispatch, owned_report SKIP LOCKED
+    ),
+    orphan_candidate AS (
+        -- Artifact/dispatch rows cascade with their analysis case, while this
+        -- tombstone deliberately survives so its private object can still be
+        -- deleted. Lock the tombstone itself because there is no owner row.
+        SELECT cleanup.report_pdf_object_cleanup_pk,
+               NULL::UUID AS expired_processing_run_pk
+          FROM workspace.report_pdf_object_cleanup AS cleanup
+         WHERE cleanup.next_attempt_at <= v_now
+           AND (cleanup.cleanup_run_pk IS NULL OR cleanup.lease_expires_at <= v_now)
+           -- No dispatch owner means either the whole case was deleted or a
+           -- legacy/manual PDF artifact predates this queue migration.
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM workspace.report_pdf_dispatch AS dispatch
+                WHERE dispatch.report_artifact_pk = cleanup.report_artifact_pk
+           )
+           -- Preserve the same live-object guard as the linked arm. This also
+           -- protects a manually inserted tombstone with an unexpired owner.
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM result.report_artifact AS report
+                WHERE report.report_artifact_pk = cleanup.report_artifact_pk
+                  AND report.storage_bucket = cleanup.storage_bucket
+                  AND report.storage_object_key = cleanup.storage_object_key
+                  AND report.status = 'ready'
+                  AND report.expires_at > v_now
+           )
+           AND NOT EXISTS (SELECT 1 FROM linked_candidate)
+         ORDER BY cleanup.next_attempt_at, cleanup.report_pdf_object_cleanup_pk
+         LIMIT 1
+         FOR UPDATE OF cleanup SKIP LOCKED
+    ),
+    candidate AS (
+        SELECT * FROM linked_candidate
+        UNION ALL
+        SELECT * FROM orphan_candidate
     ),
     failed_processing AS (
         UPDATE ops.processing_run AS processing
