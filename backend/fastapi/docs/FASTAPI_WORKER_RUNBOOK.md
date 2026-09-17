@@ -5,8 +5,8 @@
 이 날짜의 통합 checkout에서는 공식 `supabase/postgres:17.6.1.169` 임시 DB의 기존
 `01`~`38` fresh 검증 상태에 `39`~`41`을 upgrade하고 전체 `01`~`41` replay를 검증했다.
 migration `42`는 통합 전 `backend-rebuild`가 게시한 중간 v4 identity를 비활성 이력으로
-보존한다. 통합 runtime은 Model 2/3 재시도를 실행 adapter로 옮겨 Model 1 manifest가
-migration 31·32·38의 v3 identity와 다시 일치한다. 실제 DB에는 배포 전에 `42`까지
+보존한다. 통합 runtime은 Model 1과 Model 2·3을 각각 인증된 CPU sidecar에 1회 적재하고,
+Model 1 manifest가 migration 31·32·38의 v3 identity와 다시 일치한다. 실제 DB에는 배포 전에 `42`까지
 적용하되 v4 row를 재분류·승격 대상으로 사용하지 않는다.
 현재 로컬 DB 적용, 실제 repository SQL, queue/provenance runtime contract와 두 세션
 `40001` lock retry도 통과했다. Existing 100건 Model 1 실제 추론 backfill은 100건 모두
@@ -39,16 +39,24 @@ FastAPI (`api`, container 8000 / host 기본 8001)
                          ▼
                polling worker (`worker`, 호스트 publish 없음)
                claim → HWP/HWPX parse → OpenAI → 결과 저장
+                         │
+                         ├─ authenticated HTTP → Model 1 CPU sidecar (`model1-cpu`)
+                         └─ authenticated HTTP → Model 2·3 CPU sidecar (`model23-cpu`)
 ```
 
-`backend/compose.yaml`은 `api`, analysis `worker`, `chat-worker`, `report-worker`를 실행한다. Supabase는 별도 Compose stack으로
+`backend/compose.yaml`은 `api`, `model1-cpu`, `model23-cpu`, analysis `worker`, `chat-worker`,
+`report-worker`를 실행한다. Supabase는 별도 Compose stack으로
 먼저 실행되어 있어야 한다. Redis/RQ, Edge Function dispatch/callback, 외부 worker HTTP
 서버는 현재 경로에서 사용하지 않는다.
 
-`worker`만 CPU 전용 `Dockerfile.ml-worker`를 사용한다. 이 이미지는 Model 2/3의 필요한
-코드·artifact와 child Python을 포함하고 Model 1은 절대 복사하지 않는다. `api`와
+`model1-cpu`, `model23-cpu`, `worker`는 CPU 전용 `Dockerfile.ml-worker`를 사용한다. 이 이미지는
+Model 2·3의 필요한 코드·artifact와 Python runtime을 포함하고 Model 1 weight는
+절대 복사하지 않는다. `api`와
 `chat-worker`는 기본 `Dockerfile`로 실행되므로 ML dependency와 Model 1 내용을 가지지
-않는다. `report-worker`는 `Dockerfile.report-worker`의 Chromium 전용 이미지로 실행한다. Model 1의 검증된 외부 runtime은 worker에만 read-only bind mount된다.
+않는다. `report-worker`는 `Dockerfile.report-worker`의 Chromium 전용 이미지로 실행한다.
+Model 1의 검증된 외부 runtime은 `model1-cpu`에만 read-only bind mount된다. Model 2·3
+artifact는 image-local이며 `model23-cpu`가 한 번 로드해 재사용한다. `worker`는 각
+sidecar의 별도 bearer token만 read-only mount해 내부 HTTP로 호출한다.
 
 ## 2. 기동 전 확인
 
@@ -70,13 +78,15 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
 2. migration 01~42를 적용한다.
-3. Git 밖의 Model 1 runtime을 준비하고, server-only `backend/.env`를 생성한다.
+3. Git 밖의 Model 1 runtime을 준비하고, server-only `backend/.env`를 생성한 뒤
+   Model 1과 Model 2·3의 resident token·identity를 각각 생성한다.
 4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
 5. Existing 분류 결과를 쓰는 기능까지 검증할 때는 current Profile 100건에 Model 1을
    dry-run 후 backfill하고 분류 설정을 활성화한다.
 6. v2 embedding을 dry-run 후 100 × 4 scope로 backfill·활성화한다.
 7. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
-8. FastAPI `api`, 전용 Docker ML analysis `worker`, `chat-worker`, `report-worker`를 기동한다.
+8. FastAPI `api`, `model1-cpu`, `model23-cpu`, Docker ML analysis `worker`, `chat-worker`,
+   `report-worker`를 기동한다.
 9. Swagger에서 `sign-in` → `me` 또는 live E2E에서 `sign-in` → HWP/HWPX upload → 상태
    poll → 결과/채팅 순서로 확인한다.
 
@@ -155,13 +165,19 @@ Tailscale 또는 호스트 내부 network로만 접근시키고, 외부에는 re
 
 ## 3. `.env` 만들기
 
-서버에는 역할이 다른 환경 파일이 세 종류 있다.
+서버에는 역할이 다른 환경 파일이 다섯 종류 있다.
 
 | 파일 | 역할 |
 |---|---|
 | Supabase 설치 디렉터리의 `.env` | 공식 Supabase Compose의 DB/JWT/SMTP 설정 |
 | `backend/supabase/.env` | 영속 DB 경로 준비 스크립트용이며 런타임 비밀값을 넣지 않음 |
 | `backend/.env` | FastAPI·worker에 전달할 Supabase/DB/OpenAI 런타임 설정 |
+| `.runtime/model1-serving/model1-resident.env` | `model1-cpu`와 worker가 공유하는 Model 1 runtime manifest pin |
+| `.runtime/model23-serving/model23-resident.env` | `model23-cpu`와 worker가 공유하는 Model 2·3 runtime manifest pin |
+
+두 bearer는 환경변수가 아닌 `.runtime/model1-serving/model1-service.token`과
+`.runtime/model23-serving/model23-service.token`에 분리해 저장하며, token·identity
+파일은 모두 mode `600`이어야 한다.
 
 Compose는 `backend` 디렉터리의 `.env`를 읽는다. 저장소 루트 `.env`에 OpenAI 설정이
 있고 공식 Supabase bundle이 `.runtime/supabase-dev`에 설치된 로컬 개발 환경에서는
@@ -182,6 +198,25 @@ chmod 600 .env .runtime/supabase-dev/.env
 cd backend
 uv sync --frozen --extra dev
 uv run python scripts/prepare_local_backend_env.py
+
+# 4) 방금 생성한 .env에서 실제 bind 경로만 읽어 Model 1 token·identity를 준비한다.
+PREREVIEW_MODEL1_SERVING_HOST_DIR="$(
+  uv run python - <<'PY'
+from dotenv import dotenv_values
+
+value = dotenv_values(".env").get("PREREVIEW_MODEL1_SERVING_HOST_DIR")
+if not value:
+    raise SystemExit("PREREVIEW_MODEL1_SERVING_HOST_DIR is missing")
+print(value)
+PY
+)"
+uv run python scripts/prepare_model1_resident_config.py \
+  --runtime "$PREREVIEW_MODEL1_SERVING_HOST_DIR"
+unset PREREVIEW_MODEL1_SERVING_HOST_DIR
+
+# 5) repository의 Model 2·3 실행 closure/artifact를 검증하고 별도 token·identity를 만든다.
+cd ..
+backend/.venv/bin/python backend/scripts/prepare_model23_resident_config.py
 ```
 
 생성기는 다음 작업만 수행한다.
@@ -199,6 +234,37 @@ uv run python scripts/prepare_local_backend_env.py
   덮어쓰지 않는다.
 
 생성기는 비밀값을 출력하지 않고 컨테이너를 시작하거나 네트워크를 호출하지 않는다.
+이어서 실행하는 두 resident 설정 스크립트는 token 값을 출력하지 않고,
+검증된 runtime·preprocessor·service bytes에 대한 identity를 함께 고정한다. 이미 두
+출력이 있으면 private regular file인지와 현재 identity가 일치하는지를 검증하고
+그대로 재사용한다.
+
+검토·승인한 runtime, preprocessor 또는 resident service 코드가 바뀌어 identity를
+갱신해야 하는 배포에서만 다음처럼 `--refresh-identity`를 추가한다. 기존
+private token은 교체하거나 출력하지 않고 identity만 원자적으로 교체한다.
+
+```bash
+cd /path/to/SKN30-FINAL-4Team/backend
+PREREVIEW_MODEL1_SERVING_HOST_DIR="$(
+  uv run python - <<'PY'
+from dotenv import dotenv_values
+
+value = dotenv_values(".env").get("PREREVIEW_MODEL1_SERVING_HOST_DIR")
+if not value:
+    raise SystemExit("PREREVIEW_MODEL1_SERVING_HOST_DIR is missing")
+print(value)
+PY
+)"
+uv run python scripts/prepare_model1_resident_config.py \
+  --runtime "$PREREVIEW_MODEL1_SERVING_HOST_DIR" \
+  --refresh-identity
+unset PREREVIEW_MODEL1_SERVING_HOST_DIR
+
+cd ..
+backend/.venv/bin/python backend/scripts/prepare_model23_resident_config.py \
+  --refresh-identity
+```
+
 LAN 프론트 origin을 추가하려면 다음처럼 옵션을 반복한다. 기본 localhost origin도
 그대로 유지된다.
 
@@ -310,10 +376,13 @@ PREREVIEW_WORKER_DATABASE_CONNECT_TIMEOUT_SECONDS=10
 PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS=120
 PREREVIEW_FREETYPE_LIB=/usr/lib/x86_64-linux-gnu/libfreetype.so.6
 
-# Docker analysis worker 전용 Model 1 read-only bind identity
+# Docker model1-cpu 전용 Model 1 read-only runtime bind identity
+# analysis worker는 runtime을 mount하지 않고 resident bearer token만 mount합니다.
 PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
 PREREVIEW_MODEL1_RUNTIME_UID=1000
 PREREVIEW_MODEL1_RUNTIME_GID=1000
+# Model 2·3 resident wire body cap; artifact는 image-local이라 host 경로가 필요 없다.
+PREREVIEW_MODEL23_MAX_REQUEST_BYTES=2097152
 PREREVIEW_ML_TIMEOUT_SECONDS=180
 
 # PDF report worker (host 직접 실행용 .env.host.local에서만 절대경로 설정)
@@ -376,13 +445,20 @@ PREREVIEW_REPORT_WORKER_MEMORY_LIMIT=1g
 | `PREREVIEW_REQUEST_NATIVE_EXACT_CANDIDATE_MODE` | - | analysis worker | 선택(기본 `off`) | Request source selection 후보 확장. `off`, `lines`, `lines+continuations`만 허용하며 오타는 작업 claim 전에 기동 실패 |
 | `PREREVIEW_EXISTING_NATIVE_EXACT_CANDIDATE_MODE` | - | Existing producer | 선택(기본 `off`) | Existing 재구조화/import producer의 동일 후보 확장 seam. 현재 polling worker는 Existing producer를 호출하지 않음 |
 | `PREREVIEW_FREETYPE_LIB` | - | O | 환경별 선택 | `rhwp` parser subprocess에만 주입 |
-| `PREREVIEW_MODEL1_SERVING_HOST_DIR` | - | O (Compose) | Docker 분석 시 필수 | 검증된 외부 `model1` 디렉터리의 절대 host 경로. `/opt/prereview/model1`로 read-only mount |
-| `PREREVIEW_MODEL1_RUNTIME_UID` / `GID` | - | O (Compose) | Docker 분석 시 필수 | mode 0700 Model 1 runtime의 숫자 owner. non-root 컨테이너 user와 일치해야 함 |
+| `PREREVIEW_MODEL1_SERVING_HOST_DIR` | - | O (Compose) | Docker 분석 시 필수 | 검증된 외부 `model1` 디렉터리의 절대 host 경로. `model1-cpu`에만 `/opt/prereview/model1`로 read-only mount하며 worker에는 경로나 runtime을 전달하지 않음 |
+| `PREREVIEW_MODEL1_RUNTIME_UID` / `GID` | - | O (Compose) | Docker 분석 시 필수 | mode 0700 Model 1 runtime과 두 mode 0600 token의 숫자 owner. non-root `model1-cpu`·`model23-cpu`·worker 공통 user와 일치해야 함 |
 | `PREREVIEW_ML_ROOT` | - | O (host 직접 실행) | host ML 실행 시 필수 | 현재 checkout의 `ml/`; Docker에서는 이미지의 `/app/ml`로 고정 |
-| `PREREVIEW_MODEL1_SERVING_DIR` | - | O (host 직접 실행) | host Model 1 실행 시 필수 | 검증된 model 1 serving 디렉터리; Docker에서는 `/opt/prereview/model1`로 고정 |
+| `PREREVIEW_MODEL1_SERVING_DIR` | - | O (host 직접 실행) | host Model 1 실행 시 필수 | 검증된 Model 1 serving 디렉터리. Docker에서는 `model1-cpu`만 image 기본 `/opt/prereview/model1`을 쓰고, remote adapter를 쓰는 worker는 빈 값으로 고정 |
+| `PREREVIEW_MODEL1_REMOTE_BASE_URL` / `PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE` | - | O (analysis worker) | Docker 분석 시 필수 | Compose가 `http://model1-cpu:8791`과 read-only token mount 경로를 고정. token 값은 환경변수에 넣지 않음 |
+| `PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256` | - | O (`model1-cpu`, analysis worker) | Docker 분석 시 필수 | `model1-resident.env`에 저장한 runtime manifest pin. sidecar healthcheck와 worker remote readiness가 같은 값을 검증 |
+| `PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME` | - | O (analysis worker) | Compose 내부 HTTP 시 필수 | TLS 없는 HTTP를 정확한 내부 hostname `model1-cpu`에만 허용 |
+| `PREREVIEW_MODEL23_REMOTE_BASE_URL` / `PREREVIEW_MODEL23_REMOTE_BEARER_TOKEN_FILE` | - | O (analysis worker) | Docker 분석 시 필수 | Compose가 `http://model23-cpu:8792`와 별도 read-only token mount 경로를 고정. token 값은 환경변수에 넣지 않음 |
+| `PREREVIEW_MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256` | - | O (`model23-cpu`, analysis worker) | Docker 분석 시 필수 | `model23-resident.env`의 Model 2·3 artifact+실행 source manifest pin. healthcheck와 worker readiness가 동일 값을 검증 |
+| `PREREVIEW_MODEL23_INTERNAL_HTTP_HOSTNAME` | - | O (analysis worker) | Compose 내부 HTTP 시 필수 | TLS 없는 HTTP를 정확한 내부 hostname `model23-cpu`와 고정 포트 8792에만 허용 |
+| `PREREVIEW_MODEL23_MAX_REQUEST_BYTES` | - | O (`model23-cpu`, analysis worker) | 선택(기본 2 MiB) | Model 2·3 canonical JSON 전체 상한. 64 KiB~8 MiB이며 client와 service 값이 다르면 readiness 실패 |
 | `PREREVIEW_ML_PYTHON_EXECUTABLE` | - | O (host 직접 실행) | host ML 실행 시 필수 | 별도 child Python. Docker에서는 image-local `/opt/prereview-ml-venv/bin/python`으로 고정 |
-| `PREREVIEW_ML_TIMEOUT_SECONDS` | - | O | 선택(기본 180초) | 각 ML child 호출의 hard timeout |
-| `PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT` | - | O | Docker에서는 필수 | startup 전 Model 1/2/3 artifact·manifest SHA-256을 확인. Compose는 `true`로 고정 |
+| `PREREVIEW_ML_TIMEOUT_SECONDS` | - | O | 선택(기본 180초) | 각 ML subprocess fallback 또는 resident HTTP 호출의 hard timeout |
+| `PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT` | - | O | Docker에서는 필수 | startup 전 Model 1과 Model 2·3 remote readiness·manifest pin을 확인. host fallback은 해당 local artifact를 직접 검증. Compose는 `true`로 고정 |
 
 현재 단일 Compose 템플릿에는 두 LLM provider의 환경변수 슬롯이 함께 있다. 사용하지 않는
 provider의 API key는 채우지 않는다. analysis worker에서 vLLM을 선택해도 retrieval
@@ -482,17 +558,24 @@ printf '%s' '{"title":"2026년 중소기업 판로 지원","purpose":"판로 개
 ```
 
 위 host venv는 **host 직접 실행과 Existing Model 1 one-shot backfill 전용**이다. Docker
-Compose의 analysis worker에는 host venv나 checkout의 `ml/`을 mount하지 않는다.
-`Dockerfile.ml-worker`가 Model 2/3의 코드·등록 artifact와 ML child dependency를
-image-local `/opt/prereview-ml-venv`에 설치하며, Model 1만
-`PREREVIEW_MODEL1_SERVING_HOST_DIR`에서 `/opt/prereview/model1`으로 read-only mount한다.
-`api`와 `chat-worker`에는 ML dependency나 Model 1 mount가 없다.
+Compose의 ML sidecar나 analysis worker에는 host venv나 checkout의 `ml/`을 mount하지
+않는다. `Dockerfile.ml-worker`가 Model 2·3의 코드·등록 artifact와 ML dependency를
+image-local `/opt/prereview-ml-venv`에 설치한다. 검증된 Model 1 runtime은
+`PREREVIEW_MODEL1_SERVING_HOST_DIR`에서 `model1-cpu`의 `/opt/prereview/model1`로만
+read-only mount된다. `worker`는 runtime을 mount하지 않고 두 mode `600` bearer token만
+read-only mount해 `model1-cpu:8791`과 `model23-cpu:8792`를 호출한다. `api`와
+`chat-worker`에는 ML dependency나 ML token mount가 없다.
 
-Compose는 Model 1 host path와 UID/GID를 필수 interpolation으로 두고,
-analysis worker를 그 numeric owner로 실행한다. `prepare_local_backend_env.py`가 이 세
-값을 자동 기록한다. 단, 생성기는 기존 `backend/.env`를 절대 덮어쓰지 않는다. 이미
-`backend/.env`가 있는 설치를 업그레이드할 때는 기존 파일을 mode 600 백업으로 옮긴 뒤
-생성기를 실행하거나, 아래 세 값을 기존 파일에 직접 추가해야 한다.
+`model1-cpu`는 host port가 없는 `model1-internal` network에서 model을 한 번 적재해
+재사용한다. Compose는 Model 1 host path와 UID/GID를 필수 interpolation으로 두고,
+`model1-cpu`, `model23-cpu`, worker를 같은 numeric owner로 실행한다. `model23-cpu`도
+host port가 없는 별도 `model23-internal` network에서 Model 2 bundle과 Model 3 reference
+pool을 startup 때 각각 한 번 적재한다. 두 serving graph는 공용 전역 실행 슬롯 1개를
+사용하며 동시에 요청이 오면 대기열로 쌓지 않고 `429 Retry-After`를 반환한다.
+`prepare_local_backend_env.py`가 이 세 값을 자동 기록한다. 단, 생성기는 기존
+`backend/.env`를 절대 덮어쓰지 않는다. 이미 `backend/.env`가 있는 설치를
+업그레이드할 때는 기존 파일을 mode 600 백업으로 옮긴 뒤 생성기를
+실행하거나, 아래 세 값을 기존 파일에 직접 추가해야 한다.
 
 ```dotenv
 PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
@@ -504,16 +587,33 @@ root 소유 runtime이나 group/other 권한이 열린 runtime은 생성기가 �
 준비하고 `backend/.env`를 만든 작업은 `sudo`가 아닌 동일한 전용 Linux 사용자로 실행한다.
 수동 `.env`로 생성기를 우회하더라도 strict worker는 effective UID나 GID가 0이면 기동을
 거부한다.
-컨테이너
-startup은 Model 1 weight와 runtime manifest, image 안의 Model 2
-bundle/cohort/taxonomy 및 Model 3 pool의 SHA-256을 모두 검증한다. 하나라도 다르면
+
+3절의 `prepare_model1_resident_config.py` 명령은 반드시 `backend/.env`의 실제
+`PREREVIEW_MODEL1_SERVING_HOST_DIR`를 `--runtime`으로 전달해 token·identity를 먼저
+생성해야 한다. runtime/service identity를 승인하고 바꾸는 배포일 때만
+`--refresh-identity`를 추가한다. 이 옵션은 기존 private token을 회전시키지 않는다.
+`prepare_model23_resident_config.py`는 별도 artifact 경로 없이 현재 repository의 `ml/`
+실행 closure를 검증해 `.runtime/model23-serving/`에 별도 token·identity를 만든다.
+이 생성기들도 `sudo`로 실행하지 않는다. POSIX에서는 runtime/ML root owner와 실행자의 non-root
+effective UID:GID가 정확히 같지 않거나 기존 token·identity owner가 다르면 파일을
+새로 만들거나 갱신하기 전에 실패한다. 따라서 Compose의 numeric user가 mode `600`
+token을 읽지 못하는 배포를 사전에 차단한다.
+
+각 sidecar healthcheck는 bearer로 readiness endpoint를 호출해 service identity,
+artifact SHA-256, runtime manifest pin과 request cap을 검증한다. worker는 두 healthy
+sidecar에 의존해 기동한 뒤 같은 authenticated remote readiness·manifest pin을 다시
+검증한다. Model 2·3 manifest에는 bundle/cohort/taxonomy/pool과 실제 실행 source가 함께
+포함된다. 서비스 시작 시에는 그 source에 고정된 NumPy·pandas·scikit-learn·XGBoost·
+SciPy·joblib·PyArrow와 FastAPI runtime 버전도 실제 image와 정확히 일치하는지 확인한다.
+base image 자체는 `Dockerfile.ml-worker`의 digest로 고정한다. 하나라도 다르면
 queue를 polling하지 않고 종료한다.
 이는 배포 누락을 `unavailable` 결과로 숨기지 않기 위한 fail-closed 정책이다.
 
-ML child에는 DB·Supabase·OpenAI credential 환경변수를 넘기지 않고 Hugging Face/
+두 ML sidecar는 DB·Supabase·Storage·OpenAI credential을 받지 않는다. host 직접 실행용
+Model 2·3 subprocess fallback에도 이 credential 환경변수를 넘기지 않고 Hugging Face/
 Transformers network fallback도 강제로 끈다. worker root filesystem은 read-only이고
 `/tmp`만 제한된 tmpfs다. 다만 Model 2의 `joblib`은 신뢰된 artifact 전제의 역직렬화
-형식이며 child subprocess 자체는 완전한 filesystem sandbox가 아니다. SHA-256/manifest
+형식이며 sidecar 자체는 완전한 filesystem sandbox가 아니다. SHA-256/manifest
 검증은 artifact 바꿔치기를 탐지하는 무결성 경계일 뿐이므로, 운영에서는 전용 OS 계정,
 최소 DB 권한, private Storage와 read-only mount를 함께 사용한다. 이 Docker ML 경로는
 rootful Docker가 동작하는 Linux `amd64`와
@@ -713,20 +813,23 @@ HTTPS 서비스에서는 `PREREVIEW_AUTH_COOKIE_SECURE=true`를 사용한다. �
 ## 4. 최초 빌드와 기동
 
 Supabase가 먼저 정상 기동되고, 3절의 `prepare_model1_runtime.py`와
-`prepare_local_backend_env.py`가 모두 성공한 뒤 실행한다. 생성기 이전에 Model 1 runtime을
-준비하지 않았다면 Compose는 필요한 host path/UID/GID가 비어 있어 fail-closed한다.
+`prepare_local_backend_env.py`, 그리고 실제 `PREREVIEW_MODEL1_SERVING_HOST_DIR`를 쓴
+`prepare_model1_resident_config.py`, `prepare_model23_resident_config.py`가 모두 성공한 뒤
+실행한다. runtime을 먼저
+준비하지 않았거나 resident token·identity가 없으면 Compose는 필요한
+host path/UID/GID, bind file 또는 manifest pin에서 fail-closed한다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team/backend
 
 docker compose config --quiet
-docker compose up -d --build
+docker compose up -d --build model1-cpu model23-cpu api worker chat-worker report-worker
 docker compose ps
 ```
 
 `docker compose config --quiet`은 문법과 필수 interpolation만 검사한다. `--quiet`을 빼면
 치환된 비밀값이 터미널에 표시될 수 있으므로 결과를 공유하지 않는다. 처음에는 이미지가
-ML CPU dependency를 내려받고 Model 2/3 artifact 검증까지 수행하므로 일반 API 이미지보다
+ML CPU dependency를 내려받고 Model 2·3 artifact/source manifest 검증까지 수행하므로 일반 API 이미지보다
 빌드 시간이 길 수 있다. `report-worker` 이미지도 Chromium과 한글 font를 포함하므로
 별도 디스크·메모리 여유를 확인한다. 기본 runtime memory limit은 1 GiB, `/tmp` tmpfs는
 512 MiB다.
@@ -735,8 +838,9 @@ migration 41은 적용 전에 이미 완료된 분석을 PDF queue로 backfill�
 새로 완료되거나 실제 재분석 완료로 case 상태가 갱신된 건만 trigger가 enqueue한다. 따라서
 배포 직후 과거 완료 건을 일괄 렌더링하는 backlog는 생기지 않는다.
 
-네 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
-analysis worker, chat worker, report worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
+여섯 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
+`worker`는 두 ML sidecar가 모두 healthy가 된 뒤 시작한다. `model1-cpu`, `model23-cpu`, analysis worker,
+chat worker, report worker는 호스트 포트를 publish하지 않는다. API의 기본 호스트 포트는
 `8001`이며 `.env`의 `PREREVIEW_API_PORT`로 바꿀 수 있다. 기본 bind 주소는 `127.0.0.1`이다.
 
 ## 5. 코드·설정 변경 후 재기동
@@ -752,13 +856,13 @@ docker compose up -d --build
 재생성한다.
 
 ```bash
-docker compose up -d --force-recreate api worker chat-worker report-worker
+docker compose up -d --force-recreate model1-cpu model23-cpu api worker chat-worker report-worker
 ```
 
 설정 변경 없이 프로세스만 재시작할 때 사용한다.
 
 ```bash
-docker compose restart api worker chat-worker report-worker
+docker compose restart model1-cpu model23-cpu api worker chat-worker report-worker
 ```
 
 worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배포 전 새 업로드를 잠시
@@ -767,7 +871,7 @@ worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배�
 시간을 준다.
 
 ```bash
-docker compose stop -t 600 api worker chat-worker report-worker
+docker compose stop -t 600 model1-cpu model23-cpu api worker chat-worker report-worker
 ```
 
 `docker compose down -v`나 Supabase stack의 volume 삭제 명령은 사용하지 않는다.
@@ -781,6 +885,8 @@ docker compose ps
 curl -fsS http://127.0.0.1:8001/health/live
 curl -fsS http://127.0.0.1:8001/health/ready
 docker compose logs --tail=100 api
+docker compose logs --tail=100 model1-cpu
+docker compose logs --tail=100 model23-cpu
 docker compose logs --tail=100 worker
 docker compose logs --tail=100 chat-worker
 docker compose logs --tail=100 report-worker
@@ -790,6 +896,8 @@ docker compose logs --tail=100 report-worker
 - `/health/ready`: online 환경변수와 repository 조립 여부를 확인한다.
 - 현재 `/health/ready`는 실제 DB·Storage 연결이나 worker 생존까지 검사하지 않는다.
 - `api`만 정상이고 `worker`가 없으면 업로드된 요청은 계속 `queued`에 남는다.
+- `worker`는 authenticated Model 1 및 Model 2·3 remote readiness와 각
+  service/artifact/runtime manifest pin을 통과하기 전에는 queue를 polling하지 않는다.
 - `report-worker`가 없으면 새 분석 결과의 `report.status`는 `generating`에 남는다.
 
 Supabase Studio의 SQL Editor에서는 비밀값 없이 다음 상태를 확인할 수 있다.
@@ -830,7 +938,7 @@ cd /path/to/SKN30-FINAL-4Team/backend
 # report-worker는 별도로 기동된 상태여야 한다.
 uv run --extra dev python scripts/run_local_live_e2e.py --file /safe/local/request.hwp
 
-# external: 실행 중인 Docker API와 worker/chat-worker/report-worker를 사용한다.
+# external: 실행 중인 Docker API와 두 ML sidecar/worker/chat-worker/report-worker를 사용한다.
 # Docker 배포 확인에는 이 모드를 사용한다. HTTP는 loopback API에서만 허용한다.
 uv run --extra dev python scripts/run_local_live_e2e.py \
   --worker-mode external \
@@ -1147,7 +1255,8 @@ Nginx를 사용하는 경우 [nginx reverse-proxy example](../../deploy/nginx/pr
 | API가 과도하게 동시 처리됨 | Compose의 Uvicorn `--limit-concurrency`와 `PREREVIEW_API_LIMIT_CONCURRENCY` 확인 |
 | analysis/conversation history가 503 | `PREREVIEW_CURSOR_SIGNING_SECRET`이 API에 비어 있지 않은지, 복수 API 인스턴스가 같은 값을 쓰는지 확인 |
 | worker가 바로 종료 | 필수 환경변수 이름 누락; worker는 설정 오류 시 exit code 2 |
-| Docker analysis worker가 시작 직후 종료 | `prepare_model1_runtime.py` 실행 여부, `backend/.env`의 Model 1 host path/UID/GID, mount 권한과 startup SHA-256/manifest 오류를 확인. 누락·불일치는 의도된 fail-closed 동작 |
+| `model1-cpu`가 unhealthy이거나 analysis worker가 시작 직후 종료 | `prepare_model1_runtime.py` 실행 여부, `backend/.env`의 실제 Model 1 host path/UID/GID, 그 경로로 `prepare_model1_resident_config.py`를 실행했는지 확인. `model1-cpu`는 runtime·token mount와 healthcheck를, worker는 token-only mount와 authenticated remote readiness/service·weight·manifest pin 오류를 확인. 누락·불일치는 의도된 fail-closed 동작 |
+| `model23-cpu`가 unhealthy이거나 analysis worker가 시작 직후 종료 | `prepare_model23_resident_config.py` 실행 여부, `.runtime/model23-serving/`의 mode-600 token/env 소유자, image 재빌드 여부를 확인. service/ML source 또는 artifact 변경 후에는 승인된 변경인지 검토한 뒤 `--refresh-identity`로 manifest만 갱신. 누락·불일치는 의도된 fail-closed 동작 |
 | HWP/HWPX parser가 `FT_Palette_Data_Get` 오류 | 이미지 재빌드와 `PREREVIEW_FREETYPE_LIB` 경로 |
 | OpenAI HTTP 200 후 `LLM_INVALID_RESPONSE` | HTTP 성공과 domain 구조 검증 성공은 다름. finish/refusal, JSON root, cross-field validation 단계를 확인하되 raw 응답·원문은 로그에 남기지 않음 |
 | `relation_container` cross-field validation 반복 | OpenAI SDK 2.54.0 고정 및 원격 응답 kind별 정규화가 포함된 최신 worker 이미지인지 확인. 필수 container 근거가 없으면 정규화로 값을 만들지 않고 실패하는 것이 정상 |

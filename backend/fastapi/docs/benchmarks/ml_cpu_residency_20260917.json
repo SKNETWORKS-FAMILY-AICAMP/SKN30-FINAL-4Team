@@ -1,0 +1,196 @@
+{
+  "schema_version": "prereview.ml-cpu-residency-benchmark/v1",
+  "measured_at": "2026-09-17",
+  "git": {
+    "branch": "backend-rebuild",
+    "head": "52a1758eee4c",
+    "working_tree_note": "resident Model 1 and combined Model 2/3 sidecar changes were not committed at measurement time"
+  },
+  "host": {
+    "kernel": "Linux 6.18.33.2-microsoft-standard-WSL2 x86_64",
+    "cpu": "Intel(R) Core(TM) i5-7200U CPU @ 2.50GHz",
+    "physical_cores": 2,
+    "logical_cpus": 4,
+    "memory_gib": 11,
+    "device": "cpu"
+  },
+  "implementation_validation": {
+    "model23_service": "prereview-model23",
+    "runtime_manifest_sha256": "e40c22eff962655da18f3e799e713ff07e41519ef79ac7984523400487f6461e",
+    "transport": "authenticated Compose-internal HTTP",
+    "worker_preflight": "passed",
+    "sidecar_health": "healthy",
+    "subprocess_resident_output_sha256_equal": true
+  },
+  "method": {
+    "unit": "ms",
+    "repetitions": 5,
+    "representative_statistic": "sort five samples, discard one minimum and one maximum, arithmetic mean of the remaining three",
+    "timing_boundary": "database, Storage, JSON parsing, CPL, and input assembly excluded",
+    "execution": "serial",
+    "page_cache": "warm",
+    "resident_output_hash_stable": true
+  },
+  "input": {
+    "notice_id": "PBLN_000000000117383",
+    "title": "2026년 스포츠산업 예비선도기업 육성 지원사업 참여기업 모집 공고",
+    "profile_version_pk": "547950af-4470-433c-b557-16df451c421e",
+    "source_sha256": "41e41a281420955f5c1765b5a0a783a12a06409478a6abb0155647e2b298cd0e",
+    "common_ir_sha256": "b0439504c8abfd74a960c5991cf30c045274e081f138038d31347e9633ceda12",
+    "profile_sha256": "a6104e6d5ddc9f8fe370576a07226c5e24da7f65e1093b52a8b6aa632413173f",
+    "model1_input_sha256": "83c6750ec78047a08a44e44120aa92377e517a7555afd8342d4a5de4eee82add",
+    "model2_proxy_input_sha256": "1a88969d81843b0d1845d57690afd34d61511bd9800e2cfb9905c44e90498c75",
+    "model3_proxy_input_sha256": "9a5ab5052ca6f899cda42940bb62d807a45699d5febe05e01d38c9311f154a61",
+    "model2_resident_http_input_sha256": "e09735fb733192fb0946675ebbe82a8db07f0558e689bf0be51aa4d6d94cf6e0",
+    "model3_resident_http_input_sha256": "40517227e967e6da2bf7d1c5ec35376c64e2984315d0e24abe42e68c841a2312",
+    "model2_model3_note": "Existing data is a real-data latency proxy; their production input is a Request Profile"
+  },
+  "artifacts": {
+    "model1": {
+      "path_role": "registered model.safetensors",
+      "sha256": "8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779",
+      "size_bytes": 442551356
+    },
+    "model2": {
+      "path": "ml/models/model2_canonical/model2_p3_bundle.joblib",
+      "sha256": "0c5b93e2a04c778ace8e07d7551b1fc7c3cc2b91cde80d94b2b1b1cf38cbabff",
+      "size_bytes": 20830778
+    },
+    "model3": {
+      "path": "ml/serving/model3/design_features_v3.parquet",
+      "sha256": "79649c095b1775832b73c18c629eca7695688a3eaa3554f3af3b96565a23a0bf",
+      "size_bytes": 10139727
+    }
+  },
+  "measurements": {
+    "model1": {
+      "cold_load_and_warm": {
+        "runner": "Docker model1-cpu Model1Runtime.load_and_warm",
+        "samples_ms": [19886.033, 19978.406, 19762.551, 19492.515, 19706.293],
+        "trimmed_mean_ms": 19784.959
+      },
+      "one_shot": {
+        "runner": "worker.adapters.ml_subprocess.Model1SubprocessMlModel",
+        "samples_ms": [9530.758, 8545.764, 8071.610, 8555.494, 8524.914],
+        "trimmed_mean_ms": 8542.057
+      },
+      "resident": {
+        "runner": "worker.adapters.model1_http.Model1HttpAdapter over Compose internal HTTP",
+        "samples_ms": [667.766, 692.292, 800.275, 761.338, 531.632],
+        "trimmed_mean_ms": 707.132,
+        "warm_idle_memory_mib": 400.1
+      },
+      "safe_output": {
+        "support_type_pred": "사업화",
+        "status": "신뢰",
+        "confidence": 0.8816877007484436
+      }
+    },
+    "model2": {
+      "library_import": {
+        "samples_ms": [1918.821, 2114.98, 1809.877, 1882.559, 1794.406],
+        "trimmed_mean_ms": 1870.419
+      },
+      "artifact_load": {
+        "samples_ms": [602.093, 647.98, 616.338, 580.056, 692.431],
+        "trimmed_mean_ms": 622.137
+      },
+      "one_shot": {
+        "runner": "worker.adapters.ml_subprocess.Model2SubprocessMlModel",
+        "samples_ms": [3068.129, 3003.634, 3124.811, 3141.938, 3101.102],
+        "trimmed_mean_ms": 3098.014
+      },
+      "resident_proxy": {
+        "runner": "ml/serving/model2/predict.py loaded once, predict_document reused",
+        "samples_ms": [331.661, 263.568, 339.947, 266.923, 261.226],
+        "trimmed_mean_ms": 287.384
+      },
+      "implementation_one_shot_same_input": {
+        "runner": "worker.adapters.ml_subprocess.Model2SubprocessMlModel in Docker ML image",
+        "samples_ms": [
+          7714.46,
+          7517.233,
+          7648.684,
+          7685.278,
+          7244.414
+        ],
+        "trimmed_mean_ms": 7617.065,
+        "output_sha256": "069e128b9e296426684a1aadc84dab2621480dc861ca61a5bfbaaebec19de02c"
+      },
+      "implementation_resident_http_same_input": {
+        "runner": "worker.adapters.model23_http.Model2HttpAdapter over Compose internal HTTP",
+        "samples_ms": [
+          398.331,
+          271.834,
+          310.175,
+          292.04,
+          263.484
+        ],
+        "trimmed_mean_ms": 291.35,
+        "output_sha256": "069e128b9e296426684a1aadc84dab2621480dc861ca61a5bfbaaebec19de02c"
+      },
+      "process_reap_proxy": {
+        "samples_ms": [264.504, 364.644, 264.723, 264.638, 265.774],
+        "trimmed_mean_ms": 265.045
+      },
+      "safe_output": {
+        "pred_won": 149971984,
+        "status": "참고",
+        "input_completeness": "partial"
+      }
+    },
+    "model3": {
+      "library_import": {
+        "samples_ms": [1900.711, 2091.483, 1757.761, 1899.236, 1731.494],
+        "trimmed_mean_ms": 1852.569
+      },
+      "reference_pool_prepare": {
+        "samples_ms": [217.779, 212.126, 250.997, 228.766, 222.889],
+        "trimmed_mean_ms": 223.145
+      },
+      "one_shot": {
+        "runner": "worker.adapters.ml_subprocess.Model3SubprocessMlModel",
+        "samples_ms": [2528.082, 2490.133, 2949.178, 2207.343, 2498.312],
+        "trimmed_mean_ms": 2505.509
+      },
+      "resident_proxy": {
+        "runner": "ml/serving/model3/score.py loaded once, reference pool reused",
+        "samples_ms": [125.451, 61.702, 61.975, 61.041, 62.528],
+        "trimmed_mean_ms": 62.068
+      },
+      "implementation_one_shot_same_input": {
+        "runner": "worker.adapters.ml_subprocess.Model3SubprocessMlModel in Docker ML image",
+        "samples_ms": [
+          7186.867,
+          7068.361,
+          6499.768,
+          7195.269,
+          6440.783
+        ],
+        "trimmed_mean_ms": 6918.332,
+        "output_sha256": "38e4997b0577f5879e46cc6a99a6f99712f1022598df7ebe9d0698cf163e60c0"
+      },
+      "implementation_resident_http_same_input": {
+        "runner": "worker.adapters.model23_http.Model3HttpAdapter over Compose internal HTTP",
+        "samples_ms": [
+          70.898,
+          111.051,
+          84.128,
+          73.157,
+          106.083
+        ],
+        "trimmed_mean_ms": 87.789,
+        "output_sha256": "38e4997b0577f5879e46cc6a99a6f99712f1022598df7ebe9d0698cf163e60c0"
+      },
+      "process_reap_proxy": {
+        "samples_ms": [214.954, 214.789, 314.675, 265.128, 265.27],
+        "trimmed_mean_ms": 248.451
+      },
+      "safe_output": {
+        "level": "과거 사업 패턴과 차이가 큼",
+        "cause_axis": "지원비율",
+        "n_valid_axes": 3
+      }
+    }
+  }
+}
