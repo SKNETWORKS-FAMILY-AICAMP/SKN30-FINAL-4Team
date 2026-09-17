@@ -17,6 +17,12 @@ Common IR에도 `adj:` 식별자와 `manual_gold`/adjudication 계열 provenance
 source-selection·Profile은 후보 실행 결과를 평가하는 외부 oracle로만 사용한다. Gold JSON을
 production prompt나 repair payload에 넣거나 정답 값을 복사하는 것은 금지한다.
 
+교정 6건에 대해서는 원본에서 다시 생성한 별도 모델 입력 `I`가 준비돼 있다. 이 입력은
+`.runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip`이며,
+SHA-256은 `24d70a944f43446563a257958fc5b97a5c484e28b5ac653ccf3f2792880d7800`이다.
+저장소의 `backend/baselines/existing_profile/pristine_hard6_common_ir.v1.json`을 공개 trust
+root로 사용한다. 구성은 PDF native-only 5건과 HWP 1건이다.
+
 아래 94/6 수치는 두 동결 corpus의 비교 기준점으로는 유효하다. 다만 baseline Profile과
 selection도 수동 교정 블록이 포함된 Common IR을 바탕으로 생성됐으므로, 이를 “완전히 사람 검토
 전인 parser→Profile baseline”이라고 해석해서는 안 된다.
@@ -49,7 +55,7 @@ PBLN_000000000122023
 1. 원본 attachment → Common IR
    - native text·표 구조·section 경계·provenance·원본 SHA-256을 비교한다.
    - PDF OCR/ODL/Surya sidecar는 아직 Gold의 native 근거를 대체하지 않는다.
-2. 동결 Common IR → source-selection → Existing Profile
+2. 고정된 pristine Common IR(`I`) → source-selection → Existing Profile
    - Fact field, exact span, component/관계, support scale measure를 비교한다.
    - 이 계층은 parser 차이 없이 의미 선택 변경만 평가할 때 사용한다.
 
@@ -150,10 +156,11 @@ uv run --project backend pytest -q backend/tests/test_existing_profile_gold_comp
 - 의미 판정이 필요한 새 차이는 새 adjudication record를 만든 뒤 Gold 차기 버전에만 반영한다.
 
 4절의 strict canonical 비교기는 동결된 자동 baseline과 Gold의 원본 JSON 차이를 재현하고,
-8절의 semantic gate는 새 후보를 ID·set-like 순서 변화에 독립적으로 평가한다. 다음 구현 단계는
-공유 production transform을 확정한 뒤 새 pipeline으로 100건 후보 ZIP을 실제 생성해 semantic
-gate에 넣는 것이다. OpenAI를 호출하는 경우 별도 승인·모델 pin·prompt bundle·token/latency
-기록이 필요하다. strict canonical 94/6 기준은 semantic gate 결과로 덮어쓰지 않는다.
+8절의 B/G/I/C semantic gate는 새 후보를 ID·set-like 순서 변화에 독립적으로 평가한다.
+교정 6건의 입력·비교 계약은 구현됐으며, 다음 단계는 승인된 pristine archive를 사용해 실제
+Terra canary를 실행하고 의미 결과를 측정하는 것이다. OpenAI를 호출하는 경우 별도 승인·모델
+pin·prompt bundle·token/latency 기록이 필요하다. strict canonical 94/6 기준은 semantic gate
+결과로 덮어쓰지 않는다.
 
 ## 6. Composite 후보의 오프라인 shadow 검사
 
@@ -211,37 +218,28 @@ uv run --project backend pytest -q \
 파이프라인의 `section scope → block router` 구간만 실행한다. source-selection, Profile 생성,
 DB·Storage 적재, embedding은 실행하지 않는다. 기본 동작은 API를 호출하지 않는 계획 검증이다.
 
-canary의 정상 입력 계약은 원본 attachment에서 재생성하고 SHA-256으로 고정한 무교정 Common
-IR뿐이다. 실행 전에는 Gold의 고정된 `freeze_manifest.json` 메타데이터만 확인한다. 로더는
-`adj:` 식별자와 `manual_gold`, `adjudicat`, `goldpatch` 계열 provenance를 발견하면 모델
-클라이언트를 만들기 전에 종료한다. source text에 우연히 같은 단어가 등장하는 경우는 검사하지
-않고 ID·provenance metadata만 검사한다.
+모델 입력은 원본 attachment에서 두 번 독립 재생성해 결정성을 확인한 pristine Common IR `I`다.
+로더는 archive·member·원본 SHA-256, 정확한 6건 목록, Common IR schema, production producer와
+parser version을 검증한다. 수동 교정 provenance, 비정상 JSON 수치, 임의 manifest 교체는 모델
+클라이언트를 만들기 전에 차단한다. Gold와 historical baseline은 dry-run에서 읽지 않는다.
 
-> **2026-09-16 감사 정정:** 현재 pin이 가리키는
-> `/srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip`의 Common IR은 이 계약을
-> 만족하지 않는다. 아래 무호출 명령은 현재 종료 코드 `1`과
-> `manual adjudication provenance` 오류로 차단되는 것이 정상이다. 원본 attachment에서 재생성한
-> 6건 Common IR archive와 새 SHA-256 pin을 함께 검토·반영하기 전에는
-> `--execute-openai`를 사용하지 않는다.
+현재 archive는 PDF 5건을 Existing 전용 `pdf_native_only` 경로로, HWP 1건을 `rhwp` 경로로
+생성했다. PDF의 Surya/ODL OCR 의미 근거나 표·다이어그램 fusion이 포함됐다는 뜻은 아니다.
+archive를 다시 확인하려면 다음 명령을 사용한다.
 
-현재 worker의 production parser entrypoint는 HWP/HWPX만 허용한다. 2026-09-16 원본 재생성
-검사에서 HWP 1건은 수동 교정 marker 0인 Common IR로 재생성됐지만, PDF 5건은 파일 손상이
-아니라 Request parser entrypoint가 의도적으로 PDF를 허용하지 않아 중단됐다. PDF 5건은
-`replay_existing_pdf_native.py`의 Existing/offline 전용 native capture 경로로 재생성한다.
-이를 Request worker나 업로드 API에 연결하지 않는다. 6건을 모두 재생성하고 아래 결속·결정성
-검사를 통과하기 전에는 새 canary pin을 발급하지 않는다.
+```bash
+backend/.venv/bin/python backend/scripts/freeze_pristine_hard6_common_ir.py \
+  --source-inventory .runtime/evaluations/pristine-common-ir-rebuild-20260916/input_manifest.json \
+  --pdf-replay-root-a .runtime/evaluations/pristine-hard6-pdf-native-20260917-v1 \
+  --pdf-replay-root-b .runtime/evaluations/pristine-hard6-pdf-native-20260917-v2 \
+  --hwp-common-ir-a .runtime/evaluations/pristine-common-ir-rebuild-20260916/runs-final/PBLN_000000000117175/common_ir_v1/PBLN_000000000117175.hwp.json \
+  --hwp-common-ir-b .runtime/evaluations/pristine-common-ir-rebuild-20260916/diagnostic-hwp-freetype/common_ir_v1/PBLN_000000000117175.hwp.json \
+  --archive .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip \
+  --manifest .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.json \
+  --check
+```
 
-새 pin은 단순히 ZIP SHA-256 한 줄만 바꾸지 않는다. 같은 리뷰 단위에서 다음을 모두 확인한다.
-
-- 6건 원본 SHA-256 결속과 수동 교정 metadata 0건
-- Common IR 재생성 뒤 occurrence ID가 Gold 감사 키와 계속 결속되는지 여부
-- `ALL_NATIVE_SAFE_MATCH_COUNT`와 `ALL_NATIVE_REACHABLE_KEY_SHA256`의 의미가 유지되는지 여부
-- attachment section 수에 따른 section-scope 호출 수와 총 호출 budget 재계산
-- full canary의 깨끗한 model input과 historical B/G/C baseline 역할 분리
-- 8절 comparator의 `candidate Common IR == baseline Common IR` 전제를 새 입력 계약에 맞게 개정
-
-재생성 결과가 종전 8회 계획과 다르다는 이유만으로 실패나 회귀라고 단정하지 않는다. 먼저
-parser·section 차이를 검토하고, 검토된 새 호출 계획과 상한을 코드·테스트·문서에 함께 pin한다.
+정상 결과는 `status=valid`와 고정 archive SHA-256이다.
 
 먼저 무호출 계획을 확인한다.
 
@@ -250,19 +248,16 @@ cd /path/to/SKN30-FINAL-4Team
 
 UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --project backend python backend/scripts/run_existing_a_routing_canary.py \
-  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
-  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5
+  --input-zip .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip
 ```
 
-현재 historical pin에서 측정한 계획은 `announcement_section_scope_v1` 2회와
-`announcement_block_router_v03` 6회, 합계 8회다. 새 무교정 archive의 정상 계획은 Common IR
-section 구조를 재검토해 다시 확정한다. 새 pin과 함께 코드·테스트의 호출 계획을 갱신하기 전에는
-현재 8회 hard pin이 의도적으로 실행을 막는다.
+현재 pristine 입력에서 확인한 계획은 `announcement_section_scope_v1` 2회와
+`announcement_block_router_v03` 6회, 합계 8회다.
 
 실제 호출은 비공개 Common IR을 외부 OpenAI API에 전송하므로 무교정 input pin 검토와 자료
 전송 승인을 모두 받은 뒤에만 명시적인 `--execute-openai`로 실행한다. `OPENAI_API_KEY`는
 출력하거나 보고서에 쓰지 않고 환경 파일에서만 읽는다. 모델은 이 canary에 고정된
-`gpt-5.6-terra`만 허용한다. 아래 실행 예시는 새 input archive pin 반영 전에는 실행하지 않는다.
+`gpt-5.6-terra`만 허용한다.
 
 ```bash
 REPORT_DIR="$(mktemp -d /tmp/existing-a-routing-canary.XXXXXX)"
@@ -270,14 +265,14 @@ REPORT_DIR="$(mktemp -d /tmp/existing-a-routing-canary.XXXXXX)"
 UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --env-file backend/.env --project backend \
   python backend/scripts/run_existing_a_routing_canary.py \
-  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
+  --input-zip .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip \
   --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
   --execute-openai \
   --model gpt-5.6-terra \
   --timeout-seconds 120 \
   --output-dir "$REPORT_DIR"
 
-jq . "$REPORT_DIR/existing-a-routing-canary.v1.json"
+jq . "$REPORT_DIR/existing-a-routing-canary.v2.json"
 ```
 
 SDK 자동 재시도는 0이며 호출 budget은 provider에 제어를 넘기기 전에 차감한다. 따라서 timeout
@@ -287,17 +282,24 @@ token 사용량은 원문·응답·request ID 없이 숫자만 `calls.usage`에 
 보고서의 세 상태는 서로 다른 의미다.
 
 - `execution_status`: 고정된 routing 호출 계획 자체의 성공 여부
-- `routing_retention_status`: generator v2가 현재 표현할 수 있는 Gold 기대 12개가 실제 A routing
-  이후에도 모두 남았는지 여부
+- `routing_retention_status`: `stable_table_relation/v1`로 고정한 Gold 기대 관계 12개가 실제
+  A routing 이후에도 모두 남았는지 여부
 - `semantic_profile_status`: source-selection과 Profile 생성을 실행하지 않으므로 항상 `not_run`
 
-현재 Gold의 multi-occurrence 기대는 30개지만 generator v2로 표현 가능한 범위는 12개다.
-따라서 `generator_expressibility=12/30`, `routed_a_retention=12/12`가 나오더라도 전체 6건의
-의미 구조화가 성공했다는 뜻은 아니다. 나머지 18개와 최종 Profile 의미 품질은 8절의
-ID·순서 비의존 semantic diff로 따로 검증해야 한다.
+통과 기준은 표 block/cell, primary/header 역할, 원래 순서와 문장부호를 보존해 정규화한 셀
+내용으로 만든 안정 관계 12개의 `12/12` 보존이다. 분리된 occurrence는 CandidatePack의 안정된
+source 순서로 다시 조립한다. HWP generator `1.0.1 → 1.1.0`에서 같은 셀이 여러 occurrence로 분리돼 raw
+occurrence 직접 비교는 `4/30`이지만, 이는 `raw_occurrence_diagnostic`에만 남고 pass/fail에는
+사용하지 않는다. stable 12/12도 전체 PDF/HWP 추출 품질이나 최종 Profile 의미 품질을 뜻하지
+않으며, 최종 의미는 8절의 semantic gate로 따로 검증한다.
 
-2026-09-15 당시 고정 자료·모델로 실행한 결과는 다음과 같다. 이후 입력 Common IR의 수동 교정
-블록 혼입이 확인됐으므로 이는 **비블라인드 참고 진단**이며 routing release gate가 아니다.
+2026-09-17 실제 pristine I를 native-as-routed로 사용한 오프라인 audit은 stable 기대 12,
+all-native 12, routed 12, 집합 동일, `status=passed`였다. 이 검사는 OpenAI를 호출하지 않은
+구조·결속 검증이다.
+
+2026-09-15 당시 오염된 historical baseline과 v1 보고서로 실행한 결과는 다음과 같다. 이후 입력
+Common IR의 수동 교정 블록 혼입이 확인됐으므로 이는 **비블라인드 legacy 참고 진단**이며 현재
+routing release gate가 아니다.
 
 | 항목 | 결과 |
 |---|---:|
@@ -322,6 +324,8 @@ source-selection/Profile 의미 정확도의 통과 기록이 아니다. 비용�
 ```bash
 UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --project backend pytest -q \
+  backend/tests/test_freeze_pristine_hard6_common_ir.py \
+  backend/tests/test_pristine_common_ir.py \
   backend/tests/test_existing_a_routing_canary.py \
   backend/tests/test_existing_composite_shadow_integration.py \
   backend/tests/test_worker_core_contract.py
@@ -329,29 +333,30 @@ uv run --project backend pytest -q \
 
 ### 7.1 교정 6건 Existing Profile full canary
 
-위 A-routing canary는 2026-09-15에 이미 실행·기록되었다. full canary의 전제 확인을 위해
-그 명령을 다시 실행하지 않는다. `run_existing_profile_canary.py`는 같은 고정 6건에서
+`run_existing_profile_canary.py`는 같은 고정 6건에서
 `section scope → block router → source-selection → final Profile assembly`를 실행하고, 각
 공고의 Profile과 그 Profile을 만든 **동일한 finalized source-selection artifact**를 후보 ZIP에
 남긴다. native exact mode는 `lines+continuations`, composite은 `shadow`로 고정한다.
 
-기본 명령은 Gold를 포함해 어떤 외부 자료도 읽지 않고, input ZIP의 SHA·Common IR 범위·수동
-교정 metadata 부재와 prompt pin·호출 상한만 확인하는 dry-run이다. 현재 historical baseline
-ZIP은 수동 교정 metadata 검사에서 차단된다.
+pristine archive를 사용한 실제 Terra full canary는 아직 실행하지 않았다. 아래 dry-run과
+오프라인 gate가 통과한 것은 입력·계약·결속이 준비됐다는 뜻이지 의미 품질 개선이 입증됐다는
+뜻이 아니다. 2026-09-15 실행은 7.2절의 오염된 legacy 진단으로만 취급한다.
+
+기본 명령은 Gold와 historical baseline을 읽지 않고, input ZIP의 SHA·Common IR 범위·수동
+교정 metadata 부재와 prompt pin·호출 상한만 확인하는 dry-run이다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team
 
 UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --project backend python backend/scripts/run_existing_profile_canary.py \
-  --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
-  --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5
+  --input-zip .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip
 ```
 
 실제 실행은 pin된 무교정 Common IR을 OpenAI에 전송한다. 따라서 새 input archive pin 검토와
 자료 전송·비용 승인을 받은 뒤에만 `--execute-openai`를 붙인다. `OPENAI_LOG=debug`는 원문 또는
 SDK 진단 노출 위험 때문에 허용하지 않는다. API key는 환경에서만 읽고 후보 ZIP·보고서·표준
-출력에 기록하지 않는다. 아래 실행 예시는 새 pin 반영 전에는 실행하지 않는다.
+출력에 기록하지 않는다.
 
 ```bash
 REPORT_DIR="$(mktemp -d /tmp/existing-profile-canary.XXXXXX)"
@@ -359,6 +364,7 @@ REPORT_DIR="$(mktemp -d /tmp/existing-profile-canary.XXXXXX)"
 UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --env-file backend/.env --project backend \
   python backend/scripts/run_existing_profile_canary.py \
+  --input-zip .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip \
   --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
   --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
   --execute-openai \
@@ -376,7 +382,7 @@ semantic 비교 보고서까지 게시되면 gate 통과 여부와 관계없이 
 ```text
 existing-profile-canary.candidates.v1.zip
 existing-profile-canary.v1.json
-existing-profile-semantic-bgc.v1.json
+existing-profile-semantic-bgic.v1.json
 ```
 
 후보 ZIP은 공고마다 정확히 세 파일만 가진다.
@@ -390,7 +396,7 @@ PBLN_…/pipeline/common_ir_v1/PBLN_….{pdf|hwp|hwpx}.json
 ZIP member 순서, JSON key 순서, ZIP timestamp/권한은 고정되어 동일한 artifact 입력이면
 결정적 bytes를 만든다. canary 요약 보고서는 raw Common IR·model response·prompt·secret을 넣지
 않고 hash, 호출 수, token 수, 단계 상태만 기록한다. 함께 쓰는
-`existing-profile-semantic-bgc.v1.json`은 기존 비교기의 opaque hash/count/공고별 gate 진단만
+`existing-profile-semantic-bgic.v1.json`은 비교기의 opaque hash/count/공고별 gate 진단만
 담는 상세 semantic 보고서다.
 
 provider SDK 재시도는 0이다. source-selection은 초기 선택과 서버 검증에 따른 최대 한 번의
@@ -400,11 +406,12 @@ block router 6, source-selection 12, anchor correction 12, 총 32회다. 응답 
 120초 이하만 허용한다. reasoning effort는 `medium`으로 고정하고 temperature는 지정하지 않는다.
 첫 공고 실패 시 나머지 공고 호출은 중단한다.
 
-Gold는 모든 OpenAI 호출이 끝나기 전에는 열거나 hash하지 않는다. input Common IR 자체도 수동
-교정 metadata가 없어야 한다. 호출이 모두 끝난 뒤에만
-freeze manifest pin을 검증하고, 기존 `compare_existing_profile_semantics.py`의 B/G/C semantic
-gate를 이 6건 후보 ZIP에 로컬 실행한다. 새 무교정 input archive와 B/G/C 비교기의 입력 결속을
-함께 갱신하기 전에는 이 단계가 release gate로 동작한다고 주장하지 않는다.
+Gold와 historical baseline은 모든 OpenAI 호출이 끝나기 전에는 열거나 hash하지 않는다. input
+Common IR 자체도 수동 교정 metadata가 없어야 한다. 호출이 모두 끝난 뒤에만 freeze manifest
+pin을 검증하고 `compare_existing_profile_semantics.py`의 B/G/I/C semantic gate를 이 6건 후보
+ZIP에 로컬 실행한다. B는 역사 기준과 94/6 calibration, G는 사람 검토 oracle, I는 실제 pristine
+모델 입력, C는 이번 실행 후보다. 배포용 `document.provenance.source_location`을 제외하면 C의
+Common IR은 I와 같아야 한다.
 
 성공 판정은 `execution_status=succeeded`와 `semantic_gate.status=passed`가 모두 성립하는 경우다.
 `semantic_gate.status=failed`는 모델 호출 성공과 별개로 후보 의미 graph가 Gold와 같지 않거나
@@ -447,8 +454,12 @@ OpenAI 호출과 6건의 Profile·source-selection 생성은 모두 완료됐지
 └── existing-profile-semantic-bgc.v1.json
 ```
 
-후보 ZIP을 현재 비교 코드로 다시 오프라인 검증해도 선택 6 / 통과 0 / 실패 6과 종료 코드 `2`가
-재현됐다. 여섯 공고 모두 승인된 Gold 추가 atom 회수는 0이었다. 원문이 없어서 실패한 경우보다
+위 `existing-profile-semantic-bgc.v1.json`은 당시 계약으로 생성한 legacy B/G/C 보고서명이다.
+현재 pristine 실행의 보고서명은 `existing-profile-semantic-bgic.v1.json`이다.
+
+후보 ZIP을 당시 B/G/C 비교 코드로 다시 오프라인 검증해도 선택 6 / 통과 0 / 실패 6과 종료
+코드 `2`가 재현됐다. 현재 B/G/I/C gate에는 이 오염 후보를 입력하지 않는다. 여섯 공고 모두
+승인된 Gold 추가 atom 회수는 0이었다. 원문이 없어서 실패한 경우보다
 다음과 같은 source-selection 및 assembly 문제가 공통적으로 확인됐다.
 
 - 표의 행·열 축과 병합 문맥을 완전한 명제 및 지원 컴포넌트로 조립하지 못함
@@ -463,17 +474,18 @@ OpenAI 호출과 6건의 Profile·source-selection 생성은 모두 완료됐지
 
 ## 8. ID·순서 비의존 Profile 의미 회귀 비교
 
-`compare_existing_profile_semantics.py`는 자동 baseline(`B`), 사람 검토 Gold(`G`), 새
-후보(`C`)의 **Profile + source-selection + Common IR** 세 산출물을 함께 검증하고 비교한다.
-OpenAI·DB·Storage를 호출하지 않는 오프라인 검사다. 생성할 때마다 달라질 수 있는 Fact·
-component ID와 set-like 배열 순서는 비교에서 제외하지만, 원문 값·상태·역할·Common IR
-occurrence 근거·component membership·방향성 관계·지원 규모 projection은 보존한다.
+`compare_existing_profile_semantics.py`는 자동 historical baseline(`B`), 사람 검토 Gold(`G`),
+고정 pristine 모델 입력(`I`), 새 후보(`C`)를 함께 검증하고 비교한다. 후보의
+**Profile + source-selection + Common IR** 세 산출물을 검사하며 OpenAI·DB·Storage를 호출하지
+않는다. 생성할 때마다 달라질 수 있는 Fact·component ID와 set-like 배열 순서는 비교에서
+제외하지만, 원문 값·상태·역할·component membership·방향성 관계·지원 규모 projection은
+보존한다.
 
-이 명령은 입력 파일명이나 경로를 신뢰하지 않는다. 실행 전에 baseline ZIP과 Gold
-`freeze_manifest.json`의 SHA-256을 검증하고, 후보 ZIP도
+이 명령은 입력 파일명이나 경로를 신뢰하지 않는다. 실행 전에 B, G, I의 SHA-256을 검증하고,
+후보 ZIP도
 `--expected-candidate-sha256`을 주면 같은 방식으로 검증한다. pin 불일치는 비교나
-보고서 기록 전에 종료 코드 `1`로 실패한다. 아래 B/G pin은 이 Gold v5 릴리스의 trust
-root이므로, 새 Gold 릴리스에서는 pin·calibration 기대값을 같은 리뷰 변경으로 교체한다.
+보고서 기록 전에 종료 코드 `1`로 실패한다. B/G pin은 Gold v5 calibration trust root이고,
+I pin은 현재 hard-6 모델 입력 trust root다.
 
 최종 통과 조건은 승인 delta를 부분적으로 세는 휴리스틱이 아니라 의미 multigraph의
 `C == G`다. 보고서에는 원문 대신 atom SHA-256과 종류·개수만 기록한다. 입력 ZIP 파일명이나
@@ -487,26 +499,20 @@ PBLN_<15자리>/pipeline/source_selection.json
 PBLN_<15자리>/pipeline/common_ir_v1/<한 개의 JSON>
 ```
 
-아래 `candidate Common IR == baseline Common IR`은 **현재 historical 비교기의 구현 계약**이다.
-그러나 그 baseline Common IR이 canary 모델 입력으로 부적합하다는 사실이 확인됐으므로, 새
-무교정 input을 쓰는 canary에는 현재 후보 gate를 그대로 연결할 수 없다. 깨끗한 input corpus를
-별도 trust root로 받도록 comparator와 occurrence 결속을 개정하기 전까지 8절의 candidate mode는
-새 canary의 release gate가 아니다. baseline/Gold calibration 재현 용도로만 구분해 사용한다.
-
-후보의 Common IR은 Gold에서 복사하지 않는다. baseline의 동결 Common IR을 후보 Profile
-생성 입력으로 사용하고 후보 ZIP에도 그대로 포함해야 한다. 배포 경로인
-`document.provenance.source_location`만 달라질 수 있으며, 나머지 입력이 baseline과 다르면
-의미 비교 전에 실패한다.
+후보의 Common IR은 Gold나 historical baseline에서 복사하지 않는다. 후보 Profile을 생성한
+고정 pristine `I`를 후보 ZIP에도 포함해야 한다. 배포 경로인
+`document.provenance.source_location`만 달라질 수 있으며, 나머지 Common IR이 I와 다르면 의미
+비교 전에 실패한다. B는 모델 입력이 아니라 역사 delta와 94/6 calibration 전용이다.
 
 후보의 출처 정보도 후보가 스스로 주장한 문자열만으로 신뢰하지 않는다. parent lineage가 없는
-RunPod `0.1.4` 호환 후보는 baseline Common IR에서 기본 projection → PDF inspector의 native
+RunPod `0.1.4` 호환 후보는 I Common IR에서 기본 projection → PDF inspector의 native
 table occurrence → native line atom → 최대 3개 native continuation composite 순으로
 **결정적 source universe**를 다시 만들며, 후보는 그 ID·본문이 정확히 같은 block의 부분집합만
 쓸 수 있다. 반면 `semantic_structuring.native_exact_transform`의 parent lineage가 기록된 현재
 worker 후보는 source-selection의 atomic ID 집합만 라우팅 결과로 받아들이고, 각 block의
-본문·locator를 Common IR에서 다시 만든 production A-pack에 같은 transform variant를 적용한다.
+본문·locator를 I Common IR에서 다시 만든 production A-pack에 같은 transform variant를 적용한다.
 이 경우 current/parent pack identity와 전체 `source_block_texts` map까지 정확히 일치해야 한다.
-baseline 전용 legacy block이나 Gold 수동 교정
+historical baseline 전용 legacy block이나 Gold 수동 교정
 `adj:*` block을 후보가 복사하는 것은 허용하지 않는다. source-selection의 선택값, materialized
 evidence, Profile fact/component도 서로 일치해야 한다. 지원 규모 수치는 locator의 원문 토큰을
 다시 해석해 measure 종류·단위·역할·값과 맞는지 확인한다. 새 후보의 component 이름은 해당
@@ -522,12 +528,14 @@ parent lineage가 있는 현재 worker 후보는 위 production A-pack replay �
 보고서의
 `normalization.candidate_source_admission.scope`도 이 범위를 명시한다.
 
-의미 비교에서 원문 위치의 공통 식별자는 `source_sha256 + occurrence_ids`다. 수동 교정 Gold가
-새 grouping block과 section을 만들었더라도 같은 원문 occurrence라면 새 파이프라인 결과와
-동일하게 비교하기 위해서다. CandidatePack block/offset과 Common IR block/cell/section은 버리는
-정보가 아니라 위 admission 단계에서 엄격히 검증하는 locator이며, 의미 atom에는 넣지 않는다.
-component의 local source locator도 현재 frozen raw-occurrence alias가 없어 검증 전용이고,
-component 의미 자체인 kind·이름·상태·소속 fact는 비교한다.
+후보의 evidence/context occurrence locator ID는 source admission 단계에서 I와 결속해 엄격히
+검증한다. 다만 검증을 마친 locator ID 자체는 C와 G의 의미 동등성 atom에는 넣지 않는다. 수동
+adjudication 과정에서 새 occurrence ID를 만든 Gold를 후보가 복제하게 하지 않기 위해서다.
+대신 검증된 CandidatePack 근거 원문의 SHA-256을 `evidence`와 `context_evidence`에 각각 남기므로,
+UUID만 달라지고 근거 내용이 같으면 통과하지만 다른 문단을 근거로 고르면 실패한다.
+CandidatePack block/offset과 Common IR block/cell/section도 admission 단계의 locator로 검증하고,
+component 의미 자체인 kind·이름·상태·소속 fact는 비교한다. B/G calibration은 기존의
+provenance-sensitive 94/6 비교를 그대로 유지한다.
 
 의미를 버릴 위험이 있는 아직 지원하지 않는 구조는 조용히 무시하지 않고 실패한다. 현재
 `table_catalog`, `unresolved_relations`, 두 경계를 하나의 locator로 표현한 `range` measure가
@@ -538,33 +546,36 @@ component 의미 자체인 kind·이름·상태·소속 fact는 비교한다.
 eligibility 교정값은 label과 body 사이의 `: ` 삽입 및 두 번째 bullet 제거가 필요하므로 현재
 계약으로는 exact source를 만들 수 없다. 이런 값은 `adj:*`를 예외 허용하지 않고, 향후
 `derived_text_basis + source_spans`와 표 관계를 포함한 versioned production transform 계약을
-정한 뒤 지원한다. 따라서 이 단계의 비교기는 B/G/C 의미 gate와 출처 검증 도구를 제공하지만,
+정한 뒤 지원한다. 따라서 이 단계의 비교기는 B/G/I/C 의미 gate와 출처 검증 도구를 제공하지만,
 현 production pipeline이 Gold 100건을 전부 생성할 수 있다고 주장하지 않는다.
 
-100건 전체 후보를 검사하는 예시는 다음과 같다.
+현재 I loader 계약은 교정 hard-6 정확히 6건이다. 후보 C도 같은 6건이어야 한다. 검사 예시는
+다음과 같다.
 
 ```bash
 cd /path/to/SKN30-FINAL-4Team
 
-REPORT_DIR="$(mktemp -d /tmp/existing-semantic-bgc.XXXXXX)"
+REPORT_DIR="$(mktemp -d /tmp/existing-semantic-bgic.XXXXXX)"
 
 UV_CACHE_DIR=/tmp/prereview-uv-cache \
 uv run --project backend python backend/scripts/compare_existing_profile_semantics.py \
   --baseline-zip /srv/pre-review/imports/bizinfo-existing/structured-profiles-100.zip \
   --gold-root /path/to/frozen_existing_profile_gold_100_20260909_v5 \
-  --candidate-zip /path/to/candidate-existing-profile-100.zip \
+  --input-zip .runtime/evaluations/pristine-hard6-common-ir-20260917-v1/pristine-hard6-common-ir.v1.zip \
+  --candidate-zip /path/to/candidate-existing-profile-hard6.zip \
   --output-dir "$REPORT_DIR" \
   --expected-reference-count 100 \
-  --expected-candidate-count 100 \
+  --expected-candidate-count 6 \
   --expected-baseline-sha256 6649f1a5aab36f659d688634103950d3b73f8a5903a453aabdbbd9f5bc0f7f0d \
   --expected-gold-freeze-manifest-sha256 a2c35fb4c98c92c23ff34faa045a16ec4e8ed1ea4bae5397caab547cb3db6987 \
+  --expected-input-sha256 24d70a944f43446563a257958fc5b97a5c484e28b5ac653ccf3f2792880d7800 \
   --expected-candidate-sha256 <후보_ZIP_SHA256>
 
-jq . "$REPORT_DIR/existing-profile-semantic-bgc.v1.json"
+jq . "$REPORT_DIR/existing-profile-semantic-bgic.v1.json"
 ```
 
-교정 6건만 담은 후보 ZIP은 `--expected-candidate-count 6`과 아래 여섯
-`--notice-id`를 함께 준다. 요청 ID의 중복·누락은 허용하지 않는다.
+전체 hard-6를 검사할 때는 `--notice-id`가 필요 없다. 부분 진단이 필요할 때만 아래 ID 중
+`--notice-id`를 반복하며, 중복·미등록 ID는 허용하지 않는다.
 
 ```text
 PBLN_000000000103645
@@ -577,7 +588,8 @@ PBLN_000000000122023
 
 후보 gate의 종료 코드는 입력/계약 오류 `1`, 의미 불일치 `2`, 전건 통과 `0`이다. B/G의
 검토 delta를 재현하는 기준점은 후보 모드의 우회 조건이 아니라 명시적인 calibration 모드로만
-실행한다.
+실행한다. calibration은 B/G 전용이므로 `--input-zip`, `--input-manifest`,
+`--expected-input-sha256`을 주면 실패한다.
 
 ```bash
 REPORT_DIR="$(mktemp -d /tmp/existing-semantic-calibration.XXXXXX)"
