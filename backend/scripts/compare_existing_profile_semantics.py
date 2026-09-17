@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline provenance-grade B/G/C semantic gate for Existing Profiles."""
+"""Offline provenance-grade B/G/I/C semantic gate for Existing Profiles."""
 
 from __future__ import annotations
 
@@ -23,6 +23,9 @@ from worker.evaluation.existing_profile_semantic_diff import (  # noqa: E402
     calibrate_semantic_profile_corpora,
     compare_semantic_profile_corpora,
     write_semantic_report,
+)
+from worker.evaluation.pristine_common_ir import (  # noqa: E402
+    PRISTINE_HARD6_ARCHIVE_SHA256,
 )
 
 
@@ -191,6 +194,21 @@ def _verify_input_pins(args: argparse.Namespace) -> None:
         label="Gold freeze manifest",
         max_bytes=MAX_PINNED_FREEZE_MANIFEST_BYTES,
     )
+    if args.candidate_zip is not None:
+        if args.input_zip is None or args.expected_input_sha256 is None:
+            raise ExistingProfileSemanticError(
+                "candidate mode requires --input-zip and --expected-input-sha256"
+            )
+        if args.expected_input_sha256 != PRISTINE_HARD6_ARCHIVE_SHA256:
+            raise ExistingProfileSemanticError(
+                "--expected-input-sha256 does not match the checked-in pristine input pin"
+            )
+        _require_sha256_pin(
+            path=args.input_zip,
+            expected=args.expected_input_sha256,
+            label="pristine input archive",
+            max_bytes=MAX_PINNED_ARCHIVE_BYTES,
+        )
     if args.expected_candidate_sha256 is not None:
         if args.candidate_zip is None:
             raise ExistingProfileSemanticError(
@@ -217,6 +235,8 @@ def _verify_loaded_report_pins(
             args.expected_gold_freeze_manifest_sha256,
         ),
     )
+    if args.expected_input_sha256 is not None:
+        expected += (("input", "archive_sha256", args.expected_input_sha256),)
     if args.expected_candidate_sha256 is not None:
         expected += (
             ("candidate", "archive_sha256", args.expected_candidate_sha256),
@@ -282,8 +302,9 @@ def _calibration_matches_expectations(args: argparse.Namespace, report: dict[str
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Compare baseline (B), frozen Gold (G), and candidate (C) Existing "
-            "Profile+source-selection+Common-IR archives without network/runtime I/O."
+            "Compare historical baseline (B), frozen Gold (G), pinned pristine "
+            "input (I), and candidate (C) Existing Profile artifacts without "
+            "network/runtime I/O."
         )
     )
     parser.add_argument("--baseline-zip", required=True, type=Path)
@@ -307,6 +328,24 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Report the reviewed B/G split without treating baseline as a generated candidate.",
     )
+    parser.add_argument(
+        "--input-zip",
+        type=Path,
+        default=None,
+        help="Pinned pristine hard-6 Common IR ZIP; required in candidate mode.",
+    )
+    parser.add_argument(
+        "--input-manifest",
+        type=Path,
+        default=None,
+        help="Optional deployed copy of the checked-in pristine input manifest.",
+    )
+    parser.add_argument(
+        "--expected-input-sha256",
+        type=_sha256_pin,
+        default=None,
+        help="Explicit pristine input archive pin; required in candidate mode.",
+    )
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument(
         "--expected-candidate-sha256",
@@ -325,7 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--expected-candidate-count",
         type=_positive_integer,
         default=None,
-        help="Exact candidate corpus size; defaults to the reference count.",
+        help="Exact candidate corpus size; defaults to the pinned input count (six).",
     )
     parser.add_argument(
         "--expected-calibration-passed",
@@ -354,6 +393,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.calibrate_baseline:
             _expected_calibration_failed_ids(args)
+            if (
+                args.input_zip is not None
+                or args.input_manifest is not None
+                or args.expected_input_sha256 is not None
+            ):
+                raise ExistingProfileSemanticError(
+                    "pristine input options cannot be used with --calibrate-baseline"
+                )
         _verify_input_pins(args)
         if args.calibrate_baseline:
             if args.expected_candidate_count is not None:
@@ -370,7 +417,9 @@ def main(argv: list[str] | None = None) -> int:
             report = compare_semantic_profile_corpora(
                 args.baseline_zip,
                 args.gold_root,
+                args.input_zip,
                 args.candidate_zip,
+                input_manifest=args.input_manifest,
                 expected_reference_count=args.expected_reference_count,
                 expected_candidate_count=args.expected_candidate_count,
                 notice_ids=args.notice_id,

@@ -19,12 +19,13 @@ from worker.evaluation.existing_profile_semantic_diff import (
     SemanticArtifact,
     build_semantic_graph,
     calibrate_loaded_semantic_corpora,
-    compare_loaded_semantic_corpora,
-    compare_semantic_profiles,
+    compare_loaded_semantic_corpora as compare_loaded_semantic_corpora_bgic,
+    compare_semantic_profiles as compare_semantic_profiles_bgic,
     load_automatic_semantic_artifacts,
     load_reviewed_gold_semantic_artifacts,
     write_semantic_report,
 )
+from worker.evaluation.pristine_common_ir import LoadedPristineCommonIr
 
 
 REAL_BASELINE_ENV = "PREREVIEW_EXISTING_GOLD100_BASELINE_ZIP"
@@ -244,6 +245,52 @@ def _loaded(artifact: SemanticArtifact, *, role: str) -> LoadedSemanticArtifacts
     return LoadedSemanticArtifacts(
         artifacts={artifact.notice_id: artifact},
         identity={"role": role, "profile_count": 1},
+    )
+
+
+def _pristine(*artifacts: SemanticArtifact) -> LoadedPristineCommonIr:
+    documents = {artifact.notice_id: deepcopy(artifact.common_ir) for artifact in artifacts}
+    return LoadedPristineCommonIr(
+        documents=documents,
+        archive_sha256="i" * 64,
+        member_sha256={notice_id: "m" * 64 for notice_id in documents},
+        manifest={},
+    )
+
+
+def compare_semantic_profiles(
+    baseline: SemanticArtifact,
+    gold: SemanticArtifact,
+    candidate: SemanticArtifact,
+    *,
+    notice_id: str,
+) -> dict[str, object]:
+    """Synthetic-test shorthand with an explicit pristine I copied from B."""
+
+    return compare_semantic_profiles_bgic(
+        baseline,
+        gold,
+        deepcopy(baseline.common_ir),
+        candidate,
+        notice_id=notice_id,
+    )
+
+
+def compare_loaded_semantic_corpora(
+    baseline: LoadedSemanticArtifacts,
+    gold: LoadedSemanticArtifacts,
+    candidate: LoadedSemanticArtifacts,
+    *,
+    notice_ids: list[str] | None = None,
+) -> dict[str, object]:
+    """Synthetic-test shorthand with an explicit pristine I copied from B."""
+
+    return compare_loaded_semantic_corpora_bgic(
+        baseline,
+        gold,
+        _pristine(*baseline.artifacts.values()),
+        candidate,
+        notice_ids=notice_ids,
     )
 
 
@@ -1689,13 +1736,13 @@ def test_candidate_numeric_spans_are_enumerated_once_per_source_block(monkeypatc
     assert calls == 1
 
 
-def test_candidate_common_ir_must_be_bound_to_baseline_input() -> None:
+def test_candidate_common_ir_must_be_bound_to_pristine_input() -> None:
     baseline = _artifact()
     gold = deepcopy(baseline)
     candidate = deepcopy(gold)
     candidate.common_ir["blocks"][0]["text"] = "조작된 Common IR"  # type: ignore[index]
 
-    with pytest.raises(ExistingProfileSemanticError, match="pinned baseline Common IR"):
+    with pytest.raises(ExistingProfileSemanticError, match="pinned pristine Common IR"):
         compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
 
 
@@ -1708,8 +1755,131 @@ def test_ordered_common_ir_coordinate_tuple_cannot_be_permuted() -> None:
     candidate = deepcopy(gold)
     candidate.common_ir["blocks"][0]["occurrences"][0]["bbox"] = [0, 0, 20, 10]  # type: ignore[index]
 
-    with pytest.raises(ExistingProfileSemanticError, match="pinned baseline Common IR"):
+    with pytest.raises(ExistingProfileSemanticError, match="pinned pristine Common IR"):
         compare_semantic_profiles(baseline, gold, candidate, notice_id=NOTICE_ID)
+
+
+def test_candidate_binds_to_pristine_input_not_historical_baseline() -> None:
+    baseline = _artifact(occurrence_id="occ-baseline")
+    pristine = _artifact(occurrence_id="occ-input")
+    gold = deepcopy(pristine)
+    candidate = deepcopy(pristine)
+
+    report = compare_semantic_profiles_bgic(
+        baseline,
+        gold,
+        pristine.common_ir,
+        candidate,
+        notice_id=NOTICE_ID,
+    )
+
+    assert report["semantic_gate_status"] == "passed"
+    assert report["graphs"]["input_common_ir_sha256"] == semantic_diff._common_ir_input_digest(
+        pristine.common_ir
+    )
+
+
+def test_candidate_matching_baseline_but_not_pristine_input_is_rejected() -> None:
+    baseline = _artifact(occurrence_id="occ-baseline")
+    gold = deepcopy(baseline)
+    candidate = deepcopy(baseline)
+    pristine = _artifact(occurrence_id="occ-input")
+
+    with pytest.raises(ExistingProfileSemanticError, match="pinned pristine Common IR"):
+        compare_semantic_profiles_bgic(
+            baseline,
+            gold,
+            pristine.common_ir,
+            candidate,
+            notice_id=NOTICE_ID,
+        )
+
+
+def test_gold_adjudication_occurrence_ids_are_validation_only_for_candidate_gate() -> None:
+    baseline = _artifact(occurrence_id="occ-native")
+    pristine = deepcopy(baseline)
+    candidate = deepcopy(pristine)
+    gold = deepcopy(baseline)
+    gold_block = gold.common_ir["blocks"][0]  # type: ignore[index]
+    gold_block["text_occurrence_ids"].append("occ-adjudicated")  # type: ignore[union-attr]
+    gold_block["occurrences"].append(  # type: ignore[union-attr]
+        {"occurrence_id": "occ-adjudicated", "text": SOURCE_TEXT}
+    )
+    gold_fact_evidence = gold.profile["comparison_profile"]["support_content"][0]["evidence"][0]  # type: ignore[index]
+    gold_materialized_evidence = gold.source_selection["materialized_evidence"][0]["source_blocks"][0]  # type: ignore[index]
+    for evidence in (gold_fact_evidence, gold_materialized_evidence):
+        evidence["source_occurrence_ids"] = ["occ-adjudicated"]
+        evidence["common_ir_occurrence_ids"] = ["occ-adjudicated"]
+
+    report = compare_semantic_profiles_bgic(
+        baseline,
+        gold,
+        pristine.common_ir,
+        candidate,
+        notice_id=NOTICE_ID,
+    )
+
+    assert report["semantic_gate_status"] == "passed"
+
+
+def test_candidate_gate_rejects_different_admitted_context_evidence() -> None:
+    baseline = _artifact()
+    gold = deepcopy(baseline)
+    pristine = deepcopy(baseline)
+    context_text = "후보가 임의로 추가한 다른 문맥"
+    pristine.common_ir["blocks"].append(  # type: ignore[union-attr]
+        {
+            "block_id": "block-2",
+            "text": context_text,
+            "kind": "paragraph",
+            "reading_order": 1,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-context"],
+            "occurrences": [
+                {"occurrence_id": "occ-context", "text": context_text}
+            ],
+        }
+    )
+    candidate = deepcopy(pristine)
+    candidate.source_selection["source_block_texts"]["block-2"] = context_text  # type: ignore[index]
+    selection_fact = candidate.source_selection["selection"]["facts"][0]  # type: ignore[index]
+    selection_fact["context_source_block_ids"] = ["block-2"]
+    materialized = candidate.source_selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["context_blocks"] = [
+        {
+            "source_block_id": "block-2",
+            "text": context_text,
+            "section_id": "main_notice",
+            "source_occurrence_ids": ["occ-context"],
+            "common_ir_document_id": DOCUMENT_ID,
+            "common_ir_block_id": "block-2",
+            "common_ir_occurrence_ids": ["occ-context"],
+        }
+    ]
+    candidate_fact = candidate.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    candidate_fact["context_evidence"] = [
+        {
+            "source_block_id": "block-2",
+            "text": context_text,
+            "source_occurrence_ids": ["occ-context"],
+            "common_ir_document_id": DOCUMENT_ID,
+            "common_ir_block_id": "block-2",
+            "common_ir_occurrence_ids": ["occ-context"],
+            "section_id": "main_notice",
+        }
+    ]
+
+    report = compare_semantic_profiles_bgic(
+        baseline,
+        gold,
+        pristine.common_ir,
+        candidate,
+        notice_id=NOTICE_ID,
+    )
+
+    assert report["semantic_gate_status"] == "failed"
+    assert report["counts"]["candidate_only"] > 0
+    assert report["counts"]["missing_gold"] > 0
 
 
 def test_duplicate_relation_and_unknown_field_fail_closed() -> None:
@@ -1803,6 +1973,11 @@ def test_report_is_source_free_no_clobber_and_outside_gold(tmp_path: Path) -> No
     assert "후보 원문.zip" not in encoded
     assert report["baseline"]["archive_sha256"] == "b" * 64
     assert report["gold"]["freeze_manifest_sha256"] == "c" * 64
+    assert report["input"] == {
+        "archive_sha256": "i" * 64,
+        "notice_count": 1,
+        "role": "pinned_pristine_common_ir_input",
+    }
     assert report["candidate"]["archive_sha256"] == "d" * 64
     output = tmp_path / "output"
     gold = tmp_path / "gold"
@@ -1830,6 +2005,8 @@ def test_cli_returns_nonzero_when_semantic_gate_fails(monkeypatch, tmp_path: Pat
         [
             "--baseline-zip", "baseline.zip",
             "--gold-root", "gold",
+            "--input-zip", "input.zip",
+            "--expected-input-sha256", cli.PRISTINE_HARD6_ARCHIVE_SHA256,
             "--candidate-zip", "candidate.zip",
             "--output-dir", str(tmp_path),
         ]
@@ -1837,6 +2014,21 @@ def test_cli_returns_nonzero_when_semantic_gate_fails(monkeypatch, tmp_path: Pat
 
     assert exit_code == 2
     assert json.loads(capsys.readouterr().out)["status"] == "failed"
+
+
+def test_cli_candidate_mode_requires_explicit_pristine_input_and_pin(monkeypatch) -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "--baseline-zip", "baseline.zip",
+            "--gold-root", "gold",
+            "--candidate-zip", "candidate.zip",
+            "--output-dir", "output",
+        ]
+    )
+    monkeypatch.setattr(cli, "_require_sha256_pin", lambda **_kwargs: None)
+
+    with pytest.raises(ExistingProfileSemanticError, match="requires --input-zip"):
+        cli._verify_input_pins(args)
 
 
 def test_cli_returns_zero_and_forwards_selection_options_when_gate_passes(
@@ -1857,13 +2049,15 @@ def test_cli_returns_zero_and_forwards_selection_options_when_gate_passes(
     monkeypatch.setattr(
         cli,
         "write_semantic_report",
-        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgc.v1.json",
+        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgic.v1.json",
     )
 
     exit_code = cli.main(
         [
             "--baseline-zip", "baseline.zip",
             "--gold-root", "gold",
+            "--input-zip", "input.zip",
+            "--expected-input-sha256", cli.PRISTINE_HARD6_ARCHIVE_SHA256,
             "--candidate-zip", "candidate.zip",
             "--output-dir", str(tmp_path),
             "--expected-reference-count", "100",
@@ -1874,7 +2068,14 @@ def test_cli_returns_zero_and_forwards_selection_options_when_gate_passes(
     )
 
     assert exit_code == 0
+    assert captured["args"] == (
+        Path("baseline.zip"),
+        Path("gold"),
+        Path("input.zip"),
+        Path("candidate.zip"),
+    )
     assert captured["kwargs"] == {
+        "input_manifest": None,
         "expected_reference_count": 100,
         "expected_candidate_count": 6,
         "notice_ids": [
@@ -1886,7 +2087,7 @@ def test_cli_returns_zero_and_forwards_selection_options_when_gate_passes(
     assert output == {
         "failed": 0,
         "passed": 2,
-        "report_file": "existing-profile-semantic-bgc.v1.json",
+        "report_file": "existing-profile-semantic-bgic.v1.json",
         "selected": 2,
         "status": "passed",
     }
@@ -1922,7 +2123,7 @@ def test_cli_uses_explicit_baseline_calibration_mode(
     monkeypatch.setattr(
         cli,
         "write_semantic_report",
-        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgc.v1.json",
+        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgic.v1.json",
     )
 
     exit_code = cli.main(
@@ -1949,9 +2150,11 @@ def test_cli_rejects_mismatched_input_pin_before_comparison_or_report(
     capsys,
 ) -> None:
     baseline = tmp_path / "baseline.zip"
+    input_archive = tmp_path / "input.zip"
     candidate = tmp_path / "candidate.zip"
     gold = tmp_path / "gold"
     baseline.write_bytes(b"baseline")
+    input_archive.write_bytes(b"input")
     candidate.write_bytes(b"candidate")
     gold.mkdir()
     (gold / "freeze_manifest.json").write_bytes(b"freeze")
@@ -1970,10 +2173,14 @@ def test_cli_rejects_mismatched_input_pin_before_comparison_or_report(
 
     monkeypatch.setattr(cli, "compare_semantic_profile_corpora", compare)
     monkeypatch.setattr(cli, "write_semantic_report", write)
+    input_sha256 = sha256(input_archive.read_bytes()).hexdigest()
+    monkeypatch.setattr(cli, "PRISTINE_HARD6_ARCHIVE_SHA256", input_sha256)
     exit_code = cli.main(
         [
             "--baseline-zip", str(baseline),
             "--gold-root", str(gold),
+            "--input-zip", str(input_archive),
+            "--expected-input-sha256", input_sha256,
             "--candidate-zip", str(candidate),
             "--output-dir", str(tmp_path),
             "--expected-baseline-sha256", sha256(baseline.read_bytes()).hexdigest(),
@@ -2063,6 +2270,8 @@ def test_cli_rejects_a_loaded_snapshot_that_no_longer_matches_preflight_pin(
         [
             "--baseline-zip", "baseline.zip",
             "--gold-root", "gold",
+            "--input-zip", "input.zip",
+            "--expected-input-sha256", cli.PRISTINE_HARD6_ARCHIVE_SHA256,
             "--candidate-zip", "candidate.zip",
             "--output-dir", str(tmp_path),
         ]
@@ -2071,6 +2280,25 @@ def test_cli_rejects_a_loaded_snapshot_that_no_longer_matches_preflight_pin(
     assert exit_code == 1
     assert written is False
     assert "loaded baseline identity" in capsys.readouterr().err
+
+
+def test_cli_rejects_loaded_pristine_input_identity_swap() -> None:
+    args = SimpleNamespace(
+        expected_baseline_sha256="b" * 64,
+        expected_gold_freeze_manifest_sha256="g" * 64,
+        expected_input_sha256="i" * 64,
+        expected_candidate_sha256=None,
+    )
+
+    with pytest.raises(ExistingProfileSemanticError, match="loaded input identity"):
+        cli._verify_loaded_report_pins(
+            args,
+            {
+                "baseline": {"archive_sha256": "b" * 64},
+                "gold": {"freeze_manifest_sha256": "g" * 64},
+                "input": {"archive_sha256": "wrong"},
+            },
+        )
 
 
 def test_cli_returns_two_for_calibration_expectation_mismatch(
@@ -2091,7 +2319,7 @@ def test_cli_returns_two_for_calibration_expectation_mismatch(
     monkeypatch.setattr(
         cli,
         "write_semantic_report",
-        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgc.v1.json",
+        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgic.v1.json",
     )
 
     exit_code = cli.main(
@@ -2128,7 +2356,7 @@ def test_cli_allows_zero_calibration_failures_without_notice_ids(
     monkeypatch.setattr(
         cli,
         "write_semantic_report",
-        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgc.v1.json",
+        lambda *args, **kwargs: tmp_path / "existing-profile-semantic-bgic.v1.json",
     )
 
     exit_code = cli.main(

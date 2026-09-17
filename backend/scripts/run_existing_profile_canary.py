@@ -35,6 +35,11 @@ from worker.adapters.openai_llm_client import (  # noqa: E402
 )
 from worker.ports.llm import LLMClient  # noqa: E402
 from worker.profiles import StageError  # noqa: E402
+from worker.evaluation.pristine_common_ir import (  # noqa: E402
+    PRISTINE_HARD6_ARCHIVE_SHA256,
+    PristineCommonIrError,
+    load_pristine_common_ir,
+)
 
 from scripts import run_existing_a_routing_canary as routing_canary  # noqa: E402
 from scripts.compare_existing_profile_semantics import _regular_file_sha256  # noqa: E402
@@ -184,29 +189,38 @@ def _safe_error(error: Exception) -> dict[str, str]:
     return {"stage": "canary", "reason_code": type(error).__name__}
 
 
-def build_plan(*, baseline_zip: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-    """Read only the pinned baseline; this function must never touch Gold."""
+def build_plan(
+    *, input_zip: Path, input_manifest: Path | None = None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Read only the pinned pristine model input; never touch B or Gold.
+
+    Historical B is deliberately absent here.  It is admitted only into the
+    post-provider B/G/I/C semantic-gate hook in :func:`_semantic_summary`.
+    """
 
     _verify_prompt_pins()
     try:
-        documents, baseline_sha256, member_sha256 = routing_canary._read_baseline_common_ir(
-            baseline_zip
-        )
-    except routing_canary.ExistingARoutingCanaryError as error:
+        loaded_input = load_pristine_common_ir(input_zip, manifest_path=input_manifest)
+    except PristineCommonIrError as error:
         raise ExistingProfileCanaryError(str(error)) from error
+    documents = {notice_id: dict(document) for notice_id, document in loaded_input.documents.items()}
+    member_sha256 = loaded_input.member_sha256
     attachment_counts = {
         notice_id: routing_canary._attachment_count(document)
         for notice_id, document in documents.items()
     }
     _require(
         sum(count > 0 for count in attachment_counts.values()) == TASK_BUDGETS[announcement_profiles.SECTION_SCOPE_TASK],
-        "pinned baseline scope-call plan no longer matches its budget",
+        "pinned pristine input scope-call plan no longer matches its budget",
     )
     return documents, {
         "schema_version": REPORT_SCHEMA_VERSION,
         "execution_status": "planned",
         "semantic_profile_status": "not_run",
-        "baseline": {"archive_sha256": baseline_sha256},
+        "input": {
+            "archive_sha256": loaded_input.archive_sha256,
+            "expected_archive_sha256": PRISTINE_HARD6_ARCHIVE_SHA256,
+        },
         # This is a reviewed constant, not a read of the Gold filesystem.
         "gold_oracle": {"freeze_manifest_sha256": GOLD_FREEZE_MANIFEST_SHA256, "read_phase": "post_openai_only"},
         "notice_ids": list(CORRECTED_NOTICE_IDS),
@@ -222,11 +236,12 @@ def build_plan(*, baseline_zip: Path) -> tuple[dict[str, dict[str, Any]], dict[s
         },
         "calls": {"hard_budget": MAX_OPENAI_CALLS, "task_budgets": dict(TASK_BUDGETS), "planned_minimum": 14},
         "notices": [
-            {"notice_id": notice_id, "baseline_common_ir_sha256": member_sha256[notice_id], "attachment_section_count": attachment_counts[notice_id]}
+            {"notice_id": notice_id, "input_common_ir_sha256": member_sha256[notice_id], "attachment_section_count": attachment_counts[notice_id]}
             for notice_id in CORRECTED_NOTICE_IDS
         ],
         "limitations": [
-            "baseline_common_ir_only_in_openai_requests",
+            "pristine_common_ir_only_in_openai_requests",
+            "historical_baseline_is_post_provider_semantic_gate_only",
             "manual_adjudication_metadata_rejected_before_provider_construction",
             "gold_is_not_read_until_all_openai_calls_finish",
             "zero_provider_retries_and_at_most_one_source_selection_repair",
@@ -383,7 +398,7 @@ def write_candidate_zip(
             for notice_id in CORRECTED_NOTICE_IDS:
                 document = documents[notice_id]
                 source_kind = document["document"]["source_kind"]
-                _require(isinstance(source_kind, str) and source_kind, "baseline Common IR source kind is invalid")
+                _require(isinstance(source_kind, str) and source_kind, "pristine input Common IR source kind is invalid")
                 bundle = artifacts[notice_id]
                 members = (
                     (f"{notice_id}/pipeline/structured_profile.v0.2.json", bundle.profile),
@@ -423,12 +438,15 @@ def write_candidate_zip(
 
 
 def _semantic_summary(
-    candidate_zip: Path, *, baseline_zip: Path, gold_root: Path,
+    candidate_zip: Path, *, historical_baseline_zip: Path, gold_root: Path,
+    input_zip: Path,
+    input_manifest: Path | None,
     expected_baseline_sha256: str,
     expected_gold_freeze_manifest_sha256: str,
+    expected_input_sha256: str,
     expected_candidate_sha256: str,
 ) -> tuple[dict[str, Any], Mapping[str, Any] | None]:
-    """Run the existing B/G/C semantic gate only after provider work is done."""
+    """Run the B/G/I/C semantic gate only after provider work is done."""
 
     try:
         # This reads and verifies Gold after every OpenAI call has finished.
@@ -439,9 +457,11 @@ def _semantic_summary(
             max_bytes=routing_canary.MAX_ARCHIVE_BYTES,
         )
         result = compare_semantic_profile_corpora(
-            baseline_zip,
+            historical_baseline_zip,
             gold_root,
+            input_zip,
             candidate_zip,
+            input_manifest=input_manifest,
             expected_reference_count=100,
             expected_candidate_count=len(CORRECTED_NOTICE_IDS),
             notice_ids=CORRECTED_NOTICE_IDS,
@@ -453,15 +473,21 @@ def _semantic_summary(
     candidate_identity = result.get("candidate")
     baseline_identity = result.get("baseline")
     gold_identity = result.get("gold")
+    input_identity = result.get("input")
     _require(
         isinstance(baseline_identity, Mapping)
         and baseline_identity.get("archive_sha256") == expected_baseline_sha256,
-        "semantic gate baseline identity does not match the preflight baseline",
+        "semantic gate historical baseline identity does not match the post-provider baseline",
     )
     _require(
         isinstance(gold_identity, Mapping)
         and gold_identity.get("freeze_manifest_sha256") == expected_gold_freeze_manifest_sha256,
         "semantic gate Gold identity does not match the pinned freeze manifest",
+    )
+    _require(
+        isinstance(input_identity, Mapping)
+        and input_identity.get("archive_sha256") == expected_input_sha256,
+        "semantic gate input identity does not match the pre-provider pristine input",
     )
     _require(
         isinstance(candidate_identity, Mapping)
@@ -552,8 +578,10 @@ def write_report(report: Mapping[str, Any], *, output_dir: Path, gold_root: Path
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline-zip", required=True, type=Path)
-    parser.add_argument("--gold-root", required=True, type=Path)
+    parser.add_argument("--input-zip", required=True, type=Path, help="Frozen pristine hard-6 Common IR ZIP")
+    parser.add_argument("--input-manifest", type=Path, help="Optional separately deployed public pristine hard-6 manifest")
+    parser.add_argument("--baseline-zip", type=Path, help="Historical automatic profile archive; post-provider semantic gate only")
+    parser.add_argument("--gold-root", type=Path, help="Frozen Gold root; post-provider semantic gate and publication boundary")
     parser.add_argument("--execute-openai", action="store_true")
     parser.add_argument("--model")
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
@@ -588,12 +616,14 @@ def _report_publication_failure_summary(report: Mapping[str, Any]) -> dict[str, 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        documents, plan = build_plan(baseline_zip=args.baseline_zip)
+        documents, plan = build_plan(input_zip=args.input_zip, input_manifest=args.input_manifest)
         if not args.execute_openai:
             print(json.dumps(plan, ensure_ascii=False, sort_keys=True))
             return 0
         _require(args.model == PINNED_OPENAI_MODEL_ID, "--model must equal the pinned canary model")
         _require(args.output_dir is not None, "--output-dir is required with --execute-openai")
+        _require(args.baseline_zip is not None, "--baseline-zip is required with --execute-openai for the post-provider semantic gate")
+        _require(args.gold_root is not None, "--gold-root is required with --execute-openai")
         _require(0 < args.timeout_seconds <= MAX_TIMEOUT_SECONDS, "--timeout-seconds is outside the bounded canary range")
         api_key = os.environ.get("OPENAI_API_KEY", "").strip()
         _require(bool(api_key), "OPENAI_API_KEY is required with --execute-openai")
@@ -634,10 +664,13 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 semantic_summary, semantic_report = _semantic_summary(
                     candidate_zip,
-                    baseline_zip=args.baseline_zip,
+                    historical_baseline_zip=args.baseline_zip,
                     gold_root=args.gold_root,
-                    expected_baseline_sha256=str(report["baseline"]["archive_sha256"]),
+                    input_zip=args.input_zip,
+                    input_manifest=args.input_manifest,
+                    expected_baseline_sha256=BASELINE_ARCHIVE_SHA256,
                     expected_gold_freeze_manifest_sha256=str(report["gold_oracle"]["freeze_manifest_sha256"]),
+                    expected_input_sha256=str(report["input"]["archive_sha256"]),
                     expected_candidate_sha256=candidate_sha256,
                 )
                 report["semantic_gate"] = semantic_summary

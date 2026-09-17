@@ -15,6 +15,7 @@ import pytest
 
 from worker import announcement_profiles
 from worker.evaluation.existing_profile_diff import load_automatic_baseline
+from worker.evaluation import pristine_common_ir
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_existing_profile_canary.py"
@@ -46,24 +47,44 @@ def _plan() -> dict:
     }
 
 
+def _loaded_input(documents: dict[str, dict]) -> pristine_common_ir.LoadedPristineCommonIr:
+    return pristine_common_ir.LoadedPristineCommonIr(
+        documents, "i" * 64, {notice_id: "c" * 64 for notice_id in documents}, {}
+    )
+
+
 def test_plan_does_not_open_or_receive_a_gold_root(monkeypatch: pytest.MonkeyPatch) -> None:
     documents = _documents()
     monkeypatch.setattr(canary, "_verify_prompt_pins", lambda: None)
     monkeypatch.setattr(
-        canary.routing_canary,
-        "_read_baseline_common_ir",
-        lambda _path: (documents, "b" * 64, {notice_id: "c" * 64 for notice_id in documents}),
+        canary,
+        "load_pristine_common_ir",
+        lambda *_args, **_kwargs: _loaded_input(documents),
     )
     attachment_counts = iter([1, 1, 0, 0, 0, 0])
     monkeypatch.setattr(
         canary.routing_canary, "_attachment_count", lambda _document: next(attachment_counts)
     )
 
-    loaded, plan = canary.build_plan(baseline_zip=Path("baseline.zip"))
+    loaded, plan = canary.build_plan(input_zip=Path("input.zip"))
 
     assert loaded == documents
     assert plan["gold_oracle"]["read_phase"] == "post_openai_only"
     assert plan["calls"]["task_budgets"] == canary.TASK_BUDGETS
+
+
+def test_dry_run_needs_only_the_pristine_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = {"execution_status": "planned", "input": {"archive_sha256": "i" * 64}}
+    seen: dict[str, object] = {}
+
+    def build(**kwargs: object) -> tuple[dict[str, dict], dict]:
+        seen.update(kwargs)
+        return _documents(), plan
+
+    monkeypatch.setattr(canary, "build_plan", build)
+
+    assert canary.main(["--input-zip", "pristine.zip"]) == 0
+    assert seen == {"input_zip": Path("pristine.zip"), "input_manifest": None}
 
 
 def test_prompt_preflight_evaluates_source_selection_before_baseline_read(
@@ -71,7 +92,7 @@ def test_prompt_preflight_evaluates_source_selection_before_baseline_read(
 ) -> None:
     baseline_read = False
 
-    def read_baseline(_path: Path) -> object:
+    def read_input(*_args: object, **_kwargs: object) -> object:
         nonlocal baseline_read
         baseline_read = True
         raise AssertionError("baseline must not be read after prompt pin failure")
@@ -81,10 +102,10 @@ def test_prompt_preflight_evaluates_source_selection_before_baseline_read(
         "_source_selection_instructions",
         lambda: "drifted source-selection prompt",
     )
-    monkeypatch.setattr(canary.routing_canary, "_read_baseline_common_ir", read_baseline)
+    monkeypatch.setattr(canary, "load_pristine_common_ir", read_input)
 
     with pytest.raises(canary.ExistingProfileCanaryError, match="prompt hash pin"):
-        canary.build_plan(baseline_zip=Path("baseline.zip"))
+        canary.build_plan(input_zip=Path("input.zip"))
     assert baseline_read is False
 
 
@@ -123,11 +144,11 @@ def test_plan_preserves_safe_shared_baseline_rejection(
 ) -> None:
     monkeypatch.setattr(canary, "_verify_prompt_pins", lambda: None)
     monkeypatch.setattr(
-        canary.routing_canary,
-        "_read_baseline_common_ir",
-        lambda _path: (_ for _ in ()).throw(
-            canary.routing_canary.ExistingARoutingCanaryError(
-                "baseline Common IR contains manual adjudication provenance"
+        canary,
+        "load_pristine_common_ir",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            pristine_common_ir.PristineCommonIrError(
+                "Common IR contains manual adjudication provenance"
             )
         ),
     )
@@ -136,7 +157,7 @@ def test_plan_preserves_safe_shared_baseline_rejection(
         canary.ExistingProfileCanaryError,
         match="manual adjudication provenance",
     ):
-        canary.build_plan(baseline_zip=Path("baseline.zip"))
+        canary.build_plan(input_zip=Path("input.zip"))
 
 
 def test_main_rejects_real_shared_guard_before_constructing_openai_client(
@@ -178,6 +199,7 @@ def test_main_rejects_real_shared_guard_before_constructing_openai_client(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-real-secret")
 
     assert canary.main([
+        "--input-zip", str(baseline),
         "--baseline-zip", str(baseline),
         "--gold-root", str(tmp_path / "unused-gold"),
         "--execute-openai",
@@ -376,57 +398,87 @@ def test_failure_report_is_published_without_a_candidate_zip(tmp_path: Path) -> 
     assert stat.S_IMODE(report_path.stat().st_mode) == 0o600
 
 
-def test_semantic_gate_binds_all_three_loaded_corpus_identities(
+def test_semantic_gate_binds_all_four_loaded_corpus_identities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    captured: dict[str, object] = {}
     monkeypatch.setattr(canary.routing_canary, "_load_gold_pins", lambda _root: {})
     monkeypatch.setattr(canary, "_regular_file_sha256", lambda *_args, **_kwargs: "c" * 64)
+
+    def compare(*args: object, **kwargs: object) -> dict[str, object]:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {
+            "baseline": {"archive_sha256": "b" * 64},
+            "gold": {"freeze_manifest_sha256": "g" * 64},
+            "input": {"archive_sha256": "i" * 64},
+            "candidate": {"archive_sha256": "c" * 64},
+            "counts": {"failed": 0, "passed": 6},
+        }
+
     monkeypatch.setattr(
         canary,
         "compare_semantic_profile_corpora",
-        lambda *_args, **_kwargs: {
-            "baseline": {"archive_sha256": "b" * 64},
-            "gold": {"freeze_manifest_sha256": "g" * 64},
-            "candidate": {"archive_sha256": "c" * 64},
-            "counts": {"failed": 0, "passed": 6},
-        },
+        compare,
     )
 
     summary, _full = canary._semantic_summary(
         Path("candidate.zip"),
-        baseline_zip=Path("baseline.zip"),
+        historical_baseline_zip=Path("baseline.zip"),
         gold_root=Path("gold"),
+        input_zip=Path("input.zip"),
+        input_manifest=Path("input-manifest.json"),
         expected_baseline_sha256="b" * 64,
         expected_gold_freeze_manifest_sha256="g" * 64,
+        expected_input_sha256="i" * 64,
         expected_candidate_sha256="c" * 64,
     )
 
     assert summary["status"] == "passed"
+    assert captured["args"] == (
+        Path("baseline.zip"),
+        Path("gold"),
+        Path("input.zip"),
+        Path("candidate.zip"),
+    )
+    assert captured["kwargs"]["input_manifest"] == Path("input-manifest.json")  # type: ignore[index]
 
 
+@pytest.mark.parametrize(
+    ("bad_corpus", "message"),
+    [("baseline", "baseline identity"), ("input", "input identity")],
+)
 def test_semantic_gate_rejects_a_loaded_identity_mismatch(
     monkeypatch: pytest.MonkeyPatch,
+    bad_corpus: str,
+    message: str,
 ) -> None:
     monkeypatch.setattr(canary.routing_canary, "_load_gold_pins", lambda _root: {})
     monkeypatch.setattr(canary, "_regular_file_sha256", lambda *_args, **_kwargs: "c" * 64)
+    report = {
+            "baseline": {"archive_sha256": "b" * 64},
+            "gold": {"freeze_manifest_sha256": "g" * 64},
+            "input": {"archive_sha256": "i" * 64},
+            "candidate": {"archive_sha256": "c" * 64},
+            "counts": {"failed": 0},
+    }
+    report[bad_corpus] = {"archive_sha256": "wrong"}
     monkeypatch.setattr(
         canary,
         "compare_semantic_profile_corpora",
-        lambda *_args, **_kwargs: {
-            "baseline": {"archive_sha256": "wrong"},
-            "gold": {"freeze_manifest_sha256": "g" * 64},
-            "candidate": {"archive_sha256": "c" * 64},
-            "counts": {"failed": 0},
-        },
+        lambda *_args, **_kwargs: report,
     )
 
-    with pytest.raises(canary.ExistingProfileCanaryError, match="baseline identity"):
+    with pytest.raises(canary.ExistingProfileCanaryError, match=message):
         canary._semantic_summary(
             Path("candidate.zip"),
-            baseline_zip=Path("baseline.zip"),
+            historical_baseline_zip=Path("baseline.zip"),
             gold_root=Path("gold"),
+            input_zip=Path("input.zip"),
+            input_manifest=None,
             expected_baseline_sha256="b" * 64,
             expected_gold_freeze_manifest_sha256="g" * 64,
+            expected_input_sha256="i" * 64,
             expected_candidate_sha256="c" * 64,
         )
 
@@ -465,7 +517,7 @@ def test_main_preserves_sanitized_usage_report_after_post_provider_failure(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-real-secret")
 
     assert canary.main([
-        "--baseline-zip", "baseline.zip", "--gold-root", str(tmp_path / "gold"),
+        "--input-zip", "input.zip", "--baseline-zip", "baseline.zip", "--gold-root", str(tmp_path / "gold"),
         "--execute-openai", "--model", canary.PINNED_OPENAI_MODEL_ID,
         "--output-dir", str(output),
     ]) == 2
@@ -509,7 +561,7 @@ def test_main_emits_source_free_accounting_if_report_cannot_be_published(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-real-secret")
 
     assert canary.main([
-        "--baseline-zip", "baseline.zip", "--gold-root", str(tmp_path / "missing-gold"),
+        "--input-zip", "input.zip", "--baseline-zip", "baseline.zip", "--gold-root", str(tmp_path / "missing-gold"),
         "--execute-openai", "--model", canary.PINNED_OPENAI_MODEL_ID,
         "--output-dir", str(output),
     ]) == 1

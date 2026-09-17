@@ -1,11 +1,12 @@
 """Offline, ID/order-insensitive semantic comparison for Existing Profiles.
 
-This evaluator compares three artifacts for the same notice:
+This evaluator compares four artifacts for the same notice:
 
 ``B`` unreviewed automatic baseline, ``G`` human-reviewed frozen Gold, and
-``C`` a newly generated candidate.  It is intentionally not an LLM quality
-judge.  It proves only whether the candidate preserves the reviewed semantic
-delta already represented by the profile graph:
+``I`` pinned pristine Common IR input, and ``C`` a newly generated candidate.
+It is intentionally not an LLM quality judge.  It proves only whether the
+candidate preserves the reviewed semantic delta already represented by the
+profile graph while binding C to I rather than to the historical baseline:
 
 * ``G - B``: approved additions and removals are reported as diagnostics;
 * ``G & B``: retained semantics are reported as diagnostics;
@@ -70,10 +71,15 @@ from worker.evaluation.existing_profile_diff import (
     load_reviewed_gold,
     write_comparison_report,
 )
+from worker.evaluation.pristine_common_ir import (
+    LoadedPristineCommonIr,
+    PristineCommonIrError,
+    load_pristine_common_ir,
+)
 
 
-SEMANTIC_COMPARISON_SCHEMA_VERSION = "existing_profile_semantic_bgc/v1"
-SEMANTIC_REPORT_FILE_NAME = "existing-profile-semantic-bgc.v1.json"
+SEMANTIC_COMPARISON_SCHEMA_VERSION = "existing_profile_semantic_bgic/v1"
+SEMANTIC_REPORT_FILE_NAME = "existing-profile-semantic-bgic.v1.json"
 MAX_TOTAL_COMPANION_BYTES = 256 * 1024 * 1024
 
 _NOTICE_ID_PATTERN = re.compile(r"PBLN_[0-9]{15}")
@@ -1095,8 +1101,9 @@ class _ProvenanceResolver:
                     for block_id in sorted(self.occurrence_blocks[source_id])
                 ],
             }
-        # Manually adjudicated legacy CandidatePack blocks are permitted for
-        # B/G.  C may use them only when its id+text is bound to B separately.
+        # Manually adjudicated legacy CandidatePack blocks are readable for
+        # B/G.  Candidate admission rejects them unless the fixed transform
+        # can independently reproduce them from C's I-bound Common IR.
         return {
             "source_sha256": self.source_sha256,
             "candidate_text_sha256": sha256(self.source_texts[source_id].encode("utf-8")).hexdigest(),
@@ -1220,6 +1227,9 @@ class _ProvenanceResolver:
         return {
             "source_sha256": self.source_sha256,
             "occurrence_ids": sorted(occurrence_ids),
+            "source_text_sha256": sha256(
+                self.source_texts[source_block_id].encode("utf-8")
+            ).hexdigest(),
         }
 
     def validate_value_source(self, value_source: Any, value_raw: Any, *, label: str) -> tuple[str, int, int]:
@@ -1460,6 +1470,7 @@ def _fact_base(
     *,
     resolver: _ProvenanceResolver,
     label: str,
+    include_evidence_provenance: bool,
 ) -> Mapping[str, Any]:
     keys = set(fact)
     unknown = keys - _FACT_IGNORED_KEYS - _FACT_SEMANTIC_KEYS
@@ -1499,7 +1510,34 @@ def _fact_base(
             len(occurrence_ids) == len(set(occurrence_ids)),
             f"{label}.{evidence_key} repeats Common IR occurrence provenance",
         )
-        result[evidence_key] = _unordered(normalized_evidence)
+        if include_evidence_provenance:
+            semantic_evidence = [
+                {
+                    "source_sha256": item["source_sha256"],
+                    "occurrence_ids": item["occurrence_ids"],
+                }
+                for item in normalized_evidence
+            ]
+        else:
+            # Candidate mode must tolerate generator-specific occurrence IDs,
+            # but evidence is still semantic.  Bind it to the already
+            # validated exact value (direct evidence) or CandidatePack text
+            # (context evidence).  Direct evidence may legitimately move from
+            # a parent block to a server-regenerated exact line atom, while a
+            # different admitted context paragraph must not pass as
+            # Gold-equivalent context.
+            semantic_evidence = [
+                {
+                    "source_sha256": item["source_sha256"],
+                    "source_text_sha256": (
+                        sha256(fact["value_raw"].encode("utf-8")).hexdigest()
+                        if evidence_key == "evidence"
+                        else item["source_text_sha256"]
+                    ),
+                }
+                for item in normalized_evidence
+            ]
+        result[evidence_key] = _unordered(semantic_evidence)
     if "organization_names" in fact:
         organizations = fact["organization_names"]
         _require(
@@ -1790,11 +1828,17 @@ def build_semantic_graph(
     artifact: SemanticArtifact,
     *,
     label: str = "profile",
+    include_evidence_provenance: bool = True,
 ) -> SemanticGraph:
     """Turn a Profile into an ID/order-insensitive exact semantic multigraph.
 
     It fails closed on unrecognized fact/component fields or dangling links so
     a schema change cannot silently remove semantic information from a gate.
+    Candidate-gate callers may set ``include_evidence_provenance=False`` to
+    keep all provenance validation and evidence-text fingerprints while
+    excluding Gold-only adjudication occurrence locators from semantic
+    equality.  Calibration deliberately retains the historical
+    provenance-sensitive representation.
     """
 
     _require(isinstance(artifact, SemanticArtifact), "provenance-grade comparison requires Profile+source-selection+Common-IR artifact")
@@ -1936,7 +1980,12 @@ def build_semantic_graph(
             _require(raw_fact.get("scope") == "notice", f"{fact_label} top-level fact must have notice scope")
             _require(raw_fact.get("support_component_id") is None, f"{fact_label} notice-scoped fact cannot own a component")
         raw_fact_by_id[fact_id] = raw_fact
-        fact_base_by_id[fact_id] = _fact_base(raw_fact, resolver=resolver, label=fact_label)
+        fact_base_by_id[fact_id] = _fact_base(
+            raw_fact,
+            resolver=resolver,
+            label=fact_label,
+            include_evidence_provenance=include_evidence_provenance,
+        )
 
     unknown_fields = set(comparison) - _FACT_FIELDS
     _require(not unknown_fields, f"{label}.comparison_profile has unsupported fields: {sorted(unknown_fields)}")
@@ -2155,7 +2204,7 @@ def build_semantic_graph(
 
 
 def _common_ir_input_digest(common_ir: Mapping[str, Any]) -> str:
-    """Pin candidate input to baseline Common IR, excluding deployment path."""
+    """Return an opaque Common IR identity, excluding only deployment path."""
 
     normalized = dict(common_ir)
     document = common_ir.get("document")
@@ -2177,25 +2226,54 @@ def _compare_semantic_profiles(
     *,
     notice_id: str,
     enforce_candidate_source_basis: bool,
+    input_common_ir: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     """Evaluate one candidate gate or explicit baseline calibration."""
 
-    b = build_semantic_graph(baseline, label=f"baseline {notice_id}")
-    g = build_semantic_graph(gold, label=f"Gold {notice_id}")
-    c = build_semantic_graph(candidate, label=f"candidate {notice_id}")
+    # B/G calibration intentionally retains the historical provenance-aware
+    # graph so the reviewed 94/6 split cannot drift.  A real candidate gate
+    # validates every locator just as strictly and retains validated evidence
+    # text fingerprints, while treating generated locator IDs as admission
+    # metadata rather than semantic content.  This lets C express the same
+    # reviewed fact as G without cloning Gold-only manual adjudication
+    # occurrence IDs into the pristine I-derived artifact.
+    include_evidence_provenance = not enforce_candidate_source_basis
+    b = build_semantic_graph(
+        baseline,
+        label=f"baseline {notice_id}",
+        include_evidence_provenance=include_evidence_provenance,
+    )
+    g = build_semantic_graph(
+        gold,
+        label=f"Gold {notice_id}",
+        include_evidence_provenance=include_evidence_provenance,
+    )
+    c = build_semantic_graph(
+        candidate,
+        label=f"candidate {notice_id}",
+        include_evidence_provenance=include_evidence_provenance,
+    )
     _require(
         baseline.notice_id == gold.notice_id == candidate.notice_id == notice_id,
         f"semantic artifacts do not share logical notice id {notice_id}",
     )
-    _require(
-        _common_ir_input_digest(candidate.common_ir) == _common_ir_input_digest(baseline.common_ir),
-        f"candidate {notice_id} was not generated from the pinned baseline Common IR",
-    )
     if enforce_candidate_source_basis:
+        _require(
+            input_common_ir is not None,
+            f"candidate {notice_id} has no pinned pristine Common IR input",
+        )
+        input_digest = _common_ir_input_digest(input_common_ir)
+        _require(
+            _common_ir_input_digest(candidate.common_ir) == input_digest,
+            f"candidate {notice_id} was not generated from the pinned pristine Common IR input",
+        )
         _validate_candidate_source_basis(
             candidate,
             label=f"candidate {notice_id}",
         )
+    else:
+        _require(input_common_ir is None, "baseline calibration must not accept a candidate input")
+        input_digest = None
     approved = g.atoms - b.atoms
     rejected = b.atoms - g.atoms
     retained = g.atoms & b.atoms
@@ -2219,6 +2297,7 @@ def _compare_semantic_profiles(
         "graphs": {
             "baseline_sha256": b.digest,
             "gold_sha256": g.digest,
+            "input_common_ir_sha256": input_digest,
             "candidate_sha256": c.digest,
         },
         "counts": {
@@ -2268,6 +2347,7 @@ def _opaque_corpus_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
 def compare_semantic_profiles(
     baseline: SemanticArtifact,
     gold: SemanticArtifact,
+    input_common_ir: Mapping[str, Any],
     candidate: SemanticArtifact,
     *,
     notice_id: str,
@@ -2280,6 +2360,7 @@ def compare_semantic_profiles(
         candidate,
         notice_id=notice_id,
         enforce_candidate_source_basis=True,
+        input_common_ir=input_common_ir,
     )
 
 
@@ -2297,12 +2378,14 @@ def calibrate_semantic_profiles(
         baseline,
         notice_id=notice_id,
         enforce_candidate_source_basis=False,
+        input_common_ir=None,
     )
 
 
 def _compare_loaded_semantic_corpora(
     baseline: LoadedSemanticArtifacts,
     gold: LoadedSemanticArtifacts,
+    pristine_input: LoadedPristineCommonIr | None,
     candidate: LoadedSemanticArtifacts,
     *,
     notice_ids: Sequence[str] | None = None,
@@ -2313,17 +2396,31 @@ def _compare_loaded_semantic_corpora(
     baseline_ids = set(baseline.artifacts)
     gold_ids = set(gold.artifacts)
     candidate_ids = set(candidate.artifacts)
-    if notice_ids is None:
+    if baseline_calibration:
+        _require(pristine_input is None, "baseline calibration must not load a candidate input")
         _require(
             baseline_ids == gold_ids == candidate_ids,
             "full semantic comparison requires exact baseline/Gold/candidate notice-id sets",
         )
-        selected = sorted(baseline_ids)
+        available_ids = baseline_ids
+    else:
+        _require(isinstance(pristine_input, LoadedPristineCommonIr), "candidate comparison requires a pinned pristine input")
+        input_ids = set(pristine_input.documents)
+        _require(
+            input_ids == candidate_ids,
+            "candidate comparison requires exact input/candidate notice-id sets",
+        )
+        _require(
+            input_ids.issubset(baseline_ids) and input_ids.issubset(gold_ids),
+            "input/candidate notice ids must be present in baseline and Gold",
+        )
+        available_ids = input_ids
+    if notice_ids is None:
+        selected = sorted(available_ids)
     else:
         _require(len(notice_ids) == len(set(notice_ids)), "selected notice ids must not contain duplicates")
         selected = sorted(set(notice_ids))
-        shared = baseline_ids & gold_ids & candidate_ids
-        missing = [notice_id for notice_id in selected if notice_id not in shared]
+        missing = [notice_id for notice_id in selected if notice_id not in available_ids]
         _require(not missing, f"selected notice ids are absent from one or more corpora: {missing}")
     _require(bool(selected), "semantic comparison has no selected shared notices")
     notices = [
@@ -2333,6 +2430,11 @@ def _compare_loaded_semantic_corpora(
             candidate.artifacts[notice_id],
             notice_id=notice_id,
             enforce_candidate_source_basis=not baseline_calibration,
+            input_common_ir=(
+                None
+                if pristine_input is None
+                else pristine_input.documents[notice_id]
+            ),
         )
         for notice_id in selected
     ]
@@ -2353,10 +2455,21 @@ def _compare_loaded_semantic_corpora(
                 "deployment source_location",
                 "CandidatePack block ids/offsets and Common IR grouping block/cell/section after strict admission",
                 "component-local source locators after strict admission",
+                *(
+                    []
+                    if baseline_calibration
+                    else [
+                        "validated evidence/context occurrence locator ids in G/C semantic equality under the B/G/I/C gate"
+                    ]
+                ),
             ],
             "preserved": [
                 "fact values, field/status/scope/roles",
-                "evidence/context occurrence provenance and source SHA-256",
+                (
+                    "evidence/context occurrence provenance and source SHA-256"
+                    if baseline_calibration
+                    else "source SHA-256 plus strict independent provenance validation"
+                ),
                 "business identity and source-document metadata",
                 "components and component membership",
                 "directed fact/component relationships",
@@ -2367,7 +2480,7 @@ def _compare_loaded_semantic_corpora(
                 "not applicable: explicit baseline/Gold calibration"
                 if baseline_calibration
                 else (
-                    "candidate Common IR equals baseline Common IR except source_location; "
+                    "candidate Common IR equals pinned pristine input Common IR except source_location; "
                     f"candidate blocks are admitted by {TRUSTED_CANDIDATE_TRANSFORM}"
                 )
             ),
@@ -2384,6 +2497,15 @@ def _compare_loaded_semantic_corpora(
         },
         "baseline": _opaque_corpus_identity(baseline.identity),
         "gold": _opaque_corpus_identity(gold.identity),
+        "input": (
+            None
+            if pristine_input is None
+            else {
+                "archive_sha256": pristine_input.archive_sha256,
+                "notice_count": len(pristine_input.documents),
+                "role": "pinned_pristine_common_ir_input",
+            }
+        ),
         "candidate": _opaque_corpus_identity(candidate.identity),
         "counts": {"selected": len(selected), "passed": passed, "failed": len(selected) - passed},
         "notices": notices,
@@ -2393,6 +2515,7 @@ def _compare_loaded_semantic_corpora(
 def compare_loaded_semantic_corpora(
     baseline: LoadedSemanticArtifacts,
     gold: LoadedSemanticArtifacts,
+    pristine_input: LoadedPristineCommonIr,
     candidate: LoadedSemanticArtifacts,
     *,
     notice_ids: Sequence[str] | None = None,
@@ -2402,6 +2525,7 @@ def compare_loaded_semantic_corpora(
     return _compare_loaded_semantic_corpora(
         baseline,
         gold,
+        pristine_input,
         candidate,
         notice_ids=notice_ids,
         baseline_calibration=False,
@@ -2419,6 +2543,7 @@ def calibrate_loaded_semantic_corpora(
     return _compare_loaded_semantic_corpora(
         baseline,
         gold,
+        None,
         baseline,
         notice_ids=notice_ids,
         baseline_calibration=True,
@@ -2428,20 +2553,31 @@ def calibrate_loaded_semantic_corpora(
 def compare_semantic_profile_corpora(
     baseline_archive: Path,
     gold_root: Path,
+    input_archive: Path,
     candidate_archive: Path,
     *,
+    input_manifest: Path | None = None,
     expected_reference_count: int = DEFAULT_EXPECTED_PROFILE_COUNT,
     expected_candidate_count: int | None = None,
     notice_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Load three corpus artifacts under the existing strict path/hash gates."""
+    """Load B/G/I/C artifacts under their strict path/hash gates."""
+
+    try:
+        pristine_input = load_pristine_common_ir(
+            input_archive,
+            manifest_path=input_manifest,
+        )
+    except PristineCommonIrError as error:
+        raise ExistingProfileSemanticError(str(error)) from error
 
     return compare_loaded_semantic_corpora(
         load_automatic_semantic_artifacts(baseline_archive, expected_profile_count=expected_reference_count),
         load_reviewed_gold_semantic_artifacts(gold_root, expected_profile_count=expected_reference_count),
+        pristine_input,
         load_automatic_semantic_artifacts(
             candidate_archive,
-            expected_profile_count=(expected_reference_count if expected_candidate_count is None else expected_candidate_count),
+            expected_profile_count=(len(pristine_input.documents) if expected_candidate_count is None else expected_candidate_count),
             role="generated_candidate",
         ),
         notice_ids=notice_ids,
