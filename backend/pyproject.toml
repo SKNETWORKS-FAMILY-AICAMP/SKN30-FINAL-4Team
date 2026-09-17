@@ -26,10 +26,16 @@ dependencies = [
 dev = ["pytest>=8", "pypdf==6.18.1"]
 
 [tool.setuptools.packages.find]
-# ``prereview_runpod_worker`` is a deployment-only package.  Including it
-# here makes the same checked-out backend installable in the Docker-free
-# RunPod venv without making it part of the API/DB runtime composition.
-include = ["app*", "worker*", "prereview_runpod_worker*"]
+# Accelerator and resident Model 1 packages are deployment-only surfaces.
+# Including them keeps a checked-out backend installable in their isolated
+# runtimes without importing them into the API/DB process composition.
+include = [
+    "app*",
+    "worker*",
+    "prereview_runpod_worker*",
+    "prereview_model1_service*",
+    "prereview_model23_service*",
+]
 
 [tool.uv.sources]
 common-ir-pipeline = { path = "vendor/common_ir_pipeline" }

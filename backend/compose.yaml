@@ -52,23 +52,153 @@ services:
       - --limit-concurrency
       - "${PREREVIEW_API_LIMIT_CONCURRENCY:-32}"
 
+  # Model 1(KLUE-BERT)을 CPU 메모리에 한 번 적재해 재사용하는 내부 sidecar.
+  # host port와 외부 network를 갖지 않으며 DB/Supabase/OpenAI 자격증명도 받지 않는다.
+  model1-cpu:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile.ml-worker
+    command:
+      - /opt/prereview-ml-venv/bin/python
+      - -m
+      - uvicorn
+      - prereview_model1_service.entrypoint:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8791"
+      - --workers
+      - "1"
+      - --no-access-log
+    user: "${PREREVIEW_MODEL1_RUNTIME_UID:?set PREREVIEW_MODEL1_RUNTIME_UID to the Model 1 runtime owner UID}:${PREREVIEW_MODEL1_RUNTIME_GID:?set PREREVIEW_MODEL1_RUNTIME_GID to the Model 1 runtime owner GID}"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - ../.runtime/model1-serving/model1-resident.env
+    environment:
+      PREREVIEW_MODEL1_DEPLOYMENT_PROFILE: "backend-cpu"
+      PREREVIEW_MODEL1_DEVICE: "cpu"
+      PREREVIEW_MODEL1_API_BEARER_TOKEN_FILE: "/run/secrets/prereview-model1-bearer"
+      PREREVIEW_MODEL1_MAX_REQUEST_BYTES: "${PREREVIEW_MODEL1_MAX_REQUEST_BYTES:-65536}"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+      HF_HOME: "/tmp/.cache/huggingface"
+      TORCH_HOME: "/tmp/.cache/torch"
+      TRANSFORMERS_CACHE: "/tmp/.cache/transformers"
+    volumes:
+      - type: bind
+        source: "${PREREVIEW_MODEL1_SERVING_HOST_DIR:?set PREREVIEW_MODEL1_SERVING_HOST_DIR to the verified Model 1 runtime directory}"
+        target: /opt/prereview/model1
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../.runtime/model1-serving/model1-service.token
+        target: /run/secrets/prereview-model1-bearer
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        - CMD
+        - /opt/prereview-ml-venv/bin/python
+        - -m
+        - prereview_model1_service.healthcheck
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - model1-internal
+
+  # Model 2(지원규모)와 Model 3(이상치)를 한 CPU 프로세스에 미리 적재한다.
+  # 두 legacy serving graph가 import cache와 수치 연산 자원을 공유하므로 전역
+  # 동시성은 1로 고정하며, DB/Storage/OpenAI 자격증명과 host port를 주지 않는다.
+  model23-cpu:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile.ml-worker
+    command:
+      - /opt/prereview-ml-venv/bin/python
+      - -m
+      - uvicorn
+      - prereview_model23_service.entrypoint:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8792"
+      - --workers
+      - "1"
+      - --no-access-log
+    user: "${PREREVIEW_MODEL1_RUNTIME_UID:?set PREREVIEW_MODEL1_RUNTIME_UID to the ML runtime owner UID}:${PREREVIEW_MODEL1_RUNTIME_GID:?set PREREVIEW_MODEL1_RUNTIME_GID to the ML runtime owner GID}"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - ../.runtime/model23-serving/model23-resident.env
+    environment:
+      PREREVIEW_ML_ROOT: "/app/ml"
+      PREREVIEW_MODEL23_API_BEARER_TOKEN_FILE: "/run/secrets/prereview-model23-bearer"
+      PREREVIEW_MODEL23_MAX_REQUEST_BYTES: "${PREREVIEW_MODEL23_MAX_REQUEST_BYTES:-2097152}"
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+    volumes:
+      - type: bind
+        source: ../.runtime/model23-serving/model23-service.token
+        target: /run/secrets/prereview-model23-bearer
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        - CMD
+        - /opt/prereview-ml-venv/bin/python
+        - -m
+        - prereview_model23_service.healthcheck
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - model23-internal
+
   # 신뢰된 내부 polling worker. 포트는 열지 않으며, 브라우저/Edge callback을
-  # 경유하지 않고 PostgreSQL queue와 private Storage만 사용한다.
+  # 경유하지 않고 PostgreSQL queue와 private Storage만 사용한다. Model 1과
+  # Model 2·3은 각각 인증된 CPU sidecar를 호출한다.
   worker:
     build:
-      # ML Model 1/2/3 belongs only in the long-running analysis worker.
-      # The root context makes the tracked ml/ source available at /app/ml;
-      # Dockerfile.ml-worker deliberately remains separate from API/chat.
       context: ..
       dockerfile: backend/Dockerfile.ml-worker
     command: ["python", "-m", "worker.main"]
-    # The verified Model 1 tree is chmod 700 by its preparation command.
-    # Run as its numeric host owner rather than as container root; values are
-    # required so a deployment cannot accidentally use a mismatched mount.
     user: "${PREREVIEW_MODEL1_RUNTIME_UID:?set PREREVIEW_MODEL1_RUNTIME_UID to the Model 1 runtime owner UID}:${PREREVIEW_MODEL1_RUNTIME_GID:?set PREREVIEW_MODEL1_RUNTIME_GID to the Model 1 runtime owner GID}"
     restart: unless-stopped
     # SIGTERM 후 현재 claim을 정리할 시간을 준다. 배포 전 queue drain이 우선이다.
     stop_grace_period: 10m
+    depends_on:
+      model1-cpu:
+        condition: service_healthy
+        restart: true
+      model23-cpu:
+        condition: service_healthy
+        restart: true
+    env_file:
+      - ../.runtime/model1-serving/model1-resident.env
+      - ../.runtime/model23-serving/model23-resident.env
     environment:
       DATABASE_URL: "${DATABASE_URL:-}"
       SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
@@ -117,11 +247,21 @@ services:
       PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS: "${PREREVIEW_WORKER_PARSE_TIMEOUT_SECONDS:-120}"
       # rhwp의 native FreeType 호환성은 parser subprocess에만 적용된다.
       PREREVIEW_FREETYPE_LIB: "${PREREVIEW_FREETYPE_LIB:-/usr/lib/x86_64-linux-gnu/libfreetype.so.6}"
-      # ML is child-process-only.  Model 2/3 source and registered artifacts
-      # are tracked inside the dedicated image; the verified Model 1 package
-      # is deliberately never copied into it.
+      # Model 1 and Model 2/3 are resident in separate authenticated internal
+      # CPU sidecars. The worker keeps no mutable model process state.
       PREREVIEW_ML_ROOT: "/app/ml"
-      PREREVIEW_MODEL1_SERVING_DIR: "/opt/prereview/model1"
+      # Dockerfile.ml-worker also serves the standalone Model 1 container and
+      # therefore carries a local runtime default.  The polling worker must
+      # clear it explicitly when it uses the authenticated sidecar instead.
+      PREREVIEW_MODEL1_SERVING_DIR: ""
+      PREREVIEW_MODEL1_REMOTE_BASE_URL: "http://model1-cpu:8791"
+      PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE: "/run/secrets/prereview-model1-bearer"
+      PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME: "model1-cpu"
+      PREREVIEW_MODEL1_MAX_REQUEST_BYTES: "${PREREVIEW_MODEL1_MAX_REQUEST_BYTES:-65536}"
+      PREREVIEW_MODEL23_REMOTE_BASE_URL: "http://model23-cpu:8792"
+      PREREVIEW_MODEL23_REMOTE_BEARER_TOKEN_FILE: "/run/secrets/prereview-model23-bearer"
+      PREREVIEW_MODEL23_INTERNAL_HTTP_HOSTNAME: "model23-cpu"
+      PREREVIEW_MODEL23_MAX_REQUEST_BYTES: "${PREREVIEW_MODEL23_MAX_REQUEST_BYTES:-2097152}"
       PREREVIEW_ML_PYTHON_EXECUTABLE: "/opt/prereview-ml-venv/bin/python"
       PREREVIEW_ML_TIMEOUT_SECONDS: "${PREREVIEW_ML_TIMEOUT_SECONDS:-180}"
       PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT: "true"
@@ -133,17 +273,20 @@ services:
       TORCH_HOME: "/tmp/.cache/torch"
       TRANSFORMERS_CACHE: "/tmp/.cache/transformers"
     volumes:
-      # Required for this service: a compose deployment must fail closed rather
-      # than silently publish Model 1 as unavailable.  The host value can be
-      # any absolute path, including a path outside this checkout.
       - type: bind
-        source: "${PREREVIEW_MODEL1_SERVING_HOST_DIR:?set PREREVIEW_MODEL1_SERVING_HOST_DIR to the verified Model 1 runtime directory}"
-        target: /opt/prereview/model1
+        source: ../.runtime/model1-serving/model1-service.token
+        target: /run/secrets/prereview-model1-bearer
         read_only: true
         bind:
           create_host_path: false
-    # The source/artifact image and the Model 1 bind mount are immutable at
-    # runtime.  Parser/model scratch space is explicitly limited to /tmp.
+      - type: bind
+        source: ../.runtime/model23-serving/model23-service.token
+        target: /run/secrets/prereview-model23-bearer
+        read_only: true
+        bind:
+          create_host_path: false
+    # Source/artifacts are image-local and the Model 1 secret is read-only.
+    # Parser/model scratch space is explicitly limited to /tmp.
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=1g
@@ -153,6 +296,10 @@ services:
       - ALL
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - model1-internal
+      - model23-internal
 
   # 분석 완료 건의 CPL/FIT/SIM/ML 결과만 근거로 답하는 비동기 Chat worker.
   # 분석 worker와 queue/RPC가 분리되어 긴 문서 분석이 대화 응답을 막지 않는다.
@@ -230,3 +377,9 @@ services:
       - ALL
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+networks:
+  model1-internal:
+    internal: true
+  model23-internal:
+    internal: true

@@ -7,19 +7,32 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
+from prereview_model1_service.contract import MODEL1_DEFAULT_MAX_REQUEST_BYTES
+from prereview_model23_service.contract import MODEL23_DEFAULT_MAX_REQUEST_BYTES
 from worker.analysis_job import AnalysisJobHandler
+from worker.adapters.model1_http import Model1HttpAdapter, Model1HttpError
+from worker.adapters.model23_http import (
+    Model2HttpAdapter,
+    Model3HttpAdapter,
+    Model23HttpError,
+)
 from worker.adapters.vllm_llm_client import VllmLLMClient
 from worker import main as worker_main
 from worker.main import (
     WorkerConfigurationError,
     WorkerSettings,
+    _build_ml_models,
+    _read_model1_remote_bearer_token,
+    _read_model23_remote_bearer_token,
     _strict_ml_runtime_preflight_enabled,
     _validate_strict_ml_process_identity,
     build_worker,
     configure_runtime_logging,
 )
 from worker.postgres_repository import PostgresJobRepository
+from worker.contracts.ml_result import MlModelId
 from worker.ml_runtime_preflight import MlRuntimePreflightError
 
 
@@ -94,6 +107,287 @@ def test_worker_settings_read_external_ml_boundaries() -> None:
     assert str(settings.model1_serving_dir).endswith(r"external\serving\model1")
     assert settings.ml_python_executable.endswith(r"venvs\ml\python.exe")
     assert settings.ml_timeout_seconds == 240.0
+
+
+def test_worker_settings_accept_an_exact_remote_model1_configuration_group(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "model1-token"
+    token_file.write_text("a" * 32 + "\n", encoding="ascii")
+    token_file.chmod(0o600)
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+            "PREREVIEW_MODEL1_REMOTE_BASE_URL": "https://model1.tailnet.ts.net",
+            "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE": str(token_file),
+            "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256": "b" * 64,
+        }
+    )
+
+    assert settings.model1_remote_base_url == "https://model1.tailnet.ts.net"
+    assert settings.model1_remote_bearer_token_file == token_file
+    assert settings.model1_remote_runtime_manifest_sha256 == "b" * 64
+    assert settings.model1_internal_http_hostname is None
+    assert settings.model1_remote_max_request_bytes == MODEL1_DEFAULT_MAX_REQUEST_BYTES
+
+
+def test_worker_settings_validate_model1_request_cap_parity() -> None:
+    common = {
+        "DATABASE_URL": "postgresql://worker@db/postgres",
+        "SUPABASE_URL": "http://supabase:8000",
+        "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+    }
+    configured = WorkerSettings.from_env(
+        {**common, "PREREVIEW_MODEL1_MAX_REQUEST_BYTES": "32768"}
+    )
+    assert configured.model1_remote_max_request_bytes == 32_768
+
+    for invalid in ("511", "1048577"):
+        with pytest.raises(WorkerConfigurationError, match="must be between"):
+            WorkerSettings.from_env(
+                {**common, "PREREVIEW_MODEL1_MAX_REQUEST_BYTES": invalid}
+            )
+
+
+def test_worker_settings_allow_explicit_compose_internal_model1_http(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "model1-token"
+    token_file.write_text("a" * 32, encoding="ascii")
+    token_file.chmod(0o600)
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+            "PREREVIEW_MODEL1_REMOTE_BASE_URL": "http://model1-cpu:8791",
+            "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE": str(token_file),
+            "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256": "b" * 64,
+            "PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME": "model1-cpu",
+        }
+    )
+
+    assert settings.model1_remote_base_url == "http://model1-cpu:8791"
+    assert settings.model1_internal_http_hostname == "model1-cpu"
+
+
+@pytest.mark.parametrize(
+    ("base_url", "hostname"),
+    (
+        ("http://model1-cpu:8791", None),
+        ("http://model1-cpu.attacker:8791", "model1-cpu"),
+        ("https://model1.tailnet.ts.net", "model1-cpu"),
+    ),
+)
+def test_worker_settings_reject_implicit_or_mismatched_internal_http(
+    tmp_path: Path, base_url: str, hostname: str | None,
+) -> None:
+    values = {
+        "DATABASE_URL": "postgresql://worker@db/postgres",
+        "SUPABASE_URL": "http://supabase:8000",
+        "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        "PREREVIEW_MODEL1_REMOTE_BASE_URL": base_url,
+        "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE": str(tmp_path / "token"),
+        "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256": "b" * 64,
+    }
+    if hostname is not None:
+        values["PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME"] = hostname
+
+    with pytest.raises(WorkerConfigurationError, match="remote Model 1|INTERNAL_HTTP"):
+        WorkerSettings.from_env(values)
+
+
+@pytest.mark.parametrize(
+    "configured_name",
+    (
+        "PREREVIEW_MODEL1_REMOTE_BASE_URL",
+        "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE",
+        "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256",
+    ),
+)
+def test_worker_settings_reject_partial_remote_model1_configuration(
+    configured_name: str,
+) -> None:
+    values = {
+        "DATABASE_URL": "postgresql://worker@db/postgres",
+        "SUPABASE_URL": "http://supabase:8000",
+        "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+        configured_name: "configured",
+    }
+
+    with pytest.raises(WorkerConfigurationError, match="remote Model 1 configuration"):
+        WorkerSettings.from_env(values)
+
+
+def test_worker_settings_reject_internal_http_opt_in_without_remote_group() -> None:
+    with pytest.raises(WorkerConfigurationError, match="INTERNAL_HTTP_HOSTNAME"):
+        WorkerSettings.from_env(
+            {
+                "DATABASE_URL": "postgresql://worker@db/postgres",
+                "SUPABASE_URL": "http://supabase:8000",
+                "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+                "PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME": "model1-cpu",
+            }
+        )
+
+
+def test_remote_and_local_model1_configuration_fails_closed(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "model1-token"
+    token_file.write_text("a" * 32, encoding="ascii")
+    token_file.chmod(0o600)
+    with pytest.raises(WorkerConfigurationError, match="local and remote Model 1"):
+        WorkerSettings.from_env(
+            {
+                "DATABASE_URL": "postgresql://worker@db/postgres",
+                "SUPABASE_URL": "http://supabase:8000",
+                "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+                "PREREVIEW_MODEL1_SERVING_DIR": str(tmp_path / "local-model1"),
+                "PREREVIEW_MODEL1_REMOTE_BASE_URL": "https://model1.tailnet.ts.net",
+                "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE": str(token_file),
+                "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256": "b" * 64,
+            }
+        )
+
+
+def test_remote_model1_builds_the_http_adapter(tmp_path: Path) -> None:
+    token_file = tmp_path / "model1-token"
+    token_file.write_text("a" * 32, encoding="ascii")
+    token_file.chmod(0o600)
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+            "PREREVIEW_MODEL1_REMOTE_BASE_URL": "https://model1.tailnet.ts.net",
+            "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE": str(token_file),
+            "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256": "b" * 64,
+        }
+    )
+
+    models = _build_ml_models(settings)
+
+    assert isinstance(models[MlModelId.MODEL_1_SUPPORT_TYPE], Model1HttpAdapter)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    (0o640, 0o604),
+)
+def test_remote_model1_bearer_file_rejects_group_or_world_readable_mode(
+    tmp_path: Path, mode: int
+) -> None:
+    token_file = tmp_path / "model1-token"
+    token_file.write_text("a" * 32, encoding="ascii")
+    token_file.chmod(mode)
+
+    with pytest.raises(WorkerConfigurationError, match="bearer token file is invalid"):
+        _read_model1_remote_bearer_token(token_file)
+
+
+def test_worker_settings_accept_exact_internal_model23_configuration(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "model23-token"
+    token_file.write_text("c" * 48 + "\n", encoding="ascii")
+    token_file.chmod(0o600)
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+            "PREREVIEW_MODEL23_REMOTE_BASE_URL": "http://model23-cpu:8792",
+            "PREREVIEW_MODEL23_REMOTE_BEARER_TOKEN_FILE": str(token_file),
+            "PREREVIEW_MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256": "d" * 64,
+            "PREREVIEW_MODEL23_INTERNAL_HTTP_HOSTNAME": "model23-cpu",
+        }
+    )
+
+    assert settings.model23_remote_base_url == "http://model23-cpu:8792"
+    assert settings.model23_remote_bearer_token_file == token_file
+    assert settings.model23_remote_runtime_manifest_sha256 == "d" * 64
+    assert settings.model23_internal_http_hostname == "model23-cpu"
+    assert settings.model23_remote_max_request_bytes == MODEL23_DEFAULT_MAX_REQUEST_BYTES
+
+
+@pytest.mark.parametrize(
+    "configured_name",
+    (
+        "PREREVIEW_MODEL23_REMOTE_BASE_URL",
+        "PREREVIEW_MODEL23_REMOTE_BEARER_TOKEN_FILE",
+        "PREREVIEW_MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256",
+    ),
+)
+def test_worker_settings_reject_partial_remote_model23_configuration(
+    configured_name: str,
+) -> None:
+    with pytest.raises(WorkerConfigurationError, match="remote Model 2/3 configuration"):
+        WorkerSettings.from_env(
+            {
+                "DATABASE_URL": "postgresql://worker@db/postgres",
+                "SUPABASE_URL": "http://supabase:8000",
+                "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+                configured_name: "configured",
+            }
+        )
+
+
+def test_worker_settings_validate_model23_request_cap() -> None:
+    common = {
+        "DATABASE_URL": "postgresql://worker@db/postgres",
+        "SUPABASE_URL": "http://supabase:8000",
+        "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+    }
+    assert (
+        WorkerSettings.from_env(
+            {**common, "PREREVIEW_MODEL23_MAX_REQUEST_BYTES": "1048576"}
+        ).model23_remote_max_request_bytes
+        == 1_048_576
+    )
+    for invalid in ("65535", "8388609"):
+        with pytest.raises(WorkerConfigurationError, match="must be between"):
+            WorkerSettings.from_env(
+                {**common, "PREREVIEW_MODEL23_MAX_REQUEST_BYTES": invalid}
+            )
+
+
+def test_remote_model23_builds_http_adapters_without_local_python(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "model23-token"
+    token_file.write_text("c" * 48, encoding="ascii")
+    token_file.chmod(0o600)
+    settings = WorkerSettings.from_env(
+        {
+            "DATABASE_URL": "postgresql://worker@db/postgres",
+            "SUPABASE_URL": "http://supabase:8000",
+            "SUPABASE_SERVICE_ROLE_KEY": "service-role",
+            "PREREVIEW_ML_PYTHON_EXECUTABLE": str(tmp_path / "missing-python"),
+            "PREREVIEW_MODEL23_REMOTE_BASE_URL": "https://model23.tailnet.ts.net",
+            "PREREVIEW_MODEL23_REMOTE_BEARER_TOKEN_FILE": str(token_file),
+            "PREREVIEW_MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256": "d" * 64,
+        }
+    )
+
+    models = _build_ml_models(settings)
+
+    assert isinstance(models[MlModelId.MODEL_2_AMOUNT], Model2HttpAdapter)
+    assert isinstance(models[MlModelId.MODEL_3_ANOMALY], Model3HttpAdapter)
+
+
+@pytest.mark.parametrize("mode", (0o640, 0o604))
+def test_remote_model23_bearer_file_rejects_shared_mode(
+    tmp_path: Path, mode: int,
+) -> None:
+    token_file = tmp_path / "model23-token"
+    token_file.write_text("c" * 48, encoding="ascii")
+    token_file.chmod(mode)
+
+    with pytest.raises(WorkerConfigurationError, match="bearer token file is invalid"):
+        _read_model23_remote_bearer_token(token_file)
 
 
 @pytest.mark.parametrize(
@@ -221,13 +515,184 @@ def test_main_refuses_to_poll_when_ml_preflight_fails(
         top_k=5,
     )
     monkeypatch.setattr(
-        worker_main, "build_worker", lambda: SimpleNamespace(settings=settings)
+        worker_main,
+        "build_worker",
+        lambda: SimpleNamespace(settings=settings, repository=object(), handler=object()),
     )
 
     def fail_preflight(**_kwargs: object) -> None:
         raise MlRuntimePreflightError("test mismatch")
 
     monkeypatch.setattr(worker_main, "verify_ml_runtime", fail_preflight)
+    monkeypatch.setattr(
+        worker_main,
+        "run_worker",
+        lambda *_args, **_kwargs: pytest.fail("queue polling must not start"),
+    )
+
+    assert worker_main.main() == 2
+
+
+def test_strict_preflight_skips_only_local_model1_for_remote_model1(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT", "true")
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 1000)
+    settings = SimpleNamespace(
+        ml_root=Path("/app/ml"),
+        model1_serving_dir=None,
+        model1_remote_base_url="https://model1.tailnet.ts.net",
+        heartbeat_seconds=30.0,
+        lease_seconds=120,
+        idle_poll_seconds=1.0,
+        top_k=5,
+    )
+    readiness = SimpleNamespace(called=False)
+
+    def check_ready() -> None:
+        readiness.called = True
+
+    monkeypatch.setattr(
+        worker_main,
+        "build_worker",
+        lambda: SimpleNamespace(
+            settings=settings,
+            repository=object(),
+            handler=object(),
+            model1_remote_adapter=SimpleNamespace(check_ready=check_ready),
+        ),
+    )
+    received: dict[str, object] = {}
+    monkeypatch.setattr(
+        worker_main,
+        "verify_ml_runtime",
+        lambda **kwargs: received.update(kwargs),
+    )
+    monkeypatch.setattr(worker_main, "run_worker", lambda *_args, **_kwargs: None)
+
+    assert worker_main.main() == 0
+    assert received["verify_model1"] is False
+    assert readiness.called is True
+
+
+def test_strict_preflight_refuses_to_poll_when_remote_model1_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT", "true")
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 1000)
+    settings = SimpleNamespace(
+        ml_root=Path("/app/ml"),
+        model1_serving_dir=None,
+        model1_remote_base_url="https://model1.tailnet.ts.net",
+        heartbeat_seconds=30.0,
+        lease_seconds=120,
+        idle_poll_seconds=1.0,
+        top_k=5,
+    )
+
+    def fail_ready() -> None:
+        raise Model1HttpError()
+
+    monkeypatch.setattr(
+        worker_main,
+        "build_worker",
+        lambda: SimpleNamespace(
+            settings=settings,
+            repository=object(),
+            handler=object(),
+            model1_remote_adapter=SimpleNamespace(check_ready=fail_ready),
+        ),
+    )
+    monkeypatch.setattr(worker_main, "verify_ml_runtime", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        worker_main,
+        "run_worker",
+        lambda *_args, **_kwargs: pytest.fail("queue polling must not start"),
+    )
+
+    assert worker_main.main() == 2
+
+
+def test_strict_preflight_skips_local_model23_and_checks_remote_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT", "true")
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 1000)
+    settings = SimpleNamespace(
+        ml_root=Path("/app/ml"),
+        model1_serving_dir=Path("/opt/prereview/model1"),
+        model1_remote_base_url=None,
+        model23_remote_base_url="https://model23.tailnet.ts.net",
+        heartbeat_seconds=30.0,
+        lease_seconds=120,
+        idle_poll_seconds=1.0,
+        top_k=5,
+    )
+    readiness = SimpleNamespace(calls=0)
+
+    def check_ready() -> None:
+        readiness.calls += 1
+
+    monkeypatch.setattr(
+        worker_main,
+        "build_worker",
+        lambda: SimpleNamespace(
+            settings=settings,
+            repository=object(),
+            handler=object(),
+            model1_remote_adapter=None,
+            model23_remote_adapter=SimpleNamespace(check_ready=check_ready),
+        ),
+    )
+    received: dict[str, object] = {}
+    monkeypatch.setattr(
+        worker_main,
+        "verify_ml_runtime",
+        lambda **kwargs: received.update(kwargs),
+    )
+    monkeypatch.setattr(worker_main, "run_worker", lambda *_args, **_kwargs: None)
+
+    assert worker_main.main() == 0
+    assert received["verify_model1"] is True
+    assert received["verify_model23"] is False
+    assert readiness.calls == 1
+
+
+def test_strict_preflight_refuses_to_poll_when_remote_model23_is_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT", "true")
+    monkeypatch.setattr(worker_main.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(worker_main.os, "getegid", lambda: 1000)
+    settings = SimpleNamespace(
+        ml_root=Path("/app/ml"),
+        model1_serving_dir=Path("/opt/prereview/model1"),
+        model1_remote_base_url=None,
+        model23_remote_base_url="https://model23.tailnet.ts.net",
+        heartbeat_seconds=30.0,
+        lease_seconds=120,
+        idle_poll_seconds=1.0,
+        top_k=5,
+    )
+
+    def fail_ready() -> None:
+        raise Model23HttpError()
+
+    monkeypatch.setattr(
+        worker_main,
+        "build_worker",
+        lambda: SimpleNamespace(
+            settings=settings,
+            repository=object(),
+            handler=object(),
+            model1_remote_adapter=None,
+            model23_remote_adapter=SimpleNamespace(check_ready=fail_ready),
+        ),
+    )
+    monkeypatch.setattr(worker_main, "verify_ml_runtime", lambda **_kwargs: None)
     monkeypatch.setattr(
         worker_main,
         "run_worker",
@@ -364,14 +829,20 @@ def test_compose_starts_worker_by_module_without_publishing_a_port() -> None:
     assert "redis" not in worker_section.lower()
 
 
-def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
+def test_compose_gives_only_analysis_services_the_dedicated_ml_runtime() -> None:
     compose = (
         __import__("pathlib").Path(__file__).resolve().parents[1] / "compose.yaml"
     ).read_text(encoding="utf-8")
     worker_section = compose.split("\n  worker:\n", 1)[1].split(
         "\n  chat-worker:\n", 1
     )[0]
-    api_section = compose.split("\n  api:\n", 1)[1].split("\n  worker:\n", 1)[0]
+    model1_section = compose.split("\n  model1-cpu:\n", 1)[1].split(
+        "\n  model23-cpu:\n", 1
+    )[0]
+    model23_section = compose.split("\n  model23-cpu:\n", 1)[1].split(
+        "\n  worker:\n", 1
+    )[0]
+    api_section = compose.split("\n  api:\n", 1)[1].split("\n  model1-cpu:\n", 1)[0]
     chat_worker_section = compose.split("\n  chat-worker:\n", 1)[1]
 
     for name in (
@@ -392,7 +863,19 @@ def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
         assert name not in chat_worker_section
 
     assert 'PREREVIEW_ML_ROOT: "/app/ml"' in worker_section
-    assert 'PREREVIEW_MODEL1_SERVING_DIR: "/opt/prereview/model1"' in worker_section
+    assert 'PREREVIEW_MODEL1_SERVING_DIR: ""' in worker_section
+    assert 'PREREVIEW_MODEL1_REMOTE_BASE_URL: "http://model1-cpu:8791"' in worker_section
+    assert (
+        'PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE: '
+        '"/run/secrets/prereview-model1-bearer"'
+        in worker_section
+    )
+    assert 'PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME: "model1-cpu"' in worker_section
+    assert (
+        'PREREVIEW_MODEL1_MAX_REQUEST_BYTES: '
+        '"${PREREVIEW_MODEL1_MAX_REQUEST_BYTES:-65536}"'
+        in worker_section
+    )
     assert (
         'PREREVIEW_ML_PYTHON_EXECUTABLE: "/opt/prereview-ml-venv/bin/python"'
         in worker_section
@@ -421,21 +904,109 @@ def test_compose_gives_only_analysis_worker_the_dedicated_ml_runtime() -> None:
         in worker_section
     )
     assert 'PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT: "true"' in worker_section
-    assert "PREREVIEW_MODEL1_SERVING_HOST_DIR:?" in worker_section
     assert "PREREVIEW_MODEL1_RUNTIME_UID:?" in worker_section
     assert "PREREVIEW_MODEL1_RUNTIME_GID:?" in worker_section
-    assert "target: /opt/prereview/model1" in worker_section
+    assert "target: /run/secrets/prereview-model1-bearer" in worker_section
     assert "read_only: true" in worker_section
     assert "create_host_path: false" in worker_section
     assert 'HOME: "/tmp"' in worker_section
     assert 'XDG_CACHE_HOME: "/tmp/.cache"' in worker_section
+
+    assert 'PREREVIEW_MODEL1_DEPLOYMENT_PROFILE: "backend-cpu"' in model1_section
+    assert 'PREREVIEW_MODEL1_DEVICE: "cpu"' in model1_section
+    assert (
+        'PREREVIEW_MODEL1_MAX_REQUEST_BYTES: '
+        '"${PREREVIEW_MODEL1_MAX_REQUEST_BYTES:-65536}"'
+        in model1_section
+    )
+    assert "PREREVIEW_MODEL1_SERVING_HOST_DIR:?" in model1_section
+    assert "target: /opt/prereview/model1" in model1_section
+    assert "ports:" not in model1_section
+    assert 'PREREVIEW_ML_ROOT: "/app/ml"' in model23_section
+    assert 'PREREVIEW_MODEL23_API_BEARER_TOKEN_FILE: "/run/secrets/prereview-model23-bearer"' in model23_section
+    assert "ports:" not in model23_section
+
+
+def test_compose_parses_to_disjoint_model1_sidecar_and_worker_authority() -> None:
+    compose_path = Path(__file__).resolve().parents[1] / "compose.yaml"
+    services = yaml.safe_load(compose_path.read_text(encoding="utf-8"))["services"]
+    model1 = services["model1-cpu"]
+    worker = services["worker"]
+
+    assert worker["environment"]["PREREVIEW_MODEL1_SERVING_DIR"] == ""
+    assert (
+        worker["environment"]["PREREVIEW_MODEL1_REMOTE_BASE_URL"]
+        == "http://model1-cpu:8791"
+    )
+    assert worker["environment"]["PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME"] == "model1-cpu"
+    assert (
+        worker["environment"]["PREREVIEW_MODEL1_MAX_REQUEST_BYTES"]
+        == model1["environment"]["PREREVIEW_MODEL1_MAX_REQUEST_BYTES"]
+        == "${PREREVIEW_MODEL1_MAX_REQUEST_BYTES:-65536}"
+    )
+    assert all(
+        volume.get("target") != "/opt/prereview/model1"
+        for volume in worker["volumes"]
+    )
+    assert any(
+        volume.get("target") == "/run/secrets/prereview-model1-bearer"
+        and volume.get("read_only") is True
+        for volume in worker["volumes"]
+    )
+    assert any(
+        volume.get("target") == "/opt/prereview/model1"
+        and volume.get("read_only") is True
+        for volume in model1["volumes"]
+    )
+    assert model1["networks"] == ["model1-internal"]
+    assert worker["depends_on"]["model1-cpu"]["condition"] == "service_healthy"
+
+
+def test_compose_parses_to_disjoint_model23_sidecar_and_worker_authority() -> None:
+    compose_path = Path(__file__).resolve().parents[1] / "compose.yaml"
+    services = yaml.safe_load(compose_path.read_text(encoding="utf-8"))["services"]
+    model23 = services["model23-cpu"]
+    worker = services["worker"]
+
+    assert (
+        worker["environment"]["PREREVIEW_MODEL23_REMOTE_BASE_URL"]
+        == "http://model23-cpu:8792"
+    )
+    assert (
+        worker["environment"]["PREREVIEW_MODEL23_INTERNAL_HTTP_HOSTNAME"]
+        == "model23-cpu"
+    )
+    assert (
+        worker["environment"]["PREREVIEW_MODEL23_MAX_REQUEST_BYTES"]
+        == model23["environment"]["PREREVIEW_MODEL23_MAX_REQUEST_BYTES"]
+        == "${PREREVIEW_MODEL23_MAX_REQUEST_BYTES:-2097152}"
+    )
+    assert any(
+        volume.get("target") == "/run/secrets/prereview-model23-bearer"
+        and volume.get("read_only") is True
+        for volume in worker["volumes"]
+    )
+    assert not any(
+        volume.get("target", "").startswith("/app/ml")
+        for volume in worker["volumes"]
+    )
+    assert model23["networks"] == ["model23-internal"]
+    assert worker["depends_on"]["model23-cpu"]["condition"] == "service_healthy"
+    assert "ports" not in model23
+    for secret_name in (
+        "DATABASE_URL",
+        "SUPABASE_DB_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "OPENAI_API_KEY",
+    ):
+        assert secret_name not in model23.get("environment", {})
 
 
 def test_compose_keeps_api_and_chat_on_the_lightweight_image() -> None:
     compose = (
         __import__("pathlib").Path(__file__).resolve().parents[1] / "compose.yaml"
     ).read_text(encoding="utf-8")
-    api_section = compose.split("\n  api:\n", 1)[1].split("\n  worker:\n", 1)[0]
+    api_section = compose.split("\n  api:\n", 1)[1].split("\n  model1-cpu:\n", 1)[0]
     worker_section = compose.split("\n  worker:\n", 1)[1].split(
         "\n  chat-worker:\n", 1
     )[0]
@@ -474,6 +1045,7 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
     assert "COPY backend /app/backend" not in dockerfile
     assert "COPY backend/app /app/backend/app" in dockerfile
     assert "COPY backend/config/prompts /app/backend/config/prompts" in dockerfile
+    assert "COPY backend/prereview_model23_service /app/backend/prereview_model23_service" in dockerfile
     assert "requirements.runtime.txt" in dockerfile
     assert "download.pytorch.org/whl/cpu" in dockerfile
     assert "pip install xgboost-cpu==3.4.1" in dockerfile
@@ -503,6 +1075,10 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
     assert "!backend/config/prompts/" in rules
     assert "!backend/config/prompts/cpl-purpose-axis-v0.3.txt" in rules
     assert "!backend/config/prompts/cpl-recheck-v0.4.txt" in rules
+    assert "!backend/prereview_model1_service/" in rules
+    assert "!backend/prereview_model1_service/**" in rules
+    assert "!backend/prereview_model23_service/" in rules
+    assert "!backend/prereview_model23_service/**" in rules
     assert (
         "!backend/vendor/portable_existing_request_profiles_20260831/"
         "semantic_structuring/*.py"
@@ -532,6 +1108,10 @@ def test_ml_worker_dockerfile_copies_tracked_ml_and_installs_native_runtime() ->
     assert "!ml/figures/" not in rules
     assert "!ml/models/model2_canonical/model2_p3_bundle.joblib" in rules
     assert "!ml/data/processed/business_taxonomy.parquet" in rules
+    assert "!ml/experiments/model2/core/*.py" not in rules
+    assert "!ml/experiments/model2/core/m69_m2_source_features.py" in rules
+    assert "!ml/experiments/model2/core/m73_m2_routing_improvement.py" in rules
+    assert "!ml/experiments/model2/core/m82_m2_proximity_features.py" in rules
 
     # Directory allowlists intentionally admit the active source trees. These
     # last-match exclusions prevent local credentials and caches from being

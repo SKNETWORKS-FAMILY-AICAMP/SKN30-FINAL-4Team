@@ -23,6 +23,10 @@
 !backend/vendor/portable_existing_request_profiles_20260831/semantic_structuring/*.py
 !backend/app/
 !backend/app/**
+!backend/prereview_model1_service/
+!backend/prereview_model1_service/**
+!backend/prereview_model23_service/
+!backend/prereview_model23_service/**
 !backend/worker/
 !backend/worker/**
 !backend/requirements.txt
@@ -66,7 +70,9 @@
 !ml/experiments/
 !ml/experiments/model2/
 !ml/experiments/model2/core/
-!ml/experiments/model2/core/*.py
+!ml/experiments/model2/core/m69_m2_source_features.py
+!ml/experiments/model2/core/m73_m2_routing_improvement.py
+!ml/experiments/model2/core/m82_m2_proximity_features.py
 
 # Re-exclude local hygiene and credential files after the directory
 # allowlists above. Docker ignore matching is last-rule-wins, so these rules

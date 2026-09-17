@@ -10,8 +10,10 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 import shutil
 import socket
+import stat
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -20,6 +22,17 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 
+from prereview_model1_service.contract import (
+    MODEL1_DEFAULT_MAX_REQUEST_BYTES,
+    MODEL1_MAX_REQUEST_BYTES,
+    MODEL1_MIN_REQUEST_BYTES,
+)
+from prereview_model23_service.contract import (
+    MODEL23_DEFAULT_MAX_REQUEST_BYTES,
+    MODEL23_MAX_REQUEST_BYTES,
+    MODEL23_MIN_REQUEST_BYTES,
+)
+
 from worker.adapters.ml_subprocess import (
     Model1SubprocessMlModel,
     Model2SubprocessMlModel,
@@ -27,6 +40,19 @@ from worker.adapters.ml_subprocess import (
     model1_command,
     model2_command,
     model3_command,
+)
+from worker.adapters.model1_http import (
+    Model1HttpAdapter,
+    Model1HttpContractError,
+    Model1HttpError,
+    validate_model1_remote_base_url,
+)
+from worker.adapters.model23_http import (
+    Model2HttpAdapter,
+    Model3HttpAdapter,
+    Model23HttpContractError,
+    Model23HttpError,
+    validate_model23_remote_base_url,
 )
 from worker.analysis_job import (
     AnalysisJobHandler,
@@ -65,6 +91,33 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_ML_ROOT = Path(__file__).resolve().parents[2] / "ml"
 DEFAULT_ML_TIMEOUT_SECONDS = 180.0
 STRICT_ML_RUNTIME_PREFLIGHT_ENV = "PREREVIEW_STRICT_ML_RUNTIME_PREFLIGHT"
+MODEL1_REMOTE_BASE_URL_ENV = "PREREVIEW_MODEL1_REMOTE_BASE_URL"
+MODEL1_REMOTE_BEARER_TOKEN_FILE_ENV = "PREREVIEW_MODEL1_REMOTE_BEARER_TOKEN_FILE"
+MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256_ENV = (
+    "PREREVIEW_MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256"
+)
+MODEL1_INTERNAL_HTTP_HOSTNAME_ENV = "PREREVIEW_MODEL1_INTERNAL_HTTP_HOSTNAME"
+MODEL1_MAX_REQUEST_BYTES_ENV = "PREREVIEW_MODEL1_MAX_REQUEST_BYTES"
+_MODEL1_REMOTE_ENV_GROUP = (
+    MODEL1_REMOTE_BASE_URL_ENV,
+    MODEL1_REMOTE_BEARER_TOKEN_FILE_ENV,
+    MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256_ENV,
+)
+_MODEL1_REMOTE_TOKEN = re.compile(r"[A-Za-z0-9_-]{32,512}\Z")
+MODEL23_REMOTE_BASE_URL_ENV = "PREREVIEW_MODEL23_REMOTE_BASE_URL"
+MODEL23_REMOTE_BEARER_TOKEN_FILE_ENV = "PREREVIEW_MODEL23_REMOTE_BEARER_TOKEN_FILE"
+MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256_ENV = (
+    "PREREVIEW_MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256"
+)
+MODEL23_INTERNAL_HTTP_HOSTNAME_ENV = "PREREVIEW_MODEL23_INTERNAL_HTTP_HOSTNAME"
+MODEL23_MAX_REQUEST_BYTES_ENV = "PREREVIEW_MODEL23_MAX_REQUEST_BYTES"
+_MODEL23_REMOTE_ENV_GROUP = (
+    MODEL23_REMOTE_BASE_URL_ENV,
+    MODEL23_REMOTE_BEARER_TOKEN_FILE_ENV,
+    MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256_ENV,
+)
+_MODEL23_REMOTE_TOKEN = re.compile(r"[A-Za-z0-9_-]{32,512}\Z")
+_SHA256_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_ENV_VALUES = frozenset({"", "0", "false", "no", "off"})
 
@@ -103,6 +156,16 @@ class WorkerSettings:
     model1_serving_dir: Path | None = None
     ml_python_executable: str | None = None
     ml_timeout_seconds: float = DEFAULT_ML_TIMEOUT_SECONDS
+    model1_remote_base_url: str | None = None
+    model1_remote_bearer_token_file: Path | None = None
+    model1_remote_runtime_manifest_sha256: str | None = None
+    model1_internal_http_hostname: str | None = None
+    model1_remote_max_request_bytes: int = MODEL1_DEFAULT_MAX_REQUEST_BYTES
+    model23_remote_base_url: str | None = None
+    model23_remote_bearer_token_file: Path | None = None
+    model23_remote_runtime_manifest_sha256: str | None = None
+    model23_internal_http_hostname: str | None = None
+    model23_remote_max_request_bytes: int = MODEL23_DEFAULT_MAX_REQUEST_BYTES
     existing_kb_required: bool = True
 
     @classmethod
@@ -137,6 +200,40 @@ class WorkerSettings:
         ml_python_executable = _optional_string(
             values, "PREREVIEW_ML_PYTHON_EXECUTABLE"
         )
+        model1_remote = _model1_remote_configuration(values)
+        model1_remote_max_request_bytes = _positive_int(
+            values,
+            MODEL1_MAX_REQUEST_BYTES_ENV,
+            MODEL1_DEFAULT_MAX_REQUEST_BYTES,
+        )
+        if not (
+            MODEL1_MIN_REQUEST_BYTES
+            <= model1_remote_max_request_bytes
+            <= MODEL1_MAX_REQUEST_BYTES
+        ):
+            raise WorkerConfigurationError(
+                f"{MODEL1_MAX_REQUEST_BYTES_ENV} must be between "
+                f"{MODEL1_MIN_REQUEST_BYTES} and {MODEL1_MAX_REQUEST_BYTES}"
+            )
+        if model1_remote is not None and model1_serving_dir is not None:
+            raise WorkerConfigurationError(
+                "local and remote Model 1 configurations cannot be enabled together"
+            )
+        model23_remote = _model23_remote_configuration(values)
+        model23_remote_max_request_bytes = _positive_int(
+            values,
+            MODEL23_MAX_REQUEST_BYTES_ENV,
+            MODEL23_DEFAULT_MAX_REQUEST_BYTES,
+        )
+        if not (
+            MODEL23_MIN_REQUEST_BYTES
+            <= model23_remote_max_request_bytes
+            <= MODEL23_MAX_REQUEST_BYTES
+        ):
+            raise WorkerConfigurationError(
+                f"{MODEL23_MAX_REQUEST_BYTES_ENV} must be between "
+                f"{MODEL23_MIN_REQUEST_BYTES} and {MODEL23_MAX_REQUEST_BYTES}"
+            )
         try:
             request_native_exact_candidate_mode = (
                 normalize_request_native_exact_candidate_mode(
@@ -180,6 +277,32 @@ class WorkerSettings:
                 "PREREVIEW_ML_TIMEOUT_SECONDS",
                 DEFAULT_ML_TIMEOUT_SECONDS,
             ),
+            model1_remote_base_url=(
+                None if model1_remote is None else model1_remote[0]
+            ),
+            model1_remote_bearer_token_file=(
+                None if model1_remote is None else model1_remote[1]
+            ),
+            model1_remote_runtime_manifest_sha256=(
+                None if model1_remote is None else model1_remote[2]
+            ),
+            model1_internal_http_hostname=(
+                None if model1_remote is None else model1_remote[3]
+            ),
+            model1_remote_max_request_bytes=model1_remote_max_request_bytes,
+            model23_remote_base_url=(
+                None if model23_remote is None else model23_remote[0]
+            ),
+            model23_remote_bearer_token_file=(
+                None if model23_remote is None else model23_remote[1]
+            ),
+            model23_remote_runtime_manifest_sha256=(
+                None if model23_remote is None else model23_remote[2]
+            ),
+            model23_internal_http_hostname=(
+                None if model23_remote is None else model23_remote[3]
+            ),
+            model23_remote_max_request_bytes=model23_remote_max_request_bytes,
             existing_kb_required=_boolean(
                 values, "PREREVIEW_EXISTING_KB_REQUIRED", default=True
             ),
@@ -193,6 +316,8 @@ class WorkerComposition:
     repository: JobRepository
     handler: JobHandler
     settings: WorkerSettings
+    model1_remote_adapter: Model1HttpAdapter | None = None
+    model23_remote_adapter: Model2HttpAdapter | None = None
 
 
 def _required(env: Mapping[str, str], name: str) -> str:
@@ -256,6 +381,186 @@ def _optional_path(env: Mapping[str, str], name: str) -> Path | None:
     return None if value is None else Path(value).expanduser()
 
 
+def _model1_remote_configuration(
+    env: Mapping[str, str],
+) -> tuple[str, Path, str, str | None] | None:
+    """Validate the all-or-nothing remote Model 1 configuration group."""
+
+    raw_values = {name: _optional_string(env, name) for name in _MODEL1_REMOTE_ENV_GROUP}
+    configured = tuple(name for name, value in raw_values.items() if value is not None)
+    internal_http_hostname = _optional_string(
+        env, MODEL1_INTERNAL_HTTP_HOSTNAME_ENV
+    )
+    if not configured:
+        if internal_http_hostname is not None:
+            raise WorkerConfigurationError(
+                f"{MODEL1_INTERNAL_HTTP_HOSTNAME_ENV} requires the remote Model 1 configuration"
+            )
+        return None
+    if len(configured) != len(_MODEL1_REMOTE_ENV_GROUP):
+        raise WorkerConfigurationError(
+            "remote Model 1 configuration requires "
+            + ", ".join(_MODEL1_REMOTE_ENV_GROUP)
+        )
+
+    assert raw_values[MODEL1_REMOTE_BASE_URL_ENV] is not None
+    assert raw_values[MODEL1_REMOTE_BEARER_TOKEN_FILE_ENV] is not None
+    assert raw_values[MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256_ENV] is not None
+    try:
+        base_url = validate_model1_remote_base_url(
+            raw_values[MODEL1_REMOTE_BASE_URL_ENV],
+            internal_http_hostname=internal_http_hostname,
+        )
+    except ValueError:
+        raise WorkerConfigurationError("remote Model 1 base URL is invalid") from None
+    manifest_sha256 = raw_values[MODEL1_REMOTE_RUNTIME_MANIFEST_SHA256_ENV]
+    if _SHA256_DIGEST.fullmatch(manifest_sha256) is None:
+        raise WorkerConfigurationError(
+            "remote Model 1 runtime manifest SHA-256 is invalid"
+        )
+    if internal_http_hostname is not None and not base_url.startswith("http://"):
+        raise WorkerConfigurationError(
+            f"{MODEL1_INTERNAL_HTTP_HOSTNAME_ENV} is valid only for an HTTP base URL"
+        )
+    return (
+        base_url,
+        Path(raw_values[MODEL1_REMOTE_BEARER_TOKEN_FILE_ENV]).expanduser(),
+        manifest_sha256,
+        internal_http_hostname.lower() if internal_http_hostname is not None else None,
+    )
+
+
+def _model23_remote_configuration(
+    env: Mapping[str, str],
+) -> tuple[str, Path, str, str | None] | None:
+    """Validate the all-or-nothing resident Model 2/3 configuration."""
+
+    raw_values = {
+        name: _optional_string(env, name) for name in _MODEL23_REMOTE_ENV_GROUP
+    }
+    configured = tuple(name for name, value in raw_values.items() if value is not None)
+    internal_http_hostname = _optional_string(
+        env, MODEL23_INTERNAL_HTTP_HOSTNAME_ENV
+    )
+    if not configured:
+        if internal_http_hostname is not None:
+            raise WorkerConfigurationError(
+                f"{MODEL23_INTERNAL_HTTP_HOSTNAME_ENV} requires the remote Model 2/3 configuration"
+            )
+        return None
+    if len(configured) != len(_MODEL23_REMOTE_ENV_GROUP):
+        raise WorkerConfigurationError(
+            "remote Model 2/3 configuration requires "
+            + ", ".join(_MODEL23_REMOTE_ENV_GROUP)
+        )
+
+    assert raw_values[MODEL23_REMOTE_BASE_URL_ENV] is not None
+    assert raw_values[MODEL23_REMOTE_BEARER_TOKEN_FILE_ENV] is not None
+    assert raw_values[MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256_ENV] is not None
+    try:
+        base_url = validate_model23_remote_base_url(
+            raw_values[MODEL23_REMOTE_BASE_URL_ENV],
+            internal_http_hostname=internal_http_hostname,
+        )
+    except ValueError:
+        raise WorkerConfigurationError("remote Model 2/3 base URL is invalid") from None
+    manifest_sha256 = raw_values[MODEL23_REMOTE_RUNTIME_MANIFEST_SHA256_ENV]
+    if _SHA256_DIGEST.fullmatch(manifest_sha256) is None:
+        raise WorkerConfigurationError(
+            "remote Model 2/3 runtime manifest SHA-256 is invalid"
+        )
+    if internal_http_hostname is not None and not base_url.startswith("http://"):
+        raise WorkerConfigurationError(
+            f"{MODEL23_INTERNAL_HTTP_HOSTNAME_ENV} is valid only for an HTTP base URL"
+        )
+    return (
+        base_url,
+        Path(raw_values[MODEL23_REMOTE_BEARER_TOKEN_FILE_ENV]).expanduser(),
+        manifest_sha256,
+        internal_http_hostname.lower() if internal_http_hostname is not None else None,
+    )
+
+
+def _read_model1_remote_bearer_token(path: Path) -> str:
+    """Read a single-owner bearer file without ever exposing its value.
+
+    A symlink, shared hard link, or group/world-readable file is a deployment
+    error.  The API token is deliberately kept out of environment variables,
+    reprs, and errors so it cannot leak through normal worker diagnostics.
+    """
+
+    return _read_remote_bearer_token(
+        path,
+        token_pattern=_MODEL1_REMOTE_TOKEN,
+        error_message="remote Model 1 bearer token file is invalid",
+    )
+
+
+def _read_remote_bearer_token(
+    path: Path,
+    *,
+    token_pattern: re.Pattern[str],
+    error_message: str,
+) -> str:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        expected_metadata = os.lstat(path)
+        if (
+            not stat.S_ISREG(expected_metadata.st_mode)
+            or expected_metadata.st_nlink != 1
+            or expected_metadata.st_mode & (stat.S_IRWXG | stat.S_IRWXO)
+        ):
+            raise WorkerConfigurationError(error_message)
+        descriptor = os.open(path, flags)
+    except OSError:
+        raise WorkerConfigurationError(error_message) from None
+
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or metadata.st_mode & (stat.S_IRWXG | stat.S_IRWXO)
+            or (metadata.st_dev, metadata.st_ino)
+            != (expected_metadata.st_dev, expected_metadata.st_ino)
+        ):
+            raise WorkerConfigurationError(error_message)
+        with os.fdopen(descriptor, "rb", closefd=True) as stream:
+            descriptor = -1
+            raw = stream.read(514)
+    except OSError:
+        raise WorkerConfigurationError(error_message) from None
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+    if raw.endswith(b"\n"):
+        raw = raw[:-1]
+    if b"\n" in raw or b"\r" in raw:
+        raise WorkerConfigurationError(error_message)
+    try:
+        token = raw.decode("ascii")
+    except UnicodeDecodeError:
+        raise WorkerConfigurationError(error_message) from None
+    if token_pattern.fullmatch(token) is None:
+        raise WorkerConfigurationError(error_message)
+    return token
+
+
+def _read_model23_remote_bearer_token(path: Path) -> str:
+    """Read the separate Model 2/3 service token using the same owner gate."""
+
+    return _read_remote_bearer_token(
+        path,
+        token_pattern=_MODEL23_REMOTE_TOKEN,
+        error_message="remote Model 2/3 bearer token file is invalid",
+    )
+
+
 def _boolean(env: Mapping[str, str], name: str, *, default: bool) -> bool:
     raw = env.get(name, "").strip().lower()
     if not raw:
@@ -314,46 +619,99 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
         MlModelId.MODEL_3_ANOMALY,
     )
     executable, runtime_detail = _ml_executable(settings)
-    if runtime_detail is not None:
-        return {
-            model_id: missing_runtime_model(model_id, runtime_detail)
-            for model_id in model_ids
+    models: dict[MlModelId, MlModel] = {}
+    model1_id = MlModelId.MODEL_1_SUPPORT_TYPE
+    if settings.model1_remote_base_url is not None:
+        assert settings.model1_remote_bearer_token_file is not None
+        assert settings.model1_remote_runtime_manifest_sha256 is not None
+        models[model1_id] = Model1HttpAdapter(
+            base_url=settings.model1_remote_base_url,
+            bearer_token=_read_model1_remote_bearer_token(
+                settings.model1_remote_bearer_token_file
+            ),
+            expected_runtime_manifest_sha256=(
+                settings.model1_remote_runtime_manifest_sha256
+            ),
+            timeout_seconds=settings.ml_timeout_seconds,
+            max_request_bytes=settings.model1_remote_max_request_bytes,
+            artifact_version="model1-external-serving-v1",
+            internal_http_hostname=settings.model1_internal_http_hostname,
+        )
+    elif runtime_detail is not None:
+        models[model1_id] = missing_runtime_model(model1_id, runtime_detail)
+    else:
+        assert executable is not None
+        model1_root = _model1_root(settings.model1_serving_dir)
+        if model1_root is None:
+            models[model1_id] = missing_artifact_model(
+                model1_id, "PREREVIEW_MODEL1_SERVING_DIR"
+            )
+        else:
+            missing = _first_missing(
+                (
+                    model1_root / "inference.py",
+                    model1_root / "model" / "model.safetensors",
+                    model1_root / "label_mapping.json",
+                    settings.ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
+                )
+            )
+            if missing is None and not (model1_root / "tokenizer").is_dir():
+                missing = model1_root / "tokenizer"
+            if missing is not None:
+                models[model1_id] = missing_artifact_model(model1_id, missing)
+            else:
+                environment = {"PREREVIEW_ML_ROOT": str(settings.ml_root)}
+                if settings.model1_serving_dir is not None:
+                    environment["PREREVIEW_MODEL1_SERVING_DIR"] = str(
+                        settings.model1_serving_dir
+                    )
+                models[model1_id] = Model1SubprocessMlModel(
+                    model1_command(python_executable=executable),
+                    timeout_seconds=settings.ml_timeout_seconds,
+                    environment=environment,
+                    artifact_version="model1-external-serving-v1",
+                )
+
+    model2_id = MlModelId.MODEL_2_AMOUNT
+    model3_id = MlModelId.MODEL_3_ANOMALY
+    if settings.model23_remote_base_url is not None:
+        assert settings.model23_remote_bearer_token_file is not None
+        assert settings.model23_remote_runtime_manifest_sha256 is not None
+        token = _read_model23_remote_bearer_token(
+            settings.model23_remote_bearer_token_file
+        )
+        common_remote = {
+            "base_url": settings.model23_remote_base_url,
+            "bearer_token": token,
+            "expected_runtime_manifest_sha256": (
+                settings.model23_remote_runtime_manifest_sha256
+            ),
+            "timeout_seconds": settings.ml_timeout_seconds,
+            "max_request_bytes": settings.model23_remote_max_request_bytes,
+            "internal_http_hostname": settings.model23_internal_http_hostname,
         }
+        models[model2_id] = Model2HttpAdapter(
+            **common_remote,
+            artifact_version="model2-p3-v1",
+        )
+        models[model3_id] = Model3HttpAdapter(
+            **common_remote,
+            artifact_version="model3-design-v3",
+        )
+        return models
+
+    if runtime_detail is not None:
+        models.update(
+            {
+                model_id: missing_runtime_model(model_id, runtime_detail)
+                for model_id in model_ids
+                if model_id is not model1_id
+            }
+        )
+        return models
 
     assert executable is not None
     environment = {"PREREVIEW_ML_ROOT": str(settings.ml_root)}
-    if settings.model1_serving_dir is not None:
-        environment["PREREVIEW_MODEL1_SERVING_DIR"] = str(settings.model1_serving_dir)
-
-    models: dict[MlModelId, MlModel] = {}
-    model1_id = MlModelId.MODEL_1_SUPPORT_TYPE
-    model1_root = _model1_root(settings.model1_serving_dir)
-    if model1_root is None:
-        models[model1_id] = missing_artifact_model(
-            model1_id, "PREREVIEW_MODEL1_SERVING_DIR"
-        )
-    else:
-        missing = _first_missing(
-            (
-                model1_root / "inference.py",
-                model1_root / "model" / "model.safetensors",
-                model1_root / "label_mapping.json",
-                settings.ml_root / "pipelines" / "model1" / "dl07_m1_apply.py",
-            )
-        )
-        if missing is None and not (model1_root / "tokenizer").is_dir():
-            missing = model1_root / "tokenizer"
-        if missing is not None:
-            models[model1_id] = missing_artifact_model(model1_id, missing)
-        else:
-            models[model1_id] = Model1SubprocessMlModel(
-                model1_command(python_executable=executable),
-                timeout_seconds=settings.ml_timeout_seconds,
-                environment=environment,
-                artifact_version="model1-external-serving-v1",
-            )
-
-    model2_id = MlModelId.MODEL_2_AMOUNT
     model2_root = settings.ml_root / "serving" / "model2"
     model2_missing = _first_missing(
         (
@@ -383,7 +741,6 @@ def _build_ml_models(settings: WorkerSettings) -> dict[MlModelId, MlModel]:
             )
         )
 
-    model3_id = MlModelId.MODEL_3_ANOMALY
     model3_root = settings.ml_root / "serving" / "model3"
     model3_missing = _first_missing(
         (
@@ -419,6 +776,7 @@ def build_worker(env: Mapping[str, str] | None = None) -> WorkerComposition:
         profiles=("request_profile", "cpl", "fit", "sim"), env=env
     )
     embedding = build_embedding_client(env)
+    ml_models = _build_ml_models(settings)
     handler = AnalysisJobHandler(
         storage=SupabaseWorkerStorage(
             supabase_url=settings.supabase_url,
@@ -444,11 +802,13 @@ def build_worker(env: Mapping[str, str] | None = None) -> WorkerComposition:
             fit_model_profile="fit",
             sim_model_profile="sim",
             max_repairs=llm_provider.max_repairs,
-            ml_models=_build_ml_models(settings),
+            ml_models=ml_models,
         ),
         top_k=settings.top_k,
         existing_kb_required=settings.existing_kb_required,
     )
+    model1_model = ml_models[MlModelId.MODEL_1_SUPPORT_TYPE]
+    model2_model = ml_models[MlModelId.MODEL_2_AMOUNT]
     return WorkerComposition(
         repository=PostgresJobRepository(
             settings.database_url,
@@ -456,6 +816,12 @@ def build_worker(env: Mapping[str, str] | None = None) -> WorkerComposition:
         ),
         handler=handler,
         settings=settings,
+        model1_remote_adapter=(
+            model1_model if isinstance(model1_model, Model1HttpAdapter) else None
+        ),
+        model23_remote_adapter=(
+            model2_model if isinstance(model2_model, Model2HttpAdapter) else None
+        ),
     )
 
 
@@ -551,12 +917,33 @@ def main() -> int:
         try:
             verify_ml_runtime(
                 ml_root=composition.settings.ml_root,
-                model1_serving_dir=composition.settings.model1_serving_dir
-                or Path("/nonexistent-model1-runtime"),
+                model1_serving_dir=composition.settings.model1_serving_dir,
                 backend_root=Path(__file__).resolve().parents[1],
+                verify_model1=(
+                    getattr(composition.settings, "model1_remote_base_url", None) is None
+                ),
+                verify_model23=(
+                    getattr(composition.settings, "model23_remote_base_url", None) is None
+                ),
             )
+            remote_model1 = getattr(composition, "model1_remote_adapter", None)
+            if remote_model1 is not None:
+                remote_model1.check_ready()
+            remote_model23 = getattr(composition, "model23_remote_adapter", None)
+            if remote_model23 is not None:
+                remote_model23.check_ready()
         except MlRuntimePreflightError as error:
             LOGGER.error("worker ML runtime preflight failed: %s", error)
+            return 2
+        except (Model1HttpError, Model1HttpContractError):
+            LOGGER.error(
+                "worker ML runtime preflight failed: remote Model 1 readiness check failed"
+            )
+            return 2
+        except (Model23HttpError, Model23HttpContractError):
+            LOGGER.error(
+                "worker ML runtime preflight failed: remote Model 2/3 readiness check failed"
+            )
             return 2
         except OSError:
             LOGGER.error(

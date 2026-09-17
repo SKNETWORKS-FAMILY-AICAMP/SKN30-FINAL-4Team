@@ -169,7 +169,14 @@ def model1_manifest_sha256(*, model1_dir: Path, ml_root: Path, backend_root: Pat
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def verify_ml_runtime(*, ml_root: Path, model1_serving_dir: Path, backend_root: Path) -> None:
+def verify_ml_runtime(
+    *,
+    ml_root: Path,
+    model1_serving_dir: Path | None,
+    backend_root: Path,
+    verify_model1: bool = True,
+    verify_model23: bool = True,
+) -> None:
     """Verify every artifact used by the Docker analysis worker.
 
     This intentionally returns no diagnostic hashes: startup logs should tell
@@ -177,44 +184,50 @@ def verify_ml_runtime(*, ml_root: Path, model1_serving_dir: Path, backend_root: 
     artifact contents.
     """
 
-    model1_dir = model1_serving_dir
-    if not (model1_dir / "inference.py").is_file() and (
-        model1_dir / "model1" / "inference.py"
-    ).is_file():
-        model1_dir = model1_dir / "model1"
-    _verify_exact_model1_tree(model1_dir)
-    for relative in MODEL1_LAYOUT:
-        _required_file(model1_dir.joinpath(*relative), label="model1/" + "/".join(relative))
-    _verify_digest(
-        model1_dir / "model" / "model.safetensors",
-        MODEL1_WEIGHT_SHA256,
-        label="model1/model.safetensors",
-    )
-    if (
-        model1_manifest_sha256(
-            model1_dir=model1_dir, ml_root=ml_root, backend_root=backend_root
+    if verify_model1:
+        if model1_serving_dir is None:
+            raise MlRuntimePreflightError("Model 1 runtime directory is missing")
+        model1_dir = model1_serving_dir
+        if not (model1_dir / "inference.py").is_file() and (
+            model1_dir / "model1" / "inference.py"
+        ).is_file():
+            model1_dir = model1_dir / "model1"
+        _verify_exact_model1_tree(model1_dir)
+        for relative in MODEL1_LAYOUT:
+            _required_file(
+                model1_dir.joinpath(*relative), label="model1/" + "/".join(relative)
+            )
+        _verify_digest(
+            model1_dir / "model" / "model.safetensors",
+            MODEL1_WEIGHT_SHA256,
+            label="model1/model.safetensors",
         )
-        != MODEL1_RUNTIME_MANIFEST_SHA256
-    ):
-        raise MlRuntimePreflightError("Model 1 runtime manifest SHA-256 mismatch")
+        if (
+            model1_manifest_sha256(
+                model1_dir=model1_dir, ml_root=ml_root, backend_root=backend_root
+            )
+            != MODEL1_RUNTIME_MANIFEST_SHA256
+        ):
+            raise MlRuntimePreflightError("Model 1 runtime manifest SHA-256 mismatch")
 
-    _verify_digest(
-        ml_root / "models" / "model2_canonical" / "model2_p3_bundle.joblib",
-        MODEL2_BUNDLE_SHA256,
-        label="model2/model2_p3_bundle.joblib",
-    )
-    _verify_digest(
-        ml_root / "serving" / "model2" / "cohort_reference.parquet",
-        MODEL2_COHORT_SHA256,
-        label="model2/cohort_reference.parquet",
-    )
-    _verify_digest(
-        ml_root / "data" / "processed" / "business_taxonomy.parquet",
-        MODEL2_TAXONOMY_SHA256,
-        label="model2/business_taxonomy.parquet",
-    )
-    _verify_digest(
-        ml_root / "serving" / "model3" / "design_features_v3.parquet",
-        MODEL3_POOL_SHA256,
-        label="model3/design_features_v3.parquet",
-    )
+    if verify_model23:
+        _verify_digest(
+            ml_root / "models" / "model2_canonical" / "model2_p3_bundle.joblib",
+            MODEL2_BUNDLE_SHA256,
+            label="model2/model2_p3_bundle.joblib",
+        )
+        _verify_digest(
+            ml_root / "serving" / "model2" / "cohort_reference.parquet",
+            MODEL2_COHORT_SHA256,
+            label="model2/cohort_reference.parquet",
+        )
+        _verify_digest(
+            ml_root / "data" / "processed" / "business_taxonomy.parquet",
+            MODEL2_TAXONOMY_SHA256,
+            label="model2/business_taxonomy.parquet",
+        )
+        _verify_digest(
+            ml_root / "serving" / "model3" / "design_features_v3.parquet",
+            MODEL3_POOL_SHA256,
+            label="model3/design_features_v3.parquet",
+        )

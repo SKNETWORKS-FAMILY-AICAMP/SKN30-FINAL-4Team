@@ -27,6 +27,7 @@ RUN apt-get update \
 
 COPY backend/vendor ./vendor
 COPY backend/requirements.txt ./requirements.txt
+COPY backend/prereview_model1_service/requirements-model1.txt /tmp/requirements-model1-service.txt
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt \
     && mkdir -p "$TIKTOKEN_CACHE_DIR" \
@@ -41,6 +42,7 @@ RUN sed '/^xgboost==/d' /app/ml/serving/requirements.txt > /tmp/ml-serving-no-xg
     && /opt/prereview-ml-venv/bin/python -m pip install --upgrade pip \
     && /opt/prereview-ml-venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.13.0+cpu' \
     && /opt/prereview-ml-venv/bin/python -m pip install -r /tmp/ml-runtime-no-xgboost.txt \
+    && /opt/prereview-ml-venv/bin/python -m pip install -r /tmp/requirements-model1-service.txt \
     && /opt/prereview-ml-venv/bin/python -m pip install xgboost-cpu==3.4.1 \
     && /opt/prereview-ml-venv/bin/python -m pip check \
     && /opt/prereview-ml-venv/bin/python -c "import joblib, numpy, pandas, pyarrow, scipy, sklearn, torch, transformers, xgboost; assert xgboost.__version__ == '3.4.1'"
@@ -50,6 +52,8 @@ RUN sed '/^xgboost==/d' /app/ml/serving/requirements.txt > /tmp/ml-serving-no-xg
 # enters only through the verified read-only bind mount.
 COPY backend/app /app/backend/app
 COPY backend/config/prompts /app/backend/config/prompts
+COPY backend/prereview_model1_service /app/backend/prereview_model1_service
+COPY backend/prereview_model23_service /app/backend/prereview_model23_service
 COPY backend/worker /app/backend/worker
 COPY backend/scripts/classify_existing_model1.py /app/backend/scripts/classify_existing_model1.py
 COPY ["ml/serving/shared/preconsultation_adapter.py", "/app/ml/serving/shared/"]
@@ -61,7 +65,7 @@ COPY ml/pipelines/shared /app/ml/pipelines/shared
 COPY ["ml/pipelines/model1/dl07_m1_apply.py", "ml/pipelines/model1/m01_support_type.py", "/app/ml/pipelines/model1/"]
 COPY ml/pipelines/model2 /app/ml/pipelines/model2
 COPY ml/pipelines/model3 /app/ml/pipelines/model3
-COPY ml/experiments/model2/core /app/ml/experiments/model2/core
+COPY ["ml/experiments/model2/core/m69_m2_source_features.py", "ml/experiments/model2/core/m73_m2_routing_improvement.py", "ml/experiments/model2/core/m82_m2_proximity_features.py", "/app/ml/experiments/model2/core/"]
 
 # Assert the image contains the exact artifacts registered by the strict
 # startup gate, then prove the CPU venv can deserialize/read each one.

@@ -85,6 +85,39 @@ def test_preflight_accepts_complete_registered_runtime(
     )
 
 
+def test_remote_model1_preflight_skips_only_the_local_model1_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _model1, ml_root, backend_root = _runtime_tree(tmp_path, monkeypatch)
+
+    preflight.verify_ml_runtime(
+        model1_serving_dir=tmp_path / "not-mounted-on-cpu-worker",
+        ml_root=ml_root,
+        backend_root=backend_root,
+        verify_model1=False,
+    )
+
+
+def test_remote_model23_preflight_skips_only_local_model23_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model1, ml_root, backend_root = _runtime_tree(tmp_path, monkeypatch)
+    for relative in (
+        "models/model2_canonical/model2_p3_bundle.joblib",
+        "serving/model2/cohort_reference.parquet",
+        "data/processed/business_taxonomy.parquet",
+        "serving/model3/design_features_v3.parquet",
+    ):
+        (ml_root / relative).unlink()
+
+    preflight.verify_ml_runtime(
+        model1_serving_dir=model1,
+        ml_root=ml_root,
+        backend_root=backend_root,
+        verify_model23=False,
+    )
+
+
 def test_preflight_rejects_unregistered_model1_bytecode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
