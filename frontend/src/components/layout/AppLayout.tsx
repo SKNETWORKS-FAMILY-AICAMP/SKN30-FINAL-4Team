@@ -53,14 +53,23 @@ export default function AppLayout({ displayName }: AppLayoutProps) {
         }
     }
 
-    const handleNewAnalysis = async () => {
-        await closeActiveSession(sessionId)
-        setSessionId(null)
-        setSelectedHistoryId(null)
-        setShowImminentAlert(false)
-
-        if (location.pathname !== '/') {
-            navigate('/')
+const handleNewAnalysis = async () => {
+        try {
+            if (sessionId) {
+                await closeActiveSession(sessionId)
+            }
+        } catch (error) {
+            console.error('세션 종료 중 오류 발생:', error)
+        } finally {
+            setSessionId(null)
+            setSelectedHistoryId(null)
+            setShowImminentAlert(false)
+            
+            if (location.pathname !== '/') {
+                navigate('/')
+            } else {
+                window.location.reload()
+            }
         }
     }
 
