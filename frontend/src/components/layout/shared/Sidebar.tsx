@@ -30,7 +30,7 @@ export default function Sidebar({
             <button
                 type="button"
                 onClick={onNewAnalysis}
-                className="w-full bg-primary-container text-on-primary font-title-sm text-title-sm py-md pr-2 rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity mb-md cursor-pointer"
+                className="w-full bg-primary-container text-on-primary font-title-sm text-title-sm py-md pr-2 rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity mb-md"
             >
                 <span className="material-symbols-outlined">add</span>
                 새 분석

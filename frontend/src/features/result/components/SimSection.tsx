@@ -37,9 +37,9 @@ export default function SimSection({
                                 <button
                                     onClick={() => onOpenCandidateDetail(candidate.sim_candidate_id)}
                                     disabled={isFetchingDetail}
-                                    className={`w-[74px] px-3 py-1.5 border border-outline-variant rounded bg-surface hover:bg-white text-[12px] font-medium transition-colors cursor-pointer ${isFetchingDetail ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    className={`w-[74px] px-3 py-1.5 border border-outline-variant rounded bg-surface hover:bg-white text-[12px] font-medium transition-colors ${isFetchingDetail ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                    {isFetchingDetail ? '조회중' : '상세보기'}
+                                    {isFetchingDetail ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: '12px' }}>progress_activity</span> : '상세보기'}
                                 </button>
                             </td>
                         </tr>

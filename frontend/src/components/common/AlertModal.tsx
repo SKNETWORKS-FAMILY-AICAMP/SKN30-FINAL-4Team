@@ -39,14 +39,14 @@ export default function AlertModal({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 px-4 rounded-lg transition-colors text-center text-sm cursor-pointer"
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 px-4 rounded-lg transition-colors text-center text-sm"
                         >
                             {cancelText}
                         </button>
                         <button
                             type="button"
                             onClick={onConfirm}
-                            className="bg-[#1a365d] hover:bg-[#0f2442] text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-center text-sm shadow-sm cursor-pointer"
+                            className="bg-[#1a365d] hover:bg-[#0f2442] text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-center text-sm shadow-sm"
                         >
                             {confirmText}
                         </button>
@@ -56,7 +56,7 @@ export default function AlertModal({
                         <button
                             type="button"
                             onClick={onConfirm}
-                            className="bg-[#1a365d] hover:bg-[#0f2442] text-white font-medium py-2.5 px-4 rounded-lg w-full transition-colors flex items-center justify-center shadow-sm cursor-pointer"
+                            className="bg-[#1a365d] hover:bg-[#0f2442] text-white font-medium py-2.5 px-4 rounded-lg w-full transition-colors flex items-center justify-center shadow-sm"
                         >
                             {confirmText}
                         </button>

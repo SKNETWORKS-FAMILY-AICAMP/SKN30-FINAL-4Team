@@ -78,7 +78,7 @@ export default function PasswordChangeView({
                         <button
                             type="button"
                             onClick={onSubmit}
-                            className="w-full md:w-auto px-xl bg-primary-container text-on-primary font-title-sm text-[16px] py-3 rounded-lg hover:bg-primary-container/90 transition-colors cursor-pointer"
+                            className="w-full md:w-auto px-xl bg-primary-container text-on-primary font-title-sm text-[16px] py-3 rounded-lg hover:bg-primary-container/90 transition-colors"
                         >
                             비밀번호 변경
                         </button>

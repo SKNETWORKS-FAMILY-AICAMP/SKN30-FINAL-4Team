@@ -78,7 +78,7 @@ export default function ResultView({
                             <button 
                                 onClick={onExportPDF} 
                                 disabled={!canDownload || isDownloading || isGenerating}
-                                className={`px-md py-sm border border-outline-variant rounded bg-surface hover:bg-surface-container-low font-label-caps text-label-caps text-on-surface flex items-center gap-xs transition-colors cursor-pointer ${
+                                className={`px-md py-sm border border-outline-variant rounded bg-surface hover:bg-surface-container-low font-label-caps text-label-caps text-on-surface flex items-center gap-xs transition-colors ${
                                     (!canDownload || isDownloading || isGenerating) ? 'opacity-50 cursor-not-allowed' : ''
                                 }`}
                             >
@@ -97,7 +97,7 @@ export default function ResultView({
                         )}
 
                         {onClose && (
-                            <button type="button" onClick={onClose} className="px-md py-sm border border-outline-variant rounded bg-primary-container text-on-primary font-label-caps text-label-caps flex items-center gap-xs transition-colors cursor-pointer">
+                            <button type="button" onClick={onClose} className="px-md py-sm border border-outline-variant rounded bg-primary-container text-on-primary font-label-caps text-label-caps flex items-center gap-xs transition-colors">
                                 닫기
                             </button>
                         )}

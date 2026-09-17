@@ -46,7 +46,7 @@ export default function PublicFormPageTemplate({
             <div className="mt-xl">
                 <button
                     type="submit"
-                    className="w-full py-md rounded-lg bg-primary text-on-primary font-title-sm text-title-sm hover:opacity-90 transition-opacity shadow-sm cursor-pointer"
+                    className="w-full py-md rounded-lg bg-primary text-on-primary font-title-sm text-title-sm hover:opacity-90 transition-opacity shadow-sm"
                 >
                     {actionButtonText}
                 </button>
