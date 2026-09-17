@@ -7,10 +7,12 @@ import SimDetailModal from './components/SimDetailModal'
 
 interface ResultViewProps {
     reportData: any
+    reportStatus: any
     onExportPDF: () => void
+    isDownloading: boolean
+    isHistoryDetail: boolean
     onBackToUpload?: () => void
     onClose?: () => void
-    readOnlyChat?: boolean
     onOpenCandidateDetail: (simCandidateId: string) => void
     selectedItem: any
     isModalOpen: boolean
@@ -20,9 +22,11 @@ interface ResultViewProps {
 
 export default function ResultView({
     reportData,
+    reportStatus,
     onExportPDF,
+    isDownloading,
+    isHistoryDetail,
     onClose,
-    readOnlyChat = false,
     onOpenCandidateDetail,
     selectedItem,
     isModalOpen,
@@ -48,6 +52,9 @@ export default function ResultView({
     const similarCandidates = simData?.candidates || []
     const mlMessages = mlData ? Object.values(mlData).map((m: any) => m?.message).filter(Boolean) : []
 
+    const isGenerating = reportStatus?.status === 'generating'
+    const canDownload = reportStatus?.can_download === true
+
     return (
         <>
             <div className="flex-1 flex flex-col min-w-0 overflow-y-auto h-screen pb-xl px-md md:px-lg xl:px-xl w-full relative">
@@ -65,11 +72,29 @@ export default function ResultView({
                         </div>
                     </div>
 
-                    <div className="flex items-end">
-                        <button onClick={onExportPDF} className="px-md py-sm border border-outline-variant rounded bg-surface hover:bg-surface-container-low font-label-caps text-label-caps text-on-surface flex items-center gap-xs transition-colors cursor-pointer">
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>
-                            보고서 내보내기
-                        </button>
+                    <div className="flex items-end gap-sm">
+                        {/* 💡 1. 과거 분석 상세가 아닐 때만 PDF 내보내기 버튼 노출 및 상태/스피너 제어 */}
+                        {!isHistoryDetail && (
+                            <button 
+                                onClick={onExportPDF} 
+                                disabled={!canDownload || isDownloading || isGenerating}
+                                className={`px-md py-sm border border-outline-variant rounded bg-surface hover:bg-surface-container-low font-label-caps text-label-caps text-on-surface flex items-center gap-xs transition-colors cursor-pointer ${
+                                    (!canDownload || isDownloading || isGenerating) ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                                {(isDownloading || isGenerating) ? (
+                                    <>
+                                        <span className="material-symbols-outlined animate-spin" style={{ fontSize: '16px' }}>progress_activity</span>
+                                        {isGenerating ? '보고서 생성 중...' : '다운로드 중...'}
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>download</span>
+                                        보고서 내보내기
+                                    </>
+                                )}
+                            </button>
+                        )}
 
                         {onClose && (
                             <button type="button" onClick={onClose} className="px-md py-sm border border-outline-variant rounded bg-primary-container text-on-primary font-label-caps text-label-caps flex items-center gap-xs transition-colors cursor-pointer">
@@ -81,13 +106,8 @@ export default function ResultView({
 
                 {/* 분석 본문 영역 */}
                 <div className="flex flex-col gap-lg pb-xl">
-                    {/* Category 1: 요청자료 완전성·기초구조 점검 */}
                     <CplSection items={cplItems} />
-
-                    {/* Category 2: 내부 정합성 점검 */}
                     <FitSection items={fitItems} />
-
-                    {/* Category 3: 기존 사업과의 유사·중복성 검토 */}
                     <SimSection
                         candidates={similarCandidates}
                         mlMessages={mlMessages}
@@ -97,8 +117,11 @@ export default function ResultView({
                 </div>
             </div>
 
-            {/* AI 질의응답 컴포넌트 */}
-            <AiChat caseId={caseInfo?.analysis_case_id || caseInfo?.id} readOnly={readOnlyChat} />
+            {/* 💡 2 & 3. AI 질의응답 컴포넌트: isHistoryDetail을 readOnly 플래그로 전달 */}
+            <AiChat 
+                caseId={caseInfo?.analysis_case_id || caseInfo?.id} 
+                readOnly={isHistoryDetail} 
+            />
 
             {/* 유사 공고 후보 상세 모달 */}
             <SimDetailModal
