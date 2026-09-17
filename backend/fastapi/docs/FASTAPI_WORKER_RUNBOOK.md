@@ -944,10 +944,12 @@ model의 strict typed DTO로 표시된다. raw/internal key는 응답에 추가�
 
 OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie` Cookie security
 scheme과 각 endpoint의 성공·주요 오류(`ErrorResponse`) schema가 표시된다.
-`sign-in`, `sign-up`, `password-reset`, `password-recovery/callback`은 기존
+`sign-in`, 비활성화된 `sign-up`, `password-reset`, `password-recovery/callback`,
+`password-recovery/verify`는 기존
 Cookie 없이 호출할 수 있다. 업무 API, `me`, `update-password`는 access Cookie,
-`refresh`는 refresh Cookie를 요구한다. callback의 query parameter는 recovery 메일의
-일회용 `token_hash`이며 성공 응답은 세션 Cookie를 설정하는 `303` redirect다.
+`refresh`는 refresh Cookie를 요구한다. callback GET은 세션을 만들지 않는다. recovery
+메일의 일회용 `token_hash`는 URL fragment로 프론트에 도착하며, trusted-Origin verify
+POST의 JSON body에서 검증된 뒤에만 세션 Cookie가 설정된다.
 
 이 security scheme은 HttpOnly Cookie라는 전달 방식을 문서화하기 위한 것이다. Swagger의
 `Authorize`에 access/refresh token이나 쿠키 값을 직접 입력하지 않는다. 성공한 `sign-in`
@@ -959,9 +961,10 @@ run ID를 `GET /analysis-runs/{analysis_run_id}`로 poll한다. frontend의 실�
 
 인증 및 재설정 완료 흐름의 현재 지원 범위도 같은
 [프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. self-hosted Supabase의
-recovery 메일 템플릿은 `TokenHash`를 FastAPI `password-recovery/callback`으로
-보내고, callback은 이를 세션 Cookie로 교환한 뒤 프론트 비밀번호 변경 화면으로 이동한다.
-프론트는 token/code 교환을 구현하지 않는다. 과거 `AUTH_API_CONTRACT.md`는 이 명세로
+recovery 메일 템플릿은 `TokenHash`를 URL fragment로 FastAPI callback에 보내고,
+callback은 세션을 만들지 않은 채 프론트 비밀번호 변경 화면으로 이동한다. 프론트가
+fragment를 지운 뒤 trusted-Origin verify POST로 세션 Cookie를 교환한다. 과거
+`AUTH_API_CONTRACT.md`는 이 명세로
 안내하는 호환용 문서일 뿐이다.
 
 현재 `frontend/src`에는 API base URL, Cookie 포함 HTTP client, polling 호출이 연결되어 있지

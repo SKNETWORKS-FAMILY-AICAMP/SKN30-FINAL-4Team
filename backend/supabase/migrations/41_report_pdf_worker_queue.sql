@@ -256,7 +256,7 @@ BEGIN
               WHERE analysis_case_pk = NEW.analysis_case_pk AND report_type = 'pdf'),
             COALESCE(v_previous_processing_run_pk, gen_random_uuid()),
             v_previous_storage_bucket, v_previous_storage_object_key
-        ) ON CONFLICT (storage_bucket, storage_object_key) DO NOTHING;
+        ) ON CONFLICT DO NOTHING;
     END IF;
 
 
@@ -504,7 +504,7 @@ BEGIN
     ) VALUES (
         v_dispatch.report_artifact_pk, v_processing_run_pk,
         'analysis-reports', v_storage_object_key
-    ) ON CONFLICT (storage_bucket, storage_object_key) DO NOTHING;
+    ) ON CONFLICT DO NOTHING;
 
     SELECT api.public_analysis_projection_v2(v_dispatch.analysis_case_pk, v_owner_id)
       INTO v_result_payload;
@@ -749,8 +749,9 @@ BEGIN
        AND report.expires_at <= v_now
        AND report.storage_bucket = 'analysis-reports'
        AND report.storage_object_key IS NOT NULL
-    ON CONFLICT (storage_bucket, storage_object_key) DO NOTHING;
+    ON CONFLICT DO NOTHING;
 
+    RETURN QUERY
     WITH candidate AS (
         SELECT cleanup.report_pdf_object_cleanup_pk,
                CASE

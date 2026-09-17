@@ -222,6 +222,8 @@ def test_local_installer_is_pinned_and_prepare_only() -> None:
     assert source.index(commit_check) < source.index("utils/generate-keys.sh")
     assert "utils/generate-keys.sh --update-env >/dev/null 2>&1" in source
     assert "utils/add-new-auth-keys.sh --update-env >/dev/null 2>&1" in source
+    assert "sed -i 's/^DISABLE_SIGNUP=.*/DISABLE_SIGNUP=true/'" in source
+    assert "grep -qx 'DISABLE_SIGNUP=true'" in source
     assert '"$STAGING_DIR/bundle/.env.old"' in source
     assert "docker-compose.pgvector.override.yml.example" in source
     assert "config --quiet >/dev/null 2>&1" in source

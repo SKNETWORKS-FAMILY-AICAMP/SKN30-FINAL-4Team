@@ -49,7 +49,8 @@ migration, 데이터를 시작하지 않는다. `.runtime/supabase-dev/.env`를 
 - `SITE_URL`, `ADDITIONAL_REDIRECT_URLS`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
 - `SMTP_ADMIN_EMAIL`, `SMTP_SENDER_NAME`
-- `ENABLE_EMAIL_SIGNUP`, `ENABLE_EMAIL_AUTOCONFIRM`
+- `DISABLE_SIGNUP=true` (설치기가 강제하며 운영에서도 변경하지 않는다)
+- `ENABLE_EMAIL_SIGNUP`, `ENABLE_EMAIL_AUTOCONFIRM` (email provider 설정이며 공개 가입 허용과 별개)
 - `PREREVIEW_AUTH_TEMPLATE_DIR=<repository>/backend/supabase/templates`
 
 모든 Supabase 명령은 같은 세 Compose 파일을 사용한다.

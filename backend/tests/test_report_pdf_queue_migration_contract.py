@@ -83,11 +83,16 @@ def test_every_transition_is_fenced_and_ready_persists_immutable_metadata() -> N
     assert "PDF_REPORT_MAX_ATTEMPTS_EXCEEDED" in sql
     assert sql.count("AND (dispatch.lease_expires_at IS NULL OR dispatch.lease_expires_at <= v_now)") >= 3
     assert "CREATE TABLE IF NOT EXISTS workspace.report_pdf_object_cleanup" in sql
+    # These functions return columns named storage_bucket/storage_object_key.
+    # A conflict target using those bare names is ambiguous in PL/pgSQL.
+    assert sql.count("ON CONFLICT DO NOTHING") >= 3
+    assert "ON CONFLICT (storage_bucket, storage_object_key)" not in sql
     assert "workspace.claim_next_pdf_report_cleanup_v1" in sql
     assert "report.expires_at <= v_now" in sql
     assert "dispatch.lease_expires_at > v_now" in sql
     assert "next_attempt_at = CASE WHEN delete_attempt_count < 1" in sql
     assert "FOR UPDATE OF dispatch, owned_report SKIP LOCKED" in sql
+    assert "RETURN QUERY\n    WITH candidate AS (" in sql
     assert "candidate.expired_processing_run_pk" in sql
     assert "failed_processing AS (" in sql
     assert "fenced_dispatch AS (" in sql

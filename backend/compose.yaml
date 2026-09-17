@@ -19,6 +19,7 @@ services:
       PREREVIEW_GLOBAL_QUEUE_MAX: "${PREREVIEW_GLOBAL_QUEUE_MAX:-25}"
       PREREVIEW_CURSOR_SIGNING_SECRET: "${PREREVIEW_CURSOR_SIGNING_SECRET:-}"
       PREREVIEW_AUTH_ALLOWED_ORIGINS: "${PREREVIEW_AUTH_ALLOWED_ORIGINS:-}"
+      PREREVIEW_AUTH_SIGNUP_ENABLED: "${PREREVIEW_AUTH_SIGNUP_ENABLED:-false}"
       PREREVIEW_AUTH_COOKIE_SECURE: "${PREREVIEW_AUTH_COOKIE_SECURE:-true}"
       PREREVIEW_AUTH_COOKIE_SAMESITE: "${PREREVIEW_AUTH_COOKIE_SAMESITE:-lax}"
       PREREVIEW_AUTH_COOKIE_DOMAIN: "${PREREVIEW_AUTH_COOKIE_DOMAIN:-}"
@@ -34,6 +35,13 @@ services:
       SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command:
       - uvicorn
       - main:app
@@ -131,6 +139,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 3m
     environment:
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
       DATABASE_URL: "${DATABASE_URL:-}"
       SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
@@ -145,7 +155,13 @@ services:
       PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   # 분석 결과를 오프라인 HTML 템플릿으로 렌더링하는 전용 PDF worker.
   # Chromium은 프로세스 수명 동안 유지하고 작업별로 격리된 page만 연다.
