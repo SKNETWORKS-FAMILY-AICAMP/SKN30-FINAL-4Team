@@ -47,6 +47,8 @@ REQUEST_MIME_TYPES: dict[str, frozenset[str]] = {
     ),
     ".hwpx": frozenset(
         {
+            "application/hwp+zip",
+            "application/x-hwp+zip",
             "application/vnd.hancom.hwpx",
             "application/zip",
             "application/octet-stream",
@@ -123,8 +125,12 @@ def _safe_filename(upload: UploadFile) -> tuple[str, str]:
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Request upload accepts .hwp and .hwpx",
         )
-    supplied_mime = (upload.content_type or "").lower()
-    if supplied_mime not in REQUEST_MIME_TYPES[suffix]:
+    supplied_mime = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    allow_unknown_hwpx_mime = suffix == ".hwpx" and not supplied_mime
+    if (
+        supplied_mime not in REQUEST_MIME_TYPES[suffix]
+        and not allow_unknown_hwpx_mime
+    ):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Uploaded MIME type does not match the request format",
