@@ -12,49 +12,51 @@ const generateIdempotencyKey = () => {
     })
 }
 
-async function handleResponse(res: Response) {
+async function handleResponse(res: Response, responseType: 'json' | 'blob' = 'json') {
     if (!res.ok) {
         const errBody = await res.json().catch(() => ({ message: res.statusText }))
         throw { status: res.status, ...errBody }
     }
     if (res.status === 204) return null
+
+    if (responseType === 'blob') {
+        return res.blob()
+    }
+
     return res.json()
 }
 
 export const api = {
-    async get(path: string) {
+    async get(path: string, options: { responseType?: 'json' | 'blob' } = {}) {
         const res = await fetch(`${API_BASE}${path}`, {
             method: 'GET',
             credentials: 'include',
         })
-        return handleResponse(res)
+        return handleResponse(res, options.responseType || 'json')
     },
-    async post(path: string, body?: any, headers: Record<string, string> = {}) {
-        const reqHeaders: Record<string, string> = {
-            ...headers,
-        }
 
-        // POST 요청이고 Idempotency-Key가 없다면 자동으로 생성해서 주입
+    async post(path: string, body?: any, headers: Record<string, string> = {}) {
+        const reqHeaders: Record<string, string> = { ...headers }
+
         if (!Object.keys(reqHeaders).some(h => h.toLowerCase() === 'idempotency-key')) {
             reqHeaders['Idempotency-Key'] = generateIdempotencyKey()
         }
 
-        const options: RequestInit = {
+        const requestOptions: RequestInit = {
             method: 'POST',
             credentials: 'include',
             headers: reqHeaders,
         }
 
         if (body instanceof FormData) {
-            options.body = body
-            // FormData 사용 시 Content-Type은 브라우저가 boundary와 함께 자동 설정하도록 제거
+            requestOptions.body = body
             delete reqHeaders['Content-Type']
         } else if (body) {
             reqHeaders['Content-Type'] = 'application/json'
-            options.body = JSON.stringify(body)
+            requestOptions.body = JSON.stringify(body)
         }
 
-        const res = await fetch(`${API_BASE}${path}`, options)
-        return handleResponse(res)
+        const res = await fetch(`${API_BASE}${path}`, requestOptions)
+        return handleResponse(res, 'json')
     }
 }

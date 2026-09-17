@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>사전검토 분석 결과 보고서 (PDF 출력용) - Pre-review</title>
+<link href="./favicon.svg" rel="icon" type="image/svg+xml"/>
+<link href="./result_pdf.css" rel="stylesheet"/>
+<link href="./result_pdf_detail.css" rel="stylesheet"/>
+<link href="./result_pdf_ml.css" rel="stylesheet"/>
+<style>
+        @page {
+            size: A4 portrait;
+            margin: 15mm 15mm 20mm 15mm;
+        }
+        @media print {
+            body {
+                background-color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+            .avoid-break {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            .pdf-container {
+                max-width: 100% !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+            }
+        }
+        body {
+            font-family: "Noto Sans KR", "Nanum Gothic", "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            -webkit-font-smoothing: antialiased;
+        }
+    </style>
+</head>
+<body class="py-8 px-4 sm:px-6 md:px-8">
+<!-- PDF 본문 용지 컨테이너 (A4 210mm 규격 비율) -->
+<div class="pdf-container max-w-[210mm] mx-auto bg-white border border-slate-200 shadow-md p-8 md:p-12 rounded-lg">
+<!-- 보고서 헤더 & 공식 문서 헤더 -->
+<header class="border-b-2 border-[#1a365d] pb-6 mb-7">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="inline-block px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded">공식 사전검토 보고서</span>
+</div>
+<h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">정부 지원사업 사전검토 분석 리포트</h1>
+<p class="text-xs text-slate-500 mt-1">대상 과제 : 정부 지원사업 사전검토를 위한 기획안 및 기술 명세서 상세 분석 리포트_2023_최종</p>
+</div>
+<!-- Pre-review 브랜드 로고 -->
+<div class="text-right">
+<img alt="Pre-review" class="h-9 w-auto inline-block object-contain" src="./pre-review.png"/>
+<div class="text-[10px] text-slate-400 mt-1 font-sans">AI-driven Pre-review Engine</div>
+</div>
+</div>
+<!-- 메타데이터 표 요약 -->
+<div class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs">
+<div>
+<span class="text-slate-400 block text-[10px]">분석 일시</span>
+<span class="font-bold text-slate-700">오늘, 오전 09:42</span>
+</div>
+<div>
+<span class="text-slate-400 block text-[10px]">검토 상태</span>
+<span class="font-bold text-blue-700">사전 검토 완료</span>
+</div>
+<div>
+<span class="text-slate-400 block text-[10px]">담당 분석가</span>
+<span class="font-bold text-slate-700">분석가 (Pre-review 시스템)</span>
+</div>
+<div>
+<span class="text-slate-400 block text-[10px]">점검 항목 체계</span>
+<span class="font-bold text-slate-700">표준 3대 핵심 체계</span>
+</div>
+</div>
+</header>
+<!-- 분석 본문 메인 콘텐츠 -->
+<main class="space-y-7">
+<!-- 1. 요청자료 완전성·기초구조 점검 -->
+<section class="avoid-break border border-slate-200 rounded-xl p-5 bg-white">
+<div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
+<div>
+<h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+<span class="w-6 h-6 rounded-full bg-[#1a365d] text-white text-xs flex items-center justify-center font-bold">1</span>
+                            요청자료 완전성 · 기초구조 점검
+                        </h2>
+<p class="text-xs text-slate-500 mt-0.5 ml-8">현재 요청서에서 확인되는 13개 주요 항목의 구비 상태를 점검합니다.</p>
+</div>
+<div class="text-xs bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded">
+                        13개 항목 검증 완료
+                    </div>
+</div>
+<!-- 점검 항목 2열 리스트 -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4 text-xs">
+<!-- 요청유형 체크값 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">요청유형 체크값</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 사업 목적·목표 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">사업 목적 · 목표</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 연차별·내역사업별 추진계획 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">연차별 · 내역사업별 추진계획</span>
+<span class="inline-flex items-center gap-1 text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+<span class="material-symbols-outlined text-sm">more_horiz</span> 확인필요
+                        </span>
+</div>
+<!-- 사업기간 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">사업기간</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 신설·변경 주요내용 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">신설 · 변경 주요내용</span>
+<span class="inline-flex items-center gap-1 text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+<span class="material-symbols-outlined text-sm">remove_circle_outline</span> 해당없음
+                        </span>
+</div>
+<!-- 사업필요성 최소 논리구조 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">사업필요성 최소 논리구조</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 지원근거 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">지원근거</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 연계정책 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">연계정책</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 사업예산 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">사업예산</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 지원대상·지원조건 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">지원대상 · 지원조건</span>
+<span class="inline-flex items-center gap-1 text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+<span class="material-symbols-outlined text-sm">more_horiz</span> 확인필요
+                        </span>
+</div>
+<!-- 지원내용·지원규모 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">지원내용 · 지원규모</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 수행기관·수행방식·수행체계 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150">
+<span class="font-medium text-slate-700">수행기관 · 수행방식 · 수행체계</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+<span class="material-symbols-outlined text-sm">check_circle</span> 확인됨
+                        </span>
+</div>
+<!-- 기대효과·성과 관련 정보 -->
+<div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-150 md:col-span-2">
+<span class="font-medium text-slate-700">기대효과 · 성과 관련 정보</span>
+<span class="inline-flex items-center gap-1 text-red-700 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200">
+<span class="material-symbols-outlined text-sm">error_outline</span> 내용없음
+                        </span>
+</div>
+</div>
+</section>
+<!-- 2. 내부 정합성 점검 -->
+<section class="avoid-break border border-slate-200 rounded-xl p-5 bg-white">
+<div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
+<div>
+<h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+<span class="w-6 h-6 rounded-full bg-[#1a365d] text-white text-xs flex items-center justify-center font-bold">2</span>
+                            내부 정합성 점검
+                        </h2>
+<p class="text-xs text-slate-500 mt-0.5 ml-8">현재 요청서에서 확인되는 항목 간 연결성·범위 차이·충돌 여부를 점검합니다.</p>
+</div>
+<div class="text-xs bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded">
+                        상호 연관성 분석 완료
+                    </div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-xs">
+<!-- 카드 1: 목적 <-> 지원대상 -->
+<div class="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">목적 ↔ 지원대상</span>
+<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">연결 확인</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">목적과 지원대상의 연관성이 논리적으로 일치합니다.</p>
+</div>
+<!-- 카드 2: 목적 <-> 지원내용 -->
+<div class="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">목적 ↔ 지원내용</span>
+<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">연결 확인</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">지원사업의 목적에 부합하는 지원 내용이 상세히 정의되어 있습니다.</p>
+</div>
+<!-- 카드 3: 목적 <-> 기대효과·성과지표 (충돌 확인) -->
+<div class="border border-red-200 rounded-lg p-3 bg-red-50/30">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">목적 ↔ 기대효과 · 성과지표</span>
+<span class="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded border border-red-200">충돌 확인</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">사업 목적 대비 성과지표의 측정 기준이 상이하여 재검토가 필요합니다.</p>
+</div>
+<!-- 카드 4: 세부사업 <-> 내역사업/내내역사업 -->
+<div class="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">세부사업 ↔ 내역사업 / 내내역사업</span>
+<span class="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">비교 정보 부족</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">사업 계층별 비교 기준 데이터가 아직 제공되지 않았습니다.</p>
+</div>
+<!-- 카드 5: 지원대상 <-> 지원조건 -->
+<div class="border border-amber-200 rounded-lg p-3 bg-amber-50/30">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">지원대상 ↔ 지원조건</span>
+<span class="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">추가 검토 필요</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">지원대상 범위와 세부 지원조건 간의 경계가 모호한 부분이 식별되었습니다.</p>
+</div>
+<!-- 카드 6: 수행기관 <-> 역할·수행절차 -->
+<div class="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">수행기관 ↔ 역할 · 수행절차</span>
+<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">연결 확인</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">기관별 역할 분담과 추진 절차가 명확하게 연계되어 있습니다.</p>
+</div>
+<!-- 카드 7: 지원내용 <-> 지원규모의 수치·조건 -->
+<div class="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">지원내용 ↔ 지원규모의 수치 · 조건</span>
+<span class="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">비교 정보 부족</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">예산 규모와 지원 단가 산출 근거가 일치합니다.</p>
+</div>
+<!-- 카드 8: 신설·변경 항목 <-> 기존 규정 -->
+<div class="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-bold text-slate-800">신설 · 변경 항목 ↔ 기존 규정</span>
+<span class="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">해당없음</span>
+</div>
+<p class="text-slate-600 leading-relaxed text-[11px]">신설 또는 변경된 조항이 없어 규정 대조 검토 대상에 해당하지 않습니다.</p>
+</div>
+</div>
+</section>
+<!-- 3. 기존 사업과의 유사·중복성 검토 -->
+<section class="avoid-break border border-slate-200 rounded-xl p-5 bg-white">
+<div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
+<div>
+<h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+<span class="w-6 h-6 rounded-full bg-[#1a365d] text-white text-xs flex items-center justify-center font-bold">3</span>
+                            기존 사업과의 유사 · 중복성 검토
+                        </h2>
+<p class="text-xs text-slate-500 mt-0.5 ml-8">기존 지원사업 데이터베이스에서 식별된 유사·중복 항목 5건의 비교 정보입니다.</p>
+</div>
+<div class="text-xs bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded">
+                        유사 항목 5건 식별
+                    </div>
+</div>
+<!-- 비교 표 -->
+<div class="overflow-x-auto mt-4">
+<table class="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
+<thead class="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+<tr>
+<th class="py-2.5 px-4 w-1/3">사업명</th>
+<th class="py-2.5 px-4">요약 및 주요 지원 내용</th>
+<th class="py-2.5 px-3 text-center w-24">식별 상태</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-150">
+<tr class="hover:bg-slate-50/50">
+<td class="py-3 px-4 font-bold text-slate-800">2023년 디지털 전환 이니셔티브</td>
+<td class="py-3 px-4 text-slate-600">중소기업의 제조 공정 디지털화를 위한 설비 도입 및 솔루션 구축 지원 사업</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">참조 완료</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50">
+<td class="py-3 px-4 font-bold text-slate-800">중소기업 수출 준비 보조금</td>
+<td class="py-3 px-4 text-slate-600">해외 시장 진출을 희망하는 내수 기업 대상 마케팅 및 물류 비용 지원</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">참조 완료</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50">
+<td class="py-3 px-4 font-bold text-slate-800">차세대 스마트 공장 구축 지원사업</td>
+<td class="py-3 px-4 text-slate-600">고도화된 스마트 공장 구현을 위한 AI 기반 분석 시스템 및 자동화 장비 지원</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">참조 완료</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50">
+<td class="py-3 px-4 font-bold text-slate-800">R&amp;D 역량 강화 바우처</td>
+<td class="py-3 px-4 text-slate-600">기술 혁신형 중소기업의 연구개발 인력 양성 및 기술 고도화 컨설팅 비용 지원</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">참조 완료</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50/50">
+<td class="py-3 px-4 font-bold text-slate-800">친환경 에너지 전환 지원 프로그램</td>
+<td class="py-3 px-4 text-slate-600">탄소중립 대응을 위한 노후 설비 교체 및 친환경 에너지원 도입 지원</td>
+<td class="py-3 px-3 text-center">
+<span class="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">참조 완료</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- 유사·중복성 검토 종합 의견 박스 -->
+<div class="mt-4 p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+<div class="flex items-center gap-1.5 font-bold text-slate-800 mb-2">
+<span class="material-symbols-outlined text-sm text-blue-800">info</span>
+<span>유사 · 중복성 검토 종합 의견</span>
+</div>
+<ul class="space-y-1 text-slate-600 pl-4 list-disc text-[11px] leading-relaxed">
+<li>유사 사업의 지원유형 참고 분류는 <strong class="text-slate-800">‘판로’</strong> 계열에 해당함</li>
+<li>비교군 기준 참고 예측 지원액은 <strong class="text-slate-800">853만원</strong> 수준으로 산출됨</li>
+<li>비교군 대비 과거 사업 패턴과 차이가 큼 — 관련 축: 기업(과제)당 지원한도 및 세부 요건 재조정 권고</li>
+</ul>
+</div>
+</section>
+</main>
+<!-- PDF 출력용 푸터 -->
+<footer class="mt-10 pt-5 border-t border-slate-200 text-slate-400 text-[11px] flex flex-col sm:flex-row items-center justify-between gap-2">
+<div>
+                본 문서는 <strong>Pre-review 중소기업 지원사업 사전검토 시스템</strong>에 의해 자동 생성된 보고서입니다.
+            </div>
+</footer>
+</div>
+<script src="./report_payload.js"></script>
+<script src="./result_pdf_preview.js"></script>
+<script src="./result_pdf_detail_preview.js"></script>
+<script src="./result_pdf_ml_preview.js"></script>
+</body>
+</html>

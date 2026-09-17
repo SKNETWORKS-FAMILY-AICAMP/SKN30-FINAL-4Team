@@ -1,25 +1,28 @@
 import { useState, useEffect } from 'react'
 import ResultView from './ResultView'
 import { resultService } from '../../services/resultService'
+import { usePolling } from '../../hooks/usePolling'
+import { api } from '../../services/apiClient'
 
 interface ResultProps {
     caseId: string | null
-    readOnlyChat?: boolean
+    isHistoryDetail?: boolean // 💡 기존 readOnlyChat 역할을 포함하는 통합 플래그
     onBackToUpload?: () => void
 }
 
-export default function Result({ caseId, readOnlyChat = false, onBackToUpload }: ResultProps) {
+export default function Result({ caseId, isHistoryDetail = false, onBackToUpload }: ResultProps) {
     const [reportData, setReportData] = useState<any>(null)
+    const [reportStatus, setReportStatus] = useState<any>(null)
     const [isLoading, setIsLoading] = useState<boolean>(true)
+    const [isDownloading, setIsDownloading] = useState<boolean>(false)
     const [error, setError] = useState<string | null>(null)
 
     // 모달 상태 및 데이터 관리
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false)
-    
-    // 상세보기 중복 클릭 방지용 로딩 상태
     const [isFetchingDetail, setIsFetchingDetail] = useState<boolean>(false)
 
+    // 최초 분석 결과 및 초기 상태 세팅
     useEffect(() => {
         const fetchResult = async () => {
             if (!caseId) {
@@ -32,6 +35,9 @@ export default function Result({ caseId, readOnlyChat = false, onBackToUpload }:
                 setIsLoading(true)
                 const data = await resultService.getAnalysisResult(caseId)
                 setReportData(data)
+                if (data?.report) {
+                    setReportStatus(data.report)
+                }
             } catch (err: any) {
                 console.error('분석 결과 조회 실패:', err)
                 setError(err.message || '분석 결과를 불러오는 데 실패했습니다.')
@@ -43,14 +49,62 @@ export default function Result({ caseId, readOnlyChat = false, onBackToUpload }:
         fetchResult()
     }, [caseId])
 
+    // 💡 generating 상태일 때만 2~3초 간격 폴링 실행 (과거 분석 상세가 아닐 때만)
+    const isGenerating = reportStatus?.status === 'generating'
+
+    usePolling(
+        async () => {
+            if (!caseId) return false
+            try {
+                const statusData = await resultService.getReportStatus(caseId)
+                setReportStatus(statusData)
+
+                // ready && can_download 이거나 failed 이면 폴링 중단
+                if ((statusData?.status === 'ready' && statusData?.can_download) || statusData?.status === 'failed') {
+                    return false
+                }
+            } catch (err) {
+                console.error('상태 폴링 실패:', err)
+                return false
+            }
+        },
+        {
+            interval: 3000,
+            enabled: isGenerating && !isHistoryDetail,
+            immediate: false,
+        }
+    )
+
     const handleExportPDF = async () => {
-        
+        if (!caseId || !reportStatus?.can_download) return
+
+        try {
+            setIsDownloading(true)
+
+            // 💡 커스텀 api.get을 통해 안전하게 blob 데이터 획득
+            const blobData = await api.get(`/analysis-cases/${caseId}/report.pdf`, {
+                responseType: 'blob',
+            })
+
+            const blob = new Blob([blobData], { type: 'application/pdf' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.setAttribute('download', `analysis-report-${caseId}.pdf`)
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+            window.URL.revokeObjectURL(url)
+        } catch (err) {
+            console.error('PDF 다운로드 실패:', err)
+            alert('PDF 다운로드에 실패했습니다.')
+        } finally {
+            setIsDownloading(false)
+        }
     }
 
     const handleOpenCandidateDetail = async (simCandidateId: string) => {
         if (isFetchingDetail) return
-
-        // 명세서 규칙: 후보 상세 요청을 시작할 때 이전 후보의 상세값을 비움
         setSelectedItem(null)
 
         try {
@@ -79,10 +133,12 @@ export default function Result({ caseId, readOnlyChat = false, onBackToUpload }:
     }
 
     return (
-        <ResultView 
+        <ResultView
             reportData={reportData}
+            reportStatus={reportStatus}
             onExportPDF={handleExportPDF}
-            readOnlyChat={readOnlyChat}
+            isDownloading={isDownloading}
+            isHistoryDetail={isHistoryDetail}
             onOpenCandidateDetail={handleOpenCandidateDetail}
             selectedItem={selectedItem}
             isModalOpen={isModalOpen}

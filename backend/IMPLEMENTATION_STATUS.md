@@ -1,6 +1,6 @@
 # Backend 구현·검증 기록
 
-마지막 갱신: 2026-09-16
+마지막 갱신: 2026-09-17
 
 ## 현재 선택한 운영 구조
 
@@ -8,12 +8,24 @@
 Frontend (HttpOnly Cookie)
   → FastAPI
       → Supabase Auth / PostgreSQL + pgvector / private Storage
-      → PostgreSQL polling worker (same server)
+      → PostgreSQL polling workers (analysis/chat/PDF, same server)
 ```
 
 Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase나 Edge Function을 직접
 호출하지 않는다. Redis/RQ, external worker HTTP dispatch/callback, SSE/Realtime은 현재
 운영 경로에서 사용하지 않는다.
+
+## 2026-09-17 PDF 보고서 통합
+
+- migration 41이 fenced PDF queue, private `analysis-reports` artifact, lease 만료·orphan
+  Storage 정리를 추가한다. 적용 전에 이미 완료된 분석은 backfill하지 않고, 적용 이후
+  새로 완료되거나 실제 재분석 완료된 case만 enqueue한다.
+- 별도 non-root `report-worker`가 오프라인 Chromium template로 PDF를 렌더링한다. API는
+  `GET /api/v1/analysis-cases/{analysis_case_id}/report.pdf`에서 소유권·보존기간·크기·
+  PDF magic·SHA-256을 검증한 뒤 private object를 반환한다.
+- 실제 HWPX Docker external E2E에서 analysis/chat/ML 1·2·3 완료 후 PDF가 생성됐고,
+  소유자 Cookie 다운로드 `200 application/pdf`, `%PDF-`, 811,304 bytes 및 저장 SHA-256
+  일치를 확인했다. PDF 관련 회귀 테스트 41개도 통과했다.
 
 ## 2026-09-16 후속 변경
 
@@ -268,7 +280,8 @@ DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 채팅은 migration 27의 별도 queue와 migration 36의 v2 idempotency/claim, migration 37의
 공용 admission, owner-scoped API, 결과 근거 제한 handler와 worker로 구현되어 있으며,
 위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
-확인했다. PDF/OCR은 현재 요청 처리 범위에서 제외하며, PDF 생성도 E2E 완료 범위가 아니다.
+확인했다. PDF 입력/OCR은 현재 요청 처리 범위에서 제외한다. 분석 결과 PDF 생성·다운로드는
+위 2026-09-17 통합 범위에서 별도로 구현·검증했다.
 
 비밀번호 재설정은 self-hosted Supabase recovery 메일의 일회용 `TokenHash`를
 `GET /api/v1/auth/password-recovery/callback`에서 검증해 HttpOnly 세션 Cookie로

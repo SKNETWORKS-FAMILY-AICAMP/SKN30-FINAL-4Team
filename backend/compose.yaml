@@ -12,11 +12,14 @@ services:
       # offline 계약 검증은 호스트에서 명시적으로 true로 실행한다.
       PREREVIEW_OFFLINE_MODE: "${PREREVIEW_OFFLINE_MODE:-false}"
       PREREVIEW_UPLOAD_MAX_BYTES: "${PREREVIEW_UPLOAD_MAX_BYTES:-52428800}"
+      PREREVIEW_REPORT_MAX_BYTES: "${PREREVIEW_REPORT_MAX_BYTES:-26214400}"
+      PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY: "${PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY:-2}"
       PREREVIEW_HTTP_MAX_BODY_BYTES: "${PREREVIEW_HTTP_MAX_BODY_BYTES:-53477376}"
       PREREVIEW_UPLOAD_CONCURRENCY: "${PREREVIEW_UPLOAD_CONCURRENCY:-2}"
       PREREVIEW_GLOBAL_QUEUE_MAX: "${PREREVIEW_GLOBAL_QUEUE_MAX:-25}"
       PREREVIEW_CURSOR_SIGNING_SECRET: "${PREREVIEW_CURSOR_SIGNING_SECRET:-}"
       PREREVIEW_AUTH_ALLOWED_ORIGINS: "${PREREVIEW_AUTH_ALLOWED_ORIGINS:-}"
+      PREREVIEW_AUTH_SIGNUP_ENABLED: "${PREREVIEW_AUTH_SIGNUP_ENABLED:-false}"
       PREREVIEW_AUTH_COOKIE_SECURE: "${PREREVIEW_AUTH_COOKIE_SECURE:-true}"
       PREREVIEW_AUTH_COOKIE_SAMESITE: "${PREREVIEW_AUTH_COOKIE_SAMESITE:-lax}"
       PREREVIEW_AUTH_COOKIE_DOMAIN: "${PREREVIEW_AUTH_COOKIE_DOMAIN:-}"
@@ -32,6 +35,13 @@ services:
       SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command:
       - uvicorn
       - main:app
@@ -129,6 +139,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 3m
     environment:
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
       DATABASE_URL: "${DATABASE_URL:-}"
       SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
@@ -141,5 +153,48 @@ services:
       PREREVIEW_CHAT_WORKER_LEASE_SECONDS: "${PREREVIEW_CHAT_WORKER_LEASE_SECONDS:-120}"
       PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_CHAT_WORKER_IDLE_POLL_SECONDS:-1}"
       PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_CHAT_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # 분석 결과를 오프라인 HTML 템플릿으로 렌더링하는 전용 PDF worker.
+  # Chromium은 프로세스 수명 동안 유지하고 작업별로 격리된 page만 연다.
+  report-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.report-worker
+    command: ["python", "-m", "worker.report_main"]
+    restart: unless-stopped
+    stop_grace_period: 3m
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-}"
+      SUPABASE_DB_URL: "${SUPABASE_DB_URL:-}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY:-}"
+      PREREVIEW_REPORT_CHROMIUM_EXECUTABLE: "/usr/bin/chromium"
+      PREREVIEW_REPORT_WORKER_HEARTBEAT_SECONDS: "${PREREVIEW_REPORT_WORKER_HEARTBEAT_SECONDS:-30}"
+      PREREVIEW_REPORT_WORKER_LEASE_SECONDS: "${PREREVIEW_REPORT_WORKER_LEASE_SECONDS:-120}"
+      PREREVIEW_REPORT_WORKER_IDLE_POLL_SECONDS: "${PREREVIEW_REPORT_WORKER_IDLE_POLL_SECONDS:-1}"
+      PREREVIEW_REPORT_RENDER_TIMEOUT_SECONDS: "${PREREVIEW_REPORT_RENDER_TIMEOUT_SECONDS:-60}"
+      PREREVIEW_REPORT_STORAGE_TIMEOUT_SECONDS: "${PREREVIEW_REPORT_STORAGE_TIMEOUT_SECONDS:-30}"
+      PREREVIEW_REPORT_DATABASE_CONNECT_TIMEOUT_SECONDS: "${PREREVIEW_REPORT_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+      PREREVIEW_REPORT_MAX_BYTES: "${PREREVIEW_REPORT_MAX_BYTES:-26214400}"
+      HOME: "/tmp"
+      XDG_CACHE_HOME: "/tmp/.cache"
+    mem_limit: "${PREREVIEW_REPORT_WORKER_MEMORY_LIMIT:-1g}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     extra_hosts:
       - "host.docker.internal:host-gateway"

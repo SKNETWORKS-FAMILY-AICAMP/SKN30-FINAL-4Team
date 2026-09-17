@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import AiChatView from './AiChatView'
 import { chatService, type ChatMessageModel } from '../../services/chatService'
+import { usePolling } from '../../hooks/usePolling'
 
 export type ChatMessage = {
     id: string
@@ -102,19 +103,17 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
         }
     }, [caseId])
 
-    useEffect(() => {
-        const hasGeneratingMessage = messages.some((msg) => msg.status === 'generating')
+    const hasGeneratingMessage = messages.some((msg) => msg.status === 'generating')
 
-        if (!hasGeneratingMessage || !caseId || !isChatOpen) {
-            return
-        }
-
-        const interval = setInterval(() => {
+    usePolling(
+        () => {
             fetchMessages()
-        }, 3000)
-
-        return () => clearInterval(interval)
-    }, [messages, caseId, isChatOpen])
+        },
+        {
+            enabled: hasGeneratingMessage && !!caseId && isChatOpen,
+            interval: 3000
+        }
+    )
 
     if (!hasLoaded || (readOnly && messages.length === 0)) {
         return null
@@ -191,6 +190,7 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
 
     return (
         <AiChatView 
+            caseId={caseId}
             isChatOpen={isChatOpen}
             inputText={inputText}
             messages={messages}

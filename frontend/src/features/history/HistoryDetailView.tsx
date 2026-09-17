@@ -24,7 +24,7 @@ export default function HistoryDetailView({ historyId, onClose }: HistoryDetailV
                 <div className="flex-1 overflow-y-auto flex flex-col">
                     <Result 
                         caseId={historyId} 
-                        readOnlyChat={true} 
+                        isHistoryDetail={true} 
                     />
                 </div>
             </div>

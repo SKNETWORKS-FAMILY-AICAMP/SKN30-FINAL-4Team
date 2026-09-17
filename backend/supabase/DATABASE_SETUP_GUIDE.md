@@ -49,7 +49,8 @@ migration, 데이터를 시작하지 않는다. `.runtime/supabase-dev/.env`를 
 - `SITE_URL`, `ADDITIONAL_REDIRECT_URLS`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
 - `SMTP_ADMIN_EMAIL`, `SMTP_SENDER_NAME`
-- `ENABLE_EMAIL_SIGNUP`, `ENABLE_EMAIL_AUTOCONFIRM`
+- `DISABLE_SIGNUP=true` (설치기가 강제하며 운영에서도 변경하지 않는다)
+- `ENABLE_EMAIL_SIGNUP`, `ENABLE_EMAIL_AUTOCONFIRM` (email provider 설정이며 공개 가입 허용과 별개)
 - `PREREVIEW_AUTH_TEMPLATE_DIR=<repository>/backend/supabase/templates`
 
 모든 Supabase 명령은 같은 세 Compose 파일을 사용한다.
@@ -87,7 +88,7 @@ SUPABASE_DIR="$PWD/.runtime/supabase-dev" \
   backend/supabase/run_worker_queue_validation.sh
 ```
 
-`apply_migrations.sh`는 migration 01~40을 적용한다. 실패하면 오류 migration과 마지막 성공
+`apply_migrations.sh`는 migration 01~41을 적용한다. 실패하면 오류 migration과 마지막 성공
 지점을 기록하고, 원인을 확인하지 않은 채 전체 명령을 반복하지 않는다.
 
 Existing KB가 필요하면 [Existing KB 100건 bootstrap](EXISTING_KB_BOOTSTRAP.md)의 데이터팩
@@ -118,7 +119,7 @@ DB dump와 Storage archive는 같은 시점의 세트여야 한다. 원본에서
 
 ```bash
 cd <source-repository>/backend
-docker compose -p backend stop -t 600 api worker chat-worker
+docker compose -p backend stop -t 600 api worker chat-worker report-worker
 
 install -d -m 700 /secure/backup/pre-review
 cd <source-repository>/.runtime/supabase-dev
@@ -140,7 +141,7 @@ sha256sum /secure/backup/pre-review/postgres.dump \
 원본 Backend가 계속 필요하면 `backend`에서 다시 기동한다.
 
 ```bash
-docker compose -p backend up -d api worker chat-worker
+docker compose -p backend up -d api worker chat-worker report-worker
 ```
 
 대상에는 3절의 동일한 Supabase/PostgreSQL 버전을 설치한다. 대상 DB와 Storage가 비어 있고
@@ -210,16 +211,21 @@ docker compose -p backend config --quiet
 
 ```bash
 cd <repository>/backend
-docker compose -p backend up -d --build api worker chat-worker
+docker compose -p backend up -d --build api worker chat-worker report-worker
 docker compose -p backend ps
 curl -fsS http://127.0.0.1:8001/health/live
 curl -fsS http://127.0.0.1:8001/health/ready
 docker compose -p backend logs --tail=100 worker
 docker compose -p backend logs --tail=100 chat-worker
+docker compose -p backend logs --tail=100 report-worker
 ```
 
 `ready=200`만으로 DB·Storage·worker를 검증했다고 판단하지 않는다. 테스트 계정으로 로그인해
 작은 HWP/HWPX 업로드가 `202`, 분석 완료가 `succeeded`, 결과와 채팅 조회가 성공하는지 본다.
+결과의 `report.can_download=true`를 확인한 뒤 소유자 Cookie로
+`GET /api/v1/analysis-cases/{analysis_case_id}/report.pdf`가 `200 application/pdf`를
+반환하는지도 확인한다. migration 41은 적용 전에 이미 완료된 case를 PDF queue에 넣지
+않으므로 이 검증에는 migration 적용 이후 새로 완료한 분석을 사용한다.
 
 ## 7. 금지 사항
 

@@ -12,6 +12,7 @@ from app.ports.analysis_runs import (
     ObjectStorageUnavailable,
     ObjectStorageWriteUncertain,
 )
+from app.ports.results import ReportStorageUnavailable
 
 
 class SupabasePrivateObjectStorage:
@@ -88,6 +89,63 @@ class SupabasePrivateObjectStorage:
             )
             return
         raise ObjectStorageUnavailable("Private object storage rejected the upload")
+
+    async def get(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        max_bytes: int,
+    ) -> bytes:
+        """Read a private object without making a signed URL public.
+
+        The byte cap is checked from Content-Length and while streaming,
+        because Storage metadata is not a security boundary.
+        """
+        if not self._base_url or not self._service_role_key:
+            raise ReportStorageUnavailable("Private report storage is not configured")
+        if max_bytes < 1:
+            raise ReportStorageUnavailable("Report download limit is invalid")
+        try:
+            async with httpx.AsyncClient(
+                transport=self._transport,
+                timeout=self._timeout,
+                follow_redirects=False,
+            ) as client:
+                async with client.stream(
+                    "GET",
+                    self._url(bucket, object_key),
+                    headers=self._headers(),
+                ) as response:
+                    if response.status_code != 200:
+                        raise ReportStorageUnavailable(
+                            "Private report storage rejected download"
+                        )
+                    declared_length = response.headers.get("content-length")
+                    if declared_length is not None:
+                        try:
+                            if int(declared_length) > max_bytes:
+                                raise ReportStorageUnavailable(
+                                    "Private report exceeds download limit"
+                                )
+                        except ValueError as exc:
+                            raise ReportStorageUnavailable(
+                                "Private report storage returned an invalid length"
+                            ) from exc
+                    content = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        content.extend(chunk)
+                        if len(content) > max_bytes:
+                            raise ReportStorageUnavailable(
+                                "Private report exceeds download limit"
+                            )
+                    return bytes(content)
+        except ReportStorageUnavailable:
+            raise
+        except httpx.HTTPError as exc:
+            raise ReportStorageUnavailable(
+                "Private report storage is unavailable"
+            ) from exc
 
     async def _accept_exact_existing_after_ambiguous_write(
         self,

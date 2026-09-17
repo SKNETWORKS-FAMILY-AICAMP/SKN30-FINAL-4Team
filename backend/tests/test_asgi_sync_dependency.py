@@ -121,6 +121,14 @@ def test_result_repository_dependency_resolves_promptly_under_a_saturated_limite
         async def get_sim_candidate(self, *, owner_id: str, sim_candidate_id: str):
             raise NotImplementedError
 
+        async def get_ready_report_artifact(
+            self, *, owner_id: str, analysis_case_id: str
+        ):
+            raise NotImplementedError
+
+        async def get_report_status(self, *, owner_id: str, analysis_case_id: str):
+            raise NotImplementedError
+
         async def get_active_session(self, *, owner_id: str):
             return None
 

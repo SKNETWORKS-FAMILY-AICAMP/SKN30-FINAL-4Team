@@ -52,6 +52,7 @@ def test_openapi_documents_http_only_cookie_security_without_bearer_auth() -> No
         ("/api/v1/auth/sign-up", "post"),
         ("/api/v1/auth/password-reset", "post"),
         ("/api/v1/auth/password-recovery/callback", "get"),
+        ("/api/v1/auth/password-recovery/verify", "post"),
     ):
         assert "security" not in _operation(schema, path, method)
 
@@ -92,12 +93,15 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/auth/refresh", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/sign-out", "post"): {"403", "422", "500", "503"},
         ("/api/v1/auth/password-reset", "post"): {"403", "422", "500", "503"},
-        ("/api/v1/auth/password-recovery/callback", "get"): {"422", "429", "500", "502", "503"},
+        ("/api/v1/auth/password-recovery/callback", "get"): {"500", "503"},
+        ("/api/v1/auth/password-recovery/verify", "post"): {"400", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/update-password", "post"): {"401", "403", "422", "429", "500", "502", "503"},
         ("/api/v1/auth/me", "get"): {"401", "429", "500", "502", "503"},
         ("/api/v1/analysis-runs", "post"): {"401", "403", "409", "413", "415", "422", "500", "503"},
         ("/api/v1/analysis-runs/{analysis_run_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-cases/{analysis_case_id}", "get"): {"401", "403", "404", "422", "500", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/report/status", "get"): {"401", "403", "404", "422", "429", "500", "502", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/report.pdf", "get"): {"401", "403", "404", "422", "429", "500", "502", "503"},
         ("/api/v1/sim-candidates/{sim_candidate_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-sessions/active", "get"): {"401", "403", "422", "500", "503"},
         ("/api/v1/analysis-history", "get"): {"401", "403", "422", "500", "503"},

@@ -179,6 +179,22 @@ rm -f -- \
   "$STAGING_DIR/bundle/.env.old" \
   "$STAGING_DIR/bundle/docker-compose.yml.old"
 
+# This product provisions users through an administrator/invitation flow.
+# Enforce that boundary in GoTrue itself: hiding the frontend or disabling the
+# FastAPI proxy route would still leave /auth/v1/signup reachable through the
+# Supabase gateway. Fail if the pinned bundle ever renames this setting rather
+# than silently installing an open-registration deployment.
+grep -q '^DISABLE_SIGNUP=' "$STAGING_DIR/bundle/.env" || {
+  echo "ERROR: generated Supabase environment lacks DISABLE_SIGNUP" >&2
+  exit 1
+}
+sed -i 's/^DISABLE_SIGNUP=.*/DISABLE_SIGNUP=true/' \
+  "$STAGING_DIR/bundle/.env"
+grep -qx 'DISABLE_SIGNUP=true' "$STAGING_DIR/bundle/.env" || {
+  echo "ERROR: failed to disable public Supabase signup" >&2
+  exit 1
+}
+
 for required_name in POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY POOLER_TENANT_ID; do
   grep -Eq "^${required_name}=.+$" "$STAGING_DIR/bundle/.env" || {
     echo "ERROR: generated Supabase environment is incomplete: $required_name" >&2

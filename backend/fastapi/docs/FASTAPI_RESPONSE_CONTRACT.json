@@ -7,6 +7,7 @@
   "auth_password_reset": {"message": "If an account exists, password reset instructions have been sent."},
   "analysis_run_created": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "queued"},
   "analysis_run_status": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "running", "analysis_case_id": null, "error_code": null, "error_message": null},
+  "analysis_report_status": {"status": "generating", "can_download": false, "can_regenerate": false, "retry_count": 0},
   "analysis_current_processing": {
     "state": "processing",
     "run": {"analysis_run_id": "44444444-4444-4444-4444-444444444444", "status": "running", "original_filename": "요청서.hwpx", "created_at": "2026-09-14T03:00:00Z", "updated_at": "2026-09-14T03:01:00Z"},

@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react'
 import type { ChatMessage } from './AiChat'
 
 interface AiChatViewProps {
+    caseId?: string | null
     isChatOpen: boolean
     inputText: string
     messages: ChatMessage[]
@@ -16,6 +17,7 @@ interface AiChatViewProps {
 }
 
 export default function AiChatView({
+    caseId,
     isChatOpen,
     inputText,
     messages,
@@ -30,13 +32,114 @@ export default function AiChatView({
 }: AiChatViewProps) {
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+    const lastMessageRef = useRef<HTMLDivElement | null>(null)
 
-    // 💡 메시지가 변경되거나 챗창이 열릴 때 스크롤을 항상 최하단(bottom)으로 이동
+    // 스크롤 위치 보존 및 첫 진입 관리용 ref
+    const savedScrollTopRef = useRef<number | null>(null)
+    const hasOpenedThisCaseRef = useRef<boolean>(false)
+    const prevMessagesRef = useRef<ChatMessage[]>([])
+    const prevCaseIdRef = useRef<string | null | undefined>(caseId)
+
+    // caseId 변경 시 상태 초기화
     useEffect(() => {
-        if (isChatOpen && scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+        if (prevCaseIdRef.current !== caseId) {
+            prevCaseIdRef.current = caseId
+            hasOpenedThisCaseRef.current = false
+            savedScrollTopRef.current = null
+            prevMessagesRef.current = []
         }
-    }, [messages, isChatOpen])
+    }, [caseId])
+
+    // 스크롤 이벤트 핸들러: 레이어를 닫거나 리렌더링되기 전 스크롤 위치 실시간 보존
+    const handleScroll = () => {
+        if (scrollContainerRef.current) {
+            savedScrollTopRef.current = scrollContainerRef.current.scrollTop
+        }
+    }
+
+    // 💡 레이어 열림/닫힘(isChatOpen) 시 스크롤 처리
+    useEffect(() => {
+        if (!isChatOpen) return
+
+        const timer = requestAnimationFrame(() => {
+            if (!scrollContainerRef.current) return
+            const container = scrollContainerRef.current
+
+            // 3. 해당 케이스에서 레이어를 처음 열었을 경우: 무조건 최하단으로 이동
+            if (!hasOpenedThisCaseRef.current) {
+                hasOpenedThisCaseRef.current = true
+                container.scrollTop = container.scrollHeight
+                savedScrollTopRef.current = container.scrollTop
+            } else if (savedScrollTopRef.current !== null) {
+                // 2. 레이어를 닫았다가 다시 열었을 때: 이전 스크롤 위치 유지
+                container.scrollTop = savedScrollTopRef.current
+            }
+        })
+
+        return () => cancelAnimationFrame(timer)
+    }, [isChatOpen])
+
+    // 💡 메시지 변경 시 스크롤 처리
+    useEffect(() => {
+        if (!isChatOpen || !scrollContainerRef.current) {
+            prevMessagesRef.current = messages
+            return
+        }
+
+        if (isLoadingMore) {
+            prevMessagesRef.current = messages
+            return
+        }
+
+        const prevMessages = prevMessagesRef.current
+        prevMessagesRef.current = messages
+
+        if (messages.length === 0) return
+
+        // 이전 상태에서 generating 중이던 AI 메시지가 있었는지 확인
+        const prevHadGenerating = prevMessages.some(
+            (m) => m.sender === 'ai' && m.status === 'generating'
+        )
+        const lastMsg = messages[messages.length - 1]
+
+        // 1. 대화 진행 중: 답변 바로 받은 직후 (generating -> 답변 완료/텍스트 수신)
+        const isAnswerJustReceived =
+            prevHadGenerating &&
+            lastMsg?.sender === 'ai' &&
+            lastMsg?.status !== 'generating'
+
+        // 사용자가 질문을 방금 전송한 직후
+        const isQuestionJustSent =
+            prevMessages.length < messages.length &&
+            lastMsg?.sender === 'ai' &&
+            lastMsg?.status === 'generating'
+
+        if (isAnswerJustReceived) {
+            // 답변 바로 받은 직후 -> 마지막 말풍선 시작 지점으로 이동
+            const timer = requestAnimationFrame(() => {
+                if (scrollContainerRef.current && lastMessageRef.current) {
+                    const container = scrollContainerRef.current
+                    const target = lastMessageRef.current
+                    const containerRect = container.getBoundingClientRect()
+                    const targetRect = target.getBoundingClientRect()
+
+                    const offset = targetRect.top - containerRect.top
+                    container.scrollTop = container.scrollTop + offset - 8
+                    savedScrollTopRef.current = container.scrollTop
+                }
+            })
+            return () => cancelAnimationFrame(timer)
+        } else if (isQuestionJustSent) {
+            // 질문 전송 직후 -> 최하단(답변 생성 중 로딩 표시)으로 이동
+            const timer = requestAnimationFrame(() => {
+                if (scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+                    savedScrollTopRef.current = scrollContainerRef.current.scrollTop
+                }
+            })
+            return () => cancelAnimationFrame(timer)
+        }
+    }, [messages, isChatOpen, isLoadingMore])
 
     useEffect(() => {
         const textarea = textareaRef.current
@@ -76,6 +179,7 @@ export default function AiChatView({
                     {/* 대화 말풍선 리스트 영역 */}
                     <div 
                         ref={scrollContainerRef}
+                        onScroll={handleScroll}
                         className="flex-1 overflow-y-auto flex flex-col gap-md pr-xs group/scroll"
                     >
                         {/* 과거 메시지 더보기 버튼 */}
@@ -92,14 +196,16 @@ export default function AiChatView({
                             </div>
                         )}
 
-                        {messages.map((msg) => {
+                        {messages.map((msg, index) => {
                             const isUser = msg.sender === 'user'
                             const isGenerating = msg.status === 'generating'
                             const isFailed = msg.status === 'failed'
+                            const isLast = index === messages.length - 1
 
                             return (
                                 <div
                                     key={msg.id}
+                                    ref={isLast ? lastMessageRef : null}
                                     className={`p-md rounded-lg max-w-[90%] font-body-sm text-[14px] shadow-sm break-words whitespace-pre-wrap flex flex-col gap-xs ${
                                         isUser
                                             ? 'bg-primary-container text-on-primary rounded-tr-none self-end'

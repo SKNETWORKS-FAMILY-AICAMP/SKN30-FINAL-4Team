@@ -10,6 +10,14 @@ export const resultService = {
         }
     },
 
+    getReportStatus: async (caseId: string) => {
+        try {
+            return await api.get(`/analysis-cases/${caseId}/report/status`)
+        } catch (error: any) {
+            throw new Error(getFriendlyErrorMessage(error, '보고서 상태를 조회하는 중 오류가 발생했습니다'))
+        }
+    },
+
     getSimCandidateDetail: async (simCandidateId: string) => {
         try {
             return await api.get(`/sim-candidates/${simCandidateId}`)
