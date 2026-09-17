@@ -25,25 +25,30 @@ from common_ir_pipeline.pdf_fusion.surya_layout_artifact import (
 from worker.accelerator_coordinator import (
     ArtifactRead,
     ArtifactReadLimitExceeded,
+    ArtifactNotFound,
     CoordinatorDisposition,
     ExistingPdfSuryaCoordinator,
     ExistingPdfSuryaOutcome,
 )
 from worker.contracts.accelerator import (
     AcceleratorContractError,
+    AcceleratorCredentialError,
     AcceleratorJobState,
     AcceleratorJobStatus,
     AcceleratorResourceCaps,
     ArtifactDescriptor,
+    LayoutComputeIdentity,
     PageCoordinateBinding,
     PageImageInput,
     PageRange,
     RenderManifestInput,
     SignedStorageCapability,
     StorageResourceCaps,
+    SuryaLayoutReconciliationHandle,
     SuryaLayoutResultArtifactManifest,
     SuryaLayoutRequest,
     SuryaProducerIdentity,
+    build_surya_layout_result_object_key,
 )
 from worker.ports.accelerator import AcceleratorJobNotFoundError
 
@@ -115,32 +120,74 @@ def _request(
         pipeline_revision="pipeline-r1", config_sha256=_digest("config"),
         worker_image_digest=f"sha256:{_digest('image')}",
     )
-    return SuryaLayoutRequest(
-        identity={
-            "source_sha256": render.source_pdf_sha256,
-            "source_page_count": render.page_count,
-            "page_range": PageRange(start_page=1, end_page=len(selected)),
-            "render_manifest": RenderManifestInput(
-                schema_version=render.schema_version,
-                render_manifest_sha256=render.manifest_sha256(),
-                size_bytes=len(render.canonical_json()), mime_type="application/json",
-                capability=_capability(method="GET", key="run/render-manifest.json", expected=render.manifest_sha256(), max_bytes=20_000),
+    identity = LayoutComputeIdentity(
+        source_sha256=render.source_pdf_sha256,
+        source_page_count=render.page_count,
+        page_range=PageRange(start_page=1, end_page=len(selected)),
+        render_manifest=RenderManifestInput(
+            schema_version=render.schema_version,
+            render_manifest_sha256=render.manifest_sha256(),
+            size_bytes=len(render.canonical_json()),
+            mime_type="application/json",
+            capability=_capability(
+                method="GET",
+                key="run/render-manifest.json",
+                expected=render.manifest_sha256(),
+                max_bytes=20_000,
             ),
-            "page_images": tuple(PageImageInput(
-                page_number=rendered.page, page_image_sha256=rendered.image_sha256,
-                size_bytes=rendered.image_size_bytes, mime_type="image/png",
-                pixel_width=200, pixel_height=400,
-                sidecar_binding=PageCoordinateBinding(**build_sidecar_binding(rendered.coordinate_manifest)),
-                capability=_capability(method="GET", key=f"run/page-{rendered.page:03d}.png", expected=rendered.image_sha256, max_bytes=20_000),
-            ) for rendered in selected),
-            "workload_scope": "existing_pdf_shadow", "mode": "layout", "producer": producer,
-        },
-        result_upload_capability=_capability(method="PUT", key="run/surya/result.json", expected=None, max_bytes=output_cap),
+        ),
+        page_images=tuple(
+            PageImageInput(
+                page_number=rendered.page,
+                page_image_sha256=rendered.image_sha256,
+                size_bytes=rendered.image_size_bytes,
+                mime_type="image/png",
+                pixel_width=200,
+                pixel_height=400,
+                sidecar_binding=PageCoordinateBinding(
+                    **build_sidecar_binding(rendered.coordinate_manifest)
+                ),
+                capability=_capability(
+                    method="GET",
+                    key=f"run/page-{rendered.page:03d}.png",
+                    expected=rendered.image_sha256,
+                    max_bytes=20_000,
+                ),
+            )
+            for rendered in selected
+        ),
+        workload_scope="existing_pdf_shadow",
+        mode="layout",
+        producer=producer,
+    )
+    return SuryaLayoutRequest(
+        identity=identity,
+        result_upload_capability=_capability(
+            method="PUT",
+            key=build_surya_layout_result_object_key(identity.logical_compute_key),
+            expected=None,
+            max_bytes=output_cap,
+        ),
         resource_caps=AcceleratorResourceCaps(
             max_page_count=len(selected), max_total_input_bytes=30_000, max_total_rendered_pixels=100_000 * len(selected),
             max_output_bytes=output_cap, execution_timeout_seconds=60, ttl_seconds=120,
         ),
     )
+
+
+def test_request_fixture_binds_result_key_to_its_logical_compute_key() -> None:
+    request = _request(_trusted_render())
+
+    assert request.result_upload_capability.object_key == (
+        f"accelerator/surya-layout/{request.logical_compute_key}/result.json"
+    )
+
+
+def _reconciliation_handle(
+    request: SuryaLayoutRequest,
+    render: PdfRenderManifest,
+) -> SuryaLayoutReconciliationHandle:
+    return SuryaLayoutReconciliationHandle.from_request(request, render)
 
 
 def _artifact(request: SuryaLayoutRequest, render: PdfRenderManifest) -> SuryaLayoutArtifact:
@@ -291,6 +338,217 @@ def test_happy_path_binds_render_reads_exact_cap_and_returns_portable_artifact()
     assert accelerator.submits == 1
 
 
+def test_persisted_reconciliation_survives_restart_without_request_or_provider_io() -> None:
+    render = _trusted_render()
+    request = _request(render, output_cap=1_000_000)
+    raw = _artifact(request, render).canonical_json()
+    handle = _reconciliation_handle(request, render)
+    persisted_json = json.dumps(
+        handle.to_persistence_payload(),
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    lowered = persisted_json.lower()
+    assert "https://" not in lowered
+    assert "signature" not in lowered
+    assert "capability" not in lowered
+    assert "token" not in lowered
+    restored = SuryaLayoutReconciliationHandle.model_validate_json(persisted_json)
+    del handle, request
+
+    reader = _Reader(ArtifactRead(content=raw, content_type="application/json"))
+    accelerator = _Accelerator()
+
+    outcome = _coordinator(accelerator, reader, _Fence([])).reconcile_result_artifact(
+        restored,
+        external_job_id=restored.logical_compute_key,
+    )
+
+    assert outcome.disposition is CoordinatorDisposition.SUCCEEDED
+    assert outcome.external_job_id == restored.logical_compute_key
+    assert outcome.provider_state is None
+    assert outcome.artifact is not None
+    assert reader.calls == [
+        ("request-temp", restored.result_object_key, 1_000_000)
+    ]
+    assert accelerator.submits == 0
+    assert accelerator.polls == []
+    assert accelerator.cancels == []
+
+
+def test_reconciliation_handle_recomputes_lineage_and_rejects_credentials() -> None:
+    render = _trusted_render()
+    request = _request(render)
+    handle = _reconciliation_handle(request, render)
+    assert handle.validate_external_job_id(request.logical_compute_key) == (
+        request.logical_compute_key
+    )
+    with pytest.raises(AcceleratorContractError, match="external_job_id"):
+        handle.validate_external_job_id(_digest("different-persistent-job"))
+
+    payload = handle.to_persistence_payload()
+    poisoned_key = _digest("poisoned-compute")
+    payload["logical_compute_key"] = poisoned_key
+    payload["result_object_key"] = build_surya_layout_result_object_key(poisoned_key)
+
+    with pytest.raises(ValueError, match="trusted render lineage"):
+        SuryaLayoutReconciliationHandle.from_persistence_payload(payload)
+
+    clean = _reconciliation_handle(request, render).to_persistence_payload()
+    clean["access_token"] = "must-not-cross-the-boundary"
+    with pytest.raises(AcceleratorCredentialError):
+        SuryaLayoutReconciliationHandle.from_persistence_payload(clean)
+
+
+def test_mutated_reconciliation_handle_fails_before_storage_or_provider_io() -> None:
+    render = _trusted_render()
+    request = _request(render)
+    handle = _reconciliation_handle(request, render)
+    object.__setattr__(
+        handle,
+        "result_object_key",
+        build_surya_layout_result_object_key(_digest("other-compute")),
+    )
+    reader = _Reader(ArtifactRead(b"unused", "application/json"))
+    accelerator = _Accelerator()
+
+    outcome = _coordinator(accelerator, reader, _Fence([])).reconcile_result_artifact(
+        handle,
+        external_job_id=request.logical_compute_key,
+    )
+
+    assert outcome.disposition is CoordinatorDisposition.CONTENT_FAILED
+    assert outcome.reason_code == "reconciliation_handle_invalid"
+    assert reader.calls == []
+    assert accelerator.submits == 0
+    assert accelerator.polls == []
+    assert accelerator.cancels == []
+
+
+def test_reconciliation_missing_artifact_is_pending_and_storage_outage_is_retryable() -> None:
+    render = _trusted_render()
+    request = _request(render)
+    missing_accelerator = _Accelerator()
+    missing = _coordinator(
+        missing_accelerator,
+        _Reader(ArtifactNotFound("deterministic key absent")),
+        _Fence([]),
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=request.logical_compute_key,
+    )
+    assert missing.disposition is CoordinatorDisposition.PENDING
+    assert missing.reason_code == "artifact_not_found"
+    assert missing.external_job_id == request.logical_compute_key
+    assert missing_accelerator.submits == 0 and missing_accelerator.polls == []
+
+    unavailable = _coordinator(
+        _Accelerator(),
+        _Reader(RuntimeError("storage unavailable")),
+        _Fence([]),
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=request.logical_compute_key,
+    )
+    assert unavailable.disposition is CoordinatorDisposition.INFRA_RETRYABLE
+    assert unavailable.reason_code == "artifact_read_failed"
+
+
+@pytest.mark.parametrize("poison", ["content_type", "noncanonical", "wrong_lineage"])
+def test_reconciliation_never_accepts_or_overwrites_a_poisoned_existing_object(poison: str) -> None:
+    render = _trusted_render()
+    request = _request(render)
+    raw = _artifact(request, render).canonical_json()
+    content_type = "application/json"
+    if poison == "content_type":
+        content_type = "text/plain"
+    elif poison == "noncanonical":
+        raw += b"\n"
+    else:
+        payload = _artifact(request, render).to_dict()
+        payload["logical_compute_key"] = _digest("other-compute")
+        raw = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+    accelerator = _Accelerator()
+    outcome = _coordinator(
+        accelerator,
+        _Reader(ArtifactRead(raw, content_type)),
+        _Fence([]),
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=request.logical_compute_key,
+    )
+
+    assert outcome.disposition is CoordinatorDisposition.CONTENT_FAILED
+    assert outcome.external_job_id == request.logical_compute_key
+    assert outcome.reason_code in {
+        "artifact_content_type_mismatch",
+        "artifact_parse_failed",
+    }
+    assert outcome.artifact is None
+    assert accelerator.submits == 0 and accelerator.polls == [] and accelerator.cancels == []
+
+
+def test_reconciliation_applies_fence_before_and_after_its_only_storage_io() -> None:
+    render = _trusted_render()
+    request = _request(render)
+    raw = _artifact(request, render).canonical_json()
+
+    pre_accelerator = _Accelerator()
+    before = _coordinator(
+        pre_accelerator,
+        _Reader(ArtifactRead(raw, "application/json")),
+        _Fence([False]),
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=request.logical_compute_key,
+    )
+    assert before.disposition is CoordinatorDisposition.FENCE_LOST
+    assert pre_accelerator.submits == 0 and pre_accelerator.polls == []
+
+    post_accelerator = _Accelerator()
+    post = _coordinator(
+        post_accelerator,
+        _Reader(ArtifactRead(raw, "application/json")),
+        _Fence([True, False]),
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=request.logical_compute_key,
+    )
+    assert post.disposition is CoordinatorDisposition.FENCE_LOST
+    assert post.artifact is None
+    assert post_accelerator.submits == 0 and post_accelerator.polls == []
+    assert post_accelerator.cancels == []
+
+
+def test_reconciliation_rejects_job_id_mismatch_or_oversized_object_before_accepting() -> None:
+    render = _trusted_render()
+    request = _request(render, output_cap=100)
+    raw = _artifact(request, render).canonical_json()
+    invalid_reader = _Reader(ArtifactRead(raw, "application/json"))
+    invalid = _coordinator(
+        _Accelerator(), invalid_reader, _Fence([])
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=_digest("different-persistent-job"),
+    )
+    assert invalid.disposition is CoordinatorDisposition.CONTENT_FAILED
+    assert invalid.reason_code == "reconciliation_job_id_mismatch"
+    assert invalid.external_job_id is None
+    assert invalid_reader.calls == []
+
+    oversized = _coordinator(
+        _Accelerator(), _Reader(ArtifactRead(raw, "application/json")), _Fence([])
+    ).reconcile_result_artifact(
+        _reconciliation_handle(request, render),
+        external_job_id=request.logical_compute_key,
+    )
+    assert oversized.disposition is CoordinatorDisposition.CONTENT_FAILED
+    assert oversized.reason_code == "artifact_size_cap_exceeded"
+
+
 @pytest.mark.parametrize("state", [AcceleratorJobState.QUEUED, AcceleratorJobState.RUNNING])
 def test_pending_returns_immediately_without_storage(state: AcceleratorJobState) -> None:
     render, request = _trusted_render(), None
@@ -312,10 +570,10 @@ def test_reattach_polls_only_and_rejects_returned_external_id_mismatch() -> None
     assert outcome.disposition is CoordinatorDisposition.CONTENT_FAILED
     assert outcome.reason_code == "provider_status_mismatch"
     assert accelerator.submits == 0 and reader.calls == []
-    assert accelerator.cancels == ["prior-job"]
+    assert accelerator.cancels == []
 
 
-def test_cancel_boundary_latches_a_false_probe_even_if_the_next_probe_recovers() -> None:
+def test_stale_provider_result_never_cancels_even_if_a_later_probe_recovers() -> None:
     render = _trusted_render()
     request = _request(render)
     raw = _artifact(request, render).canonical_json()
@@ -325,11 +583,11 @@ def test_cancel_boundary_latches_a_false_probe_even_if_the_next_probe_recovers()
     outcome = _coordinator(
         accelerator,
         _Reader(ArtifactRead(raw, "application/json")),
-        _FlappingFence([True, True, True, False, True]),
+        _FlappingFence([True, True, False, True]),
     ).advance(request, render, "prior-job")
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
     assert outcome.external_job_id == "prior-job"
-    assert accelerator.cancels == ["prior-job"]
+    assert accelerator.cancels == []
 
 
 @pytest.mark.parametrize(
@@ -461,7 +719,7 @@ def test_storage_bounded_read_limit_is_a_terminal_content_failure() -> None:
     assert outcome.provider_state is AcceleratorJobState.SUCCEEDED
 
 
-def test_storage_bounded_read_limit_with_concurrent_fence_loss_cancels_job() -> None:
+def test_storage_bounded_read_limit_with_concurrent_fence_loss_never_cancels_job() -> None:
     render = _trusted_render()
     request = _request(render)
     raw = _artifact(request, render).canonical_json()
@@ -473,7 +731,7 @@ def test_storage_bounded_read_limit_with_concurrent_fence_loss_cancels_job() -> 
     ).advance(request, render)
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
     assert outcome.external_job_id == "provider-job-1"
-    assert accelerator.cancels == ["provider-job-1"]
+    assert accelerator.cancels == []
 
 
 @pytest.mark.parametrize("kind", ["hash", "content_type"])
@@ -515,7 +773,7 @@ def test_parser_rejects_remote_artifact_lineage_and_geometry(mutation: str) -> N
     assert outcome.reason_code == "artifact_parse_failed"
 
 
-def test_stale_fence_before_provider_prevents_submit_and_stale_after_provider_cancels_even_if_cancel_fails() -> None:
+def test_stale_fence_before_or_after_provider_never_cancels() -> None:
     render, request = _trusted_render(), None
     request = _request(render)
     raw = _artifact(request, render).canonical_json()
@@ -527,22 +785,22 @@ def test_stale_fence_before_provider_prevents_submit_and_stale_after_provider_ca
     stale_accelerator = _Accelerator(submit=_status(request, raw), cancel_error=True)
     after = _coordinator(stale_accelerator, _Reader(ArtifactRead(raw, "application/json")), _Fence([True, True, False])).advance(request, render)
     assert after.disposition is CoordinatorDisposition.FENCE_LOST
-    assert stale_accelerator.cancels == ["provider-job-1"]
+    assert stale_accelerator.cancels == []
 
 
-def test_fence_loss_after_read_or_parse_discards_artifact_and_cancels() -> None:
+def test_fence_loss_after_read_or_parse_discards_artifact_without_cancelling() -> None:
     render, request = _trusted_render(), None
     request = _request(render)
     raw = _artifact(request, render).canonical_json()
     after_read_accelerator = _Accelerator(submit=_status(request, raw))
     after_read = _coordinator(after_read_accelerator, _Reader(ArtifactRead(raw, "application/json")), _Fence([True, True, True, True, False])).advance(request, render)
     assert after_read.disposition is CoordinatorDisposition.FENCE_LOST and after_read.artifact is None
-    assert after_read_accelerator.cancels == ["provider-job-1"]
+    assert after_read_accelerator.cancels == []
 
     after_parse_accelerator = _Accelerator(submit=_status(request, raw))
     after_parse = _coordinator(after_parse_accelerator, _Reader(ArtifactRead(raw, "application/json")), _Fence([True, True, True, True, True, False])).advance(request, render)
     assert after_parse.disposition is CoordinatorDisposition.FENCE_LOST and after_parse.artifact is None
-    assert after_parse_accelerator.cancels == ["provider-job-1"]
+    assert after_parse_accelerator.cancels == []
 
 
 def test_untrusted_request_render_binding_never_contacts_provider_or_storage() -> None:
@@ -686,16 +944,16 @@ def test_poll_fence_loss_before_and_after_provider_action_is_safe() -> None:
     assert before.disposition is CoordinatorDisposition.FENCE_LOST
     assert before.external_job_id == "prior-job"
     assert accelerator.polls == []
-    assert accelerator.cancels == ["prior-job"]
+    assert accelerator.cancels == []
 
     stale_accelerator = _Accelerator(poll=_status(request, raw, external_job_id="prior-job"))
     after = _coordinator(stale_accelerator, _Reader(ArtifactRead(raw, "application/json")), _Fence([True, True, False])).advance(request, render, "prior-job")
     assert after.disposition is CoordinatorDisposition.FENCE_LOST
     assert stale_accelerator.polls == ["prior-job"]
-    assert stale_accelerator.cancels == ["prior-job"]
+    assert stale_accelerator.cancels == []
 
 
-def test_poll_helper_fence_loss_after_initial_probe_cancels_known_job_without_polling() -> None:
+def test_poll_helper_fence_loss_after_initial_probe_never_cancels_known_job() -> None:
     render = _trusted_render()
     request = _request(render)
     raw = _artifact(request, render).canonical_json()
@@ -707,10 +965,10 @@ def test_poll_helper_fence_loss_after_initial_probe_cancels_known_job_without_po
     ).advance(request, render, "prior-job")
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
     assert accelerator.polls == []
-    assert accelerator.cancels == ["prior-job"]
+    assert accelerator.cancels == []
 
 
-def test_authorized_replacement_cleans_up_known_job_if_fence_is_lost_before_submit() -> None:
+def test_authorized_replacement_does_not_mutate_known_job_if_fence_is_lost_before_submit() -> None:
     render = _trusted_render()
     request = _request(render)
     accelerator = _Accelerator(submit=SimpleNamespace())
@@ -727,7 +985,7 @@ def test_authorized_replacement_cleans_up_known_job_if_fence_is_lost_before_subm
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
     assert outcome.external_job_id == "prior-job"
     assert accelerator.submits == 0
-    assert accelerator.cancels == ["prior-job"]
+    assert accelerator.cancels == []
 
 
 def test_malformed_provider_result_with_post_call_fence_loss_never_crashes_or_reads() -> None:
@@ -743,7 +1001,42 @@ def test_malformed_provider_result_with_post_call_fence_loss_never_crashes_or_re
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
     assert outcome.reason_code == "fence_lost"
     assert reader.calls == []
-    assert accelerator.cancels == ["prior-job"]
+    assert accelerator.cancels == []
+
+
+def test_malformed_live_poll_never_uses_non_atomic_provider_cancel() -> None:
+    render = _trusted_render()
+    request = _request(render)
+    accelerator = _Accelerator(poll=SimpleNamespace(external_job_id="not-used"))
+    fence = _Fence([True, True, True, True, True])
+
+    outcome = _coordinator(
+        accelerator,
+        _Reader(ArtifactRead(b"unused", "application/json")),
+        fence,
+    ).advance(request, render, "prior-job")
+
+    assert outcome.disposition is CoordinatorDisposition.CONTENT_FAILED
+    assert outcome.reason_code == "provider_status_malformed"
+    assert accelerator.cancels == []
+    # Advance, poll, and the mandatory post-provider validation sample.
+    assert fence.calls == 3
+
+
+def test_malformed_live_poll_does_not_probe_for_or_attempt_cleanup_cancel() -> None:
+    render = _trusted_render()
+    request = _request(render)
+    accelerator = _Accelerator(poll=SimpleNamespace(external_job_id="not-used"))
+
+    outcome = _coordinator(
+        accelerator,
+        _Reader(ArtifactRead(b"unused", "application/json")),
+        _Fence([True, True, True, False]),
+    ).advance(request, render, "prior-job")
+
+    assert outcome.disposition is CoordinatorDisposition.CONTENT_FAILED
+    assert outcome.reason_code == "provider_status_malformed"
+    assert accelerator.cancels == []
 
 
 def test_safe_provider_reason_is_preserved_for_terminal_content_failure() -> None:
@@ -791,7 +1084,7 @@ def test_metadata_mismatch_rechecks_fence_and_prioritizes_fence_loss() -> None:
     ).advance(request, render)
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
     assert outcome.provider_state is None
-    assert accelerator.cancels == ["provider-job-1"]
+    assert accelerator.cancels == []
 
 
 def test_rejected_succeeded_metadata_preserves_provider_state_while_fence_is_live() -> None:
@@ -814,7 +1107,7 @@ def test_rejected_succeeded_metadata_preserves_provider_state_while_fence_is_liv
     assert outcome.provider_state is AcceleratorJobState.SUCCEEDED
 
 
-def test_cancel_error_still_performs_the_post_cancel_fence_probe() -> None:
+def test_stale_provider_result_skips_cancel_and_its_fence_probes() -> None:
     render, request = _trusted_render(), None
     request = _request(render)
     raw = _artifact(request, render).canonical_json()
@@ -826,8 +1119,9 @@ def test_cancel_error_still_performs_the_post_cancel_fence_probe() -> None:
         fence,
     ).advance(request, render)
     assert outcome.disposition is CoordinatorDisposition.FENCE_LOST
-    # Initial probe, provider pre/post probes, then cancel pre/post probes.
-    assert fence.calls == 5
+    # Initial probe and provider pre/post probes; stale paths do not cancel.
+    assert fence.calls == 3
+    assert accelerator.cancels == []
 
 
 class _TruthyAuthorization:
@@ -897,7 +1191,7 @@ def test_provider_exception_with_concurrent_fence_loss_returns_fence_lost(operat
     assert outcome.provider_state is None
     if operation == "poll":
         assert outcome.external_job_id == "prior-job"
-        assert accelerator.cancels == ["prior-job"]
+        assert accelerator.cancels == []
 
 
 def test_storage_exception_with_concurrent_fence_loss_returns_fence_lost() -> None:

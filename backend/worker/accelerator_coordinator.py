@@ -28,7 +28,9 @@ from worker.contracts.accelerator import (
     AcceleratorContractError,
     AcceleratorJobState,
     AcceleratorJobStatus,
+    SuryaLayoutReconciliationHandle,
     SuryaLayoutRequest,
+    SuryaProducerIdentity,
     validate_accelerator_result_acceptance,
 )
 from worker.ports.accelerator import AcceleratorJobNotFoundError, AcceleratorPort
@@ -36,6 +38,7 @@ from worker.ports.accelerator import AcceleratorJobNotFoundError, AcceleratorPor
 
 __all__ = [
     "AcceleratorArtifactReader",
+    "ArtifactNotFound",
     "ArtifactRead",
     "ArtifactReadLimitExceeded",
     "CoordinatorDisposition",
@@ -55,6 +58,15 @@ class ArtifactRead:
 
 class ArtifactReadLimitExceeded(Exception):
     """The trusted object exceeded the mandatory bounded-read ceiling."""
+
+
+class ArtifactNotFound(Exception):
+    """The exact trusted output key does not exist.
+
+    This is intentionally distinct from a storage outage.  Callers may safely
+    continue the provider lifecycle after this observation, whereas every
+    other reader exception remains retryable infrastructure failure.
+    """
 
 
 class AcceleratorArtifactReader(Protocol):
@@ -130,9 +142,9 @@ class ExistingPdfSuryaCoordinator:
     ``infra_retryable`` observation and authorizes this *later invocation* to
     submit a replacement directly.  The coordinator never polls and submits in
     the same invocation, and never retries a provider operation on its own.
-    Best-effort cancel is a cleanup action only after fence loss or an invalid
-    response while polling a known reattached job; it is never added to a live
-    replacement submit.
+    The coordinator never cancels a provider job.  A local fence probe cannot
+    make a later remote cancel atomic with lease ownership, so cleanup is left
+    to a holder with a provider-enforced fencing mechanism.
     """
 
     def __init__(
@@ -201,6 +213,124 @@ class ExistingPdfSuryaCoordinator:
             return status
         return self._from_status(request, trusted_render_manifest, portable_producer, status)
 
+    def reconcile_result_artifact(
+        self,
+        handle: SuryaLayoutReconciliationHandle,
+        *,
+        external_job_id: str,
+    ) -> ExistingPdfSuryaOutcome:
+        """Accept an already-written deterministic result without provider status.
+
+        A Pod may complete its create-only PUT and die before it writes a
+        durable terminal journal/status.  This one-step repair path reads only
+        the trusted, deterministic output key from a credential-free handle
+        persisted before dispatch.  It never needs the original request,
+        polls the provider, follows a signed URL, consumes an untrusted result
+        descriptor, or mutates storage.  ``external_job_id`` must be the
+        caller's previously persisted provider ID and must exactly equal the
+        handle's logical compute key, as required by the persistent adapter's
+        idempotent job contract.  It is not learned from a remote response
+        here.
+
+        ``PENDING/artifact_not_found`` means no immutable result exists yet
+        and lets the caller continue its normal lifecycle.  Any existing but
+        malformed or mismatched object is terminal ``CONTENT_FAILED`` so it is
+        never silently overwritten.
+        """
+
+        try:
+            if not isinstance(handle, SuryaLayoutReconciliationHandle):
+                raise TypeError(
+                    "handle must be a SuryaLayoutReconciliationHandle"
+                )
+            handle._assert_live_integrity()
+            trusted_render_manifest = handle.trusted_render_manifest
+            portable_producer = _portable_producer_identity(handle.producer)
+        except (TypeError, ValueError):
+            return _outcome(
+                CoordinatorDisposition.CONTENT_FAILED,
+                reason="reconciliation_handle_invalid",
+            )
+        try:
+            external_job_id = handle.validate_external_job_id(external_job_id)
+        except (TypeError, ValueError):
+            return _outcome(
+                CoordinatorDisposition.CONTENT_FAILED,
+                reason="reconciliation_job_id_mismatch",
+            )
+
+        if not self._fence_is_current():
+            return self._fence_lost_after_stale(external_job_id)
+
+        hard_cap = min(handle.max_output_bytes, MAX_ARTIFACT_BYTES)
+        try:
+            read = self._artifact_reader.read(
+                handle.result_bucket,
+                handle.result_object_key,
+                max_bytes=hard_cap,
+            )
+        except ArtifactNotFound:
+            if not self._fence_is_current():
+                return self._fence_lost_after_stale(external_job_id)
+            return _outcome(
+                CoordinatorDisposition.PENDING,
+                external_job_id=external_job_id,
+                reason="artifact_not_found",
+            )
+        except ArtifactReadLimitExceeded:
+            if not self._fence_is_current():
+                return self._fence_lost_after_stale(external_job_id)
+            return _outcome(
+                CoordinatorDisposition.CONTENT_FAILED,
+                external_job_id=external_job_id,
+                reason="artifact_size_cap_exceeded",
+            )
+        except Exception:
+            if not self._fence_is_current():
+                return self._fence_lost_after_stale(external_job_id)
+            return _outcome(
+                CoordinatorDisposition.INFRA_RETRYABLE,
+                external_job_id=external_job_id,
+                reason="artifact_read_failed",
+            )
+
+        if not self._fence_is_current():
+            return self._fence_lost_after_stale(external_job_id)
+        if not isinstance(read, ArtifactRead) or not isinstance(read.content, bytes):
+            return self._content_failure_after_reconciliation_read(
+                external_job_id, "artifact_read_invalid"
+            )
+        if len(read.content) > hard_cap:
+            return self._content_failure_after_reconciliation_read(
+                external_job_id, "artifact_size_cap_exceeded"
+            )
+        if _normalized_media_type(read.content_type) != handle.artifact_content_type:
+            return self._content_failure_after_reconciliation_read(
+                external_job_id, "artifact_content_type_mismatch"
+            )
+
+        try:
+            artifact = parse_surya_layout_artifact_bytes(
+                read.content,
+                render_manifest=trusted_render_manifest,
+                expected_logical_compute_key=handle.logical_compute_key,
+                expected_producer=portable_producer,
+                expected_requested_pages=tuple(
+                    page.page for page in trusted_render_manifest.pages
+                ),
+            )
+        except Exception:
+            return self._content_failure_after_reconciliation_read(
+                external_job_id, "artifact_parse_failed"
+            )
+        if not self._fence_is_current():
+            return self._fence_lost_after_stale(external_job_id)
+        return ExistingPdfSuryaOutcome(
+            disposition=CoordinatorDisposition.SUCCEEDED,
+            external_job_id=external_job_id,
+            artifact=artifact,
+        )
+
     def _provider_submit(
         self,
         request: SuryaLayoutRequest,
@@ -264,7 +394,6 @@ class ExistingPdfSuryaCoordinator:
             status,
             expected_external_job_id=external_job_id,
             known_cancel_job_id=external_job_id,
-            cancel_known_on_live_failure=True,
         )
 
     def _validate_provider_response(
@@ -274,7 +403,6 @@ class ExistingPdfSuryaCoordinator:
         *,
         expected_external_job_id: str | None = None,
         known_cancel_job_id: str | None = None,
-        cancel_known_on_live_failure: bool = False,
     ) -> AcceleratorJobStatus | ExistingPdfSuryaOutcome:
         """Validate every status before it can select a local disposition."""
 
@@ -338,14 +466,6 @@ class ExistingPdfSuryaCoordinator:
                 cancel_job_id or known_cancel_job_id
             )
         if failure is not None:
-            if cancel_known_on_live_failure and known_cancel_job_id is not None:
-                still_current = self._cancel_known_job(known_cancel_job_id)
-                if not still_current:
-                    return _outcome(
-                        CoordinatorDisposition.FENCE_LOST,
-                        external_job_id=known_cancel_job_id,
-                        reason="fence_lost",
-                    )
             return failure
         assert isinstance(status, AcceleratorJobStatus)
         return status
@@ -499,6 +619,21 @@ class ExistingPdfSuryaCoordinator:
             provider_state=provider_state,
         )
 
+    def _content_failure_after_reconciliation_read(
+        self,
+        external_job_id: str,
+        reason: str,
+    ) -> ExistingPdfSuryaOutcome:
+        """Fence-prioritized content failure for a status-free repair read."""
+
+        if not self._fence_is_current():
+            return self._fence_lost_after_stale(external_job_id)
+        return _outcome(
+            CoordinatorDisposition.CONTENT_FAILED,
+            external_job_id=external_job_id,
+            reason=reason,
+        )
+
     def _fence_lost_if_stale(self, external_job_id: str) -> ExistingPdfSuryaOutcome | None:
         """Return the common stale result after a local non-I/O validation step."""
 
@@ -510,7 +645,12 @@ class ExistingPdfSuryaCoordinator:
         self,
         external_job_id: str | None,
     ) -> ExistingPdfSuryaOutcome:
-        self._cancel_known_job(external_job_id)
+        """Return a fence-loss outcome without mutating the provider.
+
+        Every caller has already observed a stale fence.  In particular, do
+        not turn the known job ID into a cleanup cancel: ownership may have
+        moved to another actor.
+        """
         return _outcome(
             CoordinatorDisposition.FENCE_LOST,
             external_job_id=(
@@ -518,21 +658,6 @@ class ExistingPdfSuryaCoordinator:
             ),
             reason="fence_lost",
         )
-
-    def _cancel_known_job(self, external_job_id: str | None) -> bool:
-        """Best-effort cancel a trusted ID and return the post-I/O fence state."""
-
-        if not _is_safe_external_job_id(external_job_id):
-            return self._fence_is_current()
-        pre_cancel_current = self._fence_is_current()
-        try:
-            # Cleanup remains allowed after a stale pre-sample.  The post-sample
-            # still decides whether the caller may retain a non-fence diagnosis.
-            self._accelerator.cancel(external_job_id)
-        except Exception:
-            pass
-        post_cancel_current = self._fence_is_current()
-        return pre_cancel_current and post_cancel_current
 
     def _fence_is_current(self) -> bool:
         try:
@@ -584,7 +709,14 @@ def _bind_request_to_trusted_render_manifest(
 def _portable_producer(request: SuryaLayoutRequest) -> PortableSuryaProducerIdentity:
     """Explicitly cross the accelerator-wire to portable-artifact identity boundary."""
 
-    producer = request.identity.producer
+    return _portable_producer_identity(request.identity.producer)
+
+
+def _portable_producer_identity(
+    producer: SuryaProducerIdentity,
+) -> PortableSuryaProducerIdentity:
+    """Convert a validated producer without requiring a capability-bearing request."""
+
     return PortableSuryaProducerIdentity(
         engine_id=producer.engine_id,
         engine_version=producer.engine_version,

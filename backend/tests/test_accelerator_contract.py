@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from pydantic import ValidationError
@@ -24,6 +25,7 @@ from worker.contracts.accelerator import (
     AcceleratorResourceCaps,
     AcceleratorJobStatus,
     ArtifactDescriptor,
+    LayoutComputeIdentity,
     PageCoordinateBinding,
     PageImageInput,
     PageRange,
@@ -33,6 +35,7 @@ from worker.contracts.accelerator import (
     SuryaLayoutResultArtifactManifest,
     SuryaLayoutRequest,
     SuryaProducerIdentity,
+    build_surya_layout_result_object_key,
     validate_accelerator_result_acceptance,
     validate_accelerator_dispatch,
 )
@@ -56,7 +59,8 @@ def _capability(
     mime_types: tuple[str, ...],
     expected_sha256: str | None,
 ) -> SignedStorageCapability:
-    path = f"/storage/v1/object/sign/request-temp/{object_key}"
+    operation = "sign" if method == "GET" else "upload/sign"
+    path = f"/storage/v1/object/{operation}/request-temp/{object_key}"
     return SignedStorageCapability(
         method=method,  # type: ignore[arg-type]
         access_mode="read_only" if method == "GET" else "create_only",
@@ -79,7 +83,8 @@ def _request(
     input_signature: str = "input-secret",
     output_signature: str = "output-secret",
     expiry: datetime = FIXED_NOW + timedelta(seconds=300),
-    output_key: str = "run-1/surya-layout/result.json",
+    output_key: str | None = None,
+    execution_timeout_seconds: int = 60,
 ) -> SuryaLayoutRequest:
     sidecar_binding = PageCoordinateBinding(
         coordinate_manifest_schema_version="pdf_coordinate_manifest/v1",
@@ -107,12 +112,11 @@ def _request(
         ),
     )
 
-    return SuryaLayoutRequest(
-        identity={
-            "source_sha256": _digest("a"),
-            "source_page_count": 1,
-            "page_range": PageRange(start_page=1, end_page=1),
-            "render_manifest": RenderManifestInput(
+    identity = LayoutComputeIdentity(
+        source_sha256=_digest("a"),
+        source_page_count=1,
+        page_range=PageRange(start_page=1, end_page=1),
+        render_manifest=RenderManifestInput(
                 schema_version="pdf_render_manifest/v1",
                 render_manifest_sha256=_digest("4"),
                 size_bytes=300,
@@ -126,24 +130,30 @@ def _request(
                     mime_types=("application/json",),
                     expected_sha256=_digest("4"),
                 ),
-            ),
-            "page_images": (page,),
-            "workload_scope": "existing_pdf_shadow",
-            "mode": "layout",
-            "producer": SuryaProducerIdentity(
-                engine_id="surya",
-                engine_version="0.15.0",
-                model_id="surya-layout",
-                model_revision="1" * 40,
-                model_weights_sha256=_digest("c"),
-                pipeline_revision="surya-layout-pipeline/2026-09-15",
-                config_sha256=_digest("d"),
-                worker_image_digest=f"sha256:{_digest('1')}",
-            ),
-        },
+        ),
+        page_images=(page,),
+        workload_scope="existing_pdf_shadow",
+        mode="layout",
+        producer=SuryaProducerIdentity(
+            engine_id="surya",
+            engine_version="0.15.0",
+            model_id="surya-layout",
+            model_revision="1" * 40,
+            model_weights_sha256=_digest("c"),
+            pipeline_revision="surya-layout-pipeline/2026-09-15",
+            config_sha256=_digest("d"),
+            worker_image_digest=f"sha256:{_digest('1')}",
+        ),
+    )
+    return SuryaLayoutRequest(
+        identity=identity,
         result_upload_capability=_capability(
             method="PUT",
-            object_key=output_key,
+            object_key=(
+                output_key
+                if output_key is not None
+                else build_surya_layout_result_object_key(identity.logical_compute_key)
+            ),
             signature=output_signature,
             expiry=expiry,
             max_bytes=3_000,
@@ -155,7 +165,7 @@ def _request(
             max_total_input_bytes=1_000,
             max_total_rendered_pixels=10_000_000,
             max_output_bytes=3_000,
-            execution_timeout_seconds=60,
+            execution_timeout_seconds=execution_timeout_seconds,
             ttl_seconds=120,
         ),
     )
@@ -166,7 +176,7 @@ def _dispatch_policy(
     hosts: tuple[str, ...] = ("storage.example.test",),
     buckets: tuple[str, ...] = ("request-temp",),
     prefixes: tuple[str, ...] = ("run-1/",),
-    endpoint_path_template: str = "/storage/v1/object/sign/{bucket}/{object_key}",
+    endpoint_path_template: str | None = None,
     max_ttl_seconds: int = 600,
     max_execution_timeout_seconds: int = 300,
     max_page_count: int = 100,
@@ -180,9 +190,18 @@ def _dispatch_policy(
             AcceleratorStorageScope(
                 method=method,
                 origin=f"https://{host}",
-                endpoint_path_template=endpoint_path_template,
+                endpoint_path_template=(
+                    endpoint_path_template
+                    or (
+                        "/storage/v1/object/sign/{bucket}/{object_key}"
+                        if method == "GET"
+                        else "/storage/v1/object/upload/sign/{bucket}/{object_key}"
+                    )
+                ),
                 bucket=bucket,
-                object_key_prefix=prefix,
+                object_key_prefix=(
+                    prefix if method == "GET" else "accelerator/surya-layout/"
+                ),
             )
             for method in ("GET", "PUT")
             for host, bucket, prefix in zip(hosts, buckets, prefixes, strict=True)
@@ -197,10 +216,21 @@ def _dispatch_policy(
     )
 
 
-def _rebuild_wire_request(payload: dict[str, Any]) -> SuryaLayoutRequest:
+def _rebuild_wire_request(
+    payload: dict[str, Any], *, rebind_result_key: bool = True
+) -> SuryaLayoutRequest:
     """Recompute both derived digests after an intentional wire mutation."""
 
     payload["identity"]["logical_compute_key"] = ""
+    if rebind_result_key:
+        identity = LayoutComputeIdentity.model_validate(payload["identity"])
+        object_key = build_surya_layout_result_object_key(identity.logical_compute_key)
+        capability = payload["result_upload_capability"]
+        parsed = urlsplit(capability["url"])
+        path = f"/storage/v1/object/upload/sign/request-temp/{object_key}"
+        capability["object_key"] = object_key
+        capability["path"] = path
+        capability["url"] = f"{parsed.scheme}://{parsed.netloc}{path}?{parsed.query}"
     payload["logical_compute_key"] = ""
     payload["request_digest"] = ""
     return SuryaLayoutRequest.from_wire_payload(payload)
@@ -506,6 +536,20 @@ def test_result_upload_is_explicitly_create_only() -> None:
     readable_output["result_upload_capability"]["expected_sha256"] = _digest("f")
     with pytest.raises(ValidationError, match="create-only PUT"):
         _rebuild_wire_request(readable_output)
+
+
+def test_result_upload_key_is_bound_to_logical_compute_key() -> None:
+    payload = _request().to_wire_payload()
+    other_key = build_surya_layout_result_object_key(_digest("9"))
+    capability = payload["result_upload_capability"]
+    capability["object_key"] = other_key
+    capability["path"] = f"/storage/v1/object/upload/sign/request-temp/{other_key}"
+    capability["url"] = (
+        f"https://storage.example.test{capability['path']}?signature=other-output"
+    )
+
+    with pytest.raises(ValidationError, match="result upload key"):
+        _rebuild_wire_request(payload, rebind_result_key=False)
 
 
 def test_signed_capability_path_must_bind_declared_bucket_and_object_key() -> None:
@@ -1267,54 +1311,39 @@ def test_local_acceptance_rejects_post_validation_output_schema_mutation() -> No
 
 
 @pytest.mark.parametrize(
-    ("artifact", "message"),
+    ("overrides", "message"),
     [
         (
-            ArtifactDescriptor(
-                object_key="run-1/surya-layout/other-result.json",
-                sha256=_digest("f"),
-                size_bytes=900,
-                mime_type="application/json",
-                schema_version="surya_layout_artifact/v1",
-            ),
+            {"object_key": "accelerator/surya-layout/other/result.json"},
             "object_key",
         ),
         (
-            ArtifactDescriptor(
-                object_key="run-1/surya-layout/result.json",
-                sha256=_digest("f"),
-                size_bytes=3_001,
-                mime_type="application/json",
-                schema_version="surya_layout_artifact/v1",
-            ),
+            {"size_bytes": 3_001},
             "output cap",
         ),
         (
-            ArtifactDescriptor(
-                object_key="run-1/surya-layout/result.json",
-                sha256=_digest("f"),
-                size_bytes=900,
-                mime_type="text/plain",
-                schema_version="surya_layout_artifact/v1",
-            ),
+            {"mime_type": "text/plain"},
             "MIME",
         ),
         (
-            ArtifactDescriptor(
-                object_key="run-1/surya-layout/result.json",
-                sha256=_digest("f"),
-                size_bytes=900,
-                mime_type="application/json",
-                schema_version="surya_layout_artifact/v2",
-            ),
+            {"schema_version": "surya_layout_artifact/v2"},
             "schema_version",
         ),
     ],
 )
 def test_local_acceptance_gate_rejects_unrequested_artifact_properties(
-    artifact: ArtifactDescriptor, message: str
+    overrides: dict[str, object], message: str
 ) -> None:
     request = _request(expiry=datetime(2026, 9, 16, tzinfo=UTC))
+    artifact_values: dict[str, object] = {
+        "object_key": request.result_upload_capability.object_key,
+        "sha256": _digest("f"),
+        "size_bytes": 900,
+        "mime_type": "application/json",
+        "schema_version": "surya_layout_artifact/v1",
+    }
+    artifact_values.update(overrides)
+    artifact = ArtifactDescriptor(**artifact_values)  # type: ignore[arg-type]
     status = _succeeded_status(request, _manifest(request, result_artifact=artifact))
 
     with pytest.raises(AcceleratorContractError, match=message):
@@ -1443,7 +1472,7 @@ def test_in_memory_accelerator_rejects_same_key_with_different_request_digest() 
     accelerator.submit(_request())
 
     with pytest.raises(AcceleratorContractError, match="different request digest"):
-        accelerator.submit(_request(output_key="run-1/other-result.json"))
+        accelerator.submit(_request(execution_timeout_seconds=61))
 
 
 def test_in_memory_accelerator_creates_new_job_after_infra_retryable() -> None:

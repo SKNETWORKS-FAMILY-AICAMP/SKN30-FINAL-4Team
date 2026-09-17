@@ -22,7 +22,13 @@ from typing import Any, Literal, Mapping
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from pydantic import field_validator, model_validator
+from pydantic import field_serializer, field_validator, model_validator
+
+from common_ir_pipeline.pdf_fusion.coordinate_manifest import build_sidecar_binding
+from common_ir_pipeline.pdf_fusion.render_manifest import (
+    PdfRenderManifest,
+    PdfRenderManifestError,
+)
 
 
 __all__ = [
@@ -43,11 +49,14 @@ __all__ = [
     "StorageResourceCaps",
     "SuryaProducerIdentity",
     "SuryaLayoutRequest",
+    "SuryaLayoutReconciliationHandle",
     "SuryaLayoutResultArtifactManifest",
     "AcceleratorJobStatus",
     "validate_accelerator_result_acceptance",
     "validate_accelerator_dispatch",
     "build_logical_compute_key",
+    "build_surya_layout_reconciliation_logical_compute_key",
+    "build_surya_layout_result_object_key",
 ]
 
 
@@ -162,6 +171,14 @@ def _is_sha256(value: str) -> bool:
     return len(value) == _SHA256_LENGTH and all(
         character in "0123456789abcdef" for character in value
     )
+
+
+def build_surya_layout_result_object_key(logical_compute_key: str) -> str:
+    """Return the canonical immutable output key for one Surya computation."""
+
+    if not isinstance(logical_compute_key, str) or not _is_sha256(logical_compute_key):
+        raise ValueError("logical compute key must be a lowercase SHA-256 digest")
+    return f"accelerator/surya-layout/{logical_compute_key}/result.json"
 
 
 def _has_control_or_whitespace(value: str) -> bool:
@@ -983,6 +1000,57 @@ def build_logical_compute_key(identity: LayoutComputeIdentity) -> str:
     return _sha256_digest(identity.compute_key_payload())
 
 
+def build_surya_layout_reconciliation_logical_compute_key(
+    trusted_render_manifest: PdfRenderManifest,
+    producer: SuryaProducerIdentity,
+) -> str:
+    """Rebuild the Surya key without any ephemeral storage capability.
+
+    The payload intentionally mirrors :meth:`LayoutComputeIdentity.compute_key_payload`
+    for the complete trusted render manifest produced by the Existing-PDF
+    factory.  Keeping this computation capability-free is what permits a
+    restarted worker to authenticate a persisted reconciliation handle after
+    the original create-only upload capability has expired or become
+    impossible to reissue.
+    """
+
+    if not isinstance(trusted_render_manifest, PdfRenderManifest):
+        raise TypeError("trusted_render_manifest must be a PdfRenderManifest")
+    if not isinstance(producer, SuryaProducerIdentity):
+        raise TypeError("producer must be a SuryaProducerIdentity")
+    manifest = trusted_render_manifest
+    return _sha256_digest(
+        {
+            "source_sha256": manifest.source_pdf_sha256,
+            "source_page_count": manifest.page_count,
+            "render_manifest": {
+                "schema_version": manifest.schema_version,
+                "render_manifest_sha256": manifest.manifest_sha256(),
+                "size_bytes": len(manifest.canonical_json()),
+                "mime_type": "application/json",
+            },
+            "page_images": [
+                {
+                    "page_number": page.page,
+                    "page_image_sha256": page.image_sha256,
+                    "size_bytes": page.image_size_bytes,
+                    "mime_type": page.image_mime_type,
+                    "pixel_width": page.coordinate_manifest.rendered_width_px,
+                    "pixel_height": page.coordinate_manifest.rendered_height_px,
+                    "sidecar_binding": build_sidecar_binding(
+                        page.coordinate_manifest
+                    ),
+                }
+                for page in manifest.pages
+            ],
+            "page_range": {"start_page": 1, "end_page": manifest.page_count},
+            "workload_scope": "existing_pdf_shadow",
+            "mode": "layout",
+            "producer": producer.model_dump(mode="json"),
+        }
+    )
+
+
 class ArtifactDescriptor(_AcceleratorContractModel):
     """Artifact metadata returned by a remote accelerator, before local acceptance."""
 
@@ -1073,6 +1141,10 @@ class SuryaLayoutRequest(_AcceleratorContractModel):
             raise ValueError("logical_compute_key does not match immutable compute identity")
         if not self.logical_compute_key:
             object.__setattr__(self, "logical_compute_key", expected_logical_compute_key)
+        if self.result_upload_capability.object_key != build_surya_layout_result_object_key(
+            expected_logical_compute_key
+        ):
+            raise ValueError("result upload key does not match logical_compute_key")
 
         expected_request_digest = _sha256_digest(self.request_digest_payload())
         if self.request_digest and self.request_digest != expected_request_digest:
@@ -1247,6 +1319,179 @@ class SuryaLayoutRequest(_AcceleratorContractModel):
         return cls.model_validate(payload)
 
 
+class SuryaLayoutReconciliationHandle(_AcceleratorContractModel):
+    """Credential-free state sufficient to accept a deterministic result.
+
+    This is the only accelerator object intended for durable persistence.  It
+    contains the complete trusted render lineage and pinned producer, but no
+    signed URL, provider status, request digest, or input/output capability.
+    Validation recomputes the logical key from that lineage and binds the
+    storage key to the recomputed value.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, strict=True)
+
+    contract_version: Literal["surya_layout_reconciliation/v1"] = (
+        "surya_layout_reconciliation/v1"
+    )
+    artifact_schema_version: Literal["surya_layout_artifact/v1"] = (
+        "surya_layout_artifact/v1"
+    )
+    artifact_content_type: Literal["application/json"] = "application/json"
+    trusted_render_manifest: PdfRenderManifest
+    producer: SuryaProducerIdentity
+    logical_compute_key: str
+    result_bucket: str
+    result_object_key: str
+    max_output_bytes: int = Field(gt=0)
+    _integrity_fingerprint: str = PrivateAttr(default="")
+
+    @field_validator("trusted_render_manifest", mode="before")
+    @classmethod
+    def _validate_render_manifest(cls, value: Any) -> PdfRenderManifest:
+        if isinstance(value, PdfRenderManifest):
+            return value
+        if isinstance(value, Mapping):
+            try:
+                return PdfRenderManifest.from_dict(value)
+            except PdfRenderManifestError as error:
+                raise ValueError("trusted render manifest is invalid") from error
+        raise ValueError("trusted_render_manifest must be a render manifest object")
+
+    @field_serializer("trusted_render_manifest")
+    def _serialize_render_manifest(
+        self, value: PdfRenderManifest
+    ) -> dict[str, Any]:
+        return value.to_dict()
+
+    @field_validator("logical_compute_key")
+    @classmethod
+    def _validate_logical_compute_key(cls, value: str) -> str:
+        if not _is_sha256(value):
+            raise ValueError(
+                "logical_compute_key must be a lowercase SHA-256 digest"
+            )
+        return value
+
+    @field_validator("result_bucket")
+    @classmethod
+    def _validate_result_bucket(cls, value: str) -> str:
+        return _validate_safe_storage_segment(value, name="result bucket")
+
+    @field_validator("result_object_key")
+    @classmethod
+    def _validate_result_object_key(cls, value: str) -> str:
+        return _validate_relative_object_key(value, name="result object_key")
+
+    @model_validator(mode="after")
+    def _bind_reconciliation_lineage(self) -> "SuryaLayoutReconciliationHandle":
+        if self._integrity_fingerprint:
+            self._assert_live_integrity()
+            return self
+        self._assert_semantic_bindings()
+        assert self.__pydantic_private__ is not None
+        self.__pydantic_private__["_integrity_fingerprint"] = _sha256_digest(
+            self._integrity_payload()
+        )
+        return self
+
+    def _assert_semantic_bindings(self) -> None:
+        expected_logical_compute_key = (
+            build_surya_layout_reconciliation_logical_compute_key(
+                self.trusted_render_manifest,
+                self.producer,
+            )
+        )
+        if self.logical_compute_key != expected_logical_compute_key:
+            raise ValueError(
+                "logical_compute_key does not match trusted render lineage and producer"
+            )
+        if self.result_object_key != build_surya_layout_result_object_key(
+            expected_logical_compute_key
+        ):
+            raise ValueError(
+                "result object_key does not match the recomputed logical_compute_key"
+            )
+
+    def _integrity_payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": self.contract_version,
+            "artifact_schema_version": self.artifact_schema_version,
+            "artifact_content_type": self.artifact_content_type,
+            "trusted_render_manifest": self.trusted_render_manifest.to_dict(),
+            "producer": self.producer.model_dump(mode="json"),
+            "logical_compute_key": self.logical_compute_key,
+            "result_bucket": self.result_bucket,
+            "result_object_key": self.result_object_key,
+            "max_output_bytes": self.max_output_bytes,
+        }
+
+    def _assert_live_integrity(self) -> None:
+        try:
+            self._assert_semantic_bindings()
+            current_fingerprint = _sha256_digest(self._integrity_payload())
+        except AcceleratorContractError:
+            raise
+        except (AttributeError, TypeError, ValueError) as error:
+            raise AcceleratorContractError(
+                "Surya reconciliation handle failed live integrity validation"
+            ) from error
+        if (
+            not self._integrity_fingerprint
+            or current_fingerprint != self._integrity_fingerprint
+        ):
+            raise AcceleratorContractError(
+                "Surya reconciliation handle changed after validation"
+            )
+
+    def validate_external_job_id(self, value: object) -> str:
+        """Bind persistent-provider reconciliation to its deterministic job ID."""
+
+        self._assert_live_integrity()
+        if not isinstance(value, str) or value != self.logical_compute_key:
+            raise AcceleratorContractError(
+                "reconciliation external_job_id does not match logical_compute_key"
+            )
+        return value
+
+    @classmethod
+    def from_request(
+        cls,
+        request: SuryaLayoutRequest,
+        trusted_render_manifest: PdfRenderManifest,
+    ) -> "SuryaLayoutReconciliationHandle":
+        """Derive the durable handle before dispatching ``request``."""
+
+        if not isinstance(request, SuryaLayoutRequest):
+            raise TypeError("request must be a SuryaLayoutRequest")
+        request._assert_live_integrity()
+        return cls(
+            trusted_render_manifest=trusted_render_manifest,
+            producer=request.identity.producer,
+            logical_compute_key=request.logical_compute_key,
+            result_bucket=request.result_upload_capability.bucket,
+            result_object_key=request.result_upload_capability.object_key,
+            max_output_bytes=request.resource_caps.max_output_bytes,
+            artifact_schema_version=request.output_schema_version,
+        )
+
+    def to_persistence_payload(self) -> dict[str, Any]:
+        """Return strict JSON-compatible state with no capability material."""
+
+        self._assert_live_integrity()
+        payload = self.model_dump(mode="json")
+        _reject_credential_fields(payload)
+        return payload
+
+    @classmethod
+    def from_persistence_payload(
+        cls, payload: Mapping[str, Any]
+    ) -> "SuryaLayoutReconciliationHandle":
+        """Reconstruct and fully revalidate a persisted handle."""
+
+        return cls.model_validate(payload)
+
+
 def _capability_wire_payload(capability: SignedStorageCapability) -> dict[str, Any]:
     """Serialize capability material only for an outbound accelerator request."""
 
@@ -1271,7 +1516,9 @@ class AcceleratorStorageScope(_AcceleratorContractModel):
     Keeping method, canonical origin, endpoint shape, bucket and object prefix
     in one rule prevents the Cartesian-product widening caused by independent
     allow-lists.  The endpoint template must bind both declared path values;
-    for example ``/storage/v1/object/sign/{bucket}/{object_key}``.
+    For example, GET uses ``/storage/v1/object/sign/{bucket}/{object_key}``
+    while Supabase signed-upload PUT uses
+    ``/storage/v1/object/upload/sign/{bucket}/{object_key}``.
     """
 
     method: Literal["GET", "PUT"]

@@ -54,6 +54,7 @@ class SupabaseWorkerStorage:
                 transport=self._transport,
                 timeout=self._timeout,
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
                 with client.stream(
                     "GET", self._url(bucket, object_key), headers=self._headers()
@@ -86,6 +87,7 @@ class SupabaseWorkerStorage:
                 transport=self._transport,
                 timeout=self._timeout,
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
                 response = client.post(
                     self._url(bucket, object_key),
@@ -121,6 +123,7 @@ class SupabaseWorkerStorage:
                 transport=self._transport,
                 timeout=self._timeout,
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
                 response = client.delete(
                     self._url(bucket, object_key), headers=self._headers()
