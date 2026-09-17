@@ -27,8 +27,9 @@ PostgreSQL polling worker는 장시간 분석 경계다.
 
 공식 bundle 준비는 활성 installer로 재현할 수 있다. 이 스크립트는
 `self-hosted/v0.8.0`을 sparse clone하되 예상 commit SHA와 정확히 일치하는지 먼저
-검증하고, 새 target에서 공식 key 생성 script를 조용히 실행한 뒤 pgvector override와
-resolved commit 기록을 설치한다. tag가 같은 이름으로 이동하면 설치는 fail-closed한다.
+검증하고, 새 target에서 공식 key 생성 script를 조용히 실행한 뒤 pgvector 및 accelerator
+Storage override와 resolved commit 기록을 설치한다. tag가 같은 이름으로 이동하면 설치는
+fail-closed한다.
 `self-hosted/v0.8.0`은 annotated tag이므로 remote tag object
 `e1af732589cd468edb49500ebc04e4367d4c56ad`가 아니라, 그것이 peel된 실제 commit
 `241bb11c0627f2981746d37033f57dbfa81d29b0`을 pin으로 사용한다. installer의
@@ -63,7 +64,11 @@ Bash mount는 POSIX mode `0750`을 강제하지 못할 수 있어 installer가 �
 
 ```bash
 cd /path/to/repository/.runtime/supabase-dev
-docker compose -f docker-compose.yml -f docker-compose.pgvector.yml up -d
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.pgvector.yml \
+  -f docker-compose.accelerator-storage.yml \
+  up -d
 docker compose ps
 
 SUPABASE_DIR="$PWD" \
@@ -184,8 +189,14 @@ override·migration 01~41·same-server API/analysis worker/chat worker 경로에
 | PostgreSQL / pgvector | `SUPABASE_DB_DATA_DIR` | FastAPI·same-server worker |
 | 파일 기반 Storage 객체 | 실제 Compose의 `volumes/storage` bind 경로 | FastAPI·worker |
 | Existing 공고 원본·IR·Profile | private `existing-kb` | trusted importer·worker |
+| Existing PDF native/render/Surya/replay 산출물 | private `existing-kb` + `kb.artifact` lineage | trusted one-shot importer |
 | 요청 원본·Common IR·Request Profile | private `request-temp` | FastAPI·worker |
 | PDF 보고서 | private `analysis-reports` | FastAPI·PDF worker(추후) |
+
+Existing PDF 한 건을 CPU native preflight, persistent RunPod geometry shadow, Terra Profile,
+표준 pack, optional DB import까지 연결하는 명령과 정확한 제한은
+[RunPod worker README의 Existing PDF one-shot 절](../prereview_runpod_worker/README.md#62-existing-pdf-one-shot-운영자-경로)을 따른다.
+이 경로는 Request 분석 queue가 아니며, Surya geometry를 Profile 의미 근거로 승격하지 않는다.
 
 벡터는 같은 PostgreSQL의 `vector` extension과 `retrieval` schema를 사용한다. Existing
 Profile만 `purpose`, `target`, `support`, `combined` 네 scope로 영속화한다. 요청 Profile은
@@ -322,11 +333,13 @@ DB 디렉터리는 스크립트를 실행한 사용자 소유로 생성된다. �
 backend/supabase/prepare_selfhosted.sh backend/supabase/.env
 ```
 
-5. pgvector image override를 설치한다.
+5. pgvector image와 accelerator Storage override를 설치한다.
 
 ```bash
 cp backend/supabase/docker-compose.pgvector.override.yml.example \
   /srv/pre-review/supabase/docker-compose.pgvector.yml
+cp backend/supabase/docker-compose.accelerator-storage.override.yml.example \
+  /srv/pre-review/supabase/docker-compose.accelerator-storage.yml
 ```
 
 override의 기본 이미지는 digest로 고정되어 있다. 다른 이미지를 쓸 때의
@@ -334,11 +347,31 @@ override의 기본 이미지는 digest로 고정되어 있다. 다른 이미지�
 Compose 디렉터리의 `.env`**에 둔다. 기존 DB에는 현재 PostgreSQL major version과 맞는
 이미지만 사용한다.
 
+accelerator Storage override는 signed upload URL의 유효 시간을 upstream 기본값 60초에서
+1,800초로 늘린다. GPU queue 대기와 실행 중 URL이 먼저 만료되는 것을 막기 위한 설정이다.
+필요하면 공식 Supabase Compose 디렉터리의 `.env`에서
+`UPLOAD_SIGNED_URL_EXPIRATION_TIME`을 조정할 수 있으나, worker가 허용하는 최대 TTL과 함께
+변경해야 한다. 기존 환경에 처음 적용할 때는 DB나 volume을 재생성하지 말고 아래처럼
+`storage` 서비스만 재생성한다.
+
+```bash
+cd /srv/pre-review/supabase
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.pgvector.yml \
+  -f docker-compose.accelerator-storage.yml \
+  up -d --force-recreate storage
+```
+
 6. override를 포함해 기동하고 migration을 적용한다.
 
 ```bash
 cd /srv/pre-review/supabase
-docker compose -f docker-compose.yml -f docker-compose.pgvector.yml up -d
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.pgvector.yml \
+  -f docker-compose.accelerator-storage.yml \
+  up -d
 docker compose ps
 
 SUPABASE_DIR=/srv/pre-review/supabase \

@@ -5,8 +5,11 @@
 - 대상: Existing 공고와 Request 요청서가 공유하는 PDF 물리 추출·근거 계층
 - 리뷰: Opus 5 xhigh, Sol xhigh 독립 리뷰 및 Grok 레드팀 검토 반영
 - 구현 판정: Stage 1/2 수직 단위, Stage 4A accelerator 계약·port·local fake와
-  Stage 4B one-step local coordinator는 구현됨. 실제 RunPod adapter·DB/runtime 연결·표
-  승격·Request PDF 개방은 각 gate 통과 전 NO-GO
+  Stage 4B one-step local coordinator는 구현됨. Stage 5의 RunPod worker-side
+  handler·signed Storage adapter·pinned Surya vLLM·A100 direct smoke와 지속형 Pod
+  signed Storage 왕복까지 구현·검증했다. production EC2 durable handle/lease와
+  DB fence/commit, 실제 Serverless endpoint/image 등록, 표 승격·Request PDF 개방은
+  각 gate 통과 전 NO-GO
 
 ## 1. 결정 요약
 
@@ -405,10 +408,13 @@ job을 best-effort cancel한다. 성공 결과도 trusted Storage에서 제한 �
 byte 수·SHA-256·MIME·canonical schema·geometry를 검증한 뒤에만 portable artifact로
 반환한다.
 
-Stage 4B는 의도적으로 standalone이다. 아직 production runtime/DB repository, 실제
-Storage reader, RunPod HTTP adapter와 연결하지 않았으며 공개 API도 바꾸지 않는다. 실제
-adapter의 `submit()`은 wire payload 생성 직전에 dispatch policy와 현재 시각을 주입해
-검증하는 Stage 5 전송 gate를 반드시 구현해야 한다. 다만
+Stage 4B의 coordinator core는 standalone으로 유지하되, 실제 Supabase Storage reader/input
+uploader/capability issuer와 persistent RunPod HTTP adapter는 Existing offline operator에서
+연결했다. adapter의 `submit()`은 wire payload 생성 직전에 dispatch policy와 현재 시각을
+주입해 검증한다. 동일 render·producer의 deterministic result는 capability 발급 전에
+credential-free handle로 먼저 검증하며, 정확한 missing일 때만 create-only dispatch한다.
+다만 production Request queue의 durable handle·external job·lease/fence repository에는 아직
+연결하지 않았고 공개 API도 바꾸지 않는다. 또한
 PDF native→Common IR→Profile 전체 47건과 Gold 100건 통합 회귀를 아직 끝내지
 않았으므로 Stage 1/2 전체 GO를 주장하지 않는다. 다음 작은 수직 단위까지 완료된
 상태다.
@@ -422,10 +428,69 @@ PDF native→Common IR→Profile 전체 47건과 Gold 100건 통합 회귀를 �
 7. RGB PNG·페이지 좌표·원본 hash를 terminal render manifest에 no-overwrite로 결속
 8. provider 상태 재검증, fence 전후 검사, bounded artifact acceptance를 수행하는
    Existing-PDF one-step local coordinator
+9. native-text 전 페이지 적격성을 GPU 전에 검사하는 Existing PDF one-shot operator
+10. persistent RunPod signed-Storage 결과의 submit·poll·deterministic reuse
+11. PDF fusion pack 검증과 `kb.artifact`·`kb.artifact_lineage` trusted import
 
-이 PR은 DB schema, production queue, Common IR/Profile 바이트와 공개 API를 바꾸지 않는다.
+이 변경은 Existing ingestion record의 선택적 `analysis.pdf_fusion` 내부 계약과 artifact
+lineage를 확장한다. production queue와 공개 FastAPI DTO/OpenAPI는 바꾸지 않는다. Common IR은
+textless `layout_candidate`를 추가할 수 있지만 Profile 의미 추출기는 이를 버리므로, 현재
+Profile 의미 근거는 native text와 동일하다.
 
-### 11.1 CPU renderer 측정값
+### 11.1 RunPod worker-side 검증 상태
+
+Stage 5 전체가 아니라 원격 GPU worker 쪽 수직 단위만 구현했다.
+
+- RunPod job raw preflight, TTL/execution deadline, page/bytes/pixels/region/output cap
+- HTTPS signed GET과 create-only PUT, redirect·ambient proxy·credential log 차단
+- textless Surya layout artifact와 model/pipeline/config/image identity 결속
+- 실제 `vllm serve` positional model, served alias, immutable revision, process start-time,
+  `/v1/models` 및 `model.safetensors` SHA-256 재검증
+- Docker-in-Docker 없이 두 격리 venv를 설치하는 A100 setup과 allowlist bundle
+
+2026-09-16 A100-SXM4-80GB direct Pod에서 fresh setup 재현 절차를 완료하고, 보완본을
+매번 SHA-256 확인 후 같은 target에 배치했다. 2026-09-17 persistent API와 signed
+Storage 왕복까지 검증한 최종 source bundle은
+`ec1868e0be0fe4aac695bd4cc8b7aa5c5100a4ad6972d4f0c2375862996436eb`다.
+client Torch `2.8.0+cu128`, vLLM Torch `2.11.0+cu130`,
+Surya `0.22.1`, vLLM `0.20.1` 조합으로 loopback server를 시작했고, immutable model
+revision과 weights SHA-256을 확인한 뒤 synthetic PNG 실제 추론이 textless region 2개를
+반환했다. 새 SSH session에서도 process/PID-start binding과 handler cold-start composition이
+유지됨을 확인했다.
+
+RunPod Network Volume은 이 환경에서 `allow_other` FUSE로 mount되고 `chmod 600`을
+mode 666으로 노출했다. 따라서 cache/source/log와 credential-free 작업 journal만
+`/workspace`에 두고 config, bearer, PID, attestation은 mode bit가 보장되는
+`/run/prereview-surya`에 둔다. journal은
+`/workspace/persistent/prereview/surya-jobs`에 고정하며 bearer에서 메모리 안에서 유도한
+HMAC envelope로 위변조를 검증한다. launcher는 `/workspace`가 별도 mountpoint가 아니거나
+고정 경로에 symlink/realpath mismatch가 있으면 시작을 거부한다. model cache는 권한을
+identity로 사용하지 않고 fixed root·revision·regular-file·size와 전체 SHA-256 rehash로
+검증한다. vLLM 첫 pinned 기동은 약 12분이었으며 SLA가 아니다.
+
+2026-09-17에는 tailnet-only Tailscale Serve(Funnel 미사용)를 통해 laptop Supabase와
+persistent RunPod API를 연결했다. 2쪽 render manifest와 PNG 2개를 immutable input으로
+업로드하고, RunPod Surya 추론 결과를 deterministic create-only key에 저장한 뒤 trusted
+coordinator가 schema·lineage·producer·페이지 결속을 재검증하는 실제 왕복이 성공했다.
+입력은 manifest 2,897 bytes와 PNG 466,164/339,764 bytes였고 결과 artifact는 8,642
+bytes였다. API를 보강본으로 graceful restart한 뒤에도 동일 완료 job이 Network Volume
+journal에서 `succeeded`로 재조회되어 restart reconciliation도 확인했다.
+
+같은 날 8쪽 synthetic Existing PDF로 CPU render/native preflight, persistent Surya,
+Common IR fusion, OpenAI `gpt-5.6-terra` Profile/source-selection, pack 검증, trusted import를
+한 번에 연결했다. 결과는 Fact 34건과 support component 7건이었고, PDF fusion을 포함한
+artifact 17개·lineage 24개가 pack과 DB에서 일치했다. private Storage의 17개 객체도 다시
+다운로드해 SHA-256과 크기를 모두 확인했다. 이 검증은 offline one-shot importer의 DB
+transaction까지 포함하지만 production queue의 durable handle/lease/fence를 대신하지 않으며,
+embedding 생성도 범위 밖이다.
+
+아직 검증하지 않은 것은 production EC2 worker의 durable handle/lease 저장과 DB
+fence/commit을 포함한 전체 업무 E2E다. RunPod Serverless 경로를 추가로 사용할 경우에는
+template/endpoint의 실제 `executionTimeout`·`ttl`도 별도로 검증해야 한다. 특히 동기
+predictor의 최종 hard wall-clock boundary는 persistent supervisor 또는 Serverless
+control plane이므로 해당 운영 설정 증거 없이는 전체 Stage 5 GO가 아니다.
+
+### 11.2 CPU renderer 측정값
 
 2026-09-16 현재 서버에서 실제 공고 PDF 47건(총 474쪽)을 안전 wrapper로 두 번씩
 200 DPI 렌더했다. 47/47 모두 성공했고 두 실행의 원본·PNG·manifest가 전부
