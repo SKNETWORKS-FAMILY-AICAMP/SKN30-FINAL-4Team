@@ -6,12 +6,17 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import sha256
+from io import BytesIO
 from uuid import NAMESPACE_URL, uuid4, uuid5
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import pytest
 import httpx
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers, UploadFile
 
+from app.api.v1.analysis_runs import _safe_filename
 from app.ports.analysis_runs import (
     ActiveAnalysisRunExists,
     AnalysisRunFinalizationRejected,
@@ -34,7 +39,30 @@ USER_ID = "11111111-1111-1111-1111-111111111111"
 OTHER_USER_ID = "22222222-2222-2222-2222-222222222222"
 THIRD_USER_ID = "33333333-3333-3333-3333-333333333333"
 HWP = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1request"
-HWPX = b"PK\x03\x04request"
+
+
+def make_hwpx() -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "mimetype", "application/hwp+zip", compress_type=ZIP_STORED
+        )
+        archive.writestr(
+            "META-INF/container.xml", "<container/>", compress_type=ZIP_DEFLATED
+        )
+        archive.writestr(
+            "Contents/content.hpf", "<opf/>", compress_type=ZIP_DEFLATED
+        )
+        archive.writestr(
+            "Contents/header.xml", "<head/>", compress_type=ZIP_DEFLATED
+        )
+        archive.writestr(
+            "Contents/section0.xml", "<section/>", compress_type=ZIP_DEFLATED
+        )
+    return buffer.getvalue()
+
+
+HWPX = make_hwpx()
 
 
 class FakeStorage:
@@ -255,10 +283,11 @@ def test_hwp_and_hwpx_create_durable_pollable_runs() -> None:
             assert source.bucket == "request-temp"
             assert "/source/" in source.object_key
             assert source.object_key.endswith(filename[filename.rfind(".") :])
-            assert source.mime_type in {
-                "application/x-hwp",
-                "application/vnd.hancom.hwpx",
-            }
+            assert source.mime_type == (
+                "application/vnd.hancom.hwpx"
+                if filename.endswith(".hwpx")
+                else "application/x-hwp"
+            )
             assert source.declared_mime_type == mime
             assert storage.objects[(source.bucket, source.object_key)][0] == payload
 
@@ -728,7 +757,7 @@ def test_upload_materialisation_and_storage_are_process_bounded() -> None:
 
 
 def test_upload_requires_trusted_origin_and_matching_magic() -> None:
-    api, _repository, storage = configured_client()
+    api, repository, storage = configured_client()
     with api:
         missing_origin = api.post(
             "/api/v1/analysis-runs",
@@ -747,6 +776,43 @@ def test_upload_requires_trusted_origin_and_matching_magic() -> None:
         )
         assert bad_magic.status_code == 415
         assert not storage.objects
+        assert repository.events == []
+
+
+@pytest.mark.parametrize(
+    "mime_type",
+    [
+        "application/hwp+zip",
+        "application/x-hwp+zip",
+        "application/vnd.hancom.hwpx",
+        "application/zip",
+        "application/octet-stream",
+        "",
+        "  Application/X-HWP+ZIP ; charset=binary  ",
+    ],
+)
+def test_hwpx_accepts_browser_mime_variants(mime_type: str) -> None:
+    upload = UploadFile(
+        BytesIO(HWPX),
+        filename="request.hwpx",
+        headers=Headers({"content-type": mime_type}),
+    )
+
+    assert _safe_filename(upload) == ("request.hwpx", ".hwpx")
+
+
+@pytest.mark.parametrize("mime_type", ["image/png", "application/pdf"])
+def test_hwpx_rejects_clearly_different_mime_types(mime_type: str) -> None:
+    upload = UploadFile(
+        BytesIO(HWPX),
+        filename="request.hwpx",
+        headers=Headers({"content-type": mime_type}),
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        _safe_filename(upload)
+
+    assert caught.value.status_code == 415
 
 
 def test_upload_requires_uuid_idempotency_key() -> None:

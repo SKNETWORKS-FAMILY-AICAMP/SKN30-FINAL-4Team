@@ -1,9 +1,11 @@
--- Register the immutable Model 1 runtime identity after the shared
--- backend/worker/ml_reference.py runtime changed.
+-- Migration 42: preserve the immutable intermediate Model 1 runtime identity
+-- published on backend-rebuild before the develop integration.
 --
 -- The previously active configuration and its classification rows remain
--- untouched. This configuration stays inactive until the complete current
--- Existing corpus is rerun and the promotion gate verifies every result.
+-- untouched. The integrated runtime moved Model 2/3 retry out of the shared
+-- reference module and therefore matches the v3 identity registered by
+-- migrations 31/32/38 again. This historical v4 row stays inactive and is not
+-- a backfill or promotion target for the integrated checkout.
 BEGIN;
 
 INSERT INTO retrieval.classification_configuration (

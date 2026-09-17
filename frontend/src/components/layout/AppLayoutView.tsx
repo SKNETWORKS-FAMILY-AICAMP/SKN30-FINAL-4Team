@@ -16,6 +16,7 @@ interface AppLayoutViewProps {
     onCloseHistory: () => void
     onImminent: (minutes: number) => void
     onCloseImminentAlert: () => void
+    setSessionId: (id: string | null) => void
 }
 
 export default function AppLayoutView({
@@ -31,6 +32,7 @@ export default function AppLayoutView({
     onCloseHistory,
     onImminent,
     onCloseImminentAlert,
+    setSessionId,
 }: AppLayoutViewProps) {
     return (
         <div className="min-h-screen flex bg-background text-on-background overflow-hidden relative">
@@ -45,7 +47,8 @@ export default function AppLayoutView({
             />
 
             <main className="ml-[320px] min-h-screen flex flex-col flex-1">
-                <Outlet />
+                {/* Outlet을 통해 자식(MainPage)에게 세션 ID 설정 함수 전달 */}
+                <Outlet context={{ setSessionId }} />
             </main>
 
             <HistoryDetail 

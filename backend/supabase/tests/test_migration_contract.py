@@ -72,7 +72,8 @@ class MigrationContractTest:
         "38_model1_runtime_manifest_refresh.sql",
         "39_v02_atomic_upload_finalization.sql",
         "40_v02_embedding_execution_provenance.sql",
-        "41_model1_runtime_manifest_refresh_v4.sql",
+        "41_report_pdf_worker_queue.sql",
+        "42_model1_runtime_manifest_refresh_v4.sql",
     ]
 
     REQUIRED_SCHEMAS = {"app", "ops", "kb", "workspace", "result", "retrieval"}
@@ -460,7 +461,7 @@ class MigrationContractTest:
             self.MIGRATIONS_DIR / "38_model1_runtime_manifest_refresh.sql"
         ).read_text()
         runtime_refresh_v4 = (
-            self.MIGRATIONS_DIR / "41_model1_runtime_manifest_refresh_v4.sql"
+            self.MIGRATIONS_DIR / "42_model1_runtime_manifest_refresh_v4.sql"
         ).read_text()
         classification_all = (
             legacy_classification + classification + runtime_refresh + runtime_refresh_v4

@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
-import { resultService } from '../../services/resultService'
 import ResultView from './ResultView'
+import { resultService } from '../../services/resultService'
 
 interface ResultProps {
     caseId: string | null
-    onBackToUpload?: () => void
     readOnlyChat?: boolean
+    onBackToUpload?: () => void
 }
 
-export default function Result({ caseId, onBackToUpload, readOnlyChat = false }: ResultProps) {
+export default function Result({ caseId, readOnlyChat = false, onBackToUpload }: ResultProps) {
     const [reportData, setReportData] = useState<any>(null)
     const [isLoading, setIsLoading] = useState<boolean>(true)
     const [error, setError] = useState<string | null>(null)
@@ -17,7 +17,7 @@ export default function Result({ caseId, onBackToUpload, readOnlyChat = false }:
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false)
     
-    // 💡 상세보기 중복 클릭 방지용 로딩 상태
+    // 상세보기 중복 클릭 방지용 로딩 상태
     const [isFetchingDetail, setIsFetchingDetail] = useState<boolean>(false)
 
     useEffect(() => {
@@ -43,13 +43,15 @@ export default function Result({ caseId, onBackToUpload, readOnlyChat = false }:
         fetchResult()
     }, [caseId])
 
-    // 보고서 PDF 다운로드 핸들러
     const handleExportPDF = async () => {
         
     }
 
     const handleOpenCandidateDetail = async (simCandidateId: string) => {
         if (isFetchingDetail) return
+
+        // 명세서 규칙: 후보 상세 요청을 시작할 때 이전 후보의 상세값을 비움
+        setSelectedItem(null)
 
         try {
             setIsFetchingDetail(true)
@@ -72,27 +74,14 @@ export default function Result({ caseId, onBackToUpload, readOnlyChat = false }:
         return null
     }
 
-    if (error) {
-        return (
-            <div className="flex-1 flex flex-col items-center justify-center h-screen gap-md">
-                <p className="text-body-md text-error">{error}</p>
-                {onBackToUpload && (
-                    <button 
-                        onClick={onBackToUpload}
-                        className="px-md py-sm bg-primary text-on-primary rounded font-label-caps"
-                    >
-                        돌아가기
-                    </button>
-                )}
-            </div>
-        )
+    if (error && onBackToUpload) {
+        onBackToUpload()
     }
 
     return (
         <ResultView 
             reportData={reportData}
             onExportPDF={handleExportPDF}
-            onBackToUpload={onBackToUpload}
             readOnlyChat={readOnlyChat}
             onOpenCandidateDetail={handleOpenCandidateDetail}
             selectedItem={selectedItem}

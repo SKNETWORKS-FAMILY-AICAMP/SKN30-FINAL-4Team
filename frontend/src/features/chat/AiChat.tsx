@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import AiChatView from './AiChatView'
 import { chatService, type ChatMessageModel } from '../../services/chatService'
+import { usePolling } from '../../hooks/usePolling'
 
 export type ChatMessage = {
     id: string
@@ -56,8 +57,8 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
                     return timeA - timeB
                 })
 
-                // 대화 내역이 전혀 없을 경우 기본 안내 메시지 추가
-                if (sorted.length === 0 && !targetCursor) {
+                // [수정] 대화 내역이 전혀 없을 경우, 현재 분석(readOnly가 아닐 때)에만 기본 안내 메시지 추가
+                if (sorted.length === 0 && !targetCursor && !readOnly) {
                     return [{
                         id: 'initial-welcome',
                         sender: 'ai',
@@ -74,14 +75,18 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
             setHasMore(!!response.next_cursor)
         } catch (error) {
             console.error('메시지 조회 실패:', error)
-            // 에러 시에도 기본 안내 메시지 보장
-            setMessages([{
-                id: 'initial-welcome',
-                sender: 'ai',
-                text: '분석 결과에 대해 궁금한 점을 물어보세요!',
-                status: 'completed',
-                createdAt: new Date().toISOString()
-            }])
+            // 에러 시에도 readOnly가 아닐 때만 기본 안내 메시지 보장
+            if (!readOnly) {
+                setMessages([{
+                    id: 'initial-welcome',
+                    sender: 'ai',
+                    text: '분석 결과에 대해 궁금한 점을 물어보세요!',
+                    status: 'completed',
+                    createdAt: new Date().toISOString()
+                }])
+            } else {
+                setMessages([])
+            }
         } finally {
             setHasLoaded(true)
             setIsLoadingMore(false)
@@ -98,19 +103,17 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
         }
     }, [caseId])
 
-    useEffect(() => {
-        const hasGeneratingMessage = messages.some((msg) => msg.status === 'generating')
+    const hasGeneratingMessage = messages.some((msg) => msg.status === 'generating')
 
-        if (!hasGeneratingMessage || !caseId || !isChatOpen) {
-            return
-        }
-
-        const interval = setInterval(() => {
+    usePolling(
+        () => {
             fetchMessages()
-        }, 3000)
-
-        return () => clearInterval(interval)
-    }, [messages, caseId, isChatOpen])
+        },
+        {
+            enabled: hasGeneratingMessage && !!caseId && isChatOpen,
+            interval: 3000
+        }
+    )
 
     if (!hasLoaded || (readOnly && messages.length === 0)) {
         return null
@@ -187,6 +190,7 @@ export default function AiChat({ caseId, readOnly = false }: AiChatProps) {
 
     return (
         <AiChatView 
+            caseId={caseId}
             isChatOpen={isChatOpen}
             inputText={inputText}
             messages={messages}

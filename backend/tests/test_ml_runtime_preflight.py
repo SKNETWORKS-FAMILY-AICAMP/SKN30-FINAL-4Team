@@ -20,6 +20,14 @@ PREPARE_SPEC = importlib.util.spec_from_file_location(
 assert PREPARE_SPEC is not None and PREPARE_SPEC.loader is not None
 PREPARE_MODULE = importlib.util.module_from_spec(PREPARE_SPEC)
 PREPARE_SPEC.loader.exec_module(PREPARE_MODULE)
+CURRENT_MODEL1_CONFIGURATION = (
+    BACKEND_ROOT
+    / "supabase/migrations/38_model1_runtime_manifest_refresh.sql"
+).read_text(encoding="utf-8")
+HISTORICAL_MODEL1_V4_CONFIGURATION = (
+    BACKEND_ROOT
+    / "supabase/migrations/42_model1_runtime_manifest_refresh_v4.sql"
+).read_text(encoding="utf-8")
 
 
 def _write(path: Path, content: bytes) -> None:
@@ -227,6 +235,14 @@ def test_model1_preparation_and_startup_integrity_contracts_stay_in_sync() -> No
         for member in PREPARE_MODULE.ARCHIVE_MODEL1_MEMBERS
     }
     assert set(preflight.MODEL1_LAYOUT) == archive_layout
+
+
+def test_model1_startup_identity_matches_the_current_database_configuration() -> None:
+    current = preflight.MODEL1_RUNTIME_MANIFEST_SHA256
+    assert current in CURRENT_MODEL1_CONFIGURATION
+    assert "pre-review-existing-model1-runtime-v3" in CURRENT_MODEL1_CONFIGURATION
+    assert current not in HISTORICAL_MODEL1_V4_CONFIGURATION
+    assert "pre-review-existing-model1-runtime-v4" in HISTORICAL_MODEL1_V4_CONFIGURATION
 
 
 @pytest.mark.skipif(

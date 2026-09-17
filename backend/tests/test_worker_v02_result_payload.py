@@ -33,7 +33,12 @@ from worker.contracts.sim_result import (
     SimStatus,
     REQUEST_AXIS_MISSING,
 )
-from worker.result_payload import RESULT_CONTRACT_VERSION, build_result_payload
+from worker.analysis_inputs import CPL_FIELD_SOURCES, field_name_of
+from worker.result_payload import (
+    RESULT_CONTRACT_VERSION,
+    _CPL_FIELD_LABELS,
+    build_result_payload,
+)
 from worker.sim import compare_candidate
 
 
@@ -205,6 +210,7 @@ def test_v02_payload_is_deterministic_and_links_only_selected_evidence() -> None
     candidate = first["candidates"][0]
     purpose = candidate["public_axes"]["purpose"]
     assert cpl_detail["evidence_ids"]
+    assert cpl_detail["values"][0]["label"] == "사업 목적 · 목표"
     assert set(fit_detail) == {
         "comparison_performed",
         "reason_code",
@@ -363,6 +369,18 @@ def test_fit2_public_evidence_keeps_each_excerpt_from_one_source_fact() -> None:
         *fit_detail["left"]["evidence_ids"],
         *fit_detail["right"]["evidence_ids"],
     }
+
+
+def test_every_cpl_source_field_has_a_korean_public_label() -> None:
+    source_fields = {
+        field_name_of(path)
+        for paths in CPL_FIELD_SOURCES.values()
+        for path in paths
+    }
+
+    assert source_fields <= _CPL_FIELD_LABELS.keys()
+    assert all(any("가" <= character <= "힣" for character in label)
+               for label in _CPL_FIELD_LABELS.values())
 
 
 def test_v02_candidate_comparable_axes_exclude_delivery() -> None:

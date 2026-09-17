@@ -1,11 +1,13 @@
 # FastAPI·worker 문서 안내
 
-현재 서비스의 공개 업무 경계는 FastAPI이며, analysis worker와 chat worker는 같은
-서버에서 외부 포트 없이 각 PostgreSQL queue를 polling한다.
+현재 서비스의 공개 업무 경계는 FastAPI이며, analysis worker, chat worker, PDF report
+worker는 같은 서버에서 외부 포트 없이 각 PostgreSQL queue를 polling한다.
 
 - 실제 환경변수 설정·기동·재기동·로그·장애 확인:
   [FASTAPI_WORKER_RUNBOOK.md](docs/FASTAPI_WORKER_RUNBOOK.md)
-- Nginx reverse proxy 예제:
+- 현재 프론트 정적 배포와 `/api/*` reverse proxy 기준(Caddy):
+  [frontend/deploy/README.md](../../frontend/deploy/README.md)
+- Nginx를 선택하는 별도 환경의 참고 예제:
   [backend/deploy/nginx/prereview-api.conf](../deploy/nginx/prereview-api.conf)
 - 프론트엔드의 유일한 사람용 API 계약:
   [0.FASTAPI_FRONTEND_API_SPEC.md](docs/0.FASTAPI_FRONTEND_API_SPEC.md)
@@ -15,7 +17,7 @@
   [WORKER_RESULT_PERSISTENCE_CONTRACT.md](docs/WORKER_RESULT_PERSISTENCE_CONTRACT.md)
 - worker 구현 경계·레거시 제외 범위:
   [WORKER_INTEGRATION_ASSESSMENT.md](docs/WORKER_INTEGRATION_ASSESSMENT.md)
-- 전체 구현 현황과 미완료 범위:
+- 구현·검증 기록과 남은 범위:
   [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md)
 - Supabase 인프라 배포·영속 데이터 운영:
   [supabase/README.md](../supabase/README.md)

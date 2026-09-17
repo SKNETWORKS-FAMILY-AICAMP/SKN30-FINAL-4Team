@@ -31,7 +31,7 @@ FINALIZATION = (MIGRATIONS / "39_v02_atomic_upload_finalization.sql").read_text(
     encoding="utf-8"
 )
 MODEL1_RUNTIME_REFRESH_V4 = (
-    MIGRATIONS / "41_model1_runtime_manifest_refresh_v4.sql"
+    MIGRATIONS / "42_model1_runtime_manifest_refresh_v4.sql"
 ).read_text(encoding="utf-8")
 
 
@@ -46,7 +46,8 @@ def test_v02_migrations_are_forward_only_after_32() -> None:
         "38_model1_runtime_manifest_refresh.sql",
         "39_v02_atomic_upload_finalization.sql",
         "40_v02_embedding_execution_provenance.sql",
-        "41_model1_runtime_manifest_refresh_v4.sql",
+        "41_report_pdf_worker_queue.sql",
+        "42_model1_runtime_manifest_refresh_v4.sql",
     } <= names
 
 

@@ -141,7 +141,21 @@ def test_tailscaled_start_executes_with_pod_local_statedir(tmp_path: Path) -> No
     (fake_bin / "tailscaled").write_text(
         '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$TEST_ARGV"\n'
         'for a in "$@"; do [[ "$a" == --socket=* ]] && s="${a#--socket=}"; done\n'
-        'python3 - "$s" <<"PY"\nimport socket,sys\nx=socket.socket(socket.AF_UNIX); x.bind(sys.argv[1]); x.close()\nPY\n'
+        'python3 - "$s" <<"PY"\n'
+        'import errno, socket, sys\n'
+        'x = socket.socket(socket.AF_UNIX)\n'
+        'try:\n'
+        '    x.bind(sys.argv[1])\n'
+        'except OSError as exc:\n'
+        '    if exc.errno not in {errno.EPERM, errno.EACCES}:\n'
+        '        raise\n'
+        '    print("TEST_AF_UNIX_BIND_FORBIDDEN", file=sys.stderr)\n'
+        '    raise SystemExit(77)\n'
+        'finally:\n'
+        '    x.close()\n'
+        'PY\n'
+        'rc=$?\n'
+        '(( rc == 0 )) || exit "$rc"\n'
         'sleep 10\n', encoding="utf-8")
     (fake_bin / "tailscale").write_text(
         '#!/usr/bin/env bash\n'
@@ -156,10 +170,12 @@ def test_tailscaled_start_executes_with_pod_local_statedir(tmp_path: Path) -> No
         'source "$1"; resolve_worker_layout() { PREREVIEW_RUNPOD_RUN_DIR="$TEST_RUN_DIR"; PREREVIEW_RUNPOD_LOG_DIR="$TEST_LOG_DIR"; }; ensure_deployment_tree() { :; }; start',
         "--", str(copied),
     ], check=False, text=True, capture_output=True, env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}", "TEST_ARGV": str(argv), "TEST_RUN_DIR": str(run_dir), "TEST_LOG_DIR": str(logs), "PREREVIEW_RUNPOD_TAILSCALE_HOSTNAME": "pod", "PREREVIEW_RUNPOD_TAILSCALE_DNS_NAME": "pod.tail.ts.net"})
-    # The sandbox may forbid AF_UNIX bind, so the fake daemon can fail after
-    # argv capture; the exercised start path has already created/validated the
-    # var root and launched tailscaled with the exact arguments.
-    assert result.returncode != 0
+    # The managed test sandbox may forbid AF_UNIX bind. Accept only that
+    # explicit platform restriction; a normal host must complete startup.
+    if result.returncode != 0:
+        assert "TEST_AF_UNIX_BIND_FORBIDDEN" in (
+            logs / "tailscaled.log"
+        ).read_text(encoding="utf-8")
     assert f"--statedir={runtime / 'tailscale-var'}" in argv.read_text(encoding="utf-8")
     var_root = runtime / "tailscale-var"
     assert var_root.is_dir() and not var_root.is_symlink() and (var_root.stat().st_mode & 0o777) == 0o700

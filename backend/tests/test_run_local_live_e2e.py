@@ -4,12 +4,14 @@ import asyncio
 import argparse
 from collections.abc import Callable
 import importlib.util
+from io import BytesIO
 import json
 import logging
 import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import pytest
 
@@ -21,6 +23,30 @@ assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+
+
+def make_hwpx() -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "mimetype", "application/hwp+zip", compress_type=ZIP_STORED
+        )
+        archive.writestr(
+            "META-INF/container.xml", "<container/>", compress_type=ZIP_DEFLATED
+        )
+        archive.writestr(
+            "Contents/content.hpf", "<opf/>", compress_type=ZIP_DEFLATED
+        )
+        archive.writestr(
+            "Contents/header.xml", "<head/>", compress_type=ZIP_DEFLATED
+        )
+        archive.writestr(
+            "Contents/section0.xml", "<section/>", compress_type=ZIP_DEFLATED
+        )
+    return buffer.getvalue()
+
+
+HWPX = make_hwpx()
 
 
 @pytest.mark.parametrize(
@@ -154,7 +180,7 @@ def test_configure_environment_defaults_request_profile_model_to_terra(
 
     MODULE._configure_environment(backend_env, supabase_env)
 
-    assert environment["OPENAI_LLM_MODEL"] == "gpt-5.6-luna"
+    assert environment["OPENAI_LLM_MODEL"] == "gpt-5.6-terra"
     assert environment["OPENAI_REQUEST_PROFILE_MODEL"] == "gpt-5.6-terra"
 
 
@@ -2645,7 +2671,7 @@ def test_trace_never_overwrites_existing_directory(tmp_path: Path) -> None:
     ("filename", "content", "mime_type"),
     [
         ("request.hwp", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1fixture", "application/x-hwp"),
-        ("request.hwpx", b"PK\x03\x04fixture", "application/vnd.hancom.hwpx"),
+        ("request.hwpx", HWPX, "application/vnd.hancom.hwpx"),
     ],
 )
 def test_validated_source_accepts_hwp_and_hwpx(

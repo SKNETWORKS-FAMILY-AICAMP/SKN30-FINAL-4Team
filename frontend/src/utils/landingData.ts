@@ -28,7 +28,7 @@ export const WORKFLOW_DATA = [
     {
         step: '02',
         number: 2,
-        title: '5대 점검체계 자동 교차 검증',
+        title: '3대 점검체계 자동 교차 검증',
         description: 'AI 분석 엔진이 13대 필수항목 누락 여부, 사업 내부 논리 정합성, 기존 사업 DB 유사·중복성을 정밀 스크리닝합니다.',
         footerText: 'AI 자동 다차원 교차 검증',
         footerIcon: 'psychology',

@@ -6,13 +6,12 @@ import base64
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
-    Query,
     Request,
     Response,
     Security,
@@ -89,6 +88,18 @@ class UpdatePasswordRequest(BaseModel):
         min_length=8,
         max_length=1024,
         description="변경할 새 비밀번호. 응답이나 로그에 포함되지 않는다.",
+    )
+
+
+class PasswordRecoveryVerifyRequest(BaseModel):
+    """One-time recovery proof submitted from the trusted frontend origin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token_hash: SecretStr = Field(
+        min_length=1,
+        max_length=2048,
+        description="Supabase recovery email의 일회용 token hash",
     )
 
 
@@ -367,6 +378,11 @@ async def sign_in(request: Request, body: CredentialsRequest, _: TrustedOriginDe
     responses=error_responses(400, 403, 422, 429, 500, 502, 503),
 )
 async def sign_up(request: Request, body: SignUpRequest, _: TrustedOriginDep, supabase: SupabaseClientDep) -> JSONResponse:
+    if not bool(getattr(request.app.state, "auth_signup_enabled", False)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-service registration is disabled",
+        )
     response = await supabase.request(
         "POST",
         "/signup",
@@ -540,71 +556,77 @@ async def password_reset(
 @router.get(
     "/password-recovery/callback",
     status_code=status.HTTP_303_SEE_OTHER,
-    summary="비밀번호 recovery 링크 검증",
+    summary="비밀번호 recovery 화면 진입",
     description=(
-        "메일 템플릿이 전달한 일회용 token_hash를 Supabase에서 검증하고 "
-        "HttpOnly 세션 Cookie를 설정한 뒤 비밀번호 변경 화면으로 이동한다. "
-        "만료·사용 완료·잘못된 token은 같은 화면의 "
-        "error=invalid_or_expired 상태로 이동한다."
+        "메일 링크의 URL fragment는 서버와 접근 로그에 전달하지 않는다. 이 GET은 "
+        "세션을 만들지 않고 비밀번호 변경 화면으로만 이동하며, 프론트엔드는 fragment의 "
+        "token_hash를 trusted-origin POST 검증 endpoint로 제출한다."
     ),
-    responses=error_responses(422, 429, 500, 502, 503),
+    responses=error_responses(500, 503),
 )
-async def password_recovery_callback(
-    request: Request,
-    token_hash: Annotated[
-        str,
-        Query(
-            min_length=1,
-            max_length=2048,
-            description="Supabase recovery 메일 템플릿의 일회용 TokenHash",
-        ),
-    ],
-    supabase: SupabaseClientDep,
-) -> Response:
+async def password_recovery_callback(request: Request) -> Response:
     redirect_to = _configured_recovery_url(
         request,
         "auth_password_reset_redirect_to",
         "Password recovery frontend redirect",
     )
+    result = RedirectResponse(url=redirect_to, status_code=status.HTTP_303_SEE_OTHER)
+    result.headers["Cache-Control"] = "private, no-store"
+    result.headers["Referrer-Policy"] = "no-referrer"
+    return result
+
+
+@router.post(
+    "/password-recovery/verify",
+    response_model=AuthSessionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="비밀번호 recovery token 검증",
+    description=(
+        "프론트 URL fragment로 전달된 일회용 token hash를 trusted Origin에서만 "
+        "검증하고, 성공한 경우에만 HttpOnly 세션 Cookie를 설정한다."
+    ),
+    responses=error_responses(400, 403, 422, 429, 500, 502, 503),
+)
+async def verify_password_recovery(
+    request: Request,
+    body: PasswordRecoveryVerifyRequest,
+    _: TrustedOriginDep,
+    supabase: SupabaseClientDep,
+) -> JSONResponse:
     provider_response = await supabase.request(
         "POST",
         "/verify",
-        json={"token_hash": token_hash, "type": "recovery"},
+        json={
+            "token_hash": body.token_hash.get_secret_value(),
+            "type": "recovery",
+        },
     )
     if provider_response.status_code in {400, 401, 403}:
-        parsed_redirect = urlsplit(redirect_to)
-        error_redirect = urlunsplit(
-            parsed_redirect._replace(
-                query=urlencode({"error": "invalid_or_expired"})
-            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password recovery token is invalid or expired",
         )
-        result = RedirectResponse(
-            url=error_redirect, status_code=status.HTTP_303_SEE_OTHER
-        )
-        result.headers["Cache-Control"] = "private, no-store"
-        result.headers["Referrer-Policy"] = "no-referrer"
-        return result
     if provider_response.status_code != status.HTTP_200_OK:
         _provider_failure(provider_response.status_code)
-
     try:
         payload: Any = provider_response.json()
-        result = RedirectResponse(
-            url=redirect_to,
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-        _set_session_cookies(result, request, payload)
-    except (ValueError, HTTPException):
-        return JSONResponse(
+    except ValueError as exc:
+        raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            content={
-                "code": "BAD_GATEWAY",
-                "message": "Supabase authentication returned an invalid session",
-            },
-        )
-
-    result.headers["Cache-Control"] = "private, no-store"
-    result.headers["Referrer-Policy"] = "no-referrer"
+            detail="Supabase authentication returned an invalid response",
+        ) from exc
+    session_data = _session(payload)
+    response_body = AuthSessionResponse(access_token_expires_at=session_data[3])
+    result = JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=response_body.model_dump(mode="json"),
+    )
+    _set_session_cookies(
+        result,
+        request,
+        payload,
+        session_data=session_data,
+    )
     return result
 
 

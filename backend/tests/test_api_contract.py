@@ -130,6 +130,22 @@ def test_upload_concurrency_rejects_unsafe_configuration(monkeypatch, value) -> 
         create_app()
 
 
+@pytest.mark.parametrize("value", ["0", "9", "not-an-integer"])
+def test_report_download_concurrency_rejects_unsafe_configuration(
+    monkeypatch, value
+) -> None:
+    monkeypatch.setenv("PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY", value)
+    with pytest.raises(RuntimeError, match="PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY"):
+        create_app()
+
+
+@pytest.mark.parametrize("value", ["0", "26214401", "not-an-integer"])
+def test_report_size_rejects_unsafe_configuration(monkeypatch, value) -> None:
+    monkeypatch.setenv("PREREVIEW_REPORT_MAX_BYTES", value)
+    with pytest.raises(RuntimeError, match="PREREVIEW_REPORT_MAX_BYTES"):
+        create_app()
+
+
 def test_dev_headers_are_rejected_unless_offline_mode_is_explicitly_enabled() -> None:
     app = create_app()
     app.state.offline_mode = False

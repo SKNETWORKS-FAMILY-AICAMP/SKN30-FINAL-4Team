@@ -61,7 +61,7 @@ fi
 SEMANTIC_ROOT="$ROOT/backend/vendor/portable_existing_request_profiles_20260831"
 SEMANTIC_PYTHON="$SEMANTIC_ROOT/.venv/bin/python"
 [[ -x "$SEMANTIC_PYTHON" ]] || { echo "Semantic environment is missing: $SEMANTIC_PYTHON" >&2; exit 2; }
-export OPENAI_MODEL="${OPENAI_MODEL:-gpt-5.6-luna}"
+export OPENAI_MODEL="${OPENAI_MODEL:-gpt-5.6-terra}"
 
 cd "$SEMANTIC_ROOT"
 if [[ ! -f "$SECTION_SCOPES" ]]; then

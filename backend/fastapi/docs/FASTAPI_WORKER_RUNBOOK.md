@@ -1,12 +1,13 @@
 # FastAPI·worker 배포 및 운영 가이드
 
-마지막 문서 동기화: 2026-09-15
+마지막 문서 동기화: 2026-09-17
 
-공식 `supabase/postgres:17.6.1.169` 임시 DB에서 기존 `01`~`38` fresh 검증 상태에
-`39`~`40`을 upgrade하고 전체 `01`~`40` replay한 기록이 있다. migration `41`은
-현재 Model 1 runtime identity를 비활성 설정으로 추가하며 정적 migration 계약을
-검증했다. 실제 DB에는 배포 전에 `41`을 적용하고 100건 재분류·승격 gate를 별도로
-완주해야 한다.
+이 날짜의 통합 checkout에서는 공식 `supabase/postgres:17.6.1.169` 임시 DB의 기존
+`01`~`38` fresh 검증 상태에 `39`~`41`을 upgrade하고 전체 `01`~`41` replay를 검증했다.
+migration `42`는 통합 전 `backend-rebuild`가 게시한 중간 v4 identity를 비활성 이력으로
+보존한다. 통합 runtime은 Model 2/3 재시도를 실행 adapter로 옮겨 Model 1 manifest가
+migration 31·32·38의 v3 identity와 다시 일치한다. 실제 DB에는 배포 전에 `42`까지
+적용하되 v4 row를 재분류·승격 대상으로 사용하지 않는다.
 현재 로컬 DB 적용, 실제 repository SQL, queue/provenance runtime contract와 두 세션
 `40001` lock retry도 통과했다. Existing 100건 Model 1 실제 추론 backfill은 100건 모두
 `OK`이고 idempotent 재실행은 100건 모두 skip됐다. 활성 결과는 `신뢰` 99건과 raw
@@ -40,21 +41,21 @@ FastAPI (`api`, container 8000 / host 기본 8001)
                claim → HWP/HWPX parse → OpenAI → 결과 저장
 ```
 
-`backend/compose.yaml`은 `api`, analysis `worker`, `chat-worker`를 실행한다. Supabase는 별도 Compose stack으로
+`backend/compose.yaml`은 `api`, analysis `worker`, `chat-worker`, `report-worker`를 실행한다. Supabase는 별도 Compose stack으로
 먼저 실행되어 있어야 한다. Redis/RQ, Edge Function dispatch/callback, 외부 worker HTTP
 서버는 현재 경로에서 사용하지 않는다.
 
 `worker`만 CPU 전용 `Dockerfile.ml-worker`를 사용한다. 이 이미지는 Model 2/3의 필요한
 코드·artifact와 child Python을 포함하고 Model 1은 절대 복사하지 않는다. `api`와
 `chat-worker`는 기본 `Dockerfile`로 실행되므로 ML dependency와 Model 1 내용을 가지지
-않는다. Model 1의 검증된 외부 runtime은 worker에만 read-only bind mount된다.
+않는다. `report-worker`는 `Dockerfile.report-worker`의 Chromium 전용 이미지로 실행한다. Model 1의 검증된 외부 runtime은 worker에만 read-only bind mount된다.
 
 ## 2. 기동 전 확인
 
 다음 조건이 먼저 충족되어야 한다.
 
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
-- `backend/supabase/migrations/01`부터 `41`까지 적용되어 있다.
+- `backend/supabase/migrations/01`부터 `42`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
 - Existing Profile 100건과 active v2 `retrieval.existing_profile_embedding` 100건 × 4 scope가 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
@@ -68,14 +69,14 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 처음부터 재현할 때는 다음 순서를 지킨다.
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
-2. migration 01~41을 적용한다.
+2. migration 01~42를 적용한다.
 3. Git 밖의 Model 1 runtime을 준비하고, server-only `backend/.env`를 생성한다.
 4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
 5. Existing 분류 결과를 쓰는 기능까지 검증할 때는 current Profile 100건에 Model 1을
    dry-run 후 backfill하고 분류 설정을 활성화한다.
 6. v2 embedding을 dry-run 후 100 × 4 scope로 backfill·활성화한다.
 7. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
-8. FastAPI `api`, 전용 Docker ML analysis `worker`, `chat-worker`를 기동한다.
+8. FastAPI `api`, 전용 Docker ML analysis `worker`, `chat-worker`, `report-worker`를 기동한다.
 9. Swagger에서 `sign-in` → `me` 또는 live E2E에서 `sign-in` → HWP/HWPX upload → 상태
    poll → 결과/채팅 순서로 확인한다.
 
@@ -265,7 +266,7 @@ PREREVIEW_EMBEDDING_PROVIDER=openai
 # OpenAI embedding은 LLM provider와 무관하게 analysis worker에 항상 필요하다.
 OPENAI_API_KEY=<openai-api-key>
 # 모든 LLM 단계의 fallback. 단계별 override가 비어 있으면 이 모델을 사용한다.
-OPENAI_LLM_MODEL=gpt-5.6-luna
+OPENAI_LLM_MODEL=gpt-5.6-terra
 # Request Profile 구조화는 별도 모델을 권장한다.
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 # 아래 단계별 override는 필요할 때만 설정한다.
@@ -314,6 +315,18 @@ PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/mode
 PREREVIEW_MODEL1_RUNTIME_UID=1000
 PREREVIEW_MODEL1_RUNTIME_GID=1000
 PREREVIEW_ML_TIMEOUT_SECONDS=180
+
+# PDF report worker (host 직접 실행용 .env.host.local에서만 절대경로 설정)
+PREREVIEW_REPORT_CHROMIUM_EXECUTABLE=
+PREREVIEW_REPORT_WORKER_HEARTBEAT_SECONDS=30
+PREREVIEW_REPORT_WORKER_LEASE_SECONDS=120
+PREREVIEW_REPORT_WORKER_IDLE_POLL_SECONDS=1
+PREREVIEW_REPORT_RENDER_TIMEOUT_SECONDS=60
+PREREVIEW_REPORT_STORAGE_TIMEOUT_SECONDS=30
+PREREVIEW_REPORT_DATABASE_CONNECT_TIMEOUT_SECONDS=10
+PREREVIEW_REPORT_MAX_BYTES=26214400
+PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY=2
+PREREVIEW_REPORT_WORKER_MEMORY_LIMIT=1g
 ```
 
 ### 환경 변수와 사용 주체
@@ -326,6 +339,16 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `PREREVIEW_UPLOAD_MAX_BYTES` | O | - | 선택(기본 50 MiB) | multipart에서 추출한 단일 HWP/HWPX 파일의 바이트 상한 |
 | `PREREVIEW_HTTP_MAX_BODY_BYTES` | O | - | 선택(기본 51 MiB) | multipart boundary/header와 모든 part를 포함한 HTTP 요청 전체 상한. `PREREVIEW_UPLOAD_MAX_BYTES`와 별개 |
 | `PREREVIEW_API_LIMIT_CONCURRENCY` | Compose | - | 선택(기본 32) | Compose가 Uvicorn `--limit-concurrency`로 전달하는 replica별 동시 연결 상한 |
+| `PREREVIEW_REPORT_MAX_BYTES` | O | O (report-worker) | 선택(기본·상한 25 MiB) | API 다운로드, worker 렌더 결과, DB/Storage가 공유하는 PDF byte 상한 |
+| `PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY` | O | - | 선택(기본 2, 상한 8) | replica별 in-memory PDF 검증·다운로드 동시 처리 수 |
+| `PREREVIEW_REPORT_WORKER_HEARTBEAT_SECONDS` | - | O (report-worker) | 선택(기본 30초) | PDF claim heartbeat |
+| `PREREVIEW_REPORT_WORKER_LEASE_SECONDS` | - | O (report-worker) | 선택(기본 120초, 30~3600초) | PDF processing fence lease |
+| `PREREVIEW_REPORT_WORKER_IDLE_POLL_SECONDS` | - | O (report-worker) | 선택(기본 1초) | 유휴 queue polling 간격 |
+| `PREREVIEW_REPORT_RENDER_TIMEOUT_SECONDS` | - | O (report-worker) | 선택(기본 60초) | 작업별 Chromium render timeout |
+| `PREREVIEW_REPORT_STORAGE_TIMEOUT_SECONDS` | - | O (report-worker) | 선택(기본 30초) | private Storage 요청 timeout |
+| `PREREVIEW_REPORT_DATABASE_CONNECT_TIMEOUT_SECONDS` | - | O (report-worker) | 선택(기본 10초) | PostgreSQL 연결 timeout |
+| `PREREVIEW_REPORT_CHROMIUM_EXECUTABLE` | - | O (report-worker) | 호스트 실행 시 필수 | Chromium/Chrome 실행 파일 절대경로. Compose는 `/usr/bin/chromium`을 주입 |
+| `PREREVIEW_REPORT_WORKER_MEMORY_LIMIT` | Compose | - | 선택(기본 1 GiB) | Chromium 전용 컨테이너 memory limit |
 | `PREREVIEW_GLOBAL_QUEUE_MAX` | O | - | 선택(기본 25) | 모든 API replica의 analysis upload + chat create/retry가 공유하는 PostgreSQL admission cap(1~10000) |
 | `PREREVIEW_CURSOR_SIGNING_SECRET` | O | - | online pagination 시 필수 | analysis/conversation history의 signed opaque cursor. 비어 있으면 해당 pagination은 503 |
 | `PREREVIEW_AUTH_ALLOWED_ORIGINS` | O | - | 브라우저 사용 시 필수 | 프론트의 정확한 origin 목록, 와일드카드 금지 |
@@ -415,11 +438,11 @@ mapping이 이미 있다. 기본 입력 위치인 `$HOME/serving.zip`에서 추�
 |---|---|
 | `$HOME/serving.zip` | `0fca416dfe6910f2fc00764c94d8418dc67dc42c79569feadd036e0cdc0ede41` |
 | `model1/model/model.safetensors` | `8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779` |
-| Model 1 runtime manifest | `85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597` |
+| Model 1 runtime manifest | `2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60` |
 
 다음 스크립트는 SHA-256이 고정된 archive에서 Model 1에 필요한 allowlist 파일만
 Git에서 제외된 `.runtime/`에 새로 쓴다. archive와 weight digest, 그리고 DB에 등록된
-Model 1 runtime manifest(`85aee0...`)까지 확인하며, 대상이 이미 있으면 실패한다.
+Model 1 runtime manifest(`2903d0...`)까지 확인하며, 대상이 이미 있으면 실패한다.
 따라서 tracked checkout 파일이나 기존 runtime을 덮어쓰지 않는다. 현재 checkout의
 wrapper는 archive와 byte-identical하지 않으므로, 등록된 runtime을 재현할 때 archive의
 검증된 wrapper를 사용해야 한다.
@@ -500,8 +523,8 @@ namespace로 다시 매핑되는 rootless Docker는 현재 지원하지 않는�
 ### Existing 100건 Model 1 분류 backfill
 
 이 작업은 Request 분석을 실행하는 것이 아니라 현재 Existing Profile을 버전형
-KB 분류 결과로 보강하는 one-shot 운영 작업이다. 먼저 migration 31·32·38·41을 포함한
-전체 migration을 적용한다. `apply_migrations.sh`는 01~41을 순서대로 재적용하므로
+KB 분류 결과로 보강하는 one-shot 운영 작업이다. 먼저 migration 31·32·38을 포함한
+전체 migration을 적용한다. `apply_migrations.sh`는 01~42를 순서대로 재적용하므로
 기존 DB는 운영 가이드의 backup/staging 절차를 먼저 따른다.
 
 ```bash
@@ -510,7 +533,7 @@ SUPABASE_DIR="$PWD" \
   /absolute/path/to/SKN30-FINAL-4Team/backend/supabase/apply_migrations.sh
 ```
 
-migration 31·32·38·41이 보장하는 현재 inactive 설정의 UUID를 model ID, weight SHA-256, runtime
+migration 31·32·38이 보장하는 현재 runtime 설정의 UUID를 model ID, weight SHA-256, runtime
 manifest SHA-256, input assembly 버전, producer 버전 **다섯 값 모두로** 조회한다. manifest는 sorted
 compact JSON으로 고정한 다음 logical file→SHA-256 mapping이다: serving의
 `inference.py`, label mapping, model config/weight, tokenizer 두 파일, checkout의
@@ -528,9 +551,9 @@ WHERE model_id = 'model_1_support_type'
   AND lower(artifact_sha256) =
       '8fa1522ced99f69966aed797c94cbd841f9ee9ce7d94c84dbc55adbf28613779'
   AND lower(runtime_manifest_sha256) =
-      '85aee02364390b97385987ed6acb64406ca83651128585cb0a53cefb28dc9597'
+      '2903d0e90e71cd121af3185eeab3fefe3e1407175d14476e8d60f611b6861a60'
   AND input_assembly_version = 'existing-profile-model1-input-v1'
-  AND producer_version = 'pre-review-existing-model1-runtime-v4';
+  AND producer_version = 'pre-review-existing-model1-runtime-v3';
 "
 ```
 
@@ -704,10 +727,16 @@ docker compose ps
 `docker compose config --quiet`은 문법과 필수 interpolation만 검사한다. `--quiet`을 빼면
 치환된 비밀값이 터미널에 표시될 수 있으므로 결과를 공유하지 않는다. 처음에는 이미지가
 ML CPU dependency를 내려받고 Model 2/3 artifact 검증까지 수행하므로 일반 API 이미지보다
-빌드 시간이 길 수 있다.
+빌드 시간이 길 수 있다. `report-worker` 이미지도 Chromium과 한글 font를 포함하므로
+별도 디스크·메모리 여유를 확인한다. 기본 runtime memory limit은 1 GiB, `/tmp` tmpfs는
+512 MiB다.
 
-세 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
-analysis worker와 chat worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
+migration 41은 적용 전에 이미 완료된 분석을 PDF queue로 backfill하지 않는다. 배포 이후
+새로 완료되거나 실제 재분석 완료로 case 상태가 갱신된 건만 trigger가 enqueue한다. 따라서
+배포 직후 과거 완료 건을 일괄 렌더링하는 backlog는 생기지 않는다.
+
+네 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
+analysis worker, chat worker, report worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
 `8001`이며 `.env`의 `PREREVIEW_API_PORT`로 바꿀 수 있다. 기본 bind 주소는 `127.0.0.1`이다.
 
 ## 5. 코드·설정 변경 후 재기동
@@ -723,13 +752,13 @@ docker compose up -d --build
 재생성한다.
 
 ```bash
-docker compose up -d --force-recreate api worker chat-worker
+docker compose up -d --force-recreate api worker chat-worker report-worker
 ```
 
 설정 변경 없이 프로세스만 재시작할 때 사용한다.
 
 ```bash
-docker compose restart api worker chat-worker
+docker compose restart api worker chat-worker report-worker
 ```
 
 worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배포 전 새 업로드를 잠시
@@ -738,7 +767,7 @@ worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배�
 시간을 준다.
 
 ```bash
-docker compose stop -t 600 api worker chat-worker
+docker compose stop -t 600 api worker chat-worker report-worker
 ```
 
 `docker compose down -v`나 Supabase stack의 volume 삭제 명령은 사용하지 않는다.
@@ -753,12 +782,15 @@ curl -fsS http://127.0.0.1:8001/health/live
 curl -fsS http://127.0.0.1:8001/health/ready
 docker compose logs --tail=100 api
 docker compose logs --tail=100 worker
+docker compose logs --tail=100 chat-worker
+docker compose logs --tail=100 report-worker
 ```
 
 - `/health/live`: FastAPI 프로세스가 요청에 응답하는지만 확인한다.
 - `/health/ready`: online 환경변수와 repository 조립 여부를 확인한다.
 - 현재 `/health/ready`는 실제 DB·Storage 연결이나 worker 생존까지 검사하지 않는다.
 - `api`만 정상이고 `worker`가 없으면 업로드된 요청은 계속 `queued`에 남는다.
+- `report-worker`가 없으면 새 분석 결과의 `report.status`는 `generating`에 남는다.
 
 Supabase Studio의 SQL Editor에서는 비밀값 없이 다음 상태를 확인할 수 있다.
 
@@ -776,12 +808,14 @@ LIMIT 20;
 
 최종 확인은 테스트 계정으로 로그인해 작은 HWP/HWPX 하나를 업로드한 뒤
 `GET /api/v1/analysis-runs/{analysis_run_id}`를 polling하여 `succeeded`와
-`analysis_case_id`가 반환되는지 보는 것이다. OpenAI 비용이 발생하므로 배포마다 자동으로
-실행하지 않는다.
+`analysis_case_id`가 반환되는지 보는 것이다. 이어 결과 조회의
+`report.can_download=true`와 소유자 Cookie를 포함한
+`GET /api/v1/analysis-cases/{analysis_case_id}/report.pdf`의 `200 application/pdf`를 확인한다.
+OpenAI 비용이 발생하므로 배포마다 자동으로 실행하지 않는다.
 
 ### Operator용 HWP/HWPX live E2E
 
-로컬 Supabase·migration 01~41·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
+로컬 Supabase·migration 01~42·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
 환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue → analysis
 worker → 결과 조회 → cookie 인증·trusted Origin 채팅 POST → chat-worker → 메시지 GET
 polling을 한 번에 검증할 수 있다. DB에 저장된 Model 1·2·3 status가 모두 `OK`인지도
@@ -860,8 +894,8 @@ external polling 기본 제한은 분석 1800초, 채팅 600초다. 문서 크�
 호출을 중단하지 않고 E2E가 public 상태를 기다리는 시간만 바꾼다.
 
 live E2E는 `OPENAI_REQUEST_PROFILE_MODEL`을 shell 값, 이어서 `backend/.env`
-값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. `OPENAI_LLM_MODEL`은
-계속 다른 단계의 fallback(예: `gpt-5.6-luna`)으로 둘 수 있다.
+값 순으로 읽고, 둘 다 없으면 `gpt-5.6-terra`를 사용한다. 현재 운영 기본은
+`OPENAI_LLM_MODEL`도 `gpt-5.6-terra`이며, 필요한 경우 단계별 override로 분리할 수 있다.
 
 스크립트는 시작 전에 analysis/chat queue가 모두 비어 있는지 확인한다. `inline`은 자신이
 생성한 target만 claim하며 예상과 다른 run/message가 반환되면 claim transaction을
@@ -951,7 +985,7 @@ Request Profile에는 Terra를 사용했고 worker 로그에서 최초 1회와 �
 `sha256:0847b036…`는 `1000:1000` 정상 기동·ML preflight와 강제 `0:0` 실행의 exit code
 2를 확인했다. 이 후속 변경은 위 OpenAI provider/pipeline 경로를 바꾸지 않는다.
 산출물 수·run/case ID·입력 SHA-256 같은 검증 기록은
-[Backend 구현 현황](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
+[Backend 구현·검증 기록](../../IMPLEMENTATION_STATUS.md)에서 확인한다.
 
 ### Swagger/OpenAPI로 프론트 작업하기
 
@@ -992,10 +1026,12 @@ model의 strict typed DTO로 표시된다. raw/internal key는 응답에 추가�
 
 OpenAPI에는 `PreReviewAccessCookie`, `PreReviewRefreshCookie` Cookie security
 scheme과 각 endpoint의 성공·주요 오류(`ErrorResponse`) schema가 표시된다.
-`sign-in`, `sign-up`, `password-reset`, `password-recovery/callback`은 기존
+`sign-in`, 비활성화된 `sign-up`, `password-reset`, `password-recovery/callback`,
+`password-recovery/verify`는 기존
 Cookie 없이 호출할 수 있다. 업무 API, `me`, `update-password`는 access Cookie,
-`refresh`는 refresh Cookie를 요구한다. callback의 query parameter는 recovery 메일의
-일회용 `token_hash`이며 성공 응답은 세션 Cookie를 설정하는 `303` redirect다.
+`refresh`는 refresh Cookie를 요구한다. callback GET은 세션을 만들지 않는다. recovery
+메일의 일회용 `token_hash`는 URL fragment로 프론트에 도착하며, trusted-Origin verify
+POST의 JSON body에서 검증된 뒤에만 세션 Cookie가 설정된다.
 
 이 security scheme은 HttpOnly Cookie라는 전달 방식을 문서화하기 위한 것이다. Swagger의
 `Authorize`에 access/refresh token이나 쿠키 값을 직접 입력하지 않는다. 성공한 `sign-in`
@@ -1007,9 +1043,10 @@ run ID를 `GET /analysis-runs/{analysis_run_id}`로 poll한다. frontend의 실�
 
 인증 및 재설정 완료 흐름의 현재 지원 범위도 같은
 [프론트엔드 API 명세](0.FASTAPI_FRONTEND_API_SPEC.md)를 따른다. self-hosted Supabase의
-recovery 메일 템플릿은 `TokenHash`를 FastAPI `password-recovery/callback`으로
-보내고, callback은 이를 세션 Cookie로 교환한 뒤 프론트 비밀번호 변경 화면으로 이동한다.
-프론트는 token/code 교환을 구현하지 않는다. 과거 `AUTH_API_CONTRACT.md`는 이 명세로
+recovery 메일 템플릿은 `TokenHash`를 URL fragment로 FastAPI callback에 보내고,
+callback은 세션을 만들지 않은 채 프론트 비밀번호 변경 화면으로 이동한다. 프론트가
+fragment를 지운 뒤 trusted-Origin verify POST로 세션 Cookie를 교환한다. 과거
+`AUTH_API_CONTRACT.md`는 이 명세로
 안내하는 호환용 문서일 뿐이다.
 
 현재 `frontend/src`에는 API base URL, Cookie 포함 HTTP client, polling 호출이 연결되어 있지
@@ -1023,7 +1060,7 @@ recovery 메일 템플릿은 `TokenHash`를 FastAPI `password-recovery/callback`
 
 ## 7. 호스트 Python으로 개발 실행
 
-Docker를 사용하지 않는 개발 실행에서는 API, analysis worker, chat worker를 서로 다른
+Docker를 사용하지 않는 개발 실행에서는 API, analysis worker, chat worker, report worker를 서로 다른
 터미널에서 실행한다.
 `prepare_local_backend_env.py`가 기본으로 만드는 `.env`는 컨테이너용
 `host.docker.internal` 주소를 사용하므로 호스트 프로세스에서 그대로 쓰지 않는다.
@@ -1047,9 +1084,12 @@ uv run python -m dotenv -f .env.host.local run -- python -m worker.main
 
 # 터미널 3: conversation queue
 uv run python -m dotenv -f .env.host.local run -- python -m worker.chat_main
+
+# 터미널 4: PDF report queue (.env.host.local에 Chromium 절대경로 필요)
+uv run python -m dotenv -f .env.host.local run -- python -m worker.report_main
 ```
 
-세 프로세스 모두 프로젝트의 `backend` 디렉터리에서 실행한다. `.env.host.local`도 비밀
+네 프로세스 모두 프로젝트의 `backend` 디렉터리에서 실행한다. `.env.host.local`도 비밀
 파일이므로 Git에 넣지 않는다. 이 이름은 기본 `.gitignore`의 `.env.*.local` 규칙으로
 제외된다.
 
@@ -1115,7 +1155,7 @@ Nginx를 사용하는 경우 [nginx reverse-proxy example](../../deploy/nginx/pr
 - `request-temp` 및 만료 결과의 reference-aware cleanup
 - worker heartbeat/queue lag를 포함한 readiness
 - 실제 Hancom 작성 HWPX 및 malformed/timeout 문서 검증
-- PDF 보고서·PDF OCR API
+- PDF 입력·OCR API와 PDF 보고서 재생성 API
 
-최신 완료·미완료 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
+구현·검증 기록과 남은 범위는 [IMPLEMENTATION_STATUS.md](../../IMPLEMENTATION_STATUS.md)를
 확인한다.

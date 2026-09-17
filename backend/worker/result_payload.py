@@ -46,6 +46,34 @@ _CPL_SUMMARY = {
     "no_content": "적용 대상이지만 원문에서 내용을 찾지 못했습니다.",
     "not_applicable": "이 요청에는 적용되지 않는 항목입니다.",
 }
+_CPL_FIELD_LABELS = {
+    "request_type": "요청 유형",
+    "purpose_goal": "사업 목적 · 목표",
+    "implementation_plan": "연차별 · 내역사업별 추진계획",
+    "nodes": "사업 구조",
+    "support_components": "세부 지원",
+    "program_period": "사업기간",
+    "business_need": "사업 필요성",
+    "legal_basis": "지원 근거",
+    "linked_policy": "연계 정책",
+    "total_budget": "사업예산",
+    "applicant_eligibility": "신청 자격",
+    "support_target": "지원 대상",
+    "beneficiary": "실제 수혜자",
+    "eligibility_conditions": "지원 자격 · 조건",
+    "exclusions": "지원 제외 대상",
+    "participation_requirements": "참여 요건",
+    "support_activities": "지원 활동",
+    "support_methods": "지원 방식",
+    "support_items": "지원 항목",
+    "support_content": "지원 내용",
+    "support_scale": "지원 규모",
+    "cost_sharing": "자부담 · 비용 분담",
+    "delivery_relations": "수행기관 · 역할",
+    "delivery_methods": "수행 방식",
+    "expected_effect": "기대효과",
+    "performance_indicator": "성과지표",
+}
 _FIT_RELATION_SUBJECT = {
     FitRelationId.FIT_1: "사업 목적과 지원대상",
     FitRelationId.FIT_2: "사업 목적과 지원내용",
@@ -146,6 +174,16 @@ def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
         cause_axes = []
     cause_axes = [axis for axis in cause_axes if isinstance(axis, str)]
 
+    model_1_common = _ml_common(model_1)
+    if model_1.status != "OK":
+        # 모델 1의 실패·미제공 사유는 내부에 보존하고 공개 카드는 숨긴다.
+        model_1_common["message"] = None
+
+    model_2_common = _ml_common(model_2)
+    if model_2.status != "OK":
+        # 모델 2도 재시도 소진·미제공 사유를 노출하지 않고 카드를 숨긴다.
+        model_2_common["message"] = None
+
     model_3_common = _ml_common(model_3)
     if model_3.status == "FAILED":
         # 모델 3은 한 번 재시도한 뒤에도 실행에 실패하면 내부 진단과 상태만
@@ -153,9 +191,9 @@ def _public_ml_payload(ml_result: MlReferenceResult) -> dict[str, Any]:
         model_3_common["message"] = None
 
     return {
-        "model_1": {**_ml_common(model_1), "support_type": support_type},
+        "model_1": {**model_1_common, "support_type": support_type},
         "model_2": {
-            **_ml_common(model_2),
+            **model_2_common,
             "predicted_amount_won": predicted_amount_won,
         },
         "model_3": {
@@ -331,11 +369,10 @@ def _cpl_detail(
     evidence_ids: list[str] = []
     code = cpl_display_code(item.field_code)
     for subfield in item.subfields:
-        label = (
-            _clean_text(subfield.profile_field_name)
-            or _clean_text(subfield.profile_field)
-            or "값"
-        )
+        field_name = _clean_text(subfield.profile_field_name)
+        # ``source_fields`` keeps the internal vocabulary for diagnostics.
+        # ``values[].label`` is a public display field and must not expose it.
+        label = _CPL_FIELD_LABELS.get(field_name or "", "확인 항목")
         if subfield.profile_field_name not in source_fields:
             source_fields.append(subfield.profile_field_name)
         for fact in subfield.facts:

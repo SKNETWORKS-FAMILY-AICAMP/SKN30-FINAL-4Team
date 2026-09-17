@@ -1,7 +1,7 @@
 # Worker 연동 구현 현황
 
-마지막 확인일: 2026-09-15
-적용 경로: `backend-rebuild`의 FastAPI + same-server polling worker
+마지막 확인일: 2026-09-17
+적용 경로: 현재 통합 checkout의 FastAPI + same-server polling worker
 
 ## 결론
 
@@ -31,8 +31,8 @@ Browser
 | worker runtime | 상주 polling, SIGTERM graceful stop, 별도 DB connection heartbeat, stale fence 차단 | `worker/runtime.py`, `worker/main.py` |
 | source/profile | private Storage download/hash 확인, Common IR·Request Profile upload, source → Common IR → Profile lineage와 request projection 등록 | `worker/analysis_job.py`, `worker/postgres_analysis_store.py`, `worker/supabase_storage.py` |
 | retrieval | OpenAI `text-embedding-3-small` 1,536 dimensions, request 3축 임시 embedding, Existing persistent vector 3축 match | `worker/retrieval_inputs.py`, `worker/postgres_analysis_store.py` |
-| ML result | Model 1/2/3 adapter 결과를 analysis result와 함께 저장하고, 공개 결과에는 서버가 조립한 안전한 message만 projection | `worker/analysis_job.py`, `worker/result_payload.py`, `supabase/migrations/26_ml_result_contract.sql` |
-| result | exact Existing profile version을 포함한 CPL/FIT/SIM/evidence payload를 fenced transaction으로 저장 | `worker/result_payload.py`, `supabase/migrations/23_result_read_retention_and_candidate_evidence.sql` |
+| ML result | Model 1은 자동 재시도하지 않고 Model 2/3은 실행 예외 시 각각 1회 재시도한다. 각 모델의 non-OK 결과는 내부 진단을 보존하되 공개 message를 `null`로 projection해 나머지 결과를 유지한다. | `worker/analysis_job.py`, `worker/ml_retry.py`, `worker/result_payload.py`, `supabase/migrations/26_ml_result_contract.sql` |
+| result | exact Existing profile version을 포함한 CPL/FIT/SIM/evidence payload를 fenced transaction으로 저장 | `worker/result_payload.py`, `supabase/migrations/34_v02_public_result_projection_and_evidence.sql` |
 | browser read | Cookie 소유권 확인 후 `api` view/RPC를 authenticated role로 조회 | `app/api/v1/results.py`, `app/infrastructure/postgres_results.py` |
 | chat | message create/list/retry API, 별도 lease/fencing queue, 결과 근거 기반 LLM answer와 reference 저장 | `app/api/v1/conversations.py`, `worker/chat_main.py`, `worker/postgres_chat_repository.py`, `supabase/migrations/27_chat_worker_queue.sql` |
 

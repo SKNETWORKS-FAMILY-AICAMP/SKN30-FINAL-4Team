@@ -1,5 +1,9 @@
 # Self-hosted Supabase 운영 안내
 
+새 서버 구성과 DB·Storage 이전은 [데이터베이스 신규 환경 구성 가이드](DATABASE_SETUP_GUIDE.md),
+현재 EC2의 일상 기동·중지는
+[EC2 서버 운영 매뉴얼](../../docs/operations/EC2_SERVER_OPERATIONS.md)에서 시작한다.
+
 이 디렉터리는 PreReview용 self-hosted Supabase의 migration, pgvector Compose override,
 Storage 정책과 검증 도구를 관리한다. 실행 중 DB·Storage 객체·Docker volume·실제 `.env`
 비밀값은 Git에 넣지 않는다.
@@ -178,8 +182,8 @@ manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~41·same-server API/analysis worker/chat worker 경로에 맞춘 위 스크립트만
-사용한다. `01`~`41` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
+override·migration 01~42·same-server API/analysis worker/chat worker/report worker 경로에 맞춘 위 스크립트만
+사용한다. `01`~`42` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
 검증됐다고 간주하지 않는다.
 
 ## 데이터 위치
@@ -191,7 +195,7 @@ override·migration 01~41·same-server API/analysis worker/chat worker 경로에
 | Existing 공고 원본·IR·Profile | private `existing-kb` | trusted importer·worker |
 | Existing PDF native/render/Surya/replay 산출물 | private `existing-kb` + `kb.artifact` lineage | trusted one-shot importer |
 | 요청 원본·Common IR·Request Profile | private `request-temp` | FastAPI·worker |
-| PDF 보고서 | private `analysis-reports` | FastAPI·PDF worker(추후) |
+| PDF 보고서 | private `analysis-reports` | FastAPI·report-worker |
 
 Existing PDF 한 건을 CPU native preflight, persistent RunPod geometry shadow, Terra Profile,
 표준 pack, optional DB import까지 연결하는 명령과 정확한 제한은
@@ -246,7 +250,8 @@ generic writer는 `40001`을 받으면 **해당 transaction 전체를 rollback�
 migration 21~26은 Redis/RQ 없이 PostgreSQL을 analysis durable queue와 fenced 결과 저장
 경계로 쓴다. v0.2의 FastAPI lifecycle/read boundary는 migration 33, raw/public result
 projection은 34, partial-axis retrieval은 35, chat idempotency/queue는 36, analysis/chat
-공용 전역 admission/backpressure는 37에서 추가한다.
+공용 전역 admission/backpressure는 37, fenced PDF queue와 private report lifecycle은
+41에서 추가한다.
 
 | 영역 | 역할 |
 |---|---|
@@ -274,10 +279,15 @@ limit)`는 purpose/target/support 중 worker가 실제 만든 1~3축만 검사�
 않는다. `PREREVIEW_EXISTING_KB_REQUIRED=true`이면 active KB/retrieval 부재는 fail-closed이고,
 `false`이면 `KB_EMPTY` 완료를 허용한다.
 
-FastAPI와 worker가 migration 33~40의 `workspace.*_v2`/`api.rpc_*_v2`를 호출할 때에도
+FastAPI와 worker가 migration 33~42의 `workspace.*_v2`/`api.rpc_*_v2` 및 PDF queue RPC를 호출할 때에도
 browser는 그 RPC에 직접 접근하지 않는다. 이 함수와 partial retrieval은 `service_role`만
 실행할 수 있으며, FastAPI는 검증한 user UUID를 인자로 넘겨 owner-scoped public DTO만
 반환한다.
+
+migration 41은 적용 이전에 이미 완료된 분석 case를 PDF queue로 backfill하지 않는다.
+적용 이후 새로 완료되거나 실제 재분석 완료로 상태가 갱신된 case만 trigger가 enqueue한다.
+과거 case는 공개 projection에서 `report.status='failed'`, `can_download=false`로 표시하며
+Storage 객체나 dispatch row를 만들지 않는다.
 
 ## EC2 최초 배포
 
@@ -378,7 +388,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`41` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`42` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤

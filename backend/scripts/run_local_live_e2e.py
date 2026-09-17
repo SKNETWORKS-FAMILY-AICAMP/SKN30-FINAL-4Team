@@ -1676,7 +1676,7 @@ def _configure_environment(
         ).strip().lower(),
         "OPENAI_API_KEY": _required(provider, "OPENAI_API_KEY"),
         "OPENAI_LLM_MODEL": llm_model
-        or str(provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-luna"),
+        or str(provider.get("OPENAI_LLM_MODEL") or "gpt-5.6-terra"),
         "OPENAI_EMBEDDING_MODEL": str(
             provider.get("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-small"
         ),

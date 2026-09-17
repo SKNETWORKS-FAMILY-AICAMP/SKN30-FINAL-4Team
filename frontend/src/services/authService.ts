@@ -33,6 +33,17 @@ export const authService = {
         }
     },
 
+    verifyPasswordRecovery: async (tokenHash: string) => {
+        try {
+            return await api.post('/auth/password-recovery/verify', { token_hash: tokenHash })
+        } catch (error: unknown) {
+            throw new Error(
+                getFriendlyErrorMessage(error, '비밀번호 재설정 링크가 유효하지 않습니다', 'verifyPasswordRecovery'),
+                { cause: error },
+            )
+        }
+    },
+
     updatePassword: async (password: string) => {
         try {
             return await api.post('/auth/update-password', { password })

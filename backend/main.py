@@ -28,6 +28,9 @@ DEFAULT_GLOBAL_QUEUE_MAX = 25
 MAX_GLOBAL_QUEUE_MAX = 10_000
 DEFAULT_UPLOAD_CONCURRENCY = 2
 MAX_UPLOAD_CONCURRENCY = 32
+DEFAULT_REPORT_DOWNLOAD_CONCURRENCY = 2
+MAX_REPORT_DOWNLOAD_CONCURRENCY = 8
+MAX_REPORT_BYTES = 25 * 1024 * 1024
 _BUILD_ID_PATTERN = re.compile(r"[0-9a-f]{64}")
 _BUILD_ID_FILE = Path(__file__).resolve().with_name(".prereview-build-id")
 
@@ -107,6 +110,42 @@ def _upload_concurrency_from_environment() -> int:
     return limit
 
 
+def _report_max_bytes_from_environment() -> int:
+    """Keep API, worker, DB metadata and Storage bucket on one hard limit."""
+
+    raw_value = os.getenv("PREREVIEW_REPORT_MAX_BYTES", str(MAX_REPORT_BYTES))
+    try:
+        limit = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("PREREVIEW_REPORT_MAX_BYTES must be an integer") from exc
+    if not 1 <= limit <= MAX_REPORT_BYTES:
+        raise RuntimeError(
+            f"PREREVIEW_REPORT_MAX_BYTES must be between 1 and {MAX_REPORT_BYTES}"
+        )
+    return limit
+
+
+def _report_download_concurrency_from_environment() -> int:
+    """Bound simultaneous in-memory private PDF reads per API process."""
+
+    raw_value = os.getenv(
+        "PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY",
+        str(DEFAULT_REPORT_DOWNLOAD_CONCURRENCY),
+    )
+    try:
+        limit = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY must be an integer"
+        ) from exc
+    if not 1 <= limit <= MAX_REPORT_DOWNLOAD_CONCURRENCY:
+        raise RuntimeError(
+            "PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY must be between "
+            f"1 and {MAX_REPORT_DOWNLOAD_CONCURRENCY}"
+        )
+    return limit
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="PreReview API",
@@ -129,6 +168,13 @@ def create_app() -> FastAPI:
             str(app.state.upload_max_bytes + 1024 * 1024),
         )
     )
+    app.state.report_download_max_bytes = _report_max_bytes_from_environment()
+    app.state.report_download_concurrency = (
+        _report_download_concurrency_from_environment()
+    )
+    app.state.report_download_semaphore = asyncio.Semaphore(
+        app.state.report_download_concurrency
+    )
     app.state.upload_concurrency = _upload_concurrency_from_environment()
     app.state.upload_semaphore = asyncio.Semaphore(app.state.upload_concurrency)
     app.state.global_queue_max = _global_queue_max_from_environment()
@@ -140,6 +186,11 @@ def create_app() -> FastAPI:
     # auth HTTP transport is injectable so tests never need a network call.
     app.state.supabase_auth_transport = None
     app.state.auth_allowed_origins = parse_allowed_origins(os.getenv("PREREVIEW_AUTH_ALLOWED_ORIGINS", ""))
+    # Product deployments are invite/admin-provisioned by default. This API
+    # guard is defense in depth; Supabase GoTrue must also set DISABLE_SIGNUP.
+    app.state.auth_signup_enabled = os.getenv(
+        "PREREVIEW_AUTH_SIGNUP_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
     app.state.auth_cookie_secure = os.getenv("PREREVIEW_AUTH_COOKIE_SECURE", "false" if app.state.offline_mode else "true").lower() in {"1", "true", "yes"}
     app.state.auth_cookie_samesite = os.getenv("PREREVIEW_AUTH_COOKIE_SAMESITE", "lax")
     app.state.auth_cookie_domain = os.getenv("PREREVIEW_AUTH_COOKIE_DOMAIN", "")
@@ -155,6 +206,7 @@ def create_app() -> FastAPI:
     app.state.analysis_run_service = None
     app.state.result_repository = None
     app.state.conversation_repository = None
+    app.state.report_object_storage = None
     if not app.state.offline_mode and app.state.database_url:
         app.state.result_repository = PostgresResultRepository(app.state.database_url)
         app.state.conversation_repository = PostgresConversationRepository(
@@ -167,15 +219,17 @@ def create_app() -> FastAPI:
         and app.state.supabase_service_role_key
         and app.state.database_url
     ):
+        private_storage = SupabasePrivateObjectStorage(
+            supabase_url=app.state.supabase_url,
+            service_role_key=app.state.supabase_service_role_key,
+        )
+        app.state.report_object_storage = private_storage
         app.state.analysis_run_service = AnalysisRunService(
             PostgresAnalysisRunRepository(
                 app.state.database_url,
                 global_queue_max=app.state.global_queue_max,
             ),
-            SupabasePrivateObjectStorage(
-                supabase_url=app.state.supabase_url,
-                service_role_key=app.state.supabase_service_role_key,
-            ),
+            private_storage,
         )
 
     # Cross-origin browser calls are allowed only for the same explicit list

@@ -1,6 +1,6 @@
-# Backend rebuild 구현 현황
+# Backend 구현·검증 기록
 
-마지막 갱신: 2026-09-15
+마지막 갱신: 2026-09-17
 
 ## 현재 선택한 운영 구조
 
@@ -8,14 +8,35 @@
 Frontend (HttpOnly Cookie)
   → FastAPI
       → Supabase Auth / PostgreSQL + pgvector / private Storage
-      → PostgreSQL polling worker (same server)
+      → PostgreSQL polling workers (analysis/chat/PDF, same server)
 ```
 
 Supabase는 인증·DB·벡터·Storage 인프라다. 브라우저는 Supabase나 Edge Function을 직접
 호출하지 않는다. Redis/RQ, external worker HTTP dispatch/callback, SSE/Realtime은 현재
 운영 경로에서 사용하지 않는다.
 
-## 2026-09-15 통합 상태
+## 2026-09-17 PDF 보고서 통합
+
+- migration 41이 fenced PDF queue, private `analysis-reports` artifact, lease 만료·orphan
+  Storage 정리를 추가한다. 적용 전에 이미 완료된 분석은 backfill하지 않고, 적용 이후
+  새로 완료되거나 실제 재분석 완료된 case만 enqueue한다.
+- 별도 non-root `report-worker`가 오프라인 Chromium template로 PDF를 렌더링한다. API는
+  `GET /api/v1/analysis-cases/{analysis_case_id}/report.pdf`에서 소유권·보존기간·크기·
+  PDF magic·SHA-256을 검증한 뒤 private object를 반환한다.
+- 실제 HWPX Docker external E2E에서 analysis/chat/ML 1·2·3 완료 후 PDF가 생성됐고,
+  소유자 Cookie 다운로드 `200 application/pdf`, `%PDF-`, 811,304 bytes 및 저장 SHA-256
+  일치를 확인했다. PDF 관련 회귀 테스트 41개도 통과했다.
+
+## 2026-09-16 후속 변경
+
+- 공통 `OPENAI_LLM_MODEL`과 Request Profile 기본값을 모두 `gpt-5.6-terra`로 통일했다.
+  FIT·SIM·채팅은 단계별 override가 없으면 공통 Terra를 사용한다.
+- Model 1은 자동 재시도하지 않는다. Model 2와 Model 3은 실행 예외 시 해당 모델만 한 번
+  재시도하며, 최종 non-OK 결과의 공개 message는 `null`로 반환해 다른 분석 결과를 유지한다.
+- 아래 날짜가 붙은 E2E의 모델명·run ID·image SHA는 당시 실행 기록이다. 현재 release의
+  검증을 대신하지 않으며, 배포 시 clean checkout에서 external E2E를 다시 수행한다.
+
+## 2026-09-15 백엔드 리빌드 통합 상태
 
 `origin/develop`의 Model 1/2/3 결과 저장과 비동기 채팅 queue를 이 브랜치의 FastAPI·worker
 경계에 통합했다. 현재 migration 번호는 Model 결과 `26`, 채팅 queue `27`, component-name
@@ -23,8 +44,9 @@ embedding v2 `28`, v2 활성화 보정 `29`, Existing KB 변경 직렬화/trigge
 Existing Model 1 분류 base `31`, immutable runtime identity·invalidation/promotion hardening
 `32`, 과거 코드용 inactive runtime configuration 등록은 `38`이며 v0.2 FastAPI
 lifecycle/result/retrieval/chat/admission은 `33`~`37`, atomic upload finalization은
-`39`, 실행 시도별 embedding provenance는 `40`이다. 최신 `develop`의 공용 ML runtime
-변경에 맞는 Model 1 v4 identity는 migration `41`이 inactive로 등록한다.
+`39`, 실행 시도별 embedding provenance는 `40`, fenced PDF 보고서 queue는 `41`이다.
+migration `42`는 통합 전 `backend-rebuild`의 중간 Model 1 v4 identity를 inactive 이력으로
+보존한다. 현재 통합 runtime은 migration 31·32·38의 v3 identity를 사용한다.
 
 - Existing Model 1 분류는 `retrieval.classification_configuration`과
   `retrieval.existing_profile_classification`에 immutable weight/runtime-manifest/input configuration·input SHA-256·raw label·신뢰도·
@@ -45,9 +67,9 @@ lifecycle/result/retrieval/chat/admission은 `33`~`37`, atomic upload finalizati
   `approved-facts-components-role-aware-v2` 한 개가 활성 상태이고, 이전 설정의 400행은
   비활성 상태로 보존돼 있다. 아래 2026-09-10 결과는 통합 전 번호 체계와 로컬 runtime에
   대한 역사적 검증 기록이다.
-- migration `41`은 과거 활성 설정과 분류 row를 수정하지 않는 forward-only 변경이다.
-  정적 계약 검증 뒤 실제 DB 적용, current Existing 100건 v4 재분류와 원자적 승격은
-  배포 작업으로 남겨 둔다. 승격 전에는 기존 v3 활성 결과가 그대로 유지된다.
+- migration `42`는 과거 활성 설정과 분류 row를 수정하지 않는 forward-only 이력 보존이다.
+  Model 2/3 재시도 로직이 실행 adapter로 이동하면서 공유 reference 파일은 v3 manifest와
+  다시 byte-identical해졌으므로, 통합 checkout에서는 v4 재분류·승격을 수행하지 않는다.
 - 전체 backend pytest 906개를 수집해 `903 passed, 3 skipped`로 통과했다. 기본
   `testpaths` 밖의 Supabase migration contract wrapper도 별도로 실행해 내부 정적 계약
   24개를 모두 통과했다. Python compile, 응답 계약 JSON, Compose config와
@@ -76,7 +98,7 @@ lifecycle/result/retrieval/chat/admission은 `33`~`37`, atomic upload finalizati
     `INPUT_EVIDENCE_MISSING`으로 acceptance 실패했다. 문서에 금액·수량 원문 근거가
     부족한 fixture 특성에 따른 기대 가능한 거부이며, 인프라 실패와 구분된다.
 - 2026-09-13 전용 Docker worker external live E2E를 실제 DB와 OpenAI로 완료했다.
-  - 최신 run `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
+  - 해당 검증 run `f3e3c8c1-9988-4db2-8f6b-bdbed6472399`, case
     `c05d9ae0-d279-4839-8a86-102da0be18fd`
   - analysis worker `4d6aae5d4c87:1:540b85e666be`, chat worker
     `ea084ec9c993:1:c39815e56162`가 각각 한 번의 DB queue attempt로 완료됐다.
@@ -289,7 +311,8 @@ DB container의 `pg_restore --list`로 custom-format listing도 확인했다.
 채팅은 migration 27의 별도 queue와 migration 36의 v2 idempotency/claim, migration 37의
 공용 admission, owner-scoped API, 결과 근거 제한 handler와 worker로 구현되어 있으며,
 위 2026-09-13 합성 HWPX live E2E에서 실제 LLM 완료와 reference 저장을
-확인했다. PDF/OCR은 현재 요청 처리 범위에서 제외하며, PDF 생성도 E2E 완료 범위가 아니다.
+확인했다. PDF 입력/OCR은 현재 요청 처리 범위에서 제외한다. 분석 결과 PDF 생성·다운로드는
+위 2026-09-17 통합 범위에서 별도로 구현·검증했다.
 
 비밀번호 재설정은 self-hosted Supabase recovery 메일의 일회용 `TokenHash`를
 `GET /api/v1/auth/password-recovery/callback`에서 검증해 HttpOnly 세션 Cookie로
@@ -401,7 +424,7 @@ SUPABASE_ANON_KEY=<server-only>
 SUPABASE_SECRET_KEY=<server-only>
 DATABASE_URL=<server-only>
 OPENAI_API_KEY=<worker-only>
-OPENAI_LLM_MODEL=gpt-5.6-luna
+OPENAI_LLM_MODEL=gpt-5.6-terra
 OPENAI_REQUEST_PROFILE_MODEL=gpt-5.6-terra
 PREREVIEW_MODEL1_SERVING_HOST_DIR=/absolute/path/to/.runtime/model1-serving/model1
 PREREVIEW_MODEL1_RUNTIME_UID=<numeric-owner-uid>

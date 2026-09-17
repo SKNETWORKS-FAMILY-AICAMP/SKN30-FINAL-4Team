@@ -19,7 +19,7 @@ export default function LandingView() {
                     <h1 className="text-3xl md:text-[42px] leading-tight md:leading-[1.3] font-extrabold tracking-tight text-white mb-6">
                         정부 지원사업 사전협의와 기획안 검토,
                         <br className="hidden sm:inline" />
-                        <span className="text-blue-300">AI 기반 5대 점검 체계</span>
+                        <span className="text-blue-300">AI 기반 3대 점검 체계</span>
                         로 더 신속하고 정확하게
                     </h1>
                     <p className="text-base md:text-lg text-slate-300 font-normal max-w-3xl leading-relaxed mb-10">
