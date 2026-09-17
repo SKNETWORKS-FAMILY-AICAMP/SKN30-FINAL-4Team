@@ -224,6 +224,8 @@ def test_local_installer_is_pinned_and_prepare_only() -> None:
     assert "utils/add-new-auth-keys.sh --update-env >/dev/null 2>&1" in source
     assert '"$STAGING_DIR/bundle/.env.old"' in source
     assert "docker-compose.pgvector.override.yml.example" in source
+    assert "docker-compose.accelerator-storage.override.yml.example" in source
+    assert "docker-compose.accelerator-storage.yml" in source
     assert "config --quiet >/dev/null 2>&1" in source
     assert "refusing a non-empty target" in source
     assert "repository targets must be below .runtime" in source

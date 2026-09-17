@@ -17,8 +17,9 @@ usage() {
 usage: install_selfhosted_local.sh [--target /absolute/new/path]
 
 Installs the pinned official Supabase Docker bundle, generates its local
-secrets, and adds docker-compose.pgvector.yml. It does not start containers,
-apply PreReview migrations, seed data, or reset any volume.
+secrets, and adds the pgvector and accelerator Storage Compose overrides. It
+does not start containers, apply PreReview migrations, seed data, or reset any
+volume.
 USAGE
 }
 
@@ -189,6 +190,9 @@ done
 install -m 0644 \
   "$SCRIPT_DIR/docker-compose.pgvector.override.yml.example" \
   "$STAGING_DIR/bundle/docker-compose.pgvector.yml"
+install -m 0644 \
+  "$SCRIPT_DIR/docker-compose.accelerator-storage.override.yml.example" \
+  "$STAGING_DIR/bundle/docker-compose.accelerator-storage.yml"
 
 printf 'ref=%s\ncommit=%s\n' \
   "$PINNED_SUPABASE_REF" "$RESOLVED_COMMIT" \
@@ -199,6 +203,7 @@ if ! (
   docker compose \
     -f docker-compose.yml \
     -f docker-compose.pgvector.yml \
+    -f docker-compose.accelerator-storage.yml \
     config --quiet >/dev/null 2>&1
 ); then
   echo "ERROR: generated Supabase Compose configuration is invalid" >&2

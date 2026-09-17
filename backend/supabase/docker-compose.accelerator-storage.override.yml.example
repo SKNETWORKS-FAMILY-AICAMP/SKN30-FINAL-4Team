@@ -1,0 +1,6 @@
+services:
+  storage:
+    environment:
+      # Signed upload URLs must remain valid while an accelerator job waits in
+      # the queue and runs. The upstream Storage default is only 60 seconds.
+      UPLOAD_SIGNED_URL_EXPIRATION_TIME: "${UPLOAD_SIGNED_URL_EXPIRATION_TIME:-1800}"

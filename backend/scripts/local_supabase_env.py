@@ -7,7 +7,10 @@ scripts must instead use the Compose-published loopback ports.
 
 from __future__ import annotations
 
+import io
+import os
 from pathlib import Path
+import stat
 import sys
 from urllib.parse import quote
 
@@ -25,14 +28,69 @@ def _required(values: dict[str, str | None], name: str) -> str:
     return value
 
 
-def load_local_supabase_settings(path: Path) -> dict[str, str]:
+def _read_private_secret_file(path: Path, *, max_bytes: int) -> bytes:
+    """Read a current-user-owned, mode-0600, single-link regular file."""
+
+    try:
+        link_info = os.lstat(path)
+        current_uid = getattr(os, "geteuid", lambda: -1)()
+        if (
+            current_uid < 0
+            or stat.S_ISLNK(link_info.st_mode)
+            or not stat.S_ISREG(link_info.st_mode)
+            or link_info.st_uid != current_uid
+            or link_info.st_nlink != 1
+            or stat.S_IMODE(link_info.st_mode) != 0o600
+        ):
+            raise OSError("unsafe secret file metadata")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_size < 1
+                or before.st_size > max_bytes
+                or before.st_uid != current_uid
+                or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o600
+            ):
+                raise OSError("unsafe secret file metadata")
+            content = handle.read(max_bytes + 1)
+            after = os.fstat(handle.fileno())
+    except OSError:
+        raise LocalSupabaseEnvError("Supabase Compose env is not a safe secret file") from None
+    if (
+        not content
+        or len(content) > max_bytes
+        or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+        != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+        or after.st_uid != current_uid
+        or after.st_nlink != 1
+        or stat.S_IMODE(after.st_mode) != 0o600
+    ):
+        raise LocalSupabaseEnvError("Supabase Compose env is not a stable secret file")
+    return content
+
+
+def load_local_supabase_settings(
+    path: Path,
+    *,
+    require_private_secret_file: bool = False,
+) -> dict[str, str]:
     try:
         from dotenv import dotenv_values
     except ImportError as error:
         raise LocalSupabaseEnvError(
             "python-dotenv is required to read the Supabase Compose env"
         ) from error
-    values = dotenv_values(path.resolve())
+    if require_private_secret_file:
+        try:
+            raw = _read_private_secret_file(path, max_bytes=64 * 1024).decode("utf-8")
+        except UnicodeDecodeError:
+            raise LocalSupabaseEnvError("Supabase Compose env is not valid UTF-8") from None
+        values = dotenv_values(stream=io.StringIO(raw))
+    else:
+        values = dotenv_values(path.resolve())
     password = _required(values, "POSTGRES_PASSWORD")
     tenant = _required(values, "POOLER_TENANT_ID")
     service_role_key = _required(values, "SERVICE_ROLE_KEY")
