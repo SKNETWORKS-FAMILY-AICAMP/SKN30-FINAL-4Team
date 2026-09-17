@@ -15,12 +15,22 @@
     };
     const fieldLabels = {
         request_type: '요청 유형', purpose_goal: '사업 목적 · 목표', nodes: '사업 구조',
+        implementation_plan: '연차별 · 내역사업별 추진계획', support_components: '세부 지원', program_period: '사업기간',
+        legal_basis: '지원 근거', linked_policy: '연계 정책', total_budget: '사업예산',
         business_need: '사업 필요성', support_target: '지원 대상', support_targe: '지원 대상', eligibility_conditions: '지원 자격 · 조건',
         support_activities: '지원 활동', support_methods: '지원 방식', support_items: '지원 항목',
+        support_content: '지원 내용', support_scale: '지원 규모', cost_sharing: '자부담 · 비용 분담',
+        beneficiary: '실제 수혜자', participation_requirements: '참여 요건',
+        delivery_relations: '수행기관 · 역할', delivery_methods: '수행 방식',
         expected_effect: '기대효과', performance_indicator: '성과지표',
         applicant_eligibility: '신청 자격', exclusions: '지원 제외 대상',
     };
-    const getFieldLabel = label => fieldLabels[String(label || '').split('.').pop()] || label || '항목';
+    const getFieldLabel = label => {
+        const raw = String(label || '').trim();
+        const key = raw.split('.').pop();
+        if (fieldLabels[key]) return fieldLabels[key];
+        return /^[a-z][a-z0-9_]*$/i.test(key) ? '확인 항목' : raw || '항목';
+    };
     const cplStatus = {
         confirmed: ['확인됨', 'good'], needs_confirmation: ['확인 필요', 'cpl-warning'],
         no_content: ['내용 없음', 'danger'], not_applicable: ['해당 없음', 'muted'],

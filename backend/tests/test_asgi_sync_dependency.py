@@ -126,6 +126,9 @@ def test_result_repository_dependency_resolves_promptly_under_a_saturated_limite
         ):
             raise NotImplementedError
 
+        async def get_report_status(self, *, owner_id: str, analysis_case_id: str):
+            raise NotImplementedError
+
         async def get_active_session(self, *, owner_id: str):
             return None
 

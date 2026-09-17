@@ -100,6 +100,7 @@ def test_openapi_uses_the_named_error_response_for_all_documented_failures() -> 
         ("/api/v1/analysis-runs", "post"): {"401", "403", "409", "413", "415", "422", "500", "503"},
         ("/api/v1/analysis-runs/{analysis_run_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-cases/{analysis_case_id}", "get"): {"401", "403", "404", "422", "500", "503"},
+        ("/api/v1/analysis-cases/{analysis_case_id}/report/status", "get"): {"401", "403", "404", "422", "429", "500", "502", "503"},
         ("/api/v1/analysis-cases/{analysis_case_id}/report.pdf", "get"): {"401", "403", "404", "422", "429", "500", "502", "503"},
         ("/api/v1/sim-candidates/{sim_candidate_id}", "get"): {"401", "403", "404", "422", "500", "503"},
         ("/api/v1/analysis-sessions/active", "get"): {"401", "403", "422", "500", "503"},

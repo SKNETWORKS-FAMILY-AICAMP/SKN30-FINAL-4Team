@@ -83,6 +83,12 @@ class FakeResultRepository:
         self.close_not_found: set[str] = set()
         self.report_not_found = False
         self.report_unavailable = False
+        self.report_status: Mapping[str, Any] = {
+            "status": "generating",
+            "can_download": False,
+            "can_regenerate": False,
+            "retry_count": 0,
+        }
         self.report = ReadyReportArtifact(
             storage_bucket="analysis-reports",
             storage_object_key="internal/reports/secret.pdf",
@@ -292,6 +298,16 @@ class FakeResultRepository:
             raise ResultNotFound("not visible")
         return self.report
 
+    async def get_report_status(
+        self, *, owner_id: str, analysis_case_id: str
+    ) -> Mapping[str, Any]:
+        self.calls.append(("report-status", owner_id, analysis_case_id))
+        if self.report_unavailable:
+            raise ResultRepositoryUnavailable("database=internal-secret")
+        if owner_id != OWNER_ID or analysis_case_id != CASE_ID:
+            raise ResultNotFound("not visible")
+        return self.report_status
+
     async def get_active_session(self, *, owner_id: str) -> Mapping[str, Any] | None:
         self.calls.append(("active", owner_id, None))
         return self.active if owner_id == OWNER_ID else None
@@ -406,6 +422,75 @@ def test_ready_report_lookup_selects_latest_artifact_before_ready_filter() -> No
     assert "analysis_case.retention_expires_at > clock_timestamp()" in _GET_READY_REPORT_SQL
     assert "report.expires_at > clock_timestamp()" in _GET_READY_REPORT_SQL
     assert "report.storage_bucket = \047analysis-reports\047" in _GET_READY_REPORT_SQL
+
+
+def test_report_status_lookup_is_owner_scoped_and_does_not_load_result_body() -> None:
+    from app.infrastructure.postgres_results import _GET_REPORT_STATUS_SQL
+
+    assert "result.axis_result" not in _GET_REPORT_STATUS_SQL
+    assert "public_analysis_projection" not in _GET_REPORT_STATUS_SQL
+    assert "analysis_case.user_id = %s" in _GET_REPORT_STATUS_SQL
+    assert "analysis_case.retention_expires_at > clock_timestamp()" in _GET_REPORT_STATUS_SQL
+    assert "artifact.report_type = 'pdf'" in _GET_REPORT_STATUS_SQL
+    assert "ORDER BY artifact.created_at DESC" in _GET_REPORT_STATUS_SQL
+
+
+def test_report_status_endpoint_is_lightweight_private_and_owner_scoped() -> None:
+    app, repository = _app_with_results()
+    storage = app.state.report_object_storage
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as client:
+            unauthenticated = await client.get(
+                f"/api/v1/analysis-cases/{CASE_ID}/report/status"
+            )
+            assert unauthenticated.status_code == 401
+
+            generating = await client.get(
+                f"/api/v1/analysis-cases/{CASE_ID}/report/status",
+                headers=_headers(),
+            )
+            assert generating.status_code == 200
+            assert generating.json() == {
+                "status": "generating",
+                "can_download": False,
+                "can_regenerate": False,
+                "retry_count": 0,
+            }
+            assert generating.headers["cache-control"] == "private, no-store"
+            assert storage.calls == []
+
+            repository.report_status = {
+                "status": "ready",
+                "can_download": True,
+                "can_regenerate": False,
+                "retry_count": 0,
+            }
+            ready = await client.get(
+                f"/api/v1/analysis-cases/{CASE_ID}/report/status",
+                headers=_headers(),
+            )
+            assert ready.status_code == 200
+            assert ready.json()["can_download"] is True
+            assert storage.calls == []
+
+            foreign = await client.get(
+                f"/api/v1/analysis-cases/{CASE_ID}/report/status",
+                headers=_headers(OTHER_OWNER_ID),
+            )
+            assert foreign.status_code == 404
+
+            repository.report_unavailable = True
+            unavailable = await client.get(
+                f"/api/v1/analysis-cases/{CASE_ID}/report/status",
+                headers=_headers(),
+            )
+            assert unavailable.status_code == 503
+            assert "internal-secret" not in unavailable.text
+
+    asyncio.run(run())
 
 
 def test_report_pdf_download_is_private_owner_scoped_and_safe() -> None:

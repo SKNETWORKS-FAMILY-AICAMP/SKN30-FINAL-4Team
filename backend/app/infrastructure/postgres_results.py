@@ -52,6 +52,34 @@ WHERE analysis_case.user_id = %s
   AND report.expires_at > clock_timestamp()
   AND report.storage_bucket = 'analysis-reports'
 """
+_GET_REPORT_STATUS_SQL = """
+SELECT
+    COALESCE(report.status, 'failed') AS status,
+    COALESCE(
+        report.status = 'ready'
+        AND report.storage_bucket = 'analysis-reports'
+        AND report.storage_object_key IS NOT NULL
+        AND report.content_sha256 IS NOT NULL
+        AND report.expires_at > clock_timestamp(),
+        FALSE
+    ) AS can_download,
+    FALSE AS can_regenerate,
+    COALESCE(report.retry_count, 0) AS retry_count
+FROM result.analysis_case AS analysis_case
+LEFT JOIN LATERAL (
+    SELECT artifact.status, artifact.storage_bucket, artifact.storage_object_key,
+           artifact.content_sha256, artifact.expires_at, artifact.retry_count
+      FROM result.report_artifact AS artifact
+     WHERE artifact.analysis_case_pk = analysis_case.analysis_case_pk
+       AND artifact.report_type = 'pdf'
+     ORDER BY artifact.created_at DESC, artifact.report_artifact_pk DESC
+     LIMIT 1
+) AS report ON TRUE
+WHERE analysis_case.user_id = %s
+  AND analysis_case.analysis_case_pk = %s
+  AND analysis_case.case_status = 'ready'
+  AND analysis_case.retention_expires_at > clock_timestamp()
+"""
 _GET_CURRENT_SQL = "SELECT api.rpc_get_analysis_current_v2(%s) AS payload"
 _CLOSE_SESSION_SQL = "SELECT * FROM api.rpc_close_analysis_session_v2(%s, %s)"
 _LIST_HISTORY_PAGE_SQL = """
@@ -144,6 +172,36 @@ class PostgresResultRepository:
             content_sha256=content_sha256.lower(),
             size_bytes=size_bytes,
         )
+
+    async def get_report_status(
+        self, *, owner_id: str, analysis_case_id: str
+    ) -> Mapping[str, Any]:
+        row = await self._one_with_owner(
+            owner_id=owner_id,
+            query=_GET_REPORT_STATUS_SQL,
+            params=(analysis_case_id,),
+        )
+        if row is None:
+            raise ResultNotFound("Report status not found")
+        report_status = row.get("status")
+        can_download = row.get("can_download")
+        can_regenerate = row.get("can_regenerate")
+        retry_count = row.get("retry_count")
+        if (
+            report_status not in {"generating", "ready", "failed"}
+            or not isinstance(can_download, bool)
+            or not isinstance(can_regenerate, bool)
+            or isinstance(retry_count, bool)
+            or not isinstance(retry_count, int)
+            or retry_count < 0
+        ):
+            raise ResultRepositoryUnavailable("Report status was malformed")
+        return {
+            "status": report_status,
+            "can_download": can_download,
+            "can_regenerate": can_regenerate,
+            "retry_count": retry_count,
+        }
 
     async def get_active_session(self, *, owner_id: str) -> Mapping[str, Any] | None:
         current = await self.get_current(owner_id=owner_id)

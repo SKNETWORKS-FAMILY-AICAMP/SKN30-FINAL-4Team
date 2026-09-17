@@ -672,6 +672,35 @@ def _report_download_max_bytes(request: Request) -> int:
 
 
 @router.get(
+    "/analysis-cases/{analysis_case_id}/report/status",
+    response_model=ReportReadModel,
+    summary="PDF 보고서 생성 상태 조회",
+    description=(
+        "결과 본문을 다시 읽지 않고 PDF 생성 상태만 반환하는 경량 polling endpoint입니다. "
+        "generating이면 2~3초 후 다시 조회하고, ready이면서 can_download=true일 때만 "
+        "report.pdf 다운로드를 활성화합니다."
+    ),
+    dependencies=[Security(access_cookie_scheme)],
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
+)
+async def get_analysis_report_status(
+    analysis_case_id: UUID,
+    principal: PrincipalDep,
+    repository: ResultRepositoryDep,
+) -> ReportReadModel:
+    try:
+        payload = await repository.get_report_status(
+            owner_id=principal.user_id,
+            analysis_case_id=str(analysis_case_id),
+        )
+    except ResultNotFound as exc:
+        raise _not_found("Analysis report status not found") from exc
+    except ResultRepositoryUnavailable as exc:
+        raise _database_unavailable(exc) from exc
+    return ReportReadModel.model_validate(payload)
+
+
+@router.get(
     "/analysis-cases/{analysis_case_id}/report.pdf",
     summary="분석 결과 PDF 보고서 다운로드",
     response_class=Response,

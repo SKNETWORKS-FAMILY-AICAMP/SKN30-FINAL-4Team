@@ -83,6 +83,16 @@ class ResultRepository(Protocol):
         """
         ...
 
+    async def get_report_status(
+        self, *, owner_id: str, analysis_case_id: str
+    ) -> Mapping[str, Any]:
+        """Return the lightweight public PDF lifecycle state for one owned case.
+
+        This query must not load the analysis result body. Absence, foreign
+        ownership, and expired retention all raise :class:`ResultNotFound`.
+        """
+        ...
+
     async def get_active_session(self, *, owner_id: str) -> Mapping[str, Any] | None: ...
 
     async def get_current(self, *, owner_id: str) -> Mapping[str, Any]:

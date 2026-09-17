@@ -83,6 +83,16 @@ def test_production_template_has_no_mock_fallback_and_allows_only_http_links() -
     assert "url.protocol === 'https:'" in script
 
 
+def test_production_template_maps_internal_cpl_fields_to_korean_labels() -> None:
+    from worker.result_payload import _CPL_FIELD_LABELS
+
+    script = DETAIL_SCRIPT.read_text(encoding="utf-8")
+    for field_name, korean_label in _CPL_FIELD_LABELS.items():
+        assert field_name in script
+        assert korean_label in script
+    assert "? '확인 항목' : raw || '항목'" in script
+
+
 def test_handler_renders_and_uploads_content_addressed_pdf() -> None:
     fixture = _fixture()
     processing_run_id = uuid4()
