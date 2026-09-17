@@ -36,25 +36,6 @@ router = APIRouter(prefix="/analysis-runs", tags=["Analysis"])
 
 DEFAULT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 REQUEST_EXTENSIONS = frozenset({".hwp", ".hwpx"})
-REQUEST_MIME_TYPES: dict[str, frozenset[str]] = {
-    ".hwp": frozenset(
-        {
-            "application/x-hwp",
-            "application/vnd.hancom.hwp",
-            "application/haansofthwp",
-            "application/octet-stream",
-        }
-    ),
-    ".hwpx": frozenset(
-        {
-            "application/hwp+zip",
-            "application/x-hwp+zip",
-            "application/vnd.hancom.hwpx",
-            "application/zip",
-            "application/octet-stream",
-        }
-    ),
-}
 RunStatus = Literal[
     "uploading",
     "queued",
@@ -125,16 +106,13 @@ def _safe_filename(upload: UploadFile) -> tuple[str, str]:
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Request upload accepts .hwp and .hwpx",
         )
-    supplied_mime = (upload.content_type or "").split(";", 1)[0].strip().lower()
-    allow_unknown_hwpx_mime = suffix == ".hwpx" and not supplied_mime
-    if (
-        supplied_mime not in REQUEST_MIME_TYPES[suffix]
-        and not allow_unknown_hwpx_mime
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Uploaded MIME type does not match the request format",
-        )
+    # Browser-reported MIME is untrusted metadata, not a portable format
+    # signal. Windows application registration can make the exact same HWPX
+    # bytes arrive as ``application/vnd.hancom.hwp`` when Hancom Office owns
+    # the extension, while another association reports ZIP or no MIME at all.
+    # The bounded content gate below validates HWP OLE magic and the complete
+    # required HWPX ZIP structure, so rejecting on this metadata adds no
+    # security boundary and creates environment-dependent false negatives.
     return filename, suffix
 
 
