@@ -21,7 +21,7 @@ Supabase HTTP service key와 PostgreSQL DSN/role은 서로 다른 자격증명�
   `fail_conversation_message_v2`
 - 위 SECURITY INVOKER function 내부에서 접근하는 `workspace`, `result`, `ops`, `kb` 객체
 
-현재 배포는 migration 01~40 전체가 적용된 DB를 전제로 한다. worker queue·저장 권한은
+현재 배포는 migration 01~41 전체가 적용된 DB를 전제로 한다. worker queue·저장 권한은
 migration 17·19·21~27과 v0.2 migration 34~36·40에서 누적되며, 활성 함수의 grant 대상은
 `service_role`이다.
 배포 DSN은 staging runtime validation을 통과한 trusted DB role을 사용하고 PostgreSQL 포트를

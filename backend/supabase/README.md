@@ -177,8 +177,8 @@ manifest, 안전한 batch importer와 후검증 순서는
 FastAPI+worker live E2E 전에는 이 data bootstrap을 별도로 한 번 수행해야 한다.
 
 handover 아래의 과거 `install_supabase.sh`는 현재 installer가 아니다. 현재 pgvector
-override·migration 01~40·same-server API/analysis worker/chat worker 경로에 맞춘 위 스크립트만
-사용한다. `01`~`40` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
+override·migration 01~41·same-server API/analysis worker/chat worker/report worker 경로에 맞춘 위 스크립트만
+사용한다. `01`~`41` fresh apply와 worker E2E는 별도 배포 gate이며, 문서상 명령만으로 이미
 검증됐다고 간주하지 않는다.
 
 ## 데이터 위치
@@ -189,7 +189,7 @@ override·migration 01~40·same-server API/analysis worker/chat worker 경로에
 | 파일 기반 Storage 객체 | 실제 Compose의 `volumes/storage` bind 경로 | FastAPI·worker |
 | Existing 공고 원본·IR·Profile | private `existing-kb` | trusted importer·worker |
 | 요청 원본·Common IR·Request Profile | private `request-temp` | FastAPI·worker |
-| PDF 보고서 | private `analysis-reports` | FastAPI·PDF worker(추후) |
+| PDF 보고서 | private `analysis-reports` | FastAPI·report-worker |
 
 벡터는 같은 PostgreSQL의 `vector` extension과 `retrieval` schema를 사용한다. Existing
 Profile만 `purpose`, `target`, `support`, `combined` 네 scope로 영속화한다. 요청 Profile은
@@ -349,7 +349,7 @@ SUPABASE_DIR=/srv/pre-review/supabase \
   /path/to/repository/backend/supabase/apply_migrations.sh
 ```
 
-`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`40` 파일을 매번 전부 순서대로
+`apply_migrations.sh`는 별도 migration ledger 없이 `01`~`41` 파일을 매번 전부 순서대로
 실행한다. 각 파일은 개별 transaction이므로 중간 실패 시 앞 파일은 이미 commit되어 있다.
 DB reset/삭제는 하지 않지만 모든 재실행 조합을 자동 검증하지도 않는다. 최초 적용 또는
 명시적 repair 때만 사용하고, 먼저 staging에서 같은 Supabase/image 조합으로 검증한 뒤

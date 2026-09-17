@@ -36,6 +36,7 @@ Frontend (HttpOnly Cookie)
 - `GET /api/v1/analysis-runs/{analysis_run_id}` — 작업 상태 폴링
 - `GET /api/v1/analysis/current` — 현재 분석의 `processing`/`ready`/`idle` 공개 상태
 - `GET /api/v1/analysis-cases/{analysis_case_id}`
+- `GET /api/v1/analysis-cases/{analysis_case_id}/report.pdf` — 준비된 private PDF 보고서 다운로드
 - `GET /api/v1/sim-candidates/{sim_candidate_id}`
 - `GET /api/v1/analysis-sessions/active`
 - `POST /api/v1/analysis-sessions/{analysis_session_id}/close` — 해당 소유자의 특정 session만 idempotent하게 종료
@@ -45,8 +46,8 @@ Frontend (HttpOnly Cookie)
 - `GET /api/v1/analysis-cases/{analysis_case_id}/messages` — signed cursor 대화 이력
 - `POST /api/v1/analysis-cases/{analysis_case_id}/messages/{assistant_message_id}/retry` — 필수 UUID v4 `Idempotency-Key` 재시도
 
-PDF 생성 API는 데이터 모델은 있으나 아직 이 공개 경계에 구현하지 않았다. 메시지
-POST/retry는 `202 Accepted`이며 별도 `chat-worker`가 저장된 분석 결과만 근거로 답한다.
+PDF 생성은 별도 `report-worker`가 분석 완료 건을 Chromium으로 렌더링해 private Storage에 저장한다.
+보고서 조회 API는 소유권·보존기간·hash를 검증한 뒤에만 반환한다. 메시지 POST/retry는 `202 Accepted`이며 별도 `chat-worker`가 저장된 분석 결과만 근거로 답한다.
 이력 응답의 `next_cursor`는 opaque 값이므로 수정하지 않고 그대로 다음 요청에 전달한다. cursor
 서명 비밀값을 교체하면 이미 발급한 cursor는 의도적으로 무효가 된다.
 
@@ -62,8 +63,8 @@ uv run uvicorn main:app --reload --host 127.0.0.1 --port 8001
 `.env.example`의 Supabase·PostgreSQL 설정과 허용할 프론트 origin이 필요하다. 실제
 비밀값은 커밋하지 않는다.
 
-online host 개발은 같은 `.env.host.local`을 세 프로세스에 주입해 API, analysis worker,
-chat worker를 각각 실행한다. chat worker가 없으면 질문은 `generating`에 남고, analysis
+online host 개발은 같은 `.env.host.local`을 네 프로세스에 주입해 API, analysis worker,
+chat worker, report worker를 각각 실행한다. chat worker가 없으면 질문은 `generating`에 남고, analysis
 worker가 없으면 업로드 run은 `queued`에 남는다.
 
 ```bash
@@ -71,6 +72,7 @@ worker가 없으면 업로드 run은 `queued`에 남는다.
 uv run uvicorn main:app --host 127.0.0.1 --port 8001 --env-file .env.host.local
 uv run python -m dotenv -f .env.host.local run -- python -m worker.main
 uv run python -m dotenv -f .env.host.local run -- python -m worker.chat_main
+uv run python -m dotenv -f .env.host.local run -- python -m worker.report_main
 ```
 
 ```bash
@@ -96,11 +98,11 @@ Docker Compose용이다. 호스트 Python으로 직접 실행할 때 필요한 `
 운영 가이드의 별도 절차를 따른다. online에서 analysis/conversation history를 사용하려면
 생성 뒤에도 `PREREVIEW_CURSOR_SIGNING_SECRET`에 충분히 긴 server-only 임의값을 설정한다.
 
-API와 same-server worker를 Docker Compose로 함께 기동할 때는 분석 `worker`와
-`chat-worker`가 기본 service로 포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만
+API와 same-server worker를 Docker Compose로 함께 기동할 때는 분석 `worker`, `chat-worker`, `report-worker`가 기본 service로 포함된다. worker 이미지에 `8000/tcp`가 표시될 수 있지만
 호스트 포트로 publish하지 않는다.
 
-현재 Compose는 역할을 분리한다. `api`와 `chat-worker`는 가벼운 기본 이미지로 실행하고,
+현재 Compose는 역할을 분리한다. `api`와 `chat-worker`는 가벼운 기본 이미지로 실행하고, `report-worker`는 Chromium 전용 이미지로 실행한다.
+
 analysis `worker`만 `Dockerfile.ml-worker`의 CPU 전용 이미지로 실행한다. Model 2/3 코드와
 고정 artifact, ML child Python venv는 그 이미지 안에만 들어간다. Model 1은 Git과 이미지에
 넣지 않고, `prepare_model1_runtime.py`가 만든 검증된 runtime만 read-only bind mount한다.

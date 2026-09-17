@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
+import re
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from psycopg.rows import dict_row
 
 from app.ports.results import (
     AnalysisHistoryPage,
+    ReadyReportArtifact,
     ResultNotFound,
     ResultRepositoryUnavailable,
 )
@@ -25,6 +27,31 @@ from app.ports.results import (
 
 _GET_CASE_SQL = "SELECT api.rpc_get_analysis_result_v2(%s, %s) AS payload"
 _GET_SIM_CANDIDATE_SQL = "SELECT api.rpc_get_sim_candidate_detail_v2(%s, %s) AS payload"
+_GET_READY_REPORT_SQL = """
+SELECT
+    report.storage_bucket,
+    report.storage_object_key,
+    report.content_sha256,
+    report.size_bytes
+FROM result.analysis_case AS analysis_case
+JOIN LATERAL (
+    -- Pick the latest artifact first. Filtering for ready inside this query
+    -- would make an older PDF downloadable while a newer report is pending.
+    SELECT artifact.storage_bucket, artifact.storage_object_key, artifact.content_sha256,
+           artifact.size_bytes, artifact.status, artifact.expires_at
+      FROM result.report_artifact AS artifact
+     WHERE artifact.analysis_case_pk = analysis_case.analysis_case_pk
+       AND artifact.report_type = 'pdf'
+     ORDER BY artifact.created_at DESC, artifact.report_artifact_pk DESC
+     LIMIT 1
+) AS report ON TRUE
+WHERE analysis_case.user_id = %s
+  AND analysis_case.analysis_case_pk = %s
+  AND analysis_case.retention_expires_at > clock_timestamp()
+  AND report.status = 'ready'
+  AND report.expires_at > clock_timestamp()
+  AND report.storage_bucket = 'analysis-reports'
+"""
 _GET_CURRENT_SQL = "SELECT api.rpc_get_analysis_current_v2(%s) AS payload"
 _CLOSE_SESSION_SQL = "SELECT * FROM api.rpc_close_analysis_session_v2(%s, %s)"
 _LIST_HISTORY_PAGE_SQL = """
@@ -77,6 +104,46 @@ class PostgresResultRepository:
         if not isinstance(payload, Mapping):
             raise ResultNotFound("Similarity candidate not found")
         return dict(payload)
+
+    async def get_ready_report_artifact(
+        self, *, owner_id: str, analysis_case_id: str
+    ) -> ReadyReportArtifact:
+        row = await self._one_with_owner(
+            owner_id=owner_id,
+            query=_GET_READY_REPORT_SQL,
+            params=(analysis_case_id,),
+        )
+        if row is None:
+            raise ResultNotFound("Report not found")
+        bucket = row.get("storage_bucket")
+        object_key = row.get("storage_object_key")
+        content_sha256 = row.get("content_sha256")
+        size_bytes = row.get("size_bytes")
+        if (
+            not isinstance(bucket, str)
+            or not bucket
+            or not isinstance(object_key, str)
+            or not object_key
+            or not isinstance(content_sha256, str)
+            or re.fullmatch(r"[0-9A-Fa-f]{64}", content_sha256) is None
+            or (
+                size_bytes is not None
+                and (
+                    isinstance(size_bytes, bool)
+                    or not isinstance(size_bytes, int)
+                    or size_bytes < 0
+                )
+            )
+        ):
+            # A malformed ready row is an internal integrity problem, never a
+            # reason to expose an object key or bucket to a browser.
+            raise ResultRepositoryUnavailable("Ready report artifact was malformed")
+        return ReadyReportArtifact(
+            storage_bucket=bucket,
+            storage_object_key=object_key,
+            content_sha256=content_sha256.lower(),
+            size_bytes=size_bytes,
+        )
 
     async def get_active_session(self, *, owner_id: str) -> Mapping[str, Any] | None:
         current = await self.get_current(owner_id=owner_id)

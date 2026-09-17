@@ -7,8 +7,10 @@ used by every business API route.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from enum import Enum
+from hashlib import sha256
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -19,6 +21,9 @@ from app.api.cursor import decode_cursor, encode_cursor
 from app.api.errors import not_found, service_unavailable, validation_error
 from app.ports.results import (
     AnalysisHistoryPage,
+    ReadyReportArtifact,
+    ReportObjectStorage,
+    ReportStorageUnavailable,
     ResultNotFound,
     ResultRepository,
     ResultRepositoryUnavailable,
@@ -31,6 +36,21 @@ from .openapi_models import error_responses
 router = APIRouter(tags=["Analysis results"])
 
 HISTORY_PAGE_SIZE = 5
+DEFAULT_REPORT_DOWNLOAD_MAX_BYTES = 25 * 1024 * 1024
+
+
+class _ReportDownloadResponse(Response):
+    """Release the in-memory PDF permit even when ASGI send fails."""
+
+    def __init__(self, *, semaphore: asyncio.Semaphore, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._semaphore = semaphore
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._semaphore.release()
 _HISTORY_CURSOR_ENDPOINT = "analysis-history"
 _HISTORY_CURSOR_VERSION = 1
 _HISTORY_CURSOR_KEYS = frozenset({"snapshot_at", "completed_at", "analysis_case_id"})
@@ -606,6 +626,16 @@ async def result_repository(request: Request) -> ResultRepository:
 
 
 ResultRepositoryDep = Annotated[ResultRepository, Depends(result_repository)]
+
+
+async def report_object_storage(request: Request) -> ReportObjectStorage:
+    storage = getattr(request.app.state, "report_object_storage", None)
+    if not isinstance(storage, ReportObjectStorage):
+        raise service_unavailable("Report storage is not configured")
+    return storage
+
+
+ReportObjectStorageDep = Annotated[ReportObjectStorage, Depends(report_object_storage)]
 TrustedOriginDep = Annotated[None, Depends(require_trusted_origin)]
 
 
@@ -623,6 +653,85 @@ def _cursor_secret(request: Request) -> str:
     if not secret:
         raise service_unavailable("Cursor signing is not configured")
     return secret
+
+
+def _report_download_semaphore(request: Request) -> asyncio.Semaphore:
+    semaphore = getattr(request.app.state, "report_download_semaphore", None)
+    if not isinstance(semaphore, asyncio.Semaphore):
+        raise service_unavailable("Report download capacity is not configured")
+    return semaphore
+
+
+def _report_download_max_bytes(request: Request) -> int:
+    value = getattr(
+        request.app.state, "report_download_max_bytes", DEFAULT_REPORT_DOWNLOAD_MAX_BYTES
+    )
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise service_unavailable("Report download limit is not configured")
+    return value
+
+
+@router.get(
+    "/analysis-cases/{analysis_case_id}/report.pdf",
+    summary="분석 결과 PDF 보고서 다운로드",
+    response_class=Response,
+    dependencies=[Security(access_cookie_scheme)],
+    responses=error_responses(401, 403, 404, 422, 429, 500, 502, 503),
+)
+async def download_analysis_report(
+    analysis_case_id: UUID,
+    request: Request,
+    principal: PrincipalDep,
+    repository: ResultRepositoryDep,
+) -> Response:
+    try:
+        artifact: ReadyReportArtifact = await repository.get_ready_report_artifact(
+            owner_id=principal.user_id,
+            analysis_case_id=str(analysis_case_id),
+        )
+    except ResultNotFound as exc:
+        # Missing, foreign, expired, and not-ready reports deliberately share
+        # one response so a caller cannot infer report lifecycle or existence.
+        raise _not_found("Analysis report not found") from exc
+    except ResultRepositoryUnavailable as exc:
+        raise _database_unavailable(exc) from exc
+
+    max_bytes = _report_download_max_bytes(request)
+    if artifact.size_bytes is not None and artifact.size_bytes > max_bytes:
+        raise service_unavailable("Report storage is temporarily unavailable")
+    storage = await report_object_storage(request)
+    semaphore = _report_download_semaphore(request)
+    await semaphore.acquire()
+    try:
+        try:
+            content = await storage.get(
+                bucket=artifact.storage_bucket,
+                object_key=artifact.storage_object_key,
+                max_bytes=max_bytes,
+            )
+        except ReportStorageUnavailable as exc:
+            raise service_unavailable(
+                "Report storage is temporarily unavailable"
+            ) from exc
+        if (
+            not content.startswith(b"%PDF-")
+            or sha256(content).hexdigest() != artifact.content_sha256
+        ):
+            raise service_unavailable("Report storage is temporarily unavailable")
+    except BaseException:
+        semaphore.release()
+        raise
+
+    # Do not derive this from a Storage key or user-controlled program name.
+    return _ReportDownloadResponse(
+        semaphore=semaphore,
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=\"pre-review-report.pdf\"",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get(

@@ -87,7 +87,7 @@ SUPABASE_DIR="$PWD/.runtime/supabase-dev" \
   backend/supabase/run_worker_queue_validation.sh
 ```
 
-`apply_migrations.sh`는 migration 01~40을 적용한다. 실패하면 오류 migration과 마지막 성공
+`apply_migrations.sh`는 migration 01~41을 적용한다. 실패하면 오류 migration과 마지막 성공
 지점을 기록하고, 원인을 확인하지 않은 채 전체 명령을 반복하지 않는다.
 
 Existing KB가 필요하면 [Existing KB 100건 bootstrap](EXISTING_KB_BOOTSTRAP.md)의 데이터팩

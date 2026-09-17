@@ -26,6 +26,25 @@ class ResultRepositoryUnavailable(ResultQueryError):
     """The internal database is unavailable or has not been configured."""
 
 
+class ReportStorageUnavailable(ResultQueryError):
+    """The private report object store cannot safely serve a PDF."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReadyReportArtifact:
+    """Server-only location of the latest downloadable report artifact.
+
+    This is deliberately not a public response model. The API route passes
+    it straight to private Storage and never serializes its bucket or object
+    key to a browser.
+    """
+
+    storage_bucket: str
+    storage_object_key: str
+    content_sha256: str
+    size_bytes: int | None
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisHistoryPage:
     """One page of the owner's analysis history plus the pinned DB snapshot.
@@ -41,7 +60,6 @@ class AnalysisHistoryPage:
     snapshot_at: datetime
     next_after: tuple[datetime, str] | None = None
 
-
 @runtime_checkable
 class ResultRepository(Protocol):
     """Curated, owner-scoped read operations exposed to HTTP routes."""
@@ -53,6 +71,17 @@ class ResultRepository(Protocol):
     async def get_sim_candidate(
         self, *, owner_id: str, sim_candidate_id: str
     ) -> Mapping[str, Any]: ...
+
+    async def get_ready_report_artifact(
+        self, *, owner_id: str, analysis_case_id: str
+    ) -> ReadyReportArtifact:
+        """Return only the owner's unexpired latest artifact when it is ready.
+
+        Absence, foreign ownership, expired retention, and a latest artifact
+        that is still generating/failed intentionally raise ResultNotFound so
+        the HTTP boundary does not disclose state.
+        """
+        ...
 
     async def get_active_session(self, *, owner_id: str) -> Mapping[str, Any] | None: ...
 
@@ -84,3 +113,17 @@ class ResultRepository(Protocol):
         the first page.
         """
         ...
+
+
+
+@runtime_checkable
+class ReportObjectStorage(Protocol):
+    """Server-only bounded reads from the private report bucket."""
+
+    async def get(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        max_bytes: int,
+    ) -> bytes: ...

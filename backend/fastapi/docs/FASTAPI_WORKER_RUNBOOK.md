@@ -37,21 +37,21 @@ FastAPI (`api`, container 8000 / host 기본 8001)
                claim → HWP/HWPX parse → OpenAI → 결과 저장
 ```
 
-`backend/compose.yaml`은 `api`, analysis `worker`, `chat-worker`를 실행한다. Supabase는 별도 Compose stack으로
+`backend/compose.yaml`은 `api`, analysis `worker`, `chat-worker`, `report-worker`를 실행한다. Supabase는 별도 Compose stack으로
 먼저 실행되어 있어야 한다. Redis/RQ, Edge Function dispatch/callback, 외부 worker HTTP
 서버는 현재 경로에서 사용하지 않는다.
 
 `worker`만 CPU 전용 `Dockerfile.ml-worker`를 사용한다. 이 이미지는 Model 2/3의 필요한
 코드·artifact와 child Python을 포함하고 Model 1은 절대 복사하지 않는다. `api`와
 `chat-worker`는 기본 `Dockerfile`로 실행되므로 ML dependency와 Model 1 내용을 가지지
-않는다. Model 1의 검증된 외부 runtime은 worker에만 read-only bind mount된다.
+않는다. `report-worker`는 `Dockerfile.report-worker`의 Chromium 전용 이미지로 실행한다. Model 1의 검증된 외부 runtime은 worker에만 read-only bind mount된다.
 
 ## 2. 기동 전 확인
 
 다음 조건이 먼저 충족되어야 한다.
 
 - self-hosted Supabase Auth·PostgreSQL/pgvector·Storage가 실행 중이다.
-- `backend/supabase/migrations/01`부터 `40`까지 적용되어 있다.
+- `backend/supabase/migrations/01`부터 `41`까지 적용되어 있다.
 - private bucket `existing-kb`, `request-temp`, `analysis-reports`가 생성되어 있다.
 - Existing Profile 100건과 active v2 `retrieval.existing_profile_embedding` 100건 × 4 scope가 준비되어 있다.
 - FastAPI·worker 컨테이너에서 Supabase gateway와 PostgreSQL에 접근할 수 있다.
@@ -65,14 +65,14 @@ FastAPI (`api`, container 8000 / host 기본 8001)
 처음부터 재현할 때는 다음 순서를 지킨다.
 
 1. self-hosted Supabase를 기동하고 Auth·DB·Storage가 healthy인지 확인한다.
-2. migration 01~40을 적용한다.
+2. migration 01~41을 적용한다.
 3. Git 밖의 Model 1 runtime을 준비하고, server-only `backend/.env`를 생성한다.
 4. Existing 100건 data pack을 검증·import하고 관계형 KB/Storage를 검증한다.
 5. Existing 분류 결과를 쓰는 기능까지 검증할 때는 current Profile 100건에 Model 1을
    dry-run 후 backfill하고 분류 설정을 활성화한다.
 6. v2 embedding을 dry-run 후 100 × 4 scope로 backfill·활성화한다.
 7. 아래 host-side 스크립트로 로컬 개발용 Auth 사용자를 **명시적으로** 한 번 준비한다.
-8. FastAPI `api`, 전용 Docker ML analysis `worker`, `chat-worker`를 기동한다.
+8. FastAPI `api`, 전용 Docker ML analysis `worker`, `chat-worker`, `report-worker`를 기동한다.
 9. Swagger에서 `sign-in` → `me` 또는 live E2E에서 `sign-in` → HWP/HWPX upload → 상태
    poll → 결과/채팅 순서로 확인한다.
 
@@ -297,6 +297,8 @@ PREREVIEW_ML_TIMEOUT_SECONDS=180
 | `PREREVIEW_UPLOAD_MAX_BYTES` | O | - | 선택(기본 50 MiB) | multipart에서 추출한 단일 HWP/HWPX 파일의 바이트 상한 |
 | `PREREVIEW_HTTP_MAX_BODY_BYTES` | O | - | 선택(기본 51 MiB) | multipart boundary/header와 모든 part를 포함한 HTTP 요청 전체 상한. `PREREVIEW_UPLOAD_MAX_BYTES`와 별개 |
 | `PREREVIEW_API_LIMIT_CONCURRENCY` | Compose | - | 선택(기본 32) | Compose가 Uvicorn `--limit-concurrency`로 전달하는 replica별 동시 연결 상한 |
+| `PREREVIEW_REPORT_MAX_BYTES` | O | O (report-worker) | 선택(기본·상한 25 MiB) | API 다운로드, worker 렌더 결과, DB/Storage가 공유하는 PDF byte 상한 |
+| `PREREVIEW_REPORT_DOWNLOAD_CONCURRENCY` | O | - | 선택(기본 2, 상한 8) | replica별 in-memory PDF 검증·다운로드 동시 처리 수 |
 | `PREREVIEW_GLOBAL_QUEUE_MAX` | O | - | 선택(기본 25) | 모든 API replica의 analysis upload + chat create/retry가 공유하는 PostgreSQL admission cap(1~10000) |
 | `PREREVIEW_CURSOR_SIGNING_SECRET` | O | - | online pagination 시 필수 | analysis/conversation history의 signed opaque cursor. 비어 있으면 해당 pagination은 503 |
 | `PREREVIEW_AUTH_ALLOWED_ORIGINS` | O | - | 브라우저 사용 시 필수 | 프론트의 정확한 origin 목록, 와일드카드 금지 |
@@ -450,7 +452,7 @@ namespace로 다시 매핑되는 rootless Docker는 현재 지원하지 않는�
 
 이 작업은 Request 분석을 실행하는 것이 아니라 현재 Existing Profile을 버전형
 KB 분류 결과로 보강하는 one-shot 운영 작업이다. 먼저 migration 31·32·38을 포함한
-전체 migration을 적용한다. `apply_migrations.sh`는 01~40을 순서대로 재적용하므로
+전체 migration을 적용한다. `apply_migrations.sh`는 01~41을 순서대로 재적용하므로
 기존 DB는 운영 가이드의 backup/staging 절차를 먼저 따른다.
 
 ```bash
@@ -655,7 +657,7 @@ docker compose ps
 ML CPU dependency를 내려받고 Model 2/3 artifact 검증까지 수행하므로 일반 API 이미지보다
 빌드 시간이 길 수 있다.
 
-세 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
+네 서비스 모두 `restart: unless-stopped`이므로 Docker daemon 재시작 뒤 다시 올라온다.
 analysis worker와 chat worker는 포트를 publish하지 않는다. API의 기본 호스트 포트는
 `8001`이며 `.env`의 `PREREVIEW_API_PORT`로 바꿀 수 있다. 기본 bind 주소는 `127.0.0.1`이다.
 
@@ -672,13 +674,13 @@ docker compose up -d --build
 재생성한다.
 
 ```bash
-docker compose up -d --force-recreate api worker chat-worker
+docker compose up -d --force-recreate api worker chat-worker report-worker
 ```
 
 설정 변경 없이 프로세스만 재시작할 때 사용한다.
 
 ```bash
-docker compose restart api worker chat-worker
+docker compose restart api worker chat-worker report-worker
 ```
 
 worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배포 전 새 업로드를 잠시
@@ -687,7 +689,7 @@ worker가 실행 중인 작업에는 최대 120초 lease가 걸려 있다. 배�
 시간을 준다.
 
 ```bash
-docker compose stop -t 600 api worker chat-worker
+docker compose stop -t 600 api worker chat-worker report-worker
 ```
 
 `docker compose down -v`나 Supabase stack의 volume 삭제 명령은 사용하지 않는다.
@@ -702,6 +704,7 @@ curl -fsS http://127.0.0.1:8001/health/live
 curl -fsS http://127.0.0.1:8001/health/ready
 docker compose logs --tail=100 api
 docker compose logs --tail=100 worker
+docker compose logs --tail=100 report-worker
 ```
 
 - `/health/live`: FastAPI 프로세스가 요청에 응답하는지만 확인한다.
@@ -730,7 +733,7 @@ LIMIT 20;
 
 ### Operator용 HWP/HWPX live E2E
 
-로컬 Supabase·migration 01~40·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
+로컬 Supabase·migration 01~41·Existing KB/v2 embedding·`backend/.env`가 준비된 개발
 환경에서는 다음 스크립트로 Auth → FastAPI 업로드 → Storage/DB queue → analysis
 worker → 결과 조회 → cookie 인증·trusted Origin 채팅 POST → chat-worker → 메시지 GET
 polling을 한 번에 검증할 수 있다. DB에 저장된 Model 1·2·3 status가 모두 `OK`인지도

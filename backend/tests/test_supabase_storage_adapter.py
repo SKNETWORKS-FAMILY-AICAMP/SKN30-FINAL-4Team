@@ -12,6 +12,7 @@ from app.ports.analysis_runs import (
     ObjectStorageUnavailable,
     ObjectStorageWriteUncertain,
 )
+from app.ports.results import ReportStorageUnavailable
 
 
 def test_upload_and_compensating_delete_use_server_credentials() -> None:
@@ -206,3 +207,63 @@ def test_clear_validation_rejection_does_not_probe_object() -> None:
         )
 
     assert [request.method for request in requests] == ["POST"]
+
+def test_private_report_download_uses_service_credentials_and_is_bounded() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            content=b"%PDF-1.7\nreport",
+            headers={"Content-Length": "15", "Content-Type": "application/pdf"},
+        )
+
+    storage = SupabasePrivateObjectStorage(
+        supabase_url="http://supabase.internal:8000",
+        service_role_key="server-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    content = asyncio.run(
+        storage.get(
+            bucket="analysis-reports",
+            object_key="private/case/report.pdf",
+            max_bytes=1024,
+        )
+    )
+
+    assert content == b"%PDF-1.7\nreport"
+    assert [request.method for request in requests] == ["GET"]
+    assert requests[0].headers["apikey"] == "server-secret"
+    assert requests[0].headers["authorization"] == "Bearer server-secret"
+    assert b"analysis-reports/private/case/report.pdf" in requests[0].url.raw_path
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(404, json={"message": "provider-secret"}),
+        httpx.Response(200, content=b"x", headers={"Content-Length": "1025"}),
+    ],
+)
+def test_private_report_download_rejects_missing_or_oversized_objects(
+    response: httpx.Response,
+) -> None:
+    storage = SupabasePrivateObjectStorage(
+        supabase_url="http://supabase.internal:8000",
+        service_role_key="server-secret",
+        transport=httpx.MockTransport(lambda _request: response),
+    )
+
+    with pytest.raises(ReportStorageUnavailable) as error:
+        asyncio.run(
+            storage.get(
+                bucket="analysis-reports",
+                object_key="private/case/report.pdf",
+                max_bytes=1024,
+            )
+        )
+
+    assert "provider-secret" not in str(error.value)
+    assert "server-secret" not in repr(error.value)
