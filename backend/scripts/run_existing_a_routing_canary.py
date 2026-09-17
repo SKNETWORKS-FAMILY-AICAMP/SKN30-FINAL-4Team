@@ -2,9 +2,8 @@
 """Run a tightly pinned, routing-only Existing A canary.
 
 The model phase accepts only Common IR that passes a fail-closed check for
-manual-adjudication identifiers and provenance.  Before the run, Frozen Gold
-contributes only its pinned freeze metadata.  Full Gold verification and
-oracle reads happen after the model phase; no Gold selection, Profile, or
+manual-adjudication identifiers and provenance.  Frozen Gold is not opened
+until every provider call has finished.  No Gold selection, Profile, or
 adjudication-only Common IR block may enter an OpenAI request.
 """
 
@@ -21,7 +20,8 @@ import secrets
 import stat
 import sys
 import time
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Mapping, NamedTuple, Protocol
+import unicodedata
 from zipfile import BadZipFile, ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
 
@@ -36,6 +36,11 @@ from worker.adapters.openai_llm_client import (  # noqa: E402
 )
 from worker.ports.llm import LLMClient  # noqa: E402
 from worker.profiles import StageError  # noqa: E402
+from worker.evaluation.pristine_common_ir import (  # noqa: E402
+    PRISTINE_HARD6_ARCHIVE_SHA256,
+    PristineCommonIrError,
+    load_pristine_common_ir,
+)
 
 from semantic_structuring.common_ir_v1 import _is_main_notice_section, prepare_common_ir_v1  # noqa: E402
 from semantic_structuring.composite_candidates import (  # noqa: E402
@@ -47,10 +52,11 @@ from semantic_structuring.run_block_candidate_discovery_test import ROUTER_CONTR
 from scripts.evaluate_existing_composite_shadow import _native_projection_pack  # noqa: E402
 
 
-REPORT_SCHEMA_VERSION = "existing_a_routing_canary/v1"
-REPORT_FILE_NAME = "existing-a-routing-canary.v1.json"
+REPORT_SCHEMA_VERSION = "existing_a_routing_canary/v2"
+REPORT_FILE_NAME = "existing-a-routing-canary.v2.json"
 BASELINE_ARCHIVE_SHA256 = "6649f1a5aab36f659d688634103950d3b73f8a5903a453aabdbbd9f5bc0f7f0d"
 GOLD_FREEZE_MANIFEST_SHA256 = "a2c35fb4c98c92c23ff34faa045a16ec4e8ed1ea4bae5397caab547cb3db6987"
+GOLD_DATASET_VERSION = "frozen_existing_profile_gold_100_20260909_v5"
 CORRECTED_NOTICE_IDS = (
     "PBLN_000000000103645",
     "PBLN_000000000112425",
@@ -64,10 +70,11 @@ PINNED_OPENAI_MODEL_ID = "gpt-5.6-terra"
 ROUTER_PROMPT_SHA256 = "9ff379ff0a6f2a1f4b152bcbf034b4d9e53ef44fab8aa1331dcab86230a676e9"
 SECTION_SCOPE_PROMPT_SHA256 = "55e40c4e9297556d3cfea7ce3c26652f386ce3fb5bb834ff34e7e396b4c39396"
 GOLD_ADJ_EXPECTATION_COUNT = 30
-ALL_NATIVE_SAFE_MATCH_COUNT = 12
-# This is the digest of the private, sorted expectation keys (notice id plus
-# occurrence set), not a digest of raw notice text or model output.
-ALL_NATIVE_REACHABLE_KEY_SHA256 = "dc0bfab35cd61f4d10da42e1df23638a9d08cd3f71df1041127a796c807edb5f"
+STABLE_RELATION_CONTRACT_VERSION = "stable_table_relation/v1"
+STABLE_RELATION_EXPECTATION_COUNT = 12
+# Filled from the reviewed Gold relation signatures.  The digest covers only
+# opaque per-relation keys; no raw text or occurrence id is published.
+STABLE_RELATION_KEY_SHA256 = "635b0907b285ad8b55b399f159e47ae3962a0457a78f35abc7605271e7f0eaa2"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 10_000
 MAX_COMMON_IR_BYTES = 64 * 1024 * 1024
@@ -149,6 +156,41 @@ def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
     return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
 
 
+def _read_bounded_regular_file(path: Path, *, label: str, max_bytes: int) -> bytes:
+    """Read a pinned artifact through one descriptor and reject TOCTOU changes."""
+
+    _require(not path.is_symlink(), f"{label} must not be a symlink")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = None
+            before = os.fstat(stream.fileno())
+            _require(stat.S_ISREG(before.st_mode), f"{label} must be a regular file")
+            _require(0 < before.st_size <= max_bytes, f"{label} exceeds physical size cap")
+            raw = stream.read(max_bytes + 1)
+            _require(
+                len(raw) == before.st_size and len(raw) <= max_bytes,
+                f"{label} changed while read",
+            )
+            after = os.fstat(stream.fileno())
+        _require(_stat_identity(before) == _stat_identity(after), f"{label} changed while read")
+        return raw
+    except ExistingARoutingCanaryError:
+        raise
+    except OSError as error:
+        raise ExistingARoutingCanaryError(f"cannot safely open {label}") from error
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def _safe_zip_member(info: ZipInfo) -> str:
     name = info.filename
     _require(name and "\x00" not in name and "\\" not in name, "unsafe baseline ZIP member name")
@@ -176,11 +218,18 @@ def _parse_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
             value[key] = item
         return value
 
+    def reject_constant(value: str) -> None:
+        raise ExistingARoutingCanaryError(f"non-finite JSON value in {label}: {value}")
+
     try:
-        value = json.loads(raw.decode("utf-8"), object_pairs_hook=no_duplicate_keys)
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=no_duplicate_keys,
+            parse_constant=reject_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
-        raise ExistingARoutingCanaryError(f"cannot parse baseline Common IR JSON: {label}") from error
-    _require(isinstance(value, dict), f"baseline Common IR must be a JSON object: {label}")
+        raise ExistingARoutingCanaryError(f"cannot parse JSON object: {label}") from error
+    _require(isinstance(value, dict), f"JSON value must be an object: {label}")
     return value
 
 
@@ -469,37 +518,116 @@ def _composite_summary(document: dict[str, Any], pack: Any) -> dict[str, Any]:
     }
 
 
-def _gold_audit_expectations(gold_root: Path) -> dict[str, tuple[str, frozenset[str]]]:
-    """Read the private Gold adj:* occurrence universe after model calls only."""
+StableCellIdentity = tuple[str, str, str]
+StableAtomIdentity = tuple[str, str, str, str]
 
-    root = gold_root.expanduser().resolve()
-    freeze_raw = (root / "freeze_manifest.json").read_bytes()
+
+class _GoldAuditInputs(NamedTuple):
+    raw_expectations: Mapping[str, tuple[str, frozenset[str]]]
+    expectation_texts: Mapping[str, str]
+    common_ir_documents: Mapping[str, dict[str, Any]]
+
+
+class _StableRelationExpectation(NamedTuple):
+    notice_id: str
+    atoms: tuple[StableAtomIdentity, ...]
+    text_sha256: str
+
+
+def _read_gold_artifact(
+    root: Path,
+    descriptor: Mapping[str, Any],
+    *,
+    label: str,
+) -> dict[str, Any]:
+    path = descriptor.get("path")
+    digest = descriptor.get("sha256")
+    _require(
+        isinstance(path, str)
+        and bool(path)
+        and "\\" not in path
+        and "\x00" not in path
+        and isinstance(digest, str)
+        and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
+        f"{label} provenance is invalid",
+    )
+    pure_path = PurePosixPath(path)
+    _require(
+        not pure_path.is_absolute()
+        and pure_path.as_posix() == path
+        and all(part not in {"", ".", ".."} for part in pure_path.parts),
+        f"{label} path is invalid",
+    )
+    supplied = root / path
+    _require(not supplied.is_symlink(), f"{label} must not be a symlink")
+    candidate = supplied.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as error:
+        raise ExistingARoutingCanaryError(f"{label} path escapes Gold root") from error
+    raw = _read_bounded_regular_file(
+        candidate,
+        label=label,
+        max_bytes=MAX_COMMON_IR_BYTES,
+    )
+    _require(
+        len(raw) <= MAX_COMMON_IR_BYTES and sha256(raw).hexdigest() == digest,
+        f"{label} SHA-256 mismatch",
+    )
+    return _parse_json_object(raw, label=label)
+
+
+def _gold_audit_inputs(gold_root: Path) -> _GoldAuditInputs:
+    """Read verified Gold Common IR and selection only after provider calls."""
+
+    supplied_root = gold_root.expanduser()
+    _require(not supplied_root.is_symlink(), "Gold root must not be a symlink")
+    root = supplied_root.resolve()
+    _require(root.is_dir(), "Gold root is unavailable")
+    freeze_raw = _read_bounded_regular_file(
+        root / "freeze_manifest.json",
+        label="Gold freeze manifest",
+        max_bytes=MAX_COMMON_IR_BYTES,
+    )
     _require(sha256(freeze_raw).hexdigest() == GOLD_FREEZE_MANIFEST_SHA256, "Gold freeze manifest SHA-256 pin mismatch")
     freeze = _parse_json_object(freeze_raw, label="Gold freeze manifest")
-    manifest_raw = (root / "profile_manifest.json").read_bytes()
+    _require(
+        freeze.get("dataset_version") == GOLD_DATASET_VERSION
+        and freeze.get("notice_count") == 100,
+        "Gold dataset identity pin mismatch",
+    )
+    manifest_raw = _read_bounded_regular_file(
+        root / "profile_manifest.json",
+        label="Gold profile manifest",
+        max_bytes=MAX_COMMON_IR_BYTES,
+    )
     _require(sha256(manifest_raw).hexdigest() == freeze.get("profile_manifest_sha256"), "Gold profile manifest SHA-256 mismatch")
     manifest = _parse_json_object(manifest_raw, label="Gold profile manifest")
     rows = manifest.get("profiles")
     _require(isinstance(rows, list), "Gold profile manifest profiles is invalid")
     expected: dict[str, tuple[str, frozenset[str]]] = {}
+    expectation_texts: dict[str, str] = {}
+    common_ir_documents: dict[str, dict[str, Any]] = {}
     for row in rows:
         if not isinstance(row, dict) or row.get("pblanc_id") not in CORRECTED_NOTICE_IDS:
             continue
         notice_id = row["pblanc_id"]
+        _require(notice_id not in common_ir_documents, "duplicate corrected notice in Gold profile manifest")
         frozen = row.get("frozen")
         selection = frozen.get("selection") if isinstance(frozen, dict) else None
-        path = selection.get("path") if isinstance(selection, dict) else None
-        digest = selection.get("sha256") if isinstance(selection, dict) else None
-        _require(isinstance(path, str) and isinstance(digest, str) and len(digest) == 64, "Gold selection provenance is invalid")
-        candidate = (root / path).resolve()
-        try:
-            candidate.relative_to(root)
-        except ValueError as error:
-            raise ExistingARoutingCanaryError("Gold selection path escapes Gold root") from error
-        _require(candidate.is_file() and not candidate.is_symlink(), "Gold selection artifact is unavailable")
-        raw = candidate.read_bytes()
-        _require(len(raw) <= MAX_COMMON_IR_BYTES and sha256(raw).hexdigest() == digest, "Gold selection SHA-256 mismatch")
-        artifact = _parse_json_object(raw, label="Gold selection artifact")
+        common_ir = frozen.get("common_ir") if isinstance(frozen, dict) else None
+        _require(isinstance(selection, Mapping), "Gold selection provenance is invalid")
+        _require(isinstance(common_ir, Mapping), "Gold Common IR provenance is invalid")
+        artifact = _read_gold_artifact(
+            root,
+            selection,
+            label=f"Gold selection artifact {notice_id}",
+        )
+        common_ir_documents[notice_id] = _read_gold_artifact(
+            root,
+            common_ir,
+            label=f"Gold Common IR artifact {notice_id}",
+        )
         evidence = artifact.get("materialized_evidence")
         _require(isinstance(evidence, list), "Gold selection evidence is invalid")
         for item in evidence:
@@ -523,13 +651,29 @@ def _gold_audit_expectations(gold_root: Path) -> dict[str, tuple[str, frozenset[
                     continue
                 occurrence_set = frozenset(occurrence_ids)
                 _require(len(occurrence_set) >= 2, "Gold adj evidence repeats an occurrence")
+                source_text = source.get("text")
+                _require(
+                    isinstance(source_text, str) and bool(source_text.strip()),
+                    "Gold adj evidence text is invalid",
+                )
                 key = sha256(
                     (notice_id + "\0" + "\0".join(sorted(occurrence_set))).encode("utf-8")
                 ).hexdigest()
                 _require(key not in expected, "duplicate Gold adj evidence occurrence set")
                 expected[key] = (notice_id, occurrence_set)
+                expectation_texts[key] = source_text
     _require(len(expected) == GOLD_ADJ_EXPECTATION_COUNT, "Gold adj expectation cardinality pin mismatch")
-    return expected
+    _require(
+        tuple(sorted(common_ir_documents)) == tuple(sorted(CORRECTED_NOTICE_IDS)),
+        "Gold Common IR set does not cover exactly the corrected notices",
+    )
+    return _GoldAuditInputs(expected, expectation_texts, common_ir_documents)
+
+
+def _gold_audit_expectations(gold_root: Path) -> dict[str, tuple[str, frozenset[str]]]:
+    """Compatibility helper returning only private raw occurrence expectations."""
+
+    return dict(_gold_audit_inputs(gold_root).raw_expectations)
 
 
 def _matching_candidate_count(expectation: frozenset[str], candidates: Any) -> int:
@@ -586,6 +730,256 @@ def _reachable_key_digest(keys: set[str]) -> str:
     return sha256("\n".join(sorted(keys)).encode("ascii")).hexdigest()
 
 
+def _stable_text_hash(value: str) -> str:
+    """Hash normalized text while preserving token order and punctuation."""
+
+    normalized = re.sub(
+        r"\s+", " ", unicodedata.normalize("NFKC", value).casefold()
+    ).strip()
+    return sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _stable_token_multiset_hash(value: str) -> str:
+    """Bind reviewed Gold text to its cells without exposing source text.
+
+    Gold's materialized relation text may enumerate the same reviewed cells in
+    a different role order.  This digest is therefore admission-only; routed
+    retention is decided by the ordered, punctuation-preserving per-cell
+    hashes produced by :func:`_stable_text_hash`.
+    """
+
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    tokens = re.findall(r"[0-9a-z가-힣]+", normalized)
+    fingerprint: Mapping[str, Any]
+    if tokens:
+        fingerprint = {"kind": "token_multiset", "values": sorted(Counter(tokens).items())}
+    else:
+        fingerprint = {
+            "kind": "normalized_text",
+            "value": re.sub(r"\s+", " ", normalized).strip(),
+        }
+    payload = json.dumps(
+        fingerprint,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return sha256(payload).hexdigest()
+
+
+def _pack_block_index(pack: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for block in pack.blocks:
+        block_id = getattr(block, "block_id", None)
+        _require(isinstance(block_id, str) and block_id and block_id not in result, "candidate pack block identity is invalid")
+        result[block_id] = block
+    return result
+
+
+def _stable_cell_identity(atom: Any, blocks: Mapping[str, Any]) -> StableCellIdentity:
+    source_block_id = getattr(atom, "source_block_id", None)
+    _require(isinstance(source_block_id, str) and source_block_id in blocks, "candidate atom source block is unavailable")
+    source = blocks[source_block_id]
+    block_id = getattr(atom, "common_ir_block_id", None)
+    cell_id = getattr(atom, "common_ir_cell_id", None)
+    role = getattr(atom, "role", None)
+    _require(
+        isinstance(block_id, str)
+        and bool(block_id)
+        and isinstance(cell_id, str)
+        and bool(cell_id)
+        and role in {"primary_value", "row_header", "column_header"},
+        "stable relation atom is not a supported table cell",
+    )
+    _require(
+        getattr(source, "common_ir_block_id", None) == block_id
+        and getattr(source, "common_ir_cell_id", None) == cell_id,
+        "candidate atom/source block lineage mismatch",
+    )
+    return (block_id, cell_id, role)
+
+
+def _stable_atom_text(atom: Any, blocks: Mapping[str, Any]) -> str:
+    source_block_id = getattr(atom, "source_block_id", None)
+    _require(isinstance(source_block_id, str) and source_block_id in blocks, "candidate atom source block is unavailable")
+    text = getattr(blocks[source_block_id], "text", None)
+    _require(isinstance(text, str), "candidate source block text is invalid")
+    return text
+
+
+def _stable_candidate_atoms(
+    candidate: Any,
+    pack: Any,
+    *,
+    occurrence_filter: frozenset[str] | None = None,
+) -> tuple[tuple[StableAtomIdentity, ...], str]:
+    blocks = _pack_block_index(pack)
+    block_order = {
+        block.block_id: index for index, block in enumerate(pack.blocks)
+    }
+    atoms = tuple(candidate.atoms)
+    if occurrence_filter is not None:
+        atoms = tuple(atom for atom in atoms if atom.occurrence_id in occurrence_filter)
+        _require(
+            {atom.occurrence_id for atom in atoms} == set(occurrence_filter),
+            "Gold relation candidate does not cover its occurrence expectation",
+        )
+    # Generator revisions may split one table cell into multiple occurrences.
+    # Bind normalized content to each cell+role rather than to an occurrence,
+    # so a split remains stable while text moving between cells cannot pass.
+    texts_by_cell: dict[StableCellIdentity, dict[str, str]] = {}
+    for atom in atoms:
+        identity = _stable_cell_identity(atom, blocks)
+        source_block_id = atom.source_block_id
+        _require(
+            source_block_id not in texts_by_cell.setdefault(identity, {}),
+            "stable relation repeats one source block in a cell role",
+        )
+        texts_by_cell[identity][source_block_id] = _stable_atom_text(atom, blocks)
+    identities = tuple(
+        sorted(
+            (
+                *identity,
+                _stable_text_hash(
+                    "\n".join(
+                        text
+                        for source_block_id, text in sorted(
+                            texts.items(), key=lambda item: block_order[item[0]]
+                        )
+                    )
+                ),
+            )
+            for identity, texts in texts_by_cell.items()
+        )
+    )
+    text_sha256 = _stable_token_multiset_hash(
+        "\n".join(_stable_atom_text(atom, blocks) for atom in atoms)
+    )
+    return identities, text_sha256
+
+
+def _stable_relation_key(
+    notice_id: str,
+    atoms: tuple[StableAtomIdentity, ...],
+    text_sha256: str,
+) -> str:
+    payload = json.dumps(
+        {
+            "contract_version": STABLE_RELATION_CONTRACT_VERSION,
+            "notice_id": notice_id,
+            "atoms": atoms,
+            "text_sha256": text_sha256,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return sha256(payload).hexdigest()
+
+
+def _stable_gold_expectations(
+    raw_expectations: Mapping[str, tuple[str, frozenset[str]]],
+    expectation_texts: Mapping[str, str],
+    gold_documents: Mapping[str, dict[str, Any]],
+) -> dict[str, _StableRelationExpectation]:
+    packs = {
+        notice_id: _native_projection_pack(document, notice_id)
+        for notice_id, document in gold_documents.items()
+    }
+    generations = {
+        notice_id: generate_composite_candidates(gold_documents[notice_id], pack)
+        for notice_id, pack in packs.items()
+    }
+    unique: dict[str, tuple[str, int]] = {}
+    for raw_key, (notice_id, occurrence_ids) in raw_expectations.items():
+        matches = tuple(
+            index
+            for index, candidate in enumerate(generations[notice_id].candidates)
+            if _matching_candidate_count(occurrence_ids, (candidate,)) == 1
+        )
+        if len(matches) == 1:
+            unique[raw_key] = (notice_id, matches[0])
+    reused = Counter(unique.values())
+    stable: dict[str, _StableRelationExpectation] = {}
+    for raw_key, candidate_identity in unique.items():
+        if reused[candidate_identity] != 1:
+            continue
+        notice_id, index = candidate_identity
+        occurrence_ids = raw_expectations[raw_key][1]
+        atoms, candidate_text_sha256 = _stable_candidate_atoms(
+            generations[notice_id].candidates[index],
+            packs[notice_id],
+            occurrence_filter=occurrence_ids,
+        )
+        text_sha256 = _stable_token_multiset_hash(expectation_texts[raw_key])
+        _require(
+            candidate_text_sha256 == text_sha256,
+            "Gold relation text does not match its bound Common IR candidate",
+        )
+        key = _stable_relation_key(notice_id, atoms, text_sha256)
+        _require(key not in stable, "duplicate stable Gold relation expectation")
+        stable[key] = _StableRelationExpectation(notice_id, atoms, text_sha256)
+    return stable
+
+
+def _matching_stable_candidate_count(
+    expectation: _StableRelationExpectation,
+    candidates: Any,
+    pack: Any,
+) -> int:
+    expected = set(expectation.atoms)
+    matches = 0
+    for candidate in candidates:
+        if candidate.kind != "table_axis_context":
+            continue
+        atoms = tuple(candidate.atoms)
+        if len({atom.common_ir_block_id for atom in atoms}) != 1 or any(
+            atom.common_ir_cell_id is None for atom in atoms
+        ):
+            continue
+        actual_atoms, _actual_full_text_sha256 = _stable_candidate_atoms(candidate, pack)
+        actual = set(actual_atoms)
+        if len({identity[:3] for identity in actual if identity[2] == "primary_value"}) != 1:
+            continue
+        if not expected.issubset(actual):
+            continue
+        extras = actual - expected
+        if any(signature[2] not in {"row_header", "column_header"} for signature in extras):
+            continue
+        matches += 1
+    return matches
+
+
+def _stable_reachable_keys(
+    expectations: Mapping[str, _StableRelationExpectation],
+    candidates_by_notice: Mapping[str, Any],
+    packs_by_notice: Mapping[str, Any],
+) -> set[str]:
+    unique: dict[str, tuple[str, int]] = {}
+    for key, expectation in expectations.items():
+        pack = packs_by_notice.get(expectation.notice_id)
+        if pack is None:
+            continue
+        matches = tuple(
+            index
+            for index, candidate in enumerate(candidates_by_notice.get(expectation.notice_id, ()))
+            if _matching_stable_candidate_count(
+                expectation,
+                (candidate,),
+                pack,
+            )
+            == 1
+        )
+        if len(matches) == 1:
+            unique[key] = (expectation.notice_id, matches[0])
+    reused = Counter(unique.values())
+    return {
+        key
+        for key, candidate_identity in unique.items()
+        if reused[candidate_identity] == 1
+    }
+
+
 def run_post_call_gold_audit(
     *,
     gold_root: Path,
@@ -602,18 +996,42 @@ def run_post_call_gold_audit(
         getattr(verification, "status", None) == "valid",
         "Gold verification did not succeed",
     )
-    expectations = _gold_audit_expectations(gold_root)
+    gold_inputs = _gold_audit_inputs(gold_root)
+    raw_expectations = gold_inputs.raw_expectations
+    stable_expectations = _stable_gold_expectations(
+        raw_expectations,
+        gold_inputs.expectation_texts,
+        gold_inputs.common_ir_documents,
+    )
+    stable_expectation_keys = set(stable_expectations)
+    _require(
+        len(stable_expectations) == STABLE_RELATION_EXPECTATION_COUNT,
+        "stable Gold relation expectation cardinality pin mismatch",
+    )
+    _require(
+        _reachable_key_digest(stable_expectation_keys) == STABLE_RELATION_KEY_SHA256,
+        "stable Gold relation expectation digest pin mismatch",
+    )
+    native_packs = {
+        notice_id: _native_projection_pack(document, notice_id)
+        for notice_id, document in baseline_documents.items()
+    }
     all_native = {
         notice_id: generate_composite_candidates(
-            document, _native_projection_pack(document, notice_id)
+            document, native_packs[notice_id]
         )
         for notice_id, document in baseline_documents.items()
     }
     native_candidates = {
         notice_id: generation.candidates for notice_id, generation in all_native.items()
     }
-    native_keys = _reachable_keys(expectations, native_candidates)
+    native_keys = _stable_reachable_keys(
+        stable_expectations,
+        native_candidates,
+        native_packs,
+    )
     native_digest = _reachable_key_digest(native_keys)
+    raw_native_keys = _reachable_keys(raw_expectations, native_candidates)
     native_fatal_codes = sorted(
         {
             diagnostic.code
@@ -627,8 +1045,14 @@ def run_post_call_gold_audit(
         for generation in all_native.values()
         for candidate in generation.candidates
     )
-    _require(len(native_keys) == ALL_NATIVE_SAFE_MATCH_COUNT, "all-native reachable cardinality pin mismatch")
-    _require(native_digest == ALL_NATIVE_REACHABLE_KEY_SHA256, "all-native reachable key digest pin mismatch")
+    _require(
+        native_keys == stable_expectation_keys,
+        "all-native stable relation set differs from reviewed Gold expectations",
+    )
+    _require(
+        native_digest == STABLE_RELATION_KEY_SHA256,
+        "all-native stable relation digest pin mismatch",
+    )
     _require(not native_fatal_codes, "all-native generation has fatal diagnostics")
     _require(native_cross_block_count == 0, "all-native generation crosses Common IR blocks")
 
@@ -639,7 +1063,12 @@ def run_post_call_gold_audit(
     routed_candidates = {
         notice_id: generation.candidates for notice_id, generation in routed_generations.items()
     }
-    routed_keys = _reachable_keys(expectations, routed_candidates)
+    routed_keys = _stable_reachable_keys(
+        stable_expectations,
+        routed_candidates,
+        routed_packs,
+    )
+    raw_routed_keys = _reachable_keys(raw_expectations, routed_candidates)
     fatal_codes = sorted(
         {
             diagnostic.code
@@ -659,7 +1088,10 @@ def run_post_call_gold_audit(
         and cross_block_count == 0
     )
     return {
-        "expectation_count": len(expectations),
+        "audit_contract_version": STABLE_RELATION_CONTRACT_VERSION,
+        "expectation_count": len(stable_expectations),
+        "stable_relation_expectation_count": len(stable_expectations),
+        "stable_relation_expectation_sha256": _reachable_key_digest(stable_expectation_keys),
         "all_native_safe_match_count": len(native_keys),
         "all_native_reachable_key_sha256": native_digest,
         "all_native_fatal_diagnostic_codes": native_fatal_codes,
@@ -669,8 +1101,15 @@ def run_post_call_gold_audit(
         "sets_equal": routed_keys == native_keys,
         "fatal_diagnostic_codes": fatal_codes,
         "cross_common_ir_block_candidate_count": cross_block_count,
-        "generator_expressibility": f"{len(native_keys)}/{len(expectations)}",
+        "generator_expressibility": f"{len(native_keys)}/{len(stable_expectations)}",
         "routed_a_retention": f"{len(routed_keys)}/{len(native_keys)}",
+        "raw_occurrence_diagnostic": {
+            "expectation_count": len(raw_expectations),
+            "all_native_reachable_count": len(raw_native_keys),
+            "all_native_reachable_key_sha256": _reachable_key_digest(raw_native_keys),
+            "routed_reachable_count": len(raw_routed_keys),
+            "routed_reachable_key_sha256": _reachable_key_digest(raw_routed_keys),
+        },
         "semantic_profile": "NOT_RUN",
         "status": "passed" if retention_ok else "failed",
     }
@@ -678,30 +1117,36 @@ def run_post_call_gold_audit(
 
 def build_plan(
     *,
-    baseline_zip: Path,
-    gold_root: Path,
+    input_zip: Path,
+    input_manifest: Path | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-    """Perform all offline input validation and return baseline-only documents."""
+    """Validate only the frozen model input; the Gold tree is never opened."""
 
     _verify_prompt_pins()
-    gold = _load_gold_pins(gold_root)
-    documents, baseline_sha256, member_sha256 = _read_baseline_common_ir(baseline_zip)
+    try:
+        loaded_input = load_pristine_common_ir(input_zip, manifest_path=input_manifest)
+    except PristineCommonIrError as error:
+        raise ExistingARoutingCanaryError(str(error)) from error
+    documents = {notice_id: dict(document) for notice_id, document in loaded_input.documents.items()}
+    input_sha256 = loaded_input.archive_sha256
+    member_sha256 = loaded_input.member_sha256
     attachment_counts = {notice_id: _attachment_count(document) for notice_id, document in documents.items()}
     planned_by_task = {
         announcement_profiles.SECTION_SCOPE_TASK: sum(count > 0 for count in attachment_counts.values()),
         announcement_profiles.BLOCK_ROUTER_TASK: len(documents),
     }
     planned_calls = sum(planned_by_task.values())
-    _require(planned_calls == MAX_OPENAI_CALLS, "pinned baseline call plan no longer matches the eight-call budget")
+    _require(planned_calls == MAX_OPENAI_CALLS, "pinned pristine input call plan no longer matches the eight-call budget")
     return documents, {
         "schema_version": REPORT_SCHEMA_VERSION,
         "execution_status": "planned",
         "routing_retention_status": "not_run",
         "semantic_profile_status": "not_run",
-        "dataset_version": gold["dataset_version"],
-        "baseline": {"archive_sha256": baseline_sha256},
+        "dataset_version": GOLD_DATASET_VERSION,
+        "input": {"archive_sha256": input_sha256, "expected_archive_sha256": PRISTINE_HARD6_ARCHIVE_SHA256},
         "gold_oracle": {
-            "freeze_manifest_sha256": gold["freeze_manifest_sha256"],
+            "freeze_manifest_sha256": GOLD_FREEZE_MANIFEST_SHA256,
+            "read_phase": "post_openai_only",
         },
         "notice_ids": list(CORRECTED_NOTICE_IDS),
         "model": None,
@@ -718,13 +1163,13 @@ def build_plan(
         "notices": [
             {
                 "notice_id": notice_id,
-                "baseline_common_ir_sha256": member_sha256[notice_id],
+                "input_common_ir_sha256": member_sha256[notice_id],
                 "attachment_section_count": attachment_counts[notice_id],
             }
             for notice_id in CORRECTED_NOTICE_IDS
         ],
         "limitations": [
-            "baseline_common_ir_only_in_openai_requests",
+            "pristine_common_ir_only_in_openai_requests",
             "manual_adjudication_metadata_rejected_before_provider_construction",
             "does_not_run_source_selection_or_profile_assembly",
             "does_not_measure_gold_semantic_accuracy",
@@ -744,7 +1189,7 @@ def execute_canary(
     telemetry: list[OpenAICompletionTelemetry] | None = None,
     audit_runner: Callable[..., dict[str, Any]] = run_post_call_gold_audit,
 ) -> dict[str, Any]:
-    """Execute only scope/router calls over baseline documents and summarize safely."""
+    """Execute only scope/router calls over pristine input documents and summarize safely."""
 
     _require(isinstance(model_id, str) and bool(model_id.strip()), "an exact model id is required")
     _require(model_id.strip() == PINNED_OPENAI_MODEL_ID, "model id does not match the pinned canary model")
@@ -838,6 +1283,26 @@ def _prepare_output_directory(output_dir: Path, gold_root: Path) -> Path:
     return resolved
 
 
+def _prepare_output_directory_before_openai(output_dir: Path, gold_root: Path) -> Path:
+    """Validate output without opening or resolving the private Gold root."""
+
+    supplied = output_dir.expanduser()
+    _require(
+        supplied.exists() and supplied.is_dir() and not supplied.is_symlink(),
+        "output directory must be an existing non-symlink directory",
+    )
+    resolved = supplied.resolve()
+    # This comparison is deliberately lexical for Gold: resolving or stating
+    # Gold before provider completion would violate the isolation boundary.
+    lexical_gold = Path(os.path.abspath(os.fspath(gold_root.expanduser())))
+    _require(
+        resolved != lexical_gold and lexical_gold not in resolved.parents,
+        "output directory must be outside the frozen Gold root",
+    )
+    _require(not any(resolved.iterdir()), "output directory must be empty")
+    return resolved
+
+
 def write_report(report: Mapping[str, Any], *, output_dir: Path, gold_root: Path) -> Path:
     target_dir = _prepare_output_directory(output_dir, gold_root)
     target = target_dir / REPORT_FILE_NAME
@@ -871,8 +1336,9 @@ def _gold_verifier() -> GoldVerifier:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline-zip", required=True, type=Path)
-    parser.add_argument("--gold-root", required=True, type=Path)
+    parser.add_argument("--input-zip", required=True, type=Path, help="Frozen pristine hard-6 Common IR ZIP")
+    parser.add_argument("--input-manifest", type=Path, help="Optional separately deployed public pristine hard-6 manifest")
+    parser.add_argument("--gold-root", type=Path, help="Required only with --execute-openai; first opened by the post-call audit")
     parser.add_argument("--execute-openai", action="store_true")
     parser.add_argument("--model", help="Exact OpenAI model id; required with --execute-openai")
     parser.add_argument("--timeout-seconds", type=float, default=120.0)
@@ -883,17 +1349,22 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        documents, plan = build_plan(baseline_zip=args.baseline_zip, gold_root=args.gold_root)
+        documents, plan = build_plan(input_zip=args.input_zip, input_manifest=args.input_manifest)
         if not args.execute_openai:
             print(json.dumps(plan, ensure_ascii=False, sort_keys=True))
             return 0
+        _require(args.gold_root is not None, "--gold-root is required with --execute-openai")
         _require(args.model is not None and args.model.strip(), "--model is required with --execute-openai")
         _require(args.model.strip() == PINNED_OPENAI_MODEL_ID, "--model does not match the pinned canary model")
         _require(args.output_dir is not None, "--output-dir is required with --execute-openai")
         _require(args.timeout_seconds > 0, "--timeout-seconds must be positive")
-        output_dir = _prepare_output_directory(args.output_dir, args.gold_root)
+        output_dir = _prepare_output_directory_before_openai(args.output_dir, args.gold_root)
         api_key = os.environ.get("OPENAI_API_KEY", "").strip()
         _require(bool(api_key), "OPENAI_API_KEY is required with --execute-openai")
+        _require(
+            os.environ.get("OPENAI_LOG", "").strip().lower() != "debug",
+            "OPENAI_LOG=debug is forbidden for this canary",
+        )
         telemetry: list[OpenAICompletionTelemetry] = []
         client = OpenAILLMClient(
             api_key=api_key,
