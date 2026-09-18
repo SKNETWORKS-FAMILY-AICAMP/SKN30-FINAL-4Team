@@ -1,12 +1,18 @@
-# <img src="./public/images/pre-review.png" alt="Pre-review Logo" width="200" />
+<img src="./public/images/pre-review.png" alt="Pre-review Logo" width="200" />
+
+<br><br>
 
 ## 🚀 시작하기
 
-프로젝트를 로컬 환경에서 실행하는 방법입니다. Node.js 설치 시 `npm`이 기본 포함되므로 별도의 추가 패키지 매니저는 필요하지 않습니다.
+프로젝트를 로컬 환경에서 실행하는 방법입니다. `Node.js` 설치 시 `npm`이 기본 포함되므로 별도의 추가 패키지 매니저는 필요하지 않습니다.
+
+<br>
 
 ### 1. 사전 요구 사항
 
 ![Node.js](https://shields.io/badge/node.js%2024.18.0-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white)
+
+<br>
 
 ### 2. 패키지 설치
 
@@ -16,6 +22,8 @@ frontend 디렉토리(`/frontend`)에서 아래 명령어를 실행하여 의존
 npm install
 ```
 
+<br>
+
 ### 3. 개발 서버 실행
 
 설치가 완료되면 아래 명령어로 로컬 개발 서버를 실행합니다.
@@ -24,8 +32,10 @@ npm install
 npm run dev
 ```
 
-💡 API 통신 및 프록시 안내
+> 💡 API 통신 및 프록시 안내
 별도의 VITE_API_BASE_URL 환경 변수 설정 없이, Vite 개발 서버의 프록시 설정(vite.config.ts)을 통해 /api/v1 요청이 백엔드 서버(http://localhost:8001)로 자동 라우팅됩니다.
+
+<br>
 
 ### 4. 프로덕션 빌드
 
@@ -38,6 +48,8 @@ npm run build
 운영 프론트 서버의 Caddy 설정, 정적 파일 반영, 검증 및 롤백 절차는
 [배포 가이드](deploy/README.md)를 참고합니다.
 
+<br><br>
+
 ## 🛠️ 기술 스택
 
 ![React](https://shields.io/badge/react%2019.2-61DAFB?style=for-the-badge&logo=react&logoColor=black)
@@ -45,6 +57,8 @@ npm run build
 ![Tailwind CSS](https://shields.io/badge/tailwind%20css%204.3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
 ![Vite](https://shields.io/badge/vite%208.2-9135FF?style=for-the-badge&logo=vite&logoColor=white)
 ![TypeScript](https://shields.io/badge/typescript%206.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+
+<br><br>
 
 ## 📁 폴더 구조
 
