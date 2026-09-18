@@ -32,8 +32,9 @@ npm install
 npm run dev
 ```
 
-> 💡 API 통신 및 프록시 안내
-별도의 VITE_API_BASE_URL 환경 변수 설정 없이, Vite 개발 서버의 프록시 설정(vite.config.ts)을 통해 /api/v1 요청이 백엔드 서버(http://localhost:8001)로 자동 라우팅됩니다.
+> **💡 API 통신 및 프록시 안내** <br>
+별도의 VITE_API_BASE_URL 환경 변수 설정 없이,
+Vite 개발 서버의 프록시 설정을 통해 /api/v1 요청이 백엔드 서버로 자동 라우팅됩니다.
 
 <br>
 
