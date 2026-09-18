@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .ports.llm import (
+    LLM_INVALID_RESPONSE_REASON_CODES,
     LLMInvalidResponseError,
     LLMTimeoutError,
     LLMUnavailableError,
@@ -79,7 +80,9 @@ from semantic_structuring.source_selection import (  # noqa: E402
     AnchorCorrectionRequest,
     AnchorCorrectionResponse,
     AmbiguousAnchorCorrectionError,
+    COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
     CorrectionResolverError,
+    FINALIZE_STAGE_CODES,
     SourceSelectionExtractionV02,
     apply_finalize_with_fallback_v02,
     build_explicit_support_cap_anchors,
@@ -102,6 +105,13 @@ SECTION_SCOPE_TASK = "announcement_section_scope_v1"
 BLOCK_ROUTER_TASK = "announcement_block_router_v03"
 SOURCE_SELECTION_TASK = "announcement_source_selection_v02"
 ANCHOR_CORRECTION_TASK = "announcement_anchor_correction_v1"
+_REPAIRABLE_INVALID_RESPONSE_REASONS = frozenset({
+    "schema_validation_failed",
+    "invalid_json",
+    "structured_response_not_object",
+    "missing_content",
+})
+_INVALID_RESPONSE_RAW_MAX_BYTES = 256 * 1024
 
 # Composite candidates are an experimental diagnostic input only.  They are
 # deliberately never sent to a model or materialized into Profile v0.2 in the
@@ -133,6 +143,30 @@ _EXISTING_NATIVE_EXACT_CANDIDATE_MODES = frozenset(
         EXISTING_NATIVE_EXACT_CANDIDATE_MODE_LINES_AND_CONTINUATIONS,
     }
 )
+
+# Source-selection failures are normally reduced to the public stage/reason
+# pair.  The fixed canary needs just enough additional information to
+# distinguish deterministic finalizer failures without retaining model output
+# or source coordinates.  These are closed vocabularies; unknown values are
+# collapsed rather than copied from an exception.
+_SAFE_MATERIALIZATION_ERROR_CLASSIFICATIONS = frozenset({
+    "ambiguous_anchor_unresolved",
+    "correction_resolver_failed",
+    "exact_anchor_materialization_requires_repair",
+    "missing_explicit_list_item",
+    "missing_explicit_support_cap",
+    "multiple_source_selection_repairs",
+    "support_scale_fact_requires_repair",
+})
+_SAFE_MATERIALIZATION_ERROR_TYPES = frozenset({
+    "DuplicateResolvedValueSourceSpanError",
+    "ExactAnchorMaterializationRepairError",
+    "ExplicitListCompletenessError",
+    "SourceSelectionRepairIssuesError",
+    "SupportCapCompletenessError",
+    "SupportScaleFactRepairError",
+    "ValueError",
+})
 
 
 class CompositeCandidateModeError(ValueError):
@@ -227,7 +261,7 @@ _PROMPT_SHA256 = {
     ("semantic_structuring.run_block_candidate_discovery_test", "main"):
         "9ff379ff0a6f2a1f4b152bcbf034b4d9e53ef44fab8aa1331dcab86230a676e9",
     ("semantic_structuring.run_source_selection_test", "main"):
-        "dd9c1e030e83e1339d2f626e07e5b10300caa920a3f2bdde86fbaf54bbd7d0c3",
+        "ba73ea50e389e1af7f67145f018ffaa5d8bd1bea494be51ed4c6a575b6d5b853",
 }
 
 
@@ -336,11 +370,13 @@ _ANCHOR_CORRECTION_INSTRUCTIONS = (
     "distinct candidates, and the server rejects duplicate source-span ownership."
 )
 _REPAIR_INSTRUCTIONS = (
-    " This is a repair attempt. The user payload contains previous_selection and "
-    "server_validation_errors. Return a complete revised selection. Preserve every valid "
-    "component, fact, exact anchor, and relationship from previous_selection. Change only "
-    "what is necessary to resolve the listed errors; do not re-extract the notice from scratch, "
-    "invent a business answer, or use any Gold/expected output. Every fact id in "
+    " This is a repair attempt. The user payload contains server_validation_errors and either "
+    "previous_selection, previous_invalid_response, or invalid_response_context. Return a complete revised selection. "
+    "When previous_selection is present, preserve every valid component, fact, exact anchor, "
+    "and relationship from it and change only what is necessary to resolve the listed errors. "
+    "Treat previous_invalid_response only as a schema-repair hint, never as validated facts. "
+    "When no prior object is present, return a complete response from the same trusted source_blocks. "
+    "Never invent a business answer or use any Gold/expected output. Every fact id in "
     "do_not_restore_fact_ids was rejected by a deterministic validator: remove it or return "
     "a genuinely corrected replacement, never the unchanged prior fact."
 )
@@ -351,6 +387,24 @@ _SUPPORT_SCALE_REPAIR_INSTRUCTIONS = (
     "source text. The required_support_scale_anchors were deterministically found in the "
     "trusted routed candidate pack. Include each supplied anchor as a separate support_scale fact "
     "using exactly its source_block_id and anchor_text."
+)
+_EXACT_ANCHOR_REPAIR_INSTRUCTIONS = (
+    " The payload's required_exact_anchor_repairs identifies facts whose prior "
+    "value_anchor was not an exact substring of the designated source block. "
+    "These records intentionally contain no anchor or source text. For each "
+    "record, inspect the trusted source_blocks entry with the same source_block_id "
+    "and replace the rejected fact with a value_anchor copied verbatim from that "
+    "block. Keep the listed field_name unless the fact must be removed; never "
+    "normalize, paraphrase, or reconstruct anchor_text."
+)
+_COMPONENT_NAME_ANCHOR_REPAIR_INSTRUCTIONS = (
+    " The validation issue type "
+    "component_name_anchor_must_reference_component_source_block identifies a "
+    "support_components item whose name_anchor source is not admitted by that "
+    "same item. For each such item, either include name_anchor.source_block_id "
+    "in the same component's source_block_ids, or correct or remove name_anchor. "
+    "Keep table_block_ids empty for this cell-level input. Return the complete "
+    "response. Do not invent, normalize, or canonicalize a component name."
 )
 _EXPLICIT_LIST_REPAIR_INSTRUCTIONS = (
     " The persistent validation error omits source text. Its in-memory "
@@ -382,6 +436,12 @@ _PROMPT_BUNDLE_COMPONENT_HASHES = {
     "repair": hashlib.sha256(_REPAIR_INSTRUCTIONS.encode("utf-8")).hexdigest(),
     "support_scale_repair": hashlib.sha256(
         _SUPPORT_SCALE_REPAIR_INSTRUCTIONS.encode("utf-8")
+    ).hexdigest(),
+    "exact_anchor_repair": hashlib.sha256(
+        _EXACT_ANCHOR_REPAIR_INSTRUCTIONS.encode("utf-8")
+    ).hexdigest(),
+    "component_name_anchor_repair": hashlib.sha256(
+        _COMPONENT_NAME_ANCHOR_REPAIR_INSTRUCTIONS.encode("utf-8")
     ).hexdigest(),
     "explicit_list_repair": hashlib.sha256(
         _EXPLICIT_LIST_REPAIR_INSTRUCTIONS.encode("utf-8")
@@ -445,12 +505,76 @@ def _llm_stage_error(error: Exception, *, stage: str, unit: str, attempt: int | 
         LLMUnavailableError: LLM_UNAVAILABLE,
         LLMInvalidResponseError: LLM_INVALID_RESPONSE,
     }.get(type(error), LLM_UNAVAILABLE)
-    return _stage_error(
+    failure = _stage_error(
         stage=stage,
         unit=unit,
         reason_code=reason_code,
         message=f"{type(error).__name__}: {error}",
         attempt=attempt,
+    )
+    if isinstance(error, LLMInvalidResponseError):
+        failure._canary_safe_llm_details = _safe_llm_invalid_response_context(  # type: ignore[attr-defined]
+            error
+        )
+    return failure
+
+
+def _safe_llm_invalid_response_context(
+    error: LLMInvalidResponseError,
+) -> dict[str, object]:
+    """Copy only closed reason and bounded source-free validation metadata."""
+
+    reason_code = (
+        error.reason_code
+        if error.reason_code in LLM_INVALID_RESPONSE_REASON_CODES
+        else "invalid_response"
+    )
+    issues: list[dict[str, object]] = []
+    for issue in error.validation_issues:
+        loc = issue.get("loc")
+        issue_type = issue.get("type")
+        if not isinstance(loc, tuple) or not isinstance(issue_type, str):
+            continue
+        issues.append({"loc": list(loc), "type": issue_type})
+    return {"reason_code": reason_code, "validation_issues": issues}
+
+
+def _bounded_previous_invalid_response(
+    error: LLMInvalidResponseError,
+) -> dict[str, Any] | None:
+    """Retain only a bounded schema-invalid object for one immediate retry."""
+
+    if (
+        error.reason_code != "schema_validation_failed"
+        or not isinstance(error.raw, dict)
+    ):
+        return None
+    try:
+        size = len(
+            json.dumps(
+                error.raw,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError):
+        return None
+    return error.raw if size <= _INVALID_RESPONSE_RAW_MAX_BYTES else None
+
+
+def _invalid_response_has_validation_type(
+    context: Mapping[str, object] | None,
+    issue_type: str,
+) -> bool:
+    """Match only a closed validation type; never inspect source or messages."""
+
+    if context is None:
+        return False
+    issues = context.get("validation_issues")
+    return isinstance(issues, list) and any(
+        isinstance(issue, Mapping) and issue.get("type") == issue_type
+        for issue in issues
     )
 
 
@@ -465,9 +589,12 @@ def _call_llm(
     stage: str,
     unit: str,
     attempt: int | None = None,
+    propagate_invalid_response: bool = False,
 ) -> Any:
+    result: Any = None
+    failure: StageError | None = None
     try:
-        return _generate(
+        result = _generate(
             llm_client,
             task_name=task_name,
             instructions=instructions,
@@ -475,8 +602,22 @@ def _call_llm(
             response_schema=response_schema,
             model_profile=model_profile,
         )
-    except (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError) as error:
-        raise _llm_stage_error(error, stage=stage, unit=unit, attempt=attempt) from error
+    except LLMInvalidResponseError as error:
+        if propagate_invalid_response:
+            raise
+        failure = _llm_stage_error(error, stage=stage, unit=unit, attempt=attempt)
+        # The provider body can contain private source text.  Once the safe
+        # diagnostic has been copied, do not retain that body through either
+        # this exception or Python's implicit exception chain.
+        error.raw = None
+    except (LLMTimeoutError, LLMUnavailableError) as error:
+        failure = _llm_stage_error(error, stage=stage, unit=unit, attempt=attempt)
+    # Raise only after Python has cleared the handled exception variable.
+    # ``from None`` suppresses display but does not clear ``__context__`` when
+    # used inside an except block.
+    if failure is not None:
+        raise failure
+    return result
 
 
 def _prepare_scoped_notice(
@@ -907,6 +1048,55 @@ def _selection_artifact(
     }
 
 
+def _safe_materialization_failure_details(error: ValueError) -> dict[str, Any]:
+    """Return bounded, source-free diagnostics for the fixed canary.
+
+    The exception message, repair payload members, fact ids, anchors, and
+    block ids are intentionally excluded.  A caller may persist this mapping
+    only after applying its own allowlist again at the publication boundary.
+    """
+
+    finalize_stage = getattr(error, "finalize_stage", None)
+    error_classification = getattr(error, "error_classification", None)
+    requirements = typed_repair_requirements_v02(error)
+
+    def item_count(key: str) -> int:
+        value = requirements.get(key)
+        return len(value) if isinstance(value, list) else 0
+
+    error_type = type(error).__name__
+    return {
+        "finalize_stage": (
+            finalize_stage
+            if isinstance(finalize_stage, str)
+            and finalize_stage in FINALIZE_STAGE_CODES
+            else "unclassified"
+        ),
+        "error_classification": (
+            error_classification
+            if isinstance(error_classification, str)
+            and error_classification in _SAFE_MATERIALIZATION_ERROR_CLASSIFICATIONS
+            else "unclassified"
+        ),
+        "error_type": (
+            error_type
+            if error_type in _SAFE_MATERIALIZATION_ERROR_TYPES
+            else "OtherValueError"
+        ),
+        "repair_requirement_counts": {
+            "support_scale_anchors": item_count("required_support_scale_anchors"),
+            "support_scale_fact_repairs": item_count(
+                "required_support_scale_fact_repairs"
+            ),
+            "exact_anchor_repairs": item_count("required_exact_anchor_repairs"),
+            "explicit_list_item_regions": item_count(
+                "required_list_item_regions"
+            ),
+            "do_not_restore_fact_ids": item_count("do_not_restore_fact_ids"),
+        },
+    }
+
+
 def _select_and_assemble(
     document: dict[str, Any],
     pack,
@@ -956,6 +1146,9 @@ def _select_and_assemble(
     last_validation_error: ValueError | None = None
     last_reason = REPAIR_BUDGET_EXHAUSTED
     prior_selection: dict[str, Any] | None = None
+    previous_invalid_response: dict[str, Any] | None = None
+    invalid_response_context: dict[str, object] | None = None
+    invalid_response_repair_used = False
     carry_forward: SourceSelectionExtractionV02 | None = None
     final_bundle = None
     selection_call_count = 0
@@ -975,7 +1168,7 @@ def _select_and_assemble(
         )
 
     for attempt in range(source_selection_attempts):
-        is_repair = bool(last_error) and prior_selection is not None
+        is_repair = bool(last_error)
         instructions = _source_selection_instructions() + (_REPAIR_INSTRUCTIONS if is_repair else "")
         request = base_request
         if is_repair:
@@ -986,29 +1179,93 @@ def _select_and_assemble(
             required_scale_repairs = repair_requirements[
                 "required_support_scale_fact_repairs"
             ]
+            required_exact_anchor_repairs = repair_requirements[
+                "required_exact_anchor_repairs"
+            ]
             required_list_items = repair_requirements["required_list_item_regions"]
             if required_caps or required_scale_repairs:
                 instructions += _SUPPORT_SCALE_REPAIR_INSTRUCTIONS
+            if required_exact_anchor_repairs:
+                instructions += _EXACT_ANCHOR_REPAIR_INSTRUCTIONS
+            if _invalid_response_has_validation_type(
+                invalid_response_context,
+                COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+            ):
+                instructions += _COMPONENT_NAME_ANCHOR_REPAIR_INSTRUCTIONS
             if required_list_items:
                 instructions += _EXPLICIT_LIST_REPAIR_INSTRUCTIONS
             request = {
                 **base_request,
-                "previous_selection": prior_selection,
                 "server_validation_errors": [last_error],
                 **repair_requirements,
             }
+            if prior_selection is not None:
+                request["previous_selection"] = prior_selection
+            if previous_invalid_response is not None:
+                request["previous_invalid_response"] = previous_invalid_response
+            if invalid_response_context is not None:
+                request["invalid_response_context"] = invalid_response_context
         selection_call_count += 1
-        extraction = _call_llm(
-            llm_client,
-            task_name=SOURCE_SELECTION_TASK,
-            instructions=instructions,
-            payload=request,
-            response_schema=SourceSelectionExtractionV02,
-            model_profile=model_profile,
-            stage="source_selection",
-            unit=pack.common_ir_document_id,
-            attempt=attempt + 1,
-        )
+        retry_payload_has_invalid_response = "previous_invalid_response" in request
+        terminal_invalid_failure: StageError | None = None
+        retry_invalid_response = False
+        try:
+            extraction = _call_llm(
+                llm_client,
+                task_name=SOURCE_SELECTION_TASK,
+                instructions=instructions,
+                payload=request,
+                response_schema=SourceSelectionExtractionV02,
+                model_profile=model_profile,
+                stage="source_selection",
+                unit=pack.common_ir_document_id,
+                attempt=attempt + 1,
+                propagate_invalid_response=True,
+            )
+        except LLMInvalidResponseError as error:
+            if (
+                error.reason_code not in _REPAIRABLE_INVALID_RESPONSE_REASONS
+                or invalid_response_repair_used
+                or attempt + 1 >= source_selection_attempts
+            ):
+                terminal_invalid_failure = _llm_stage_error(
+                    error,
+                    stage="source_selection",
+                    unit=pack.common_ir_document_id,
+                    attempt=attempt + 1,
+                )
+                error.raw = None
+            else:
+                last_error = f"invalid structured response: {error.reason_code}"
+                last_validation_error = None
+                last_reason = LLM_INVALID_RESPONSE
+                invalid_response_repair_used = True
+                prior_selection = None
+                previous_invalid_response = _bounded_previous_invalid_response(error)
+                invalid_response_context = _safe_llm_invalid_response_context(error)
+                retry_invalid_response = True
+                # The retry request owns the one bounded in-memory reference
+                # now; the exception itself must never extend the provider
+                # body's life.
+                error.raw = None
+        finally:
+            # `_call_llm` traceback frames retain their payload mapping.  When
+            # this was the one schema-repair call, mutate that same mapping so
+            # neither a second invalid response nor a timeout can retain the
+            # first provider body through a stored StageError traceback.
+            if retry_payload_has_invalid_response:
+                request.pop("previous_invalid_response", None)
+                previous_invalid_response = None
+                invalid_response_context = None
+        if terminal_invalid_failure is not None:
+            raise terminal_invalid_failure
+        if retry_invalid_response:
+            continue
+        # Raw invalid output is retry-only and must not enter preservation,
+        # artifacts, diagnostics, or the rest of this loop after call two.
+        previous_invalid_response = None
+        invalid_response_context = None
+        request = base_request
         prior_selection = extraction.model_dump(mode="json")
         if extraction.notice_id != pack.notice_id or extraction.candidate_pack_id != pack.pack_id:
             last_error = "source selection output belongs to a different candidate pack"
@@ -1054,6 +1311,7 @@ def _select_and_assemble(
             ),
         )
         carry_forward = merged
+        correction_failure: StageError | None = None
         try:
             final_bundle, preserved_fact_normalizations, preservation_fallback = apply_finalize_with_fallback_v02(
                 merged, extraction, preserved_changes, finalize
@@ -1064,25 +1322,31 @@ def _select_and_assemble(
         except (CorrectionResolverError, AmbiguousAnchorCorrectionError) as error:
             cause = error.__cause__
             if isinstance(cause, (LLMTimeoutError, LLMUnavailableError, LLMInvalidResponseError)):
-                raise _llm_stage_error(
+                failure = _llm_stage_error(
                     cause,
                     stage="anchor_correction",
                     unit=pack.common_ir_document_id,
                     attempt=attempt + 1,
-                ) from error
-            raise _stage_error(
-                stage="anchor_correction",
-                unit=pack.common_ir_document_id,
-                reason_code=MATERIALIZATION_FAILED,
-                message=f"{type(error).__name__}: {error}",
-                attempt=attempt + 1,
-            ) from error
+                )
+                if isinstance(cause, LLMInvalidResponseError):
+                    cause.raw = None
+                correction_failure = failure
+            else:
+                correction_failure = _stage_error(
+                    stage="anchor_correction",
+                    unit=pack.common_ir_document_id,
+                    reason_code=MATERIALIZATION_FAILED,
+                    message=f"{type(error).__name__}: {error}",
+                    attempt=attempt + 1,
+                )
         except ValueError as error:
             last_error = str(error)
             last_validation_error = error
             last_reason = MATERIALIZATION_FAILED
+        if correction_failure is not None:
+            raise correction_failure
     else:
-        raise _stage_error(
+        failure = _stage_error(
             stage="source_selection",
             unit=pack.common_ir_document_id,
             reason_code=last_reason,
@@ -1092,6 +1356,11 @@ def _select_and_assemble(
             ),
             attempt=source_selection_attempts,
         )
+        if last_validation_error is not None:
+            failure._canary_safe_details = _safe_materialization_failure_details(  # type: ignore[attr-defined]
+                last_validation_error
+            )
+        raise failure
 
     if final_bundle is None:  # pragma: no cover - defensive loop invariant
         raise _stage_error(

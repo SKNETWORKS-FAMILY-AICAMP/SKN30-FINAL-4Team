@@ -13,6 +13,7 @@ import inspect
 import json
 import logging
 import math
+import re
 import time
 from typing import Any
 
@@ -28,6 +29,8 @@ from pydantic import BaseModel, ValidationError
 
 from ..ports.llm import (
     LLMInvalidResponseError,
+    LLM_VALIDATION_ISSUE_LIMIT,
+    LLM_VALIDATION_LOC_DEPTH_LIMIT,
     LLMTimeoutError,
     LLMUnavailableError,
     Message,
@@ -219,34 +222,120 @@ class OpenAILLMClient:
             return
 
 
+_SAFE_VALIDATION_TYPE = re.compile(r"^[a-z][a-z0-9_.]{0,63}$")
+_UNKNOWN_VALIDATION_LOC = "$unknown"
+_TRUNCATED_VALIDATION_LOC = "$truncated"
+
+
+def _schema_property_names(response_schema: type[BaseModel]) -> frozenset[str]:
+    """Return only developer-authored JSON property names for safe locations."""
+
+    schema = response_schema.model_json_schema()
+    names: set[str] = set()
+    stack: list[object] = [schema]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            properties = value.get("properties")
+            if isinstance(properties, dict):
+                names.update(
+                    key for key in properties if isinstance(key, str) and key
+                )
+            stack.extend(value.values())
+        elif isinstance(value, list):
+            stack.extend(value)
+    return frozenset(names)
+
+
+def _safe_validation_issues(
+    error: ValidationError,
+    response_schema: type[BaseModel],
+) -> tuple[dict[str, object], ...]:
+    """Reduce Pydantic errors to bounded schema locations and type codes.
+
+    Pydantic's ``input``, ``msg``, and ``ctx`` members can retain model output.
+    They are never copied. Unknown string locations are also collapsed because
+    an ``extra_forbidden`` location may itself be a model-authored object key.
+    """
+
+    property_names = _schema_property_names(response_schema)
+    result: list[dict[str, object]] = []
+    for issue in error.errors(
+        include_url=False,
+        include_context=False,
+        include_input=False,
+    )[:LLM_VALIDATION_ISSUE_LIMIT]:
+        raw_loc = issue.get("loc")
+        safe_loc: list[str | int] = []
+        if isinstance(raw_loc, (list, tuple)):
+            for item in raw_loc[:LLM_VALIDATION_LOC_DEPTH_LIMIT]:
+                if type(item) is int and 0 <= item <= 100_000:
+                    safe_loc.append(item)
+                elif isinstance(item, str) and item in property_names:
+                    safe_loc.append(item)
+                else:
+                    safe_loc.append(_UNKNOWN_VALIDATION_LOC)
+            if len(raw_loc) > LLM_VALIDATION_LOC_DEPTH_LIMIT:
+                safe_loc[-1:] = [_TRUNCATED_VALIDATION_LOC]
+        raw_type = issue.get("type")
+        issue_type = (
+            raw_type
+            if isinstance(raw_type, str) and _SAFE_VALIDATION_TYPE.fullmatch(raw_type)
+            else "validation_error"
+        )
+        result.append({"loc": safe_loc, "type": issue_type})
+    return tuple(result)
+
+
+def _invalid_response(
+    reason_code: str,
+    *,
+    raw: dict[str, Any] | None = None,
+    validation_issues: tuple[dict[str, object], ...] = (),
+) -> LLMInvalidResponseError:
+    return LLMInvalidResponseError(
+        "OpenAI returned an invalid structured response",
+        raw=raw,
+        reason_code=reason_code,
+        validation_issues=validation_issues,
+    )
+
+
 def _structured_result(completion: Any, response_schema: type[BaseModel]) -> BaseModel:
-    """Validate one Chat Completions JSON response without logging its content."""
+    """Validate one Chat Completions JSON response without retaining content."""
 
     try:
         choices = completion.choices
-        if not isinstance(choices, list) or not choices:
-            raise ValueError("missing choices")
-        choice = choices[0]
-        finish_reason = getattr(choice, "finish_reason", None)
-        if finish_reason != "stop":
-            raise ValueError("incomplete completion")
+    except (AttributeError, TypeError):
+        raise _invalid_response("response_shape_invalid") from None
+    if not isinstance(choices, list) or not choices:
+        raise _invalid_response("missing_choices")
+    choice = choices[0]
+    try:
         message = choice.message
-        if getattr(message, "refusal", None):
-            raise ValueError("model refused")
+    except (AttributeError, TypeError):
+        raise _invalid_response("response_shape_invalid") from None
+    if getattr(message, "refusal", None):
+        raise _invalid_response("model_refusal")
+    if getattr(choice, "finish_reason", None) != "stop":
+        raise _invalid_response("incomplete_completion")
 
-        content = getattr(message, "content", None)
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("missing content")
+    content = getattr(message, "content", None)
+    if not isinstance(content, str):
+        raise _invalid_response("response_shape_invalid")
+    if not content.strip():
+        raise _invalid_response("missing_content")
+    try:
         raw = json.loads(content)
-        if not isinstance(raw, dict):
-            raise ValueError("structured response is not an object")
-        try:
-            return response_schema.model_validate(raw)
-        except ValidationError:
-            raise LLMInvalidResponseError(
-                "OpenAI returned an invalid structured response", raw=raw
-            ) from None
-    except LLMInvalidResponseError:
-        raise
-    except (AttributeError, TypeError, ValueError):
-        raise LLMInvalidResponseError("OpenAI returned an invalid structured response") from None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        raise _invalid_response("invalid_json") from None
+    if not isinstance(raw, dict):
+        raise _invalid_response("structured_response_not_object")
+    try:
+        return response_schema.model_validate(raw)
+    except ValidationError as error:
+        raise _invalid_response(
+            "schema_validation_failed",
+            raw=raw,
+            validation_issues=_safe_validation_issues(error, response_schema),
+        ) from None

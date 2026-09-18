@@ -17,6 +17,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sys
 import time
@@ -33,7 +34,13 @@ from worker.adapters.openai_llm_client import (  # noqa: E402
     OpenAICompletionTelemetry,
     OpenAILLMClient,
 )
-from worker.ports.llm import LLMClient  # noqa: E402
+from worker.ports.llm import (  # noqa: E402
+    LLM_INVALID_RESPONSE_REASON_CODES,
+    LLM_VALIDATION_ISSUE_LIMIT,
+    LLM_VALIDATION_LOC_DEPTH_LIMIT,
+    LLMClient,
+    LLMTimeoutError,
+)
 from worker.profiles import StageError  # noqa: E402
 from worker.evaluation.pristine_common_ir import (  # noqa: E402
     PRISTINE_HARD6_ARCHIVE_SHA256,
@@ -84,14 +91,19 @@ TASK_BUDGETS = {
     announcement_profiles.SOURCE_SELECTION_TASK: 12,
     announcement_profiles.ANCHOR_CORRECTION_TASK: 12,
 }
-MAX_OPENAI_CALLS = sum(TASK_BUDGETS.values())
+LOGICAL_MAX_OPENAI_CALLS = sum(TASK_BUDGETS.values())
+CANARY_TIMEOUT_RETRY_LIMIT = 3
+CANARY_TIMEOUT_RETRY_PER_LOGICAL_CALL_LIMIT = 1
+MAX_OPENAI_CALLS = LOGICAL_MAX_OPENAI_CALLS + CANARY_TIMEOUT_RETRY_LIMIT
 PROMPT_HASHES = {
     "section_scope": "55e40c4e9297556d3cfea7ce3c26652f386ce3fb5bb834ff34e7e396b4c39396",
     "block_router": "9ff379ff0a6f2a1f4b152bcbf034b4d9e53ef44fab8aa1331dcab86230a676e9",
-    "source_selection": "dd9c1e030e83e1339d2f626e07e5b10300caa920a3f2bdde86fbaf54bbd7d0c3",
+    "source_selection": "ba73ea50e389e1af7f67145f018ffaa5d8bd1bea494be51ed4c6a575b6d5b853",
     "anchor_correction": "488a429af775d9d56507b98e4c0970bf31d7ab636bbe450c6a190dcb5d0c2e28",
-    "repair": "9a525ba9a63e2846bcd42fbcafc6beaa725d210b436c178d00b56c8c5ea98401",
+    "repair": "706cca2278e2bf4b5e18bc874db5358db07da5db98fc753f763e8e5645531931",
     "support_scale_repair": "e52af99973b58ec94f13e0718613b5c0cfd550dd2bc94cc9f0cb150902c9453a",
+    "exact_anchor_repair": "fe4cdca184a786c9533716180d8302d08cb2f87230e85d5136265060be3e89a2",
+    "component_name_anchor_repair": "feec3de5fc9954bf3f10cb7fb376b32961770c101a70dc60d35845a339f28f47",
     "explicit_list_repair": "7c6cf996748237f2449d53ab6866e78803652110b6bfe266209516122d085e2b",
 }
 _SAFE_STAGE_CODES = frozenset({
@@ -103,6 +115,79 @@ _SAFE_REASON_CODES = frozenset({
     "COMMON_IR_INVALID", "LLM_INVALID_RESPONSE", "LLM_TIMEOUT", "LLM_UNAVAILABLE",
     "CANDIDATE_PACK_EMPTY", "MATERIALIZATION_FAILED", "REPAIR_BUDGET_EXHAUSTED",
 })
+_SAFE_FINALIZE_STAGE_CODES = frozenset({
+    "selection_quality_validation",
+    "sequential_component_normalization",
+    "semantic_duplicate_normalization",
+    "nested_support_scale_anchor_normalization",
+    "component_structure_validation",
+    "condition_variant_relation_normalization",
+    "evidence_materialization",
+    "value_source_uniqueness_validation",
+    "explicit_list_completeness_validation",
+    "repair_issue_aggregation",
+    "component_materialization",
+    "support_scale_semantics_validation",
+    "support_cap_completeness_validation",
+    "support_scale_measure_derivation",
+    "scale_measure_validation",
+    "unclassified",
+})
+_SAFE_MATERIALIZATION_ERROR_CLASSIFICATIONS = frozenset({
+    "ambiguous_anchor_unresolved",
+    "correction_resolver_failed",
+    "exact_anchor_materialization_requires_repair",
+    "missing_explicit_list_item",
+    "missing_explicit_support_cap",
+    "multiple_source_selection_repairs",
+    "support_scale_fact_requires_repair",
+    "unclassified",
+})
+_SAFE_MATERIALIZATION_ERROR_TYPES = frozenset({
+    "DuplicateResolvedValueSourceSpanError",
+    "ExactAnchorMaterializationRepairError",
+    "ExplicitListCompletenessError",
+    "OtherValueError",
+    "SourceSelectionRepairIssuesError",
+    "SupportCapCompletenessError",
+    "SupportScaleFactRepairError",
+    "ValueError",
+})
+_SAFE_REPAIR_COUNT_KEYS = (
+    "support_scale_anchors",
+    "support_scale_fact_repairs",
+    "exact_anchor_repairs",
+    "explicit_list_item_regions",
+    "do_not_restore_fact_ids",
+)
+_SAFE_VALIDATION_TYPE = re.compile(r"^[a-z][a-z0-9_.]{0,63}$")
+_SAFE_VALIDATION_LOC_SENTINELS = frozenset({"$unknown", "$truncated"})
+
+
+def _validation_property_names() -> frozenset[str]:
+    names: set[str] = set()
+    for model in (
+        announcement_profiles.SectionScopeDiscovery,
+        announcement_profiles.BlockCandidateDiscovery,
+        announcement_profiles.SourceSelectionExtractionV02,
+        announcement_profiles.AnchorCorrectionResponse,
+    ):
+        stack: list[object] = [model.model_json_schema()]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, dict):
+                properties = value.get("properties")
+                if isinstance(properties, dict):
+                    names.update(
+                        key for key in properties if isinstance(key, str) and key
+                    )
+                stack.extend(value.values())
+            elif isinstance(value, list):
+                stack.extend(value)
+    return frozenset(names)
+
+
+_SAFE_VALIDATION_PROPERTY_NAMES = _validation_property_names()
 
 
 class ExistingProfileCanaryError(ValueError):
@@ -129,6 +214,14 @@ def _verify_prompt_pins() -> None:
         "support_scale_repair": sha256(
             announcement_profiles._SUPPORT_SCALE_REPAIR_INSTRUCTIONS.encode("utf-8")
         ).hexdigest(),
+        "exact_anchor_repair": sha256(
+            announcement_profiles._EXACT_ANCHOR_REPAIR_INSTRUCTIONS.encode("utf-8")
+        ).hexdigest(),
+        "component_name_anchor_repair": sha256(
+            announcement_profiles._COMPONENT_NAME_ANCHOR_REPAIR_INSTRUCTIONS.encode(
+                "utf-8"
+            )
+        ).hexdigest(),
         "explicit_list_repair": sha256(
             announcement_profiles._EXPLICIT_LIST_REPAIR_INSTRUCTIONS.encode("utf-8")
         ).hexdigest(),
@@ -141,27 +234,56 @@ def _verify_prompt_pins() -> None:
 
 
 class _CountingLlm:
-    """Reserve a fixed, task-specific provider budget before delegation."""
+    """Count logical calls plus up to three one-per-call timeout retries."""
 
     def __init__(self, delegate: LLMClient) -> None:
         self._delegate = delegate
         self.calls: list[dict[str, int | str]] = []
         self._by_task: Counter[str] = Counter()
+        self._timeout_retries_used = 0
 
     async def generate_structured(self, **kwargs: Any) -> Any:
         task_name = kwargs.get("task_name")
         _require(isinstance(task_name, str) and task_name in TASK_BUDGETS, "canary provider task is disallowed")
-        _require(len(self.calls) < MAX_OPENAI_CALLS, "canary hard provider-call budget is exhausted")
         _require(self._by_task[task_name] < TASK_BUDGETS[task_name], "canary task provider-call budget is exhausted")
-        # Append before delegation: transport failures still consume a call.
-        call: dict[str, int | str] = {"task_name": task_name, "duration_ms": 0}
-        self.calls.append(call)
         self._by_task[task_name] += 1
-        started = time.perf_counter()
+        logical_call_timeout_retries = 0
+
+        async def attempt(attempt_kind: str) -> Any:
+            _require(
+                len(self.calls) < MAX_OPENAI_CALLS,
+                "canary hard provider-call budget is exhausted",
+            )
+            # Append before delegation: transport failures consume a physical
+            # call without retaining kwargs, source, raw output, or messages.
+            call: dict[str, int | str] = {
+                "task_name": task_name,
+                "attempt_kind": attempt_kind,
+                "duration_ms": 0,
+            }
+            self.calls.append(call)
+            started = time.perf_counter()
+            try:
+                return await self._delegate.generate_structured(**kwargs)
+            finally:
+                call["duration_ms"] = max(
+                    0, round((time.perf_counter() - started) * 1000)
+                )
+
         try:
-            return await self._delegate.generate_structured(**kwargs)
-        finally:
-            call["duration_ms"] = max(0, round((time.perf_counter() - started) * 1000))
+            return await attempt("logical")
+        except LLMTimeoutError:
+            if (
+                logical_call_timeout_retries
+                >= CANARY_TIMEOUT_RETRY_PER_LOGICAL_CALL_LIMIT
+                or self._timeout_retries_used >= CANARY_TIMEOUT_RETRY_LIMIT
+            ):
+                raise
+            logical_call_timeout_retries += 1
+            self._timeout_retries_used += 1
+            # Deliberately no loop: a timeout from this one retry propagates
+            # and can never consume a second token for the same logical call.
+            return await attempt("timeout_retry")
 
 
 class _TaskDispatchLlm:
@@ -177,16 +299,118 @@ class _TaskDispatchLlm:
         return await self._delegates[task_name].generate_structured(**kwargs)
 
 
-def _safe_error(error: Exception) -> dict[str, str]:
+def _safe_materialization_details(error: Exception) -> dict[str, Any] | None:
+    raw = getattr(error, "_canary_safe_details", None)
+    if not isinstance(raw, Mapping):
+        return None
+    finalize_stage = raw.get("finalize_stage")
+    classification = raw.get("error_classification")
+    error_type = raw.get("error_type")
+    counts = raw.get("repair_requirement_counts")
+    if (
+        finalize_stage not in _SAFE_FINALIZE_STAGE_CODES
+        or classification not in _SAFE_MATERIALIZATION_ERROR_CLASSIFICATIONS
+        or error_type not in _SAFE_MATERIALIZATION_ERROR_TYPES
+        or not isinstance(counts, Mapping)
+    ):
+        return None
+    safe_counts: dict[str, int] = {}
+    for key in _SAFE_REPAIR_COUNT_KEYS:
+        value = counts.get(key)
+        if type(value) is not int or value < 0 or value > 100_000:
+            return None
+        safe_counts[key] = value
+    return {
+        "finalize_stage": finalize_stage,
+        "error_classification": classification,
+        "error_type": error_type,
+        "repair_requirement_counts": safe_counts,
+    }
+
+
+def _safe_llm_invalid_response_details(error: Exception) -> dict[str, Any] | None:
+    raw = getattr(error, "_canary_safe_llm_details", None)
+    if not isinstance(raw, Mapping):
+        return None
+    reason_code = raw.get("reason_code")
+    raw_issues = raw.get("validation_issues")
+    if (
+        reason_code not in LLM_INVALID_RESPONSE_REASON_CODES
+        or not isinstance(raw_issues, list)
+        or len(raw_issues) > LLM_VALIDATION_ISSUE_LIMIT
+    ):
+        return None
+    issues: list[dict[str, object]] = []
+    for raw_issue in raw_issues:
+        if not isinstance(raw_issue, Mapping):
+            return None
+        loc = raw_issue.get("loc")
+        issue_type = raw_issue.get("type")
+        if (
+            not isinstance(loc, list)
+            or len(loc) > LLM_VALIDATION_LOC_DEPTH_LIMIT
+            or not isinstance(issue_type, str)
+            or _SAFE_VALIDATION_TYPE.fullmatch(issue_type) is None
+        ):
+            return None
+        safe_loc: list[str | int] = []
+        for item in loc:
+            if type(item) is int and 0 <= item <= 100_000:
+                safe_loc.append(item)
+            elif (
+                isinstance(item, str)
+                and (
+                    item in _SAFE_VALIDATION_PROPERTY_NAMES
+                    or item in _SAFE_VALIDATION_LOC_SENTINELS
+                )
+            ):
+                safe_loc.append(item)
+            else:
+                return None
+        issues.append({"loc": safe_loc, "type": issue_type})
+    return {"reason_code": reason_code, "validation_issues": issues}
+
+
+def _safe_error(error: Exception) -> dict[str, Any]:
     diagnostic = error.diagnostic if isinstance(error, StageError) else None
     if diagnostic is not None:
         stage = str(getattr(diagnostic, "stage", ""))
         reason = str(getattr(diagnostic, "reason_code", ""))
-        return {
+        result: dict[str, Any] = {
             "stage": stage if stage in _SAFE_STAGE_CODES else "canary",
             "reason_code": reason if reason in _SAFE_REASON_CODES else "UNKNOWN",
         }
+        attempt = getattr(diagnostic, "attempt", None)
+        if type(attempt) is int and 1 <= attempt <= SOURCE_SELECTION_ATTEMPTS:
+            result["attempt"] = attempt
+        safe_details = _safe_materialization_details(error)
+        if safe_details is not None:
+            result["materialization"] = safe_details
+        safe_llm_details = _safe_llm_invalid_response_details(error)
+        if safe_llm_details is not None:
+            result["llm_invalid_response"] = safe_llm_details
+        return result
     return {"stage": "canary", "reason_code": type(error).__name__}
+
+
+def _safe_provider_completions(
+    telemetry: list[OpenAICompletionTelemetry],
+) -> list[dict[str, int | str | None]]:
+    """Publish only task identity, numeric usage, duration, and outcome."""
+
+    rows: list[dict[str, int | str | None]] = []
+    for item in telemetry:
+        if item.task_name not in TASK_BUDGETS or item.outcome != "provider_completed":
+            continue
+        rows.append({
+            "task_name": item.task_name,
+            "prompt_tokens": item.prompt_tokens,
+            "completion_tokens": item.completion_tokens,
+            "total_tokens": item.total_tokens,
+            "duration_ms": item.duration_ms,
+            "outcome": item.outcome,
+        })
+    return rows
 
 
 def build_plan(
@@ -234,7 +458,17 @@ def build_plan(
             "source_selection_attempts": SOURCE_SELECTION_ATTEMPTS,
             "max_completion_tokens_by_task": dict(TASK_COMPLETION_TOKEN_CAPS),
         },
-        "calls": {"hard_budget": MAX_OPENAI_CALLS, "task_budgets": dict(TASK_BUDGETS), "planned_minimum": 14},
+        "calls": {
+            "hard_budget": MAX_OPENAI_CALLS,
+            "physical_hard_budget": MAX_OPENAI_CALLS,
+            "logical_hard_budget": LOGICAL_MAX_OPENAI_CALLS,
+            "canary_timeout_retry_limit": CANARY_TIMEOUT_RETRY_LIMIT,
+            "canary_timeout_retry_per_logical_call_limit": (
+                CANARY_TIMEOUT_RETRY_PER_LOGICAL_CALL_LIMIT
+            ),
+            "task_budgets": dict(TASK_BUDGETS),
+            "planned_minimum": 14,
+        },
         "notices": [
             {"notice_id": notice_id, "input_common_ir_sha256": member_sha256[notice_id], "attachment_section_count": attachment_counts[notice_id]}
             for notice_id in CORRECTED_NOTICE_IDS
@@ -244,7 +478,9 @@ def build_plan(
             "historical_baseline_is_post_provider_semantic_gate_only",
             "manual_adjudication_metadata_rejected_before_provider_construction",
             "gold_is_not_read_until_all_openai_calls_finish",
-            "zero_provider_retries_and_at_most_one_source_selection_repair",
+            "provider_sdk_retries_disabled_and_at_most_one_source_selection_repair",
+            "canary_timeout_retry_global_limit_3",
+            "canary_timeout_retry_per_logical_call_limit_1",
             "report_excludes_raw_source_model_responses_and_secrets",
         ],
     }
@@ -529,28 +765,51 @@ def execute_canary(
             break  # fixed canary deliberately stops at the first notice failure
         rows.append(row)
     calls_by_task = Counter(str(call["task_name"]) for call in counting_llm.calls)
+    logical_calls = [
+        call for call in counting_llm.calls if call["attempt_kind"] == "logical"
+    ]
+    logical_calls_by_task = Counter(str(call["task_name"]) for call in logical_calls)
     report = dict(plan)
     report["execution_status"] = status
     report["model"] = {
         "provider": "openai", "model_id": model_id, "transport": "chat_completions_json_schema",
         "store": False, "timeout_seconds": timeout_seconds,
         "max_completion_tokens_by_task": dict(TASK_COMPLETION_TOKEN_CAPS),
-        "max_retries": 0, "reasoning_effort": "medium",
+        "max_retries": 0,
+        "canary_timeout_retry_limit": CANARY_TIMEOUT_RETRY_LIMIT,
+        "canary_timeout_retry_per_logical_call_limit": (
+            CANARY_TIMEOUT_RETRY_PER_LOGICAL_CALL_LIMIT
+        ),
+        "reasoning_effort": "medium",
     }
     report["calls"] = {
         **plan["calls"], "attempted": len(counting_llm.calls),
         "attempted_by_task": dict(sorted(calls_by_task.items())),
+        "logical_attempted": len(logical_calls),
+        "logical_attempted_by_task": dict(sorted(logical_calls_by_task.items())),
+        "timeout_retry_attempted": sum(
+            call["attempt_kind"] == "timeout_retry" for call in counting_llm.calls
+        ),
         "latency_ms": sum(int(call["duration_ms"]) for call in counting_llm.calls),
+        "sequence": [
+            {
+                "ordinal": index,
+                "task_name": str(call["task_name"]),
+                "attempt_kind": str(call["attempt_kind"]),
+                "duration_ms": int(call["duration_ms"]),
+            }
+            for index, call in enumerate(counting_llm.calls, start=1)
+        ],
     }
     if status == "succeeded":
-        scope_calls = calls_by_task[announcement_profiles.SECTION_SCOPE_TASK]
-        router_calls = calls_by_task[announcement_profiles.BLOCK_ROUTER_TASK]
-        selection_calls = calls_by_task[announcement_profiles.SOURCE_SELECTION_TASK]
+        scope_calls = logical_calls_by_task[announcement_profiles.SECTION_SCOPE_TASK]
+        router_calls = logical_calls_by_task[announcement_profiles.BLOCK_ROUTER_TASK]
+        selection_calls = logical_calls_by_task[announcement_profiles.SOURCE_SELECTION_TASK]
         call_plan_ok = (
             scope_calls == TASK_BUDGETS[announcement_profiles.SECTION_SCOPE_TASK]
             and router_calls == TASK_BUDGETS[announcement_profiles.BLOCK_ROUTER_TASK]
             and len(CORRECTED_NOTICE_IDS) <= selection_calls <= TASK_BUDGETS[announcement_profiles.SOURCE_SELECTION_TASK]
-            and len(counting_llm.calls) >= 14
+            and len(logical_calls) >= 14
         )
         report["calls"]["successful_plan_status"] = "valid" if call_plan_ok else "failed"
         if not call_plan_ok:
@@ -650,6 +909,9 @@ def main(argv: list[str] | None = None) -> int:
             "total_tokens": sum(item.total_tokens or 0 for item in telemetry),
             "provider_completed_calls": len(telemetry),
         }
+        report["calls"]["provider_completions"] = _safe_provider_completions(
+            telemetry
+        )
         if report["execution_status"] == "succeeded":
             try:
                 candidate_zip, candidate_sha256 = write_candidate_zip(

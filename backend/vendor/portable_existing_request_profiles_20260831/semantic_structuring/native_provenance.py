@@ -8,7 +8,7 @@ This module consequently returns an empty mapping for every atomic block.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .models import (
@@ -19,6 +19,20 @@ from .models import (
     SourceBlock,
     SourceRelation,
 )
+
+
+def stable_unique_occurrence_ids(values: Iterable[str]) -> list[str]:
+    """Return occurrence ids once each, preserving their first-seen order.
+
+    Common IR occurrence provenance is set-like on the persisted evidence
+    wire contract, but native line/composite candidates can inherit repeated
+    ids from their parent/span graph.  Normalize only the two top-level
+    occurrence-id arrays at the materialization boundary.  In particular,
+    this helper does not rewrite the lossless ``source_spans`` or
+    ``native_parent_span`` contracts.
+    """
+
+    return list(dict.fromkeys(values))
 
 
 def native_block_provenance(

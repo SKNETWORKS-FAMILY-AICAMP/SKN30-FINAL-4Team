@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
 import os
@@ -47,6 +46,11 @@ from semantic_structuring.models import CandidatePack, SourceBlock
 from semantic_structuring.native_exact_transform import (
     NativeExactTransformOptions,
     augment_pack_with_native_exact_transforms,
+)
+from semantic_structuring.native_provenance import stable_unique_occurrence_ids
+from semantic_structuring.source_selection import (
+    enumerate_numeric_candidate_spans,
+    normalize_numeric_candidate_token,
 )
 
 from scripts.verify_existing_gold100 import (
@@ -129,19 +133,6 @@ _MEASURE_KEYS = frozenset({
 _NUMERIC_CANDIDATE_KEYS = frozenset({
     "numeric_candidate_id", "source_block_id", "anchor_text", "start_char", "end_char",
 })
-_GROUPED_DECIMAL_NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
-_NUMERIC_TOKEN_PREFIX = r"(?<![\d.])(?<!\d,)(?<!\d，)(?<![,，][,，])"
-_NUMERIC_TOKEN_SUFFIX = r"(?!\d|[,，]\d|\.\d)"
-_NUMERIC_CANDIDATE_PATTERN = re.compile(
-    rf"{_NUMERIC_TOKEN_PREFIX}(?:{_GROUPED_DECIMAL_NUMBER}\s*(?:천|만|억)?\s*원|"
-    rf"\d+(?:\.\d+)?\s*%|\d+\s*(?:개사|개팀|개 과제|개과제|명|팀|사)){_NUMERIC_TOKEN_SUFFIX}"
-)
-_AMOUNT_TOKEN = re.compile(
-    rf"(?P<number>{_GROUPED_DECIMAL_NUMBER})\s*"
-    r"(?P<suffix>천|만|억)?\s*원"
-)
-_RATE_TOKEN = re.compile(r"(?P<number>\d+(?:\.\d+)?)\s*%")
-_COUNT_TOKEN = re.compile(r"(?P<number>\d+)\s*(?P<unit>개사|개팀|개 과제|개과제|명|팀|사)")
 TRUSTED_CANDIDATE_TRANSFORM = (
     "common-ir-v1-source-universe/v1:"
     "pdf-native-table-occurrences+native-lines+native-continuations"
@@ -1144,6 +1135,7 @@ class _ProvenanceResolver:
         section_id = evidence.get("section_id")
         _require(section_id is None or isinstance(section_id, str), f"{label}.section_id must be a string or null")
         native = self.native_sources.get(source_block_id)
+        native_locator: tuple[Any, ...] | None = None
         if native is not None:
             _require(block_id == native.common_ir_block_id, f"{label} CandidatePack/Common-IR block provenance differs")
             expected_source_spans = [
@@ -1156,6 +1148,18 @@ class _ProvenanceResolver:
                     and _canonical_bytes(supplied_source_spans)
                     == _canonical_bytes(expected_source_spans),
                     f"{label}.source_spans do not match the trusted composite",
+                )
+                native_locator = (
+                    "source_spans",
+                    tuple(
+                        (
+                            span.source_block_id,
+                            span.start_char,
+                            span.end_char,
+                            span.separator_after,
+                        )
+                        for span in native.source_spans
+                    ),
                 )
             else:
                 _require(
@@ -1173,6 +1177,14 @@ class _ProvenanceResolver:
                     _canonical_bytes(evidence.get("native_parent_span"))
                     == _canonical_bytes(expected_parent_span),
                     f"{label}.native_parent_span does not match the trusted line atom",
+                )
+                native_locator = (
+                    "native_parent_span",
+                    ((
+                        native.native_parent_block_id,
+                        native.native_start_char,
+                        native.native_end_char,
+                    ),),
                 )
             else:
                 _require(
@@ -1230,6 +1242,11 @@ class _ProvenanceResolver:
             "source_text_sha256": sha256(
                 self.source_texts[source_block_id].encode("utf-8")
             ).hexdigest(),
+            # Internal admission metadata only. It is derived from the
+            # regenerated trusted block above and never enters the semantic
+            # graph/report. Candidate-mode occurrence overlap is allowed only
+            # for distinct exact native subspans identified by this locator.
+            "native_locator": native_locator,
         }
 
     def validate_value_source(self, value_source: Any, value_raw: Any, *, label: str) -> tuple[str, int, int]:
@@ -1279,12 +1296,16 @@ def _validate_candidate_materialized_source(
     )
     _require(
         _canonical_bytes(raw_source.get("source_occurrence_ids"))
-        == _canonical_bytes(list(contract.source_occurrence_ids)),
+        == _canonical_bytes(
+            stable_unique_occurrence_ids(contract.source_occurrence_ids)
+        ),
         f"{label}.source_occurrence_ids differ from the trusted source",
     )
     _require(
         _canonical_bytes(raw_source.get("common_ir_occurrence_ids"))
-        == _canonical_bytes(list(contract.common_ir_occurrence_ids)),
+        == _canonical_bytes(
+            stable_unique_occurrence_ids(contract.common_ir_occurrence_ids)
+        ),
         f"{label}.common_ir_occurrence_ids differ from the trusted source",
     )
 
@@ -1465,12 +1486,80 @@ def _validate_candidate_source_basis(
             )
 
 
+def _candidate_occurrence_collisions_use_distinct_native_spans(
+    evidence: Sequence[Mapping[str, Any]],
+) -> bool:
+    """Admit overlap only for distinct, server-validated native exact spans.
+
+    Native line atoms can carry all of their parent occurrences even when
+    their exact character ranges differ. Only pairwise-disjoint line slices
+    of the same parent are admissible; ordinary atoms, composites, mixed
+    kinds, and repeated/overlapping line ranges remain collisions. The caller
+    invokes this only after ``_ProvenanceResolver.evidence`` has validated
+    every supplied locator against regenerated CandidatePack provenance.
+    """
+
+    owners: dict[str, list[tuple[Any, ...] | None]] = {}
+    for item in evidence:
+        locator = item.get("native_locator")
+        for occurrence_id in item["occurrence_ids"]:
+            owners.setdefault(occurrence_id, []).append(locator)
+    for locators in owners.values():
+        if len(locators) < 2:
+            continue
+        if any(locator is None for locator in locators):
+            return False
+        trusted_locators = [locator for locator in locators if locator is not None]
+        if len(set(trusted_locators)) != len(trusted_locators):
+            return False
+        kinds = {locator[0] for locator in trusted_locators}
+        if kinds != {"native_parent_span"}:
+            # Only distinct line slices of one parent have the narrowly
+            # reviewed overlap semantics. Composite spans, mixed native
+            # kinds, and ordinary atomic evidence remain fail-closed.
+            return False
+        ranges_by_owner = [locator[1] for locator in trusted_locators]
+        if not all(
+            isinstance(ranges, tuple)
+            and ranges
+            and all(
+                isinstance(span, tuple)
+                and len(span) == 3
+                and isinstance(span[0], str)
+                and isinstance(span[1], int)
+                and isinstance(span[2], int)
+                and span[1] < span[2]
+                for span in ranges
+            )
+            for ranges in ranges_by_owner
+        ):
+            return False
+        if len({
+            ranges[0][0] for ranges in ranges_by_owner
+        }) != 1:
+            # Line overlap is meaningful only as different slices of the
+            # same regenerated parent block.
+            return False
+        for left_index, left_ranges in enumerate(ranges_by_owner):
+            for right_ranges in ranges_by_owner[left_index + 1:]:
+                if any(
+                    left_block == right_block
+                    and left_start < right_end
+                    and right_start < left_end
+                    for left_block, left_start, left_end in left_ranges
+                    for right_block, right_start, right_end in right_ranges
+                ):
+                    return False
+    return True
+
+
 def _fact_base(
     fact: Mapping[str, Any],
     *,
     resolver: _ProvenanceResolver,
     label: str,
     include_evidence_provenance: bool,
+    allow_candidate_native_context_overlap: bool,
 ) -> Mapping[str, Any]:
     keys = set(fact)
     unknown = keys - _FACT_IGNORED_KEYS - _FACT_SEMANTIC_KEYS
@@ -1501,15 +1590,33 @@ def _fact_base(
             resolver.evidence(item, label=f"{label}.{evidence_key}[{index}]")
             for index, item in enumerate(raw_evidence)
         ]
-        occurrence_ids = [
+        raw_occurrence_ids = [
             occurrence_id
             for item in normalized_evidence
             for occurrence_id in item["occurrence_ids"]
         ]
-        _require(
-            len(occurrence_ids) == len(set(occurrence_ids)),
-            f"{label}.{evidence_key} repeats Common IR occurrence provenance",
-        )
+        occurrence_ids = stable_unique_occurrence_ids(raw_occurrence_ids)
+        if include_evidence_provenance:
+            # B/G calibration remains provenance-strict. Candidate mode has
+            # no compatibility relaxation, so reviewed historical corpora
+            # cannot silently change their occurrence multiplicity.
+            _require(
+                len(raw_occurrence_ids) == len(occurrence_ids),
+                f"{label}.{evidence_key} repeats Common IR occurrence provenance",
+            )
+        elif len(raw_occurrence_ids) != len(occurrence_ids):
+            # Candidate mode has already validated every evidence row above.
+            # Permit a shared parent occurrence only when all colliding rows
+            # are pairwise-disjoint exact native line spans of that parent.
+            # Atomic/composite rows and duplicate/overlapping lines fail.
+            _require(
+                allow_candidate_native_context_overlap
+                and evidence_key == "context_evidence"
+                and _candidate_occurrence_collisions_use_distinct_native_spans(
+                    normalized_evidence
+                ),
+                f"{label}.{evidence_key} repeats Common IR occurrence provenance",
+            )
         if include_evidence_provenance:
             semantic_evidence = [
                 {
@@ -1673,38 +1780,12 @@ def _optional_json_integer(value: Any, *, label: str) -> int | None:
     return _json_integer(value, label=label)
 
 
-def _exact_decimal_integer(value: str, *, factor: int, label: str) -> int:
-    try:
-        normalized = Decimal(value.replace(",", "")) * factor
-    except InvalidOperation as error:
-        raise ExistingProfileSemanticError(f"{label} contains an invalid numeric token") from error
-    _require(normalized == normalized.to_integral_value(), f"{label} cannot be represented as an integer")
-    return int(normalized)
-
-
 def _normalized_numeric_token(anchor_text: str, *, label: str) -> tuple[str, int, str]:
     """Normalize one complete server-enumerated amount/rate/count token."""
 
-    amount = _AMOUNT_TOKEN.fullmatch(anchor_text)
-    if amount is not None:
-        factor = {None: 1, "천": 1_000, "만": 10_000, "억": 100_000_000}[
-            amount.group("suffix")
-        ]
-        return (
-            "amount",
-            _exact_decimal_integer(amount.group("number"), factor=factor, label=label),
-            "KRW",
-        )
-    rate = _RATE_TOKEN.fullmatch(anchor_text)
-    if rate is not None:
-        return (
-            "rate",
-            _exact_decimal_integer(rate.group("number"), factor=100, label=label),
-            "BPS",
-        )
-    count = _COUNT_TOKEN.fullmatch(anchor_text)
-    if count is not None:
-        return "count", int(count.group("number")), count.group("unit")
+    normalized = normalize_numeric_candidate_token(anchor_text)
+    if normalized is not None:
+        return normalized
     raise ExistingProfileSemanticError(
         f"{label} is not a complete supported amount, rate, or count token"
     )
@@ -1715,10 +1796,7 @@ def _server_enumerated_numeric_spans(
 ) -> frozenset[tuple[int, int, str]]:
     """Enumerate production complete-token spans once for one source block."""
 
-    return frozenset(
-        (match.start(), match.end(), match.group(0))
-        for match in _NUMERIC_CANDIDATE_PATTERN.finditer(source_text)
-    )
+    return frozenset(enumerate_numeric_candidate_spans(source_text))
 
 
 def _validate_measure_locator_value(
@@ -1829,6 +1907,7 @@ def build_semantic_graph(
     *,
     label: str = "profile",
     include_evidence_provenance: bool = True,
+    allow_candidate_native_context_overlap: bool = False,
 ) -> SemanticGraph:
     """Turn a Profile into an ID/order-insensitive exact semantic multigraph.
 
@@ -1985,6 +2064,9 @@ def build_semantic_graph(
             resolver=resolver,
             label=fact_label,
             include_evidence_provenance=include_evidence_provenance,
+            allow_candidate_native_context_overlap=(
+                allow_candidate_native_context_overlap
+            ),
         )
 
     unknown_fields = set(comparison) - _FACT_FIELDS
@@ -2252,6 +2334,7 @@ def _compare_semantic_profiles(
         candidate,
         label=f"candidate {notice_id}",
         include_evidence_provenance=include_evidence_provenance,
+        allow_candidate_native_context_overlap=enforce_candidate_source_basis,
     )
     _require(
         baseline.notice_id == gold.notice_id == candidate.notice_id == notice_id,

@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 from jsonschema import validate as validate_json_schema
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from worker import vendor
 from worker.adapters.openai_embedding_client import OpenAIEmbeddingClient
@@ -416,6 +416,11 @@ def test_openai_adapters_offline_happy_path_and_schema_failure() -> None:
             )
         )
     assert error.value.raw == {"wrong": 1}
+    assert error.value.reason_code == "schema_validation_failed"
+    assert error.value.validation_issues == ({
+        "loc": ("value",),
+        "type": "missing",
+    },)
 
     embeddings = _FakeEmbeddings()
     embedding_client = OpenAIEmbeddingClient(
@@ -429,6 +434,165 @@ def test_openai_adapters_offline_happy_path_and_schema_failure() -> None:
     assert batch.vectors == [[1.0, 0.0], [0.0, 1.0]]
     assert embeddings.calls[0]["model"] == "text-embedding-test"
     assert embeddings.calls[0]["timeout"] == 9.0
+
+
+def test_openai_llm_validation_metadata_never_copies_unknown_keys_or_error_text() -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    class StrictResult(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        value: str
+
+    sentinel = "private_source_text_used_as_a_key"
+    chat = _FakeChatCompletions(json.dumps({"value": 3, sentinel: "private"}))
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+
+    with pytest.raises(LLMInvalidResponseError) as raised:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="validation_metadata_test",
+                messages=[Message(role="user", content="private prompt")],
+                response_schema=StrictResult,
+                model_profile="default",
+            )
+        )
+
+    assert raised.value.reason_code == "schema_validation_failed"
+    assert raised.value.validation_issues == (
+        {"loc": ("value",), "type": "string_type"},
+        {"loc": ("$unknown",), "type": "extra_forbidden"},
+    )
+    assert sentinel not in repr(raised.value.validation_issues)
+    assert "private" not in str(raised.value)
+
+
+def test_openai_llm_component_anchor_validation_metadata_is_source_free() -> None:
+    from semantic_structuring.source_selection import (
+        COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+        SourceSelectionExtractionV02,
+    )
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    private_source_id = "private-unadmitted-component-source"
+    raw = {
+        "notice_id": "notice-a",
+        "candidate_pack_id": "pack-a",
+        "component_decision": {"mode": "packages", "no_component_reason": None},
+        "support_components": [{
+            "support_component_id": "component-a",
+            "component_kind": "support_package",
+            "source_block_ids": ["admitted-source"],
+            "table_block_ids": [],
+            "name_anchor": {
+                "source_block_id": private_source_id,
+                "anchor_text": "private component name",
+            },
+        }],
+        "facts": [],
+        "support_facets": [],
+        "support_scale_measures": [],
+    }
+    chat = _FakeChatCompletions(json.dumps(raw))
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+
+    with pytest.raises(LLMInvalidResponseError) as raised:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="component_anchor_validation_test",
+                messages=[Message(role="user", content="private prompt")],
+                response_schema=SourceSelectionExtractionV02,
+                model_profile="default",
+            )
+        )
+
+    assert raised.value.reason_code == "schema_validation_failed"
+    assert raised.value.validation_issues == ({
+        "loc": ("support_components", 0),
+        "type": COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+    },)
+    assert all(
+        set(issue) == {"loc", "type"}
+        for issue in raised.value.validation_issues
+    )
+    assert private_source_id not in repr(raised.value.validation_issues)
+    assert "private component name" not in repr(raised.value.validation_issues)
+
+
+def test_openai_llm_classifies_incomplete_completion_without_raw_content() -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    sentinel = "private-incomplete-content"
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=_FakeChatCompletions(
+                    sentinel,
+                    finish_reason="length",
+                )
+            )
+        ),
+    )
+
+    with pytest.raises(LLMInvalidResponseError) as raised:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="incomplete_response_test",
+                messages=[Message(role="user", content="private prompt")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+
+    assert raised.value.reason_code == "incomplete_completion"
+    assert raised.value.raw is None
+    assert raised.value.validation_issues == ()
+    assert sentinel not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_reason"),
+    [
+        ("", "missing_content"),
+        (" \n\t", "missing_content"),
+        (None, "response_shape_invalid"),
+        ({"value": "provider-envelope-object"}, "response_shape_invalid"),
+    ],
+)
+def test_openai_llm_retries_only_blank_string_content_shape(
+    content: object,
+    expected_reason: str,
+) -> None:
+    from worker.ports.llm import LLMInvalidResponseError, Message
+
+    chat = _FakeChatCompletions(content)  # type: ignore[arg-type]
+    llm = OpenAILLMClient(
+        api_key="test-key-not-a-real-secret",
+        model_profiles={"default": "gpt-test"},
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat)),
+    )
+
+    with pytest.raises(LLMInvalidResponseError) as raised:
+        asyncio.run(
+            llm.generate_structured(
+                task_name="content_shape_test",
+                messages=[Message(role="user", content="private prompt")],
+                response_schema=_ResultSchema,
+                model_profile="default",
+            )
+        )
+
+    assert raised.value.reason_code == expected_reason
+    assert raised.value.raw is None
 
 
 def test_openai_llm_preserves_cross_field_invalid_raw_for_normalization(

@@ -491,6 +491,60 @@ def _artifact_with_support_scale_measure() -> SemanticArtifact:
     return artifact
 
 
+def _replace_support_scale_numeric_token(
+    artifact: SemanticArtifact,
+    *,
+    anchor_text: str,
+    measure_type: str,
+    measure_role: str,
+    value: int,
+    unit: str,
+) -> None:
+    """Replace the fixture's numeric token while retaining valid provenance."""
+
+    source_text = f"지원 {anchor_text}"
+    fact = artifact.profile["comparison_profile"]["support_scale"][0]  # type: ignore[index]
+    value_source = {
+        "source_block_id": "block-1",
+        "start_char": 0,
+        "end_char": len(source_text),
+        "text_basis": "common_ir_v1_candidate_pack",
+    }
+    fact["value_raw"] = source_text
+    fact["value_source"] = value_source
+    selected = artifact.source_selection["selection"]["facts"][0]  # type: ignore[index]
+    selected["value_anchor"]["anchor_text"] = source_text
+    materialized = artifact.source_selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["value_source"] = value_source
+    materialized["source_blocks"][0]["text"] = source_text
+    artifact.source_selection["source_block_texts"]["block-1"] = source_text  # type: ignore[index]
+    block = artifact.common_ir["blocks"][0]  # type: ignore[index]
+    block["text"] = source_text
+    block["occurrences"][0]["text"] = source_text
+
+    start = source_text.index(anchor_text)
+    artifact.source_selection["numeric_candidates"][0].update(  # type: ignore[index]
+        {
+            "anchor_text": anchor_text,
+            "start_char": start,
+            "end_char": start + len(anchor_text),
+        }
+    )
+    for projection in (
+        artifact.profile["derived_projections"][0],  # type: ignore[index]
+        artifact.source_selection["support_scale_measures"][0],  # type: ignore[index]
+    ):
+        projection["measures"][0].update(
+            {
+                "measure_type": measure_type,
+                "measure_role": measure_role,
+                "lower_value": value,
+                "upper_value": value,
+                "unit": unit,
+            }
+        )
+
+
 def _artifact_with_named_component() -> SemanticArtifact:
     artifact = _artifact()
     component_id = "component-1"
@@ -1142,6 +1196,242 @@ def test_candidate_can_use_a_server_regenerated_native_line_atom() -> None:
     assert report["semantic_gate_status"] == "passed"
 
 
+def test_candidate_graph_accepts_distinct_native_context_spans_with_shared_parent_occurrences() -> None:
+    _baseline, _gold, candidate = _native_line_artifacts()
+    source_ids = set(candidate.source_selection["source_block_texts"])  # type: ignore[index]
+    base = verifier._existing_a_base_candidate_pack(
+        candidate.common_ir, source_ids, label="semantic shared native parent"
+    )
+    transformed = verifier.augment_pack_with_native_exact_transforms(
+        base,
+        options=verifier.NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=True,
+            include_continuations=False,
+        ),
+    )
+    lines = [
+        block
+        for block in transformed.blocks
+        if block.native_parent_block_id is not None
+    ]
+    assert len(lines) == 2
+    assert lines[0].common_ir_occurrence_ids == lines[1].common_ir_occurrence_ids
+
+    selected = candidate.source_selection["selection"]["facts"][0]  # type: ignore[index]
+    selected["context_source_block_ids"] = [block.block_id for block in lines]
+    materialized = candidate.source_selection["materialized_evidence"][0]  # type: ignore[index]
+    materialized["context_blocks"] = [
+        {
+            **verifier._native_block_payload(block),
+            "text": block.text,
+            "common_ir_document_id": DOCUMENT_ID,
+        }
+        for block in lines
+    ]
+    fact = candidate.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    fact["context_evidence"] = [
+        {
+            **verifier._native_block_payload(block),
+            "text": block.text,
+            "common_ir_document_id": DOCUMENT_ID,
+        }
+        for block in lines
+    ]
+
+    # Candidate mode keeps each exact context text fingerprint after strict
+    # source validation; shared parent occurrence ids are admission metadata.
+    build_semantic_graph(
+        candidate,
+        include_evidence_provenance=False,
+        allow_candidate_native_context_overlap=True,
+    )
+    direct_overlap = deepcopy(fact)
+    direct_overlap["evidence"] = deepcopy(fact["context_evidence"])
+    direct_overlap["context_evidence"] = []
+    resolver = semantic_diff._ProvenanceResolver(
+        candidate.source_selection,
+        candidate.common_ir,
+        label="candidate direct native overlap",
+    )
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="evidence repeats Common IR occurrence provenance",
+    ):
+        semantic_diff._fact_base(
+            direct_overlap,
+            resolver=resolver,
+            label="candidate direct native overlap fact",
+            include_evidence_provenance=False,
+            allow_candidate_native_context_overlap=True,
+        )
+    # Historical baseline/Gold calibration remains provenance-strict.
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="context_evidence repeats Common IR occurrence provenance",
+    ):
+        build_semantic_graph(candidate, include_evidence_provenance=True)
+
+    # Full B/G/I/C comparison: reviewed references use two ordinary atomic
+    # sources with unique occurrences, while C expresses the same two context
+    # texts as disjoint native lines inherited from one parent occurrence.
+    reference = _artifact()
+    reference.common_ir["blocks"] = [  # type: ignore[index]
+        {
+            "block_id": "block-1",
+            "text": "기존 값",
+            "kind": "paragraph",
+            "reading_order": 0,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-old"],
+            "occurrences": [{"occurrence_id": "occ-old", "text": "기존 값"}],
+        },
+        {
+            "block_id": "block-2",
+            "text": "교정 값",
+            "kind": "paragraph",
+            "reading_order": 1,
+            "structure_status": "explicit",
+            "text_occurrence_ids": ["occ-context"],
+            "occurrences": [{
+                "occurrence_id": "occ-context", "text": "교정 값",
+            }],
+        },
+    ]
+    reference.source_selection["source_block_texts"] = {  # type: ignore[index]
+        "block-1": "기존 값",
+        "block-2": "교정 값",
+    }
+
+    def atomic_reference(block_id: str, occurrence_id: str, text: str) -> dict[str, object]:
+        return {
+            "source_block_id": block_id,
+            "text": text,
+            "section_id": "main_notice",
+            "source_occurrence_ids": [occurrence_id],
+            "common_ir_document_id": DOCUMENT_ID,
+            "common_ir_block_id": block_id,
+            "common_ir_occurrence_ids": [occurrence_id],
+        }
+
+    reference_selected = reference.source_selection["selection"]["facts"][0]  # type: ignore[index]
+    reference_selected["context_source_block_ids"] = ["block-1", "block-2"]
+    reference_materialized = reference.source_selection["materialized_evidence"][0]  # type: ignore[index]
+    reference_materialized["source_blocks"] = [
+        atomic_reference("block-1", "occ-old", "기존 값")
+    ]
+    reference_materialized["context_blocks"] = [
+        atomic_reference("block-1", "occ-old", "기존 값"),
+        atomic_reference("block-2", "occ-context", "교정 값"),
+    ]
+    reference_fact = reference.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    reference_fact["evidence"] = [{
+        key: value
+        for key, value in atomic_reference(
+            "block-1", "occ-old", "기존 값"
+        ).items()
+        if key != "text"
+    }]
+    reference_fact["context_evidence"] = [
+        atomic_reference("block-1", "occ-old", "기존 값"),
+        atomic_reference("block-2", "occ-context", "교정 값"),
+    ]
+
+    report = compare_semantic_profiles_bgic(
+        reference,
+        deepcopy(reference),
+        deepcopy(candidate.common_ir),
+        candidate,
+        notice_id=NOTICE_ID,
+    )
+    assert report["semantic_gate_status"] == "passed"
+
+
+def test_candidate_graph_rejects_atomic_occurrence_reuse() -> None:
+    artifact = _artifact()
+    fact = deepcopy(
+        artifact.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    )
+    repeated = deepcopy(fact["evidence"][0])
+    fact["context_evidence"] = [deepcopy(repeated), deepcopy(repeated)]
+    resolver = semantic_diff._ProvenanceResolver(
+        artifact.source_selection,
+        artifact.common_ir,
+        label="candidate atomic duplicate",
+    )
+
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="context_evidence repeats Common IR occurrence provenance",
+    ):
+        semantic_diff._fact_base(
+            fact,
+            resolver=resolver,
+            label="candidate atomic duplicate fact",
+            include_evidence_provenance=False,
+            allow_candidate_native_context_overlap=True,
+        )
+
+
+def test_candidate_graph_rejects_same_native_line_span_repeated() -> None:
+    _baseline, _gold, candidate = _native_line_artifacts()
+    fact = deepcopy(
+        candidate.profile["comparison_profile"]["support_content"][0]  # type: ignore[index]
+    )
+    repeated = deepcopy(fact["evidence"][0])
+    fact["context_evidence"] = [deepcopy(repeated), deepcopy(repeated)]
+    resolver = semantic_diff._ProvenanceResolver(
+        candidate.source_selection,
+        candidate.common_ir,
+        label="candidate native duplicate",
+    )
+
+    with pytest.raises(
+        ExistingProfileSemanticError,
+        match="context_evidence repeats Common IR occurrence provenance",
+    ):
+        semantic_diff._fact_base(
+            fact,
+            resolver=resolver,
+            label="candidate native duplicate fact",
+            include_evidence_provenance=False,
+            allow_candidate_native_context_overlap=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "locators",
+    [
+        # Two independently validated line locators still collide when their
+        # ranges overlap or their regenerated parents differ.
+        (
+            ("native_parent_span", (("parent", 0, 10),)),
+            ("native_parent_span", (("parent", 5, 12),)),
+        ),
+        (
+            ("native_parent_span", (("parent-a", 0, 5),)),
+            ("native_parent_span", (("parent-b", 6, 10),)),
+        ),
+        # Composite source_spans have no reviewed shared-parent relaxation.
+        (
+            ("source_spans", (("left", 0, 5), ("middle", 0, 4))),
+            ("source_spans", (("right", 0, 5),)),
+        ),
+    ],
+)
+def test_candidate_occurrence_collision_rejects_non_disjoint_same_parent_lines(
+    locators: tuple[tuple[object, ...], tuple[object, ...]],
+) -> None:
+    rows = [
+        {"occurrence_ids": ["shared"], "native_locator": locator}
+        for locator in locators
+    ]
+
+    assert not semantic_diff._candidate_occurrence_collisions_use_distinct_native_spans(
+        rows
+    )
+
+
 def test_candidate_can_use_a_runpod_014_no_parent_native_line_atom() -> None:
     baseline, gold, candidate = _native_line_artifacts()
     _as_runpod_014_no_parent_native(candidate)
@@ -1628,6 +1918,50 @@ def test_measure_must_match_its_numeric_locator() -> None:
 
     with pytest.raises(ExistingProfileSemanticError):
         build_semantic_graph(artifact)
+
+
+@pytest.mark.parametrize(
+    ("anchor_text", "measure_type", "measure_role", "value", "unit"),
+    [
+        ("3억 2천만원 500원", "amount", "support_amount", 320_000_500, "KRW"),
+        ("2천5백3십4개사", "count", "selection_capacity", 2_534, "개사"),
+        ("10억원", "amount", "support_amount", 1_000_000_000, "KRW"),
+        ("10%", "rate", "support_rate", 1_000, "BPS"),
+        ("10개사", "count", "selection_capacity", 10, "개사"),
+    ],
+)
+def test_semantic_gate_uses_production_numeric_contract_for_new_and_simple_forms(
+    anchor_text: str,
+    measure_type: str,
+    measure_role: str,
+    value: int,
+    unit: str,
+) -> None:
+    artifact = _artifact_with_support_scale_measure()
+    _replace_support_scale_numeric_token(
+        artifact,
+        anchor_text=anchor_text,
+        measure_type=measure_type,
+        measure_role=measure_role,
+        value=value,
+        unit=unit,
+    )
+
+    assert build_semantic_graph(artifact).digest
+
+
+@pytest.mark.parametrize(
+    "source_text",
+    [
+        "지원금 최대 1 000원",
+        "지원금 최대 1억\n5000만원",
+        "선정규모 2천5백3십4백명",
+    ],
+)
+def test_semantic_gate_numeric_enumerator_reuses_production_malformed_guards(
+    source_text: str,
+) -> None:
+    assert semantic_diff._server_enumerated_numeric_spans(source_text) == frozenset()
 
 
 @pytest.mark.parametrize(

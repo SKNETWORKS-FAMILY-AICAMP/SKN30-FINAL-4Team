@@ -15,7 +15,9 @@ from semantic_structuring.source_selection import (
     SourceSelectionExtractionV02,
     SupportScaleFactRepairError,
     build_numeric_candidates,
+    enumerate_numeric_candidate_spans,
     finalize_source_selection_v02,
+    normalize_numeric_candidate_token,
     typed_repair_requirements_v02,
 )
 
@@ -48,6 +50,32 @@ def _selection(anchor_text: str) -> SourceSelectionExtractionV02:
             },
         }],
     })
+
+
+@pytest.mark.parametrize(
+    ("source_text", "expected"),
+    [
+        ("3억 2천만원 500원", ("amount", 320_000_500, "KRW")),
+        ("2천5백3십4개사", ("count", 2_534, "개사")),
+        ("1,000원", ("amount", 1_000, "KRW")),
+        ("10%", ("rate", 1_000, "BPS")),
+        ("10개사", ("count", 10, "개사")),
+    ],
+)
+def test_public_numeric_contract_preserves_compound_positional_and_simple_forms(
+    source_text: str,
+    expected: tuple[str, int, str],
+) -> None:
+    text = f"지원규모 {source_text} 확정"
+    start = text.index(source_text)
+
+    assert normalize_numeric_candidate_token(source_text) == expected
+    assert enumerate_numeric_candidate_spans(text) == (
+        (start, start + len(source_text), source_text),
+    )
+    assert [candidate.anchor_text for candidate in build_numeric_candidates(_pack(text))] == [
+        source_text
+    ]
 
 
 @pytest.mark.parametrize(
@@ -327,6 +355,7 @@ def test_historical_cap_selected_by_model_requires_repair() -> None:
     assert typed_repair_requirements_v02(raised.value) == {
         "required_support_scale_anchors": [],
         "required_support_scale_fact_repairs": raised.value.repair_payload(),
+        "required_exact_anchor_repairs": [],
         "required_list_item_regions": [],
         "do_not_restore_fact_ids": ["scale"],
     }

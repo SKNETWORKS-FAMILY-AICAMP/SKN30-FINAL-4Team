@@ -34,6 +34,7 @@ from semantic_structuring.native_exact_transform import (
     replay_persisted_native_exact_transforms,
 )
 from semantic_structuring.models import CandidatePack, SourceBlock
+from semantic_structuring.native_provenance import stable_unique_occurrence_ids
 
 
 FREEZE_CONTRACT = "existing_profile_gold_100_freeze/v1"
@@ -1015,9 +1016,13 @@ def _native_block_payload(block: SourceBlock) -> dict[str, Any]:
     payload = {
         "source_block_id": block.block_id,
         "section_id": block.section_id,
-        "source_occurrence_ids": list(block.source_occurrence_ids),
+        "source_occurrence_ids": stable_unique_occurrence_ids(
+            block.source_occurrence_ids
+        ),
         "common_ir_block_id": block.common_ir_block_id,
-        "common_ir_occurrence_ids": list(block.common_ir_occurrence_ids),
+        "common_ir_occurrence_ids": stable_unique_occurrence_ids(
+            block.common_ir_occurrence_ids
+        ),
     }
     if block.common_ir_cell_id is not None:
         payload["common_ir_cell_id"] = block.common_ir_cell_id

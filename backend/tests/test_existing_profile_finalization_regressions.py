@@ -7,10 +7,12 @@ announcement worker.  They intentionally do not invoke an LLM or a database.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 from unittest.mock import ANY
 
 from worker import announcement_profiles
 from worker import vendor  # noqa: F401 - installs the vendored profile package
+from worker.ports.llm import LLMInvalidResponseError, LLMTimeoutError
 
 from semantic_structuring.explicit_support_cap_candidates import (
     EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION,
@@ -21,8 +23,12 @@ from semantic_structuring.profile_v02 import ValueSource
 from semantic_structuring.source_selection import (
     AmbiguousAnchorCorrectionError,
     AnchorCorrectionRequest,
+    COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
     DuplicateResolvedValueSourceSpanError,
+    ExactAnchorMaterializationRepairError,
+    SourceSelectionRepairIssuesError,
     SourceSelectionExtractionV02,
+    SourceSelectedComponent,
     SupportCapCompletenessError,
     SupportScaleFactRepairError,
     build_numeric_candidates,
@@ -30,7 +36,64 @@ from semantic_structuring.source_selection import (
     memoize_anchor_correction_resolver,
     normalize_semantic_duplicate_facts_v02,
     preserve_prior_server_validated_facts_v02,
+    typed_repair_requirements_v02,
+    validate_typed_repair_replacements_v02,
 )
+
+
+def test_component_name_anchor_error_has_stable_closed_type_and_location() -> None:
+    with pytest.raises(ValidationError) as raised:
+        SourceSelectedComponent.model_validate({
+            "support_component_id": "component-a",
+            "component_kind": "support_package",
+            "source_block_ids": ["component-source"],
+            "table_block_ids": [],
+            "name_anchor": {
+                "source_block_id": "private-unadmitted-source",
+                "anchor_text": "private component name",
+            },
+        })
+
+    errors = raised.value.errors(
+        include_url=False,
+        include_context=False,
+        include_input=False,
+    )
+    assert errors == [{
+        "type": COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+        "loc": (),
+        "msg": "component name_anchor must reference a component source block",
+    }]
+
+
+@pytest.mark.parametrize(
+    ("name_source", "source_block_ids", "table_block_ids"),
+    [
+        ("component-source", ["component-source"], []),
+        ("component-table", ["component-source"], ["component-table"]),
+    ],
+)
+def test_component_name_anchor_accepts_declared_source_or_table_without_rewrite(
+    name_source: str,
+    source_block_ids: list[str],
+    table_block_ids: list[str],
+) -> None:
+    component = SourceSelectedComponent.model_validate({
+        "support_component_id": "component-a",
+        "component_kind": "support_package",
+        "source_block_ids": source_block_ids,
+        "table_block_ids": table_block_ids,
+        "name_anchor": {
+            "source_block_id": name_source,
+            "anchor_text": "원문 구성요소명",
+        },
+    })
+
+    assert component.source_block_ids == source_block_ids
+    assert component.table_block_ids == table_block_ids
+    assert component.name_anchor is not None
+    assert component.name_anchor.source_block_id == name_source
+    assert component.name_anchor.anchor_text == "원문 구성요소명"
 
 
 def _pack(text: str) -> CandidatePack:
@@ -84,6 +147,106 @@ def _fact(
         "value_anchor": {"source_block_id": source_block_id, "anchor_text": anchor_text},
         "primary_component_id": primary_component_id,
     }
+
+
+def test_absent_value_anchors_raise_one_source_text_free_typed_repair() -> None:
+    pack = _pack("원문 사업 목적과 원문 지원 내용")
+    selection = _selection(
+        _fact("bad-purpose", "purpose_goal", "재작성된 사업 목적"),
+        _fact("bad-content", "support_content", "재작성된 지원 내용"),
+    )
+
+    with pytest.raises(ExactAnchorMaterializationRepairError) as raised:
+        finalize_source_selection_v02(selection, pack, [])
+
+    requirements = typed_repair_requirements_v02(raised.value)
+    assert requirements == {
+        "required_support_scale_anchors": [],
+        "required_support_scale_fact_repairs": [],
+        "required_exact_anchor_repairs": [
+            {
+                "fact_id": "bad-content",
+                "field_name": "support_content",
+                "source_block_id": "body[0]",
+                "reason": "anchor_not_exact_substring",
+            },
+            {
+                "fact_id": "bad-purpose",
+                "field_name": "purpose_goal",
+                "source_block_id": "body[0]",
+                "reason": "anchor_not_exact_substring",
+            },
+        ],
+        "required_list_item_regions": [],
+        "do_not_restore_fact_ids": ["bad-content", "bad-purpose"],
+    }
+    serialized = repr(requirements)
+    assert "재작성된 사업 목적" not in serialized
+    assert "재작성된 지원 내용" not in serialized
+    assert "원문 사업 목적" not in serialized
+
+
+def test_exact_anchor_repair_rejects_unchanged_fact_but_accepts_exact_replacement() -> None:
+    pack = _pack("원문 사업 목적")
+    previous = _selection(
+        _fact("purpose", "purpose_goal", "재작성된 사업 목적")
+    )
+    with pytest.raises(ExactAnchorMaterializationRepairError) as raised:
+        finalize_source_selection_v02(previous, pack, [])
+
+    unchanged_with_new_id = _selection(
+        _fact("renamed-purpose", "purpose_goal", "재작성된 사업 목적")
+    )
+    with pytest.raises(ExactAnchorMaterializationRepairError) as repeated:
+        validate_typed_repair_replacements_v02(
+            previous, unchanged_with_new_id, raised.value
+        )
+    assert repeated.value is raised.value
+
+    corrected = _selection(_fact("purpose", "purpose_goal", "원문 사업 목적"))
+    validate_typed_repair_replacements_v02(previous, corrected, raised.value)
+    finalized = finalize_source_selection_v02(
+        corrected, pack, [], typed_repair_error=raised.value
+    )
+    assert finalized[3][0].value_source == ValueSource(
+        source_block_id="body[0]", start_char=0, end_char=8
+    )
+
+
+def test_exact_anchor_and_selection_quality_defects_share_one_repair() -> None:
+    pack = _pack("지원기간 6개월\n원문 사업 목적")
+    selection = _selection(
+        _fact(
+            "scale",
+            "support_scale",
+            "6개월",
+        ),
+        _fact("purpose", "purpose_goal", "재작성된 사업 목적"),
+    )
+
+    with pytest.raises(SourceSelectionRepairIssuesError) as raised:
+        finalize_source_selection_v02(
+            selection,
+            pack,
+            build_numeric_candidates(pack),
+        )
+
+    requirements = typed_repair_requirements_v02(raised.value)
+    assert requirements["required_exact_anchor_repairs"] == [{
+        "fact_id": "purpose",
+        "field_name": "purpose_goal",
+        "source_block_id": "body[0]",
+        "reason": "anchor_not_exact_substring",
+    }]
+    assert requirements["required_support_scale_fact_repairs"] == [{
+        "fact_id": "scale",
+        "source_block_id": "body[0]",
+        "reason": "duration_bearing_anchor",
+        "numeric_candidate_count": 0,
+        "derived_measure_count": 0,
+    }]
+    assert requirements["do_not_restore_fact_ids"] == ["purpose", "scale"]
+    assert raised.value.finalize_stage == "repair_issue_aggregation"
 
 
 def test_cap_candidates_keep_decimal_offsets_and_reject_financial_eligibility() -> None:
@@ -1212,3 +1375,643 @@ def test_announcement_worker_uses_shared_finalizer_and_exposes_cap_hints(
         seen["request"]["explicit_support_cap_candidate_version"]
         == EXPLICIT_SUPPORT_CAP_CANDIDATE_VERSION
     )
+
+
+def test_announcement_worker_sends_source_free_exact_anchor_repair_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = _pack("원문 사업 목적")
+    responses = iter([
+        _selection(_fact("purpose", "purpose_goal", "재작성된 사업 목적")),
+        _selection(_fact("purpose", "purpose_goal", "원문 사업 목적")),
+    ])
+    requests: list[dict[str, object]] = []
+
+    def fake_llm(*_args: object, **kwargs: object) -> SourceSelectionExtractionV02:
+        requests.append({
+            "instructions": kwargs["instructions"],
+            "payload": kwargs["payload"],
+        })
+        return next(responses)
+
+    monkeypatch.setattr(announcement_profiles, "_call_llm", fake_llm)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_selection_artifact",
+        lambda **kwargs: {
+            "fact_ids": [fact.fact_id for fact in kwargs["extraction"].facts]
+        },
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "assemble_final_profile_v02",
+        lambda artifact, *_args, **_kwargs: dict(artifact),
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "common_ir_v1_metadata", lambda _document: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "candidate_pack_artifact", lambda *_args: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "build_corrected_anchor_audit", lambda *_args: []
+    )
+
+    profile = announcement_profiles._select_and_assemble(
+        {"document": {"document_id": "test"}},
+        pack,
+        {},
+        object(),
+        "test-model",
+    )
+
+    assert profile["fact_ids"] == ["purpose"]
+    assert len(requests) == 2
+    repair_payload = requests[1]["payload"]
+    assert isinstance(repair_payload, dict)
+    assert repair_payload["required_exact_anchor_repairs"] == [{
+        "fact_id": "purpose",
+        "field_name": "purpose_goal",
+        "source_block_id": "body[0]",
+        "reason": "anchor_not_exact_substring",
+    }]
+    assert "anchor_text" not in repr(
+        repair_payload["required_exact_anchor_repairs"]
+    )
+    assert (
+        announcement_profiles._EXACT_ANCHOR_REPAIR_INSTRUCTIONS
+        in requests[1]["instructions"]
+    )
+
+
+def test_announcement_worker_attaches_only_safe_finalizer_failure_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = _pack("지원금 최대 1억원")
+    selection = _selection(_fact("purpose", "purpose_goal", "지원금 최대 1억원"))
+
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_call_llm",
+        lambda *_args, **_kwargs: selection,
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_trusted_source_sha256",
+        lambda *_args: "a" * 64,
+    )
+
+    def reject(*_args: object, **_kwargs: object):
+        error = ValueError("private source and validation details")
+        error.finalize_stage = "evidence_materialization"  # type: ignore[attr-defined]
+        raise error
+
+    monkeypatch.setattr(
+        announcement_profiles,
+        "finalize_source_selection_v02",
+        reject,
+    )
+
+    with pytest.raises(announcement_profiles.StageError) as raised:
+        announcement_profiles._select_and_assemble(
+            {"document": {"document_id": "test"}},
+            pack,
+            {},
+            object(),
+            "test-model",
+        )
+
+    assert raised.value.diagnostic.attempt == 2
+    assert raised.value.diagnostic.reason_code == "MATERIALIZATION_FAILED"
+    assert raised.value._canary_safe_details == {  # type: ignore[attr-defined]
+        "finalize_stage": "evidence_materialization",
+        "error_classification": "unclassified",
+        "error_type": "ValueError",
+        "repair_requirement_counts": {
+            "support_scale_anchors": 0,
+            "support_scale_fact_repairs": 0,
+            "exact_anchor_repairs": 0,
+            "explicit_list_item_regions": 0,
+            "do_not_restore_fact_ids": 0,
+        },
+    }
+    assert "private" not in repr(raised.value._canary_safe_details)  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("with_raw", [True, False])
+def test_announcement_worker_repairs_first_invalid_structured_response_in_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    with_raw: bool,
+) -> None:
+    pack = _pack("원문 사업 목적")
+    selection = _selection(_fact("purpose", "purpose_goal", "원문 사업 목적"))
+    private_raw = {"private_source": "must-remain-in-memory"}
+    calls: list[dict[str, object]] = []
+    retry_observed_private_raw = False
+
+    def fake_generate(*_args: object, **kwargs: object) -> SourceSelectionExtractionV02:
+        nonlocal retry_observed_private_raw
+        calls.append({"instructions": kwargs["instructions"], "payload": kwargs["payload"]})
+        if len(calls) == 1:
+            raise LLMInvalidResponseError(
+                "safe generic message",
+                raw=private_raw if with_raw else None,
+                reason_code=(
+                    "schema_validation_failed" if with_raw else "invalid_json"
+                ),
+                validation_issues=(
+                    ({"loc": ("facts", 0, "field_name"), "type": "enum"},)
+                    if with_raw
+                    else ()
+                ),
+            )
+        if with_raw:
+            retry_payload = kwargs["payload"]
+            assert isinstance(retry_payload, dict)
+            retry_observed_private_raw = (
+                retry_payload.get("previous_invalid_response") is private_raw
+            )
+        return selection
+
+    monkeypatch.setattr(announcement_profiles, "_generate", fake_generate)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_selection_artifact",
+        lambda **kwargs: {
+            "fact_ids": [fact.fact_id for fact in kwargs["extraction"].facts]
+        },
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "assemble_final_profile_v02",
+        lambda artifact, *_args, **_kwargs: dict(artifact),
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "common_ir_v1_metadata", lambda _document: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "candidate_pack_artifact", lambda *_args: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "build_corrected_anchor_audit", lambda *_args: []
+    )
+
+    profile = announcement_profiles._select_and_assemble(
+        {"document": {"document_id": "test"}},
+        pack,
+        {},
+        object(),
+        "test-model",
+    )
+
+    assert profile["fact_ids"] == ["purpose"]
+    assert len(calls) == 2
+    retry = calls[1]
+    assert announcement_profiles._REPAIR_INSTRUCTIONS in retry["instructions"]
+    payload = retry["payload"]
+    assert isinstance(payload, dict)
+    assert payload["server_validation_errors"] == [
+        "invalid structured response: "
+        + ("schema_validation_failed" if with_raw else "invalid_json")
+    ]
+    assert payload["invalid_response_context"] == {
+        "reason_code": (
+            "schema_validation_failed" if with_raw else "invalid_json"
+        ),
+        "validation_issues": (
+            [{"loc": ["facts", 0, "field_name"], "type": "enum"}]
+            if with_raw
+            else []
+        ),
+    }
+    if with_raw:
+        assert retry_observed_private_raw is True
+        assert "previous_invalid_response" not in payload
+        assert "previous_selection" not in payload
+    else:
+        assert "previous_invalid_response" not in payload
+        assert "previous_selection" not in payload
+
+
+def test_announcement_worker_repairs_component_anchor_code_once_and_releases_raw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gc
+    import weakref
+
+    class WeakDict(dict):
+        pass
+
+    pack = _pack("원문 사업 목적")
+    selection = _selection(_fact("purpose", "purpose_goal", "원문 사업 목적"))
+    calls = 0
+    raw_ref: weakref.ReferenceType[WeakDict] | None = None
+    repair_observed = False
+
+    def fake_generate(*_args: object, **kwargs: object) -> SourceSelectionExtractionV02:
+        nonlocal calls, raw_ref, repair_observed
+        calls += 1
+        if calls == 1:
+            raw = WeakDict({"support_components": [{"private": "source text"}]})
+            raw_ref = weakref.ref(raw)
+            raise LLMInvalidResponseError(
+                "safe generic message",
+                raw=raw,
+                reason_code="schema_validation_failed",
+                validation_issues=({
+                    "loc": ("support_components", 0),
+                    "type": COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+                },),
+            )
+        payload = kwargs["payload"]
+        instructions = kwargs["instructions"]
+        assert isinstance(payload, dict)
+        assert isinstance(instructions, str)
+        repair_observed = (
+            announcement_profiles._COMPONENT_NAME_ANCHOR_REPAIR_INSTRUCTIONS
+            in instructions
+            and payload["invalid_response_context"] == {
+                "reason_code": "schema_validation_failed",
+                "validation_issues": [{
+                    "loc": ["support_components", 0],
+                    "type": COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+                }],
+            }
+            and payload.get("previous_invalid_response") is raw_ref()
+        )
+        return selection
+
+    monkeypatch.setattr(announcement_profiles, "_generate", fake_generate)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_selection_artifact",
+        lambda **kwargs: {
+            "fact_ids": [fact.fact_id for fact in kwargs["extraction"].facts]
+        },
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "assemble_final_profile_v02",
+        lambda artifact, *_args, **_kwargs: dict(artifact),
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "common_ir_v1_metadata", lambda _document: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "candidate_pack_artifact", lambda *_args: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "build_corrected_anchor_audit", lambda *_args: []
+    )
+
+    profile = announcement_profiles._select_and_assemble(
+        {"document": {"document_id": "test"}},
+        pack,
+        {},
+        object(),
+        "test-model",
+        source_selection_attempts=4,
+    )
+
+    gc.collect()
+    assert profile["fact_ids"] == ["purpose"]
+    assert calls == 2
+    assert repair_observed is True
+    assert raw_ref is not None
+    assert raw_ref() is None
+
+
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "model_refusal",
+        "incomplete_completion",
+        "response_shape_invalid",
+        "missing_choices",
+    ],
+)
+def test_announcement_worker_does_not_retry_nonrepairable_invalid_response(
+    monkeypatch: pytest.MonkeyPatch,
+    reason_code: str,
+) -> None:
+    pack = _pack("원문 사업 목적")
+    calls = 0
+
+    def reject(*_args: object, **_kwargs: object) -> SourceSelectionExtractionV02:
+        nonlocal calls
+        calls += 1
+        raise LLMInvalidResponseError(
+            "safe generic message",
+            reason_code=reason_code,
+        )
+
+    monkeypatch.setattr(announcement_profiles, "_generate", reject)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+
+    with pytest.raises(announcement_profiles.StageError) as raised:
+        announcement_profiles._select_and_assemble(
+            {"document": {"document_id": "test"}},
+            pack,
+            {},
+            object(),
+            "test-model",
+        )
+
+    assert calls == 1
+    assert raised.value.diagnostic.reason_code == "LLM_INVALID_RESPONSE"
+    assert raised.value.diagnostic.attempt == 1
+    assert raised.value._canary_safe_llm_details == {  # type: ignore[attr-defined]
+        "reason_code": reason_code,
+        "validation_issues": [],
+    }
+
+
+def test_announcement_worker_drops_oversized_invalid_raw_before_retry() -> None:
+    private_raw = {
+        "value": "x" * announcement_profiles._INVALID_RESPONSE_RAW_MAX_BYTES
+    }
+    error = LLMInvalidResponseError(
+        "safe generic message",
+        raw=private_raw,
+        reason_code="schema_validation_failed",
+    )
+
+    assert announcement_profiles._bounded_previous_invalid_response(error) is None
+
+
+def test_common_llm_stage_conversion_discards_private_invalid_raw_and_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error = LLMInvalidResponseError(
+        "safe generic message",
+        raw={"private_source": "must-not-survive-terminal-conversion"},
+        reason_code="schema_validation_failed",
+    )
+
+    def reject(*_args: object, **_kwargs: object) -> SourceSelectionExtractionV02:
+        raise error
+
+    monkeypatch.setattr(announcement_profiles, "_generate", reject)
+
+    with pytest.raises(announcement_profiles.StageError) as raised:
+        announcement_profiles._call_llm(
+            object(),
+            task_name="test",
+            instructions="test",
+            payload={},
+            response_schema=SourceSelectionExtractionV02,
+            model_profile="test-model",
+            stage="test",
+            unit="test",
+        )
+
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert error.raw is None
+    assert raised.value._canary_safe_llm_details == {  # type: ignore[attr-defined]
+        "reason_code": "schema_validation_failed",
+        "validation_issues": [],
+    }
+
+
+def test_anchor_correction_stage_discards_nested_private_invalid_raw_and_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = _pack("원문 사업 목적")
+    selection = _selection(_fact("purpose", "purpose_goal", "원문 사업 목적"))
+    invalid = LLMInvalidResponseError(
+        "safe generic message",
+        raw={"private_source": "must-not-survive-nested-terminal-conversion"},
+        reason_code="schema_validation_failed",
+    )
+
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_generate",
+        lambda *_args, **_kwargs: selection,
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+
+    def reject_finalize(*_args: object, **_kwargs: object) -> object:
+        try:
+            raise invalid
+        except LLMInvalidResponseError as cause:
+            raise announcement_profiles.CorrectionResolverError(
+                fact_id="purpose",
+                source_block_id="body[0]",
+                anchor_text="원문 사업 목적",
+                candidate_count=2,
+                error_type=type(cause).__name__,
+            ) from cause
+
+    monkeypatch.setattr(
+        announcement_profiles,
+        "apply_finalize_with_fallback_v02",
+        reject_finalize,
+    )
+
+    with pytest.raises(announcement_profiles.StageError) as raised:
+        announcement_profiles._select_and_assemble(
+            {"document": {"document_id": "test"}},
+            pack,
+            {},
+            object(),
+            "test-model",
+        )
+
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert invalid.raw is None
+    assert raised.value.diagnostic.stage == "anchor_correction"
+    assert raised.value._canary_safe_llm_details == {  # type: ignore[attr-defined]
+        "reason_code": "schema_validation_failed",
+        "validation_issues": [],
+    }
+
+
+def test_announcement_worker_stops_after_two_repairable_invalid_responses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gc
+    import weakref
+
+    class WeakDict(dict):
+        pass
+
+    pack = _pack("원문 사업 목적")
+    calls = 0
+    raw_refs: list[weakref.ReferenceType[WeakDict]] = []
+
+    def reject(*_args: object, **_kwargs: object) -> SourceSelectionExtractionV02:
+        nonlocal calls
+        calls += 1
+        raw = WeakDict({"private_source": f"attempt-{calls}"})
+        raw_refs.append(weakref.ref(raw))
+        error = LLMInvalidResponseError(
+            "safe generic message",
+            raw=raw,
+            reason_code="schema_validation_failed",
+        )
+        raise error
+
+    monkeypatch.setattr(announcement_profiles, "_generate", reject)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+
+    with pytest.raises(announcement_profiles.StageError) as raised:
+        announcement_profiles._select_and_assemble(
+            {"document": {"document_id": "test"}},
+            pack,
+            {},
+            object(),
+            "test-model",
+            source_selection_attempts=4,
+        )
+
+    assert calls == 2
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert raised.value.diagnostic.reason_code == "LLM_INVALID_RESPONSE"
+    assert raised.value.diagnostic.attempt == 2
+    assert raised.value._canary_safe_llm_details == {  # type: ignore[attr-defined]
+        "reason_code": "schema_validation_failed",
+        "validation_issues": [],
+    }
+    gc.collect()
+    assert all(raw_ref() is None for raw_ref in raw_refs)
+
+
+def test_announcement_worker_releases_first_invalid_raw_when_retry_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gc
+    import weakref
+
+    class WeakDict(dict):
+        pass
+
+    pack = _pack("원문 사업 목적")
+    calls = 0
+    raw_ref: weakref.ReferenceType[WeakDict] | None = None
+
+    def reject_then_timeout(
+        *_args: object, **_kwargs: object
+    ) -> SourceSelectionExtractionV02:
+        nonlocal calls, raw_ref
+        calls += 1
+        if calls == 1:
+            raw = WeakDict({"private_source": "first-invalid-attempt"})
+            raw_ref = weakref.ref(raw)
+            raise LLMInvalidResponseError(
+                "safe generic message",
+                raw=raw,
+                reason_code="schema_validation_failed",
+            )
+        raise LLMTimeoutError("safe timeout")
+
+    monkeypatch.setattr(announcement_profiles, "_generate", reject_then_timeout)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+
+    with pytest.raises(announcement_profiles.StageError) as raised:
+        announcement_profiles._select_and_assemble(
+            {"document": {"document_id": "test"}},
+            pack,
+            {},
+            object(),
+            "test-model",
+        )
+
+    assert calls == 2
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert raised.value.diagnostic.reason_code == "LLM_TIMEOUT"
+    assert raised.value.diagnostic.attempt == 2
+    gc.collect()
+    assert raw_ref is not None
+    assert raw_ref() is None
+
+
+def test_announcement_worker_releases_invalid_raw_after_second_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gc
+    import weakref
+
+    class WeakDict(dict):
+        pass
+
+    pack = _pack("원문 사업 목적")
+    selection = _selection(_fact("purpose", "purpose_goal", "원문 사업 목적"))
+    raw_ref: weakref.ReferenceType[WeakDict] | None = None
+    calls = 0
+
+    def fake_generate(*_args: object, **kwargs: object) -> SourceSelectionExtractionV02:
+        nonlocal calls, raw_ref
+        calls += 1
+        if calls == 1:
+            raw = WeakDict({"facts": []})
+            raw_ref = weakref.ref(raw)
+            raise LLMInvalidResponseError(
+                "safe generic message",
+                raw=raw,
+                reason_code="schema_validation_failed",
+            )
+        payload = kwargs["payload"]
+        assert isinstance(payload, dict)
+        assert payload["previous_invalid_response"] is raw_ref()
+        return selection
+
+    monkeypatch.setattr(announcement_profiles, "_generate", fake_generate)
+    monkeypatch.setattr(
+        announcement_profiles, "_trusted_source_sha256", lambda *_args: "a" * 64
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_selection_artifact",
+        lambda **kwargs: {
+            "fact_ids": [fact.fact_id for fact in kwargs["extraction"].facts]
+        },
+    )
+    monkeypatch.setattr(
+        announcement_profiles,
+        "assemble_final_profile_v02",
+        lambda artifact, *_args, **_kwargs: dict(artifact),
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "common_ir_v1_metadata", lambda _document: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "candidate_pack_artifact", lambda *_args: {}
+    )
+    monkeypatch.setattr(
+        announcement_profiles, "build_corrected_anchor_audit", lambda *_args: []
+    )
+
+    announcement_profiles._select_and_assemble(
+        {"document": {"document_id": "test"}},
+        pack,
+        {},
+        object(),
+        "test-model",
+    )
+
+    gc.collect()
+    assert calls == 2
+    assert raw_ref is not None
+    assert raw_ref() is None

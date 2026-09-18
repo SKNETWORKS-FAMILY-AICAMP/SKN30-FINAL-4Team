@@ -16,6 +16,8 @@ import pytest
 from worker import announcement_profiles
 from worker.evaluation.existing_profile_diff import load_automatic_baseline
 from worker.evaluation import pristine_common_ir
+from worker.ports.llm import LLMInvalidResponseError
+from worker.ports.llm import LLMTimeoutError, LLMUnavailableError
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_existing_profile_canary.py"
@@ -43,7 +45,16 @@ def _documents() -> dict[str, dict]:
 def _plan() -> dict:
     return {
         "notices": [{"notice_id": notice_id} for notice_id in canary.CORRECTED_NOTICE_IDS],
-        "calls": {"hard_budget": canary.MAX_OPENAI_CALLS, "task_budgets": dict(canary.TASK_BUDGETS)},
+        "calls": {
+            "hard_budget": canary.MAX_OPENAI_CALLS,
+            "physical_hard_budget": canary.MAX_OPENAI_CALLS,
+            "logical_hard_budget": canary.LOGICAL_MAX_OPENAI_CALLS,
+            "canary_timeout_retry_limit": canary.CANARY_TIMEOUT_RETRY_LIMIT,
+            "canary_timeout_retry_per_logical_call_limit": (
+                canary.CANARY_TIMEOUT_RETRY_PER_LOGICAL_CALL_LIMIT
+            ),
+            "task_budgets": dict(canary.TASK_BUDGETS),
+        },
     }
 
 
@@ -71,6 +82,12 @@ def test_plan_does_not_open_or_receive_a_gold_root(monkeypatch: pytest.MonkeyPat
     assert loaded == documents
     assert plan["gold_oracle"]["read_phase"] == "post_openai_only"
     assert plan["calls"]["task_budgets"] == canary.TASK_BUDGETS
+    assert plan["calls"]["logical_hard_budget"] == sum(canary.TASK_BUDGETS.values())
+    assert plan["calls"]["physical_hard_budget"] == sum(canary.TASK_BUDGETS.values()) + 3
+    assert plan["calls"]["canary_timeout_retry_limit"] == 3
+    assert plan["calls"]["canary_timeout_retry_per_logical_call_limit"] == 1
+    assert "canary_timeout_retry_global_limit_3" in plan["limitations"]
+    assert "canary_timeout_retry_per_logical_call_limit_1" in plan["limitations"]
 
 
 def test_dry_run_needs_only_the_pristine_input(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -122,8 +139,31 @@ def test_prompt_preflight_pins_conditional_support_scale_repair(
         canary._verify_prompt_pins()
 
 
+def test_prompt_preflight_pins_conditional_component_name_anchor_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        announcement_profiles,
+        "_COMPONENT_NAME_ANCHOR_REPAIR_INSTRUCTIONS",
+        "drifted component-name-anchor repair prompt",
+    )
+
+    with pytest.raises(canary.ExistingProfileCanaryError, match="prompt hash pin"):
+        canary._verify_prompt_pins()
+
+
 def test_reviewed_prompt_pins_match_current_worker_bundle() -> None:
     canary._verify_prompt_pins()
+
+
+def test_source_selection_prompt_prevents_fresh_component_anchor_mismatch() -> None:
+    instructions = announcement_profiles._source_selection_instructions()
+
+    assert (
+        "name_anchor.source_block_id must be present in that same component's "
+        "source_block_ids"
+    ) in instructions
+    assert "table_block_ids must be an empty list" in instructions
 
 
 def test_prompt_preflight_pins_conditional_explicit_list_repair(
@@ -236,6 +276,340 @@ def test_call_guard_reserves_each_task_budget_before_delegate() -> None:
     assert guard.calls == []
 
 
+def test_call_guard_retries_one_timeout_with_identical_logical_call(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private_payload = {"private_source": "must-not-enter-accounting-or-logs"}
+
+    class Delegate:
+        def __init__(self) -> None:
+            self.seen: list[tuple[str, object]] = []
+
+        async def generate_structured(self, **kwargs: object) -> object:
+            self.seen.append((str(kwargs["task_name"]), kwargs["payload"]))
+            if len(self.seen) == 1:
+                raise LLMTimeoutError("safe timeout")
+            return "completed"
+
+    delegate = Delegate()
+    guard = canary._CountingLlm(delegate)  # type: ignore[arg-type]
+    task = announcement_profiles.SOURCE_SELECTION_TASK
+
+    result = asyncio.run(
+        guard.generate_structured(task_name=task, payload=private_payload)
+    )
+
+    assert result == "completed"
+    assert delegate.seen == [(task, private_payload), (task, private_payload)]
+    assert delegate.seen[0][1] is delegate.seen[1][1]
+    assert guard._by_task == {task: 1}
+    assert [call["attempt_kind"] for call in guard.calls] == [
+        "logical",
+        "timeout_retry",
+    ]
+    assert all(set(call) == {"task_name", "attempt_kind", "duration_ms"} for call in guard.calls)
+    assert "must-not-enter" not in json.dumps(guard.calls)
+    assert "must-not-enter" not in caplog.text
+
+
+def test_call_guard_stops_after_two_timeouts_without_a_third_call() -> None:
+    class Delegate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate_structured(self, **_kwargs: object) -> object:
+            self.calls += 1
+            raise LLMTimeoutError("safe timeout")
+
+    delegate = Delegate()
+    guard = canary._CountingLlm(delegate)  # type: ignore[arg-type]
+
+    with pytest.raises(LLMTimeoutError, match="safe timeout"):
+        asyncio.run(
+            guard.generate_structured(
+                task_name=announcement_profiles.SOURCE_SELECTION_TASK
+            )
+        )
+
+    assert delegate.calls == 2
+    assert [call["attempt_kind"] for call in guard.calls] == [
+        "logical",
+        "timeout_retry",
+    ]
+
+
+@pytest.mark.parametrize("failure_kind", ["unavailable", "invalid"])
+def test_call_guard_never_retries_unavailable_or_invalid(failure_kind: str) -> None:
+    class Delegate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate_structured(self, **_kwargs: object) -> object:
+            self.calls += 1
+            if failure_kind == "unavailable":
+                raise LLMUnavailableError("safe unavailable")
+            raise LLMInvalidResponseError(
+                "safe invalid",
+                raw={"private_source": "not-recorded-by-counting-wrapper"},
+                reason_code="schema_validation_failed",
+            )
+
+    delegate = Delegate()
+    guard = canary._CountingLlm(delegate)  # type: ignore[arg-type]
+    expected = LLMUnavailableError if failure_kind == "unavailable" else LLMInvalidResponseError
+
+    with pytest.raises(expected):
+        asyncio.run(
+            guard.generate_structured(
+                task_name=announcement_profiles.SOURCE_SELECTION_TASK
+            )
+        )
+
+    assert delegate.calls == 1
+    assert guard._timeout_retries_used == 0
+    assert [call["attempt_kind"] for call in guard.calls] == ["logical"]
+    assert "private_source" not in json.dumps(guard.calls)
+
+
+def test_call_guard_allows_three_global_retries_but_not_a_fourth() -> None:
+    class Delegate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate_structured(self, **_kwargs: object) -> object:
+            self.calls += 1
+            if self.calls in {1, 3, 5, 7}:
+                raise LLMTimeoutError("safe timeout")
+            return "completed"
+
+    delegate = Delegate()
+    guard = canary._CountingLlm(delegate)  # type: ignore[arg-type]
+
+    assert asyncio.run(
+        guard.generate_structured(task_name=announcement_profiles.BLOCK_ROUTER_TASK)
+    ) == "completed"
+    assert asyncio.run(
+        guard.generate_structured(
+            task_name=announcement_profiles.SOURCE_SELECTION_TASK
+        )
+    ) == "completed"
+    assert asyncio.run(
+        guard.generate_structured(
+            task_name=announcement_profiles.ANCHOR_CORRECTION_TASK
+        )
+    ) == "completed"
+    with pytest.raises(LLMTimeoutError):
+        asyncio.run(
+            guard.generate_structured(
+                task_name=announcement_profiles.SECTION_SCOPE_TASK
+            )
+        )
+
+    assert delegate.calls == 7
+    assert [call["attempt_kind"] for call in guard.calls] == [
+        "logical",
+        "timeout_retry",
+        "logical",
+        "timeout_retry",
+        "logical",
+        "timeout_retry",
+        "logical",
+    ]
+    assert guard._by_task == {
+        announcement_profiles.BLOCK_ROUTER_TASK: 1,
+        announcement_profiles.SOURCE_SELECTION_TASK: 1,
+        announcement_profiles.ANCHOR_CORRECTION_TASK: 1,
+        announcement_profiles.SECTION_SCOPE_TASK: 1,
+    }
+    assert guard._timeout_retries_used == 3
+
+
+def test_safe_error_keeps_only_allowlisted_materialization_diagnostics() -> None:
+    failure = announcement_profiles._stage_error(
+        stage="source_selection",
+        unit="must-not-be-published",
+        reason_code="MATERIALIZATION_FAILED",
+        message="private validation and source text",
+        attempt=2,
+    )
+    failure._canary_safe_details = {  # type: ignore[attr-defined]
+        "finalize_stage": "explicit_list_completeness_validation",
+        "error_classification": "missing_explicit_list_item",
+        "error_type": "ExplicitListCompletenessError",
+        "repair_requirement_counts": {
+            "support_scale_anchors": 1,
+            "support_scale_fact_repairs": 2,
+            "exact_anchor_repairs": 5,
+            "explicit_list_item_regions": 3,
+            "do_not_restore_fact_ids": 4,
+        },
+        "raw_source": "must-not-be-published",
+        "anchors": ["must-not-be-published"],
+    }
+
+    assert canary._safe_error(failure) == {
+        "stage": "source_selection",
+        "reason_code": "MATERIALIZATION_FAILED",
+        "attempt": 2,
+        "materialization": {
+            "finalize_stage": "explicit_list_completeness_validation",
+            "error_classification": "missing_explicit_list_item",
+            "error_type": "ExplicitListCompletenessError",
+            "repair_requirement_counts": {
+                "support_scale_anchors": 1,
+                "support_scale_fact_repairs": 2,
+                "exact_anchor_repairs": 5,
+                "explicit_list_item_regions": 3,
+                "do_not_restore_fact_ids": 4,
+            },
+        },
+    }
+
+
+def test_safe_error_drops_unrecognised_materialization_values() -> None:
+    failure = announcement_profiles._stage_error(
+        stage="source_selection",
+        unit="private-unit",
+        reason_code="MATERIALIZATION_FAILED",
+        message="private-message",
+        attempt=2,
+    )
+    failure._canary_safe_details = {  # type: ignore[attr-defined]
+        "finalize_stage": "private-stage",
+        "error_classification": "private-classification",
+        "error_type": "PrivateError",
+        "repair_requirement_counts": {
+            key: 0 for key in canary._SAFE_REPAIR_COUNT_KEYS
+        },
+    }
+
+    assert canary._safe_error(failure) == {
+        "stage": "source_selection",
+        "reason_code": "MATERIALIZATION_FAILED",
+        "attempt": 2,
+    }
+
+
+def test_safe_error_publishes_only_allowlisted_llm_validation_metadata() -> None:
+    failure = announcement_profiles._llm_stage_error(
+        LLMInvalidResponseError(
+            "must-not-be-published",
+            raw={"private": "must-not-be-published"},
+            reason_code="schema_validation_failed",
+            validation_issues=(
+                {"loc": ("facts", 0, "field_name"), "type": "enum"},
+            ),
+        ),
+        stage="source_selection",
+        unit="must-not-be-published",
+        attempt=2,
+    )
+
+    result = canary._safe_error(failure)
+
+    assert result == {
+        "stage": "source_selection",
+        "reason_code": "LLM_INVALID_RESPONSE",
+        "attempt": 2,
+        "llm_invalid_response": {
+            "reason_code": "schema_validation_failed",
+            "validation_issues": [
+                {"loc": ["facts", 0, "field_name"], "type": "enum"},
+            ],
+        },
+    }
+    assert "must-not-be-published" not in json.dumps(result)
+
+
+def test_safe_error_drops_model_authored_validation_locations() -> None:
+    failure = announcement_profiles._llm_stage_error(
+        LLMInvalidResponseError(
+            "safe message",
+            reason_code="schema_validation_failed",
+            validation_issues=(
+                {"loc": ("private-source-as-key",), "type": "extra_forbidden"},
+            ),
+        ),
+        stage="source_selection",
+        unit="private-unit",
+        attempt=2,
+    )
+
+    result = canary._safe_error(failure)
+
+    assert "llm_invalid_response" not in result
+    assert "private-source-as-key" not in json.dumps(result)
+
+
+def test_materialization_detail_builder_never_retains_exception_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ExplicitListCompletenessError(ValueError):
+        error_classification = "missing_explicit_list_item"
+        finalize_stage = "explicit_list_completeness_validation"
+
+    monkeypatch.setattr(
+        announcement_profiles,
+        "typed_repair_requirements_v02",
+        lambda _error: {
+            "required_support_scale_anchors": [{"anchor_text": "private"}],
+            "required_support_scale_fact_repairs": [{"fact_id": "private"}],
+            "required_exact_anchor_repairs": [{"source_block_id": "private"}],
+            "required_list_item_regions": [{"item_text": "private"}],
+            "do_not_restore_fact_ids": ["private"],
+        },
+    )
+
+    details = announcement_profiles._safe_materialization_failure_details(
+        ExplicitListCompletenessError("private exception text")
+    )
+
+    assert details == {
+        "finalize_stage": "explicit_list_completeness_validation",
+        "error_classification": "missing_explicit_list_item",
+        "error_type": "ExplicitListCompletenessError",
+        "repair_requirement_counts": {
+            "support_scale_anchors": 1,
+            "support_scale_fact_repairs": 1,
+            "exact_anchor_repairs": 1,
+            "explicit_list_item_regions": 1,
+            "do_not_restore_fact_ids": 1,
+        },
+    }
+    assert "private" not in json.dumps(details)
+
+
+def test_provider_completion_rows_are_task_allowlisted_and_source_free() -> None:
+    rows = canary._safe_provider_completions([
+        canary.OpenAICompletionTelemetry(
+            task_name=announcement_profiles.BLOCK_ROUTER_TASK,
+            model="private-model-label",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_tokens=30,
+            duration_ms=40,
+        ),
+        canary.OpenAICompletionTelemetry(
+            task_name="private-task",
+            model="private-model-label",
+            prompt_tokens=1,
+            completion_tokens=2,
+            total_tokens=3,
+            duration_ms=4,
+        ),
+    ])
+
+    assert rows == [{
+        "task_name": announcement_profiles.BLOCK_ROUTER_TASK,
+        "prompt_tokens": 10,
+        "completion_tokens": 20,
+        "total_tokens": 30,
+        "duration_ms": 40,
+        "outcome": "provider_completed",
+    }]
+    assert "private" not in json.dumps(rows)
+
+
 def test_execute_uses_native_exact_shadow_and_one_bounded_repair(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -264,10 +638,109 @@ def test_execute_uses_native_exact_shadow_and_one_bounded_repair(
 
     assert report["execution_status"] == "succeeded"
     assert report["calls"]["successful_plan_status"] == "valid"
+    assert report["calls"]["attempted"] == 14
+    assert report["calls"]["logical_attempted"] == 14
+    assert report["calls"]["timeout_retry_attempted"] == 0
+    assert all(
+        row["attempt_kind"] == "logical"
+        for row in report["calls"]["sequence"]
+    )
+    assert report["model"]["max_retries"] == 0
+    assert report["model"]["canary_timeout_retry_limit"] == 3
+    assert report["model"]["canary_timeout_retry_per_logical_call_limit"] == 1
+    assert [row["task_name"] for row in report["calls"]["sequence"]] == [
+        announcement_profiles.SECTION_SCOPE_TASK,
+        announcement_profiles.BLOCK_ROUTER_TASK,
+        announcement_profiles.SOURCE_SELECTION_TASK,
+        announcement_profiles.SECTION_SCOPE_TASK,
+        announcement_profiles.BLOCK_ROUTER_TASK,
+        announcement_profiles.SOURCE_SELECTION_TASK,
+        *[
+            task
+            for _ in range(4)
+            for task in (
+                announcement_profiles.BLOCK_ROUTER_TASK,
+                announcement_profiles.SOURCE_SELECTION_TASK,
+            )
+        ],
+    ]
     assert tuple(artifacts) == canary.CORRECTED_NOTICE_IDS
     assert all(row["composite_candidate_mode"] == "shadow" for row in seen)
     assert all(row["native_exact_candidate_mode"] == "lines+continuations" for row in seen)
     assert all(row["source_selection_attempts"] == 2 for row in seen)
+
+
+def test_execute_accounts_timeout_retry_physically_but_validates_logical_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    documents = _documents()
+    produced = 0
+
+    class Delegate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate_structured(self, **_kwargs: object) -> object:
+            self.calls += 1
+            if self.calls == 1:
+                raise LLMTimeoutError("safe timeout")
+            return object()
+
+    def produce(_document: dict, llm: object, **_kwargs: object):
+        nonlocal produced
+        if produced < 2:
+            asyncio.run(
+                llm.generate_structured(  # type: ignore[attr-defined]
+                    task_name=announcement_profiles.SECTION_SCOPE_TASK
+                )
+            )
+        asyncio.run(
+            llm.generate_structured(  # type: ignore[attr-defined]
+                task_name=announcement_profiles.BLOCK_ROUTER_TASK
+            )
+        )
+        asyncio.run(
+            llm.generate_structured(  # type: ignore[attr-defined]
+                task_name=announcement_profiles.SOURCE_SELECTION_TASK
+            )
+        )
+        produced += 1
+        return announcement_profiles.FinalizedAnnouncementProfileArtifacts(
+            profile={"notice_id": "x"}, source_selection={"selection": {}}
+        )
+
+    delegate = Delegate()
+    monkeypatch.setattr(
+        announcement_profiles, "structure_announcement_profile_artifacts", produce
+    )
+    report, artifacts = canary.execute_canary(
+        documents=documents,
+        plan=_plan(),
+        llm_client=delegate,  # type: ignore[arg-type]
+        model_id=canary.PINNED_OPENAI_MODEL_ID,
+        timeout_seconds=1,
+    )
+
+    assert tuple(artifacts) == canary.CORRECTED_NOTICE_IDS
+    assert report["execution_status"] == "succeeded"
+    assert report["calls"]["successful_plan_status"] == "valid"
+    assert report["calls"]["attempted"] == 15
+    assert report["calls"]["logical_attempted"] == 14
+    assert report["calls"]["timeout_retry_attempted"] == 1
+    assert report["calls"]["attempted_by_task"][
+        announcement_profiles.SECTION_SCOPE_TASK
+    ] == 3
+    assert report["calls"]["logical_attempted_by_task"][
+        announcement_profiles.SECTION_SCOPE_TASK
+    ] == 2
+    assert [row["attempt_kind"] for row in report["calls"]["sequence"][:2]] == [
+        "logical",
+        "timeout_retry",
+    ]
+    assert report["calls"]["physical_hard_budget"] == 35
+    assert report["calls"]["logical_hard_budget"] == 32
+    assert report["calls"]["canary_timeout_retry_limit"] == 3
+    assert report["calls"]["canary_timeout_retry_per_logical_call_limit"] == 1
 
 
 def test_execute_rejects_a_zero_call_success_path(

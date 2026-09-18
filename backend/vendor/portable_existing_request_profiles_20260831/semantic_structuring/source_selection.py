@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 from .anchor_occurrence_resolver import (
     AnchorOccurrenceRequest,
@@ -34,6 +35,7 @@ from .models import CandidatePack, ComponentKind, FactField
 from .native_provenance import (
     native_block_provenance,
     project_value_source_to_atomic_ranges,
+    stable_unique_occurrence_ids,
 )
 from .profile_v02 import (
     AggregationScope,
@@ -74,6 +76,10 @@ FINALIZE_STAGE_CODES = frozenset({
     "support_scale_measure_derivation",
     "scale_measure_validation",
 })
+
+COMPONENT_NAME_ANCHOR_SOURCE_ERROR = (
+    "component_name_anchor_must_reference_component_source_block"
+)
 
 
 class DuplicateResolvedValueSourceSpanError(ValueError):
@@ -148,14 +154,30 @@ def finalize_source_selection_v02(
         validate_component_structure_v02(candidate, pack)
     with annotate_finalize_stage("condition_variant_relation_normalization"):
         candidate, variant_normalizations = normalize_explicit_condition_variant_relations_v02(candidate)
-    with annotate_finalize_stage("evidence_materialization"):
-        evidence = materialize_evidence(
-            candidate,
-            pack,
-            common_ir_source_sha256=common_ir_source_sha256,
-            resolve_ambiguous_value_anchor=resolve_ambiguous_value_anchor,
-            value_source_overrides=value_source_overrides,
-        )
+    try:
+        with annotate_finalize_stage("evidence_materialization"):
+            evidence = materialize_evidence(
+                candidate,
+                pack,
+                common_ir_source_sha256=common_ir_source_sha256,
+                resolve_ambiguous_value_anchor=resolve_ambiguous_value_anchor,
+                value_source_overrides=value_source_overrides,
+            )
+    except ExactAnchorMaterializationRepairError as exact_anchor_error:
+        # Selection-quality validation runs before evidence materialization and
+        # may already have found an independent, typed support-scale defect.
+        # Preserve both findings in the single bounded repair request rather
+        # than making the model spend its only retry on the absent anchor and
+        # discover the scale defect one attempt too late.  Do not prune facts
+        # or continue downstream list/cap audits here: doing so would create an
+        # audit-only selection with different relation/component semantics.
+        if selection_quality_repair_error is None:
+            raise
+        with annotate_finalize_stage("repair_issue_aggregation"):
+            raise SourceSelectionRepairIssuesError([
+                exact_anchor_error,
+                selection_quality_repair_error,
+            ]) from exact_anchor_error
     with annotate_finalize_stage("value_source_uniqueness_validation"):
         validate_materialized_value_source_uniqueness_v02(evidence)
     validate_materialized_typed_repair_replacements_v02(
@@ -915,6 +937,84 @@ def _count_value(match: re.Match[str]) -> int | None:
         cursor = term.end()
     return value if cursor == len(token) else None
 
+
+def normalize_numeric_candidate_token(
+    anchor_text: str,
+) -> tuple[str, int, str] | None:
+    """Normalize one complete production numeric token, or fail closed.
+
+    This is the public counterpart to the numeric-candidate scanner.  Keeping
+    amount, rate, and Korean positional-count normalization behind the same
+    helper lets offline validators prove the exact contract used by profile
+    generation instead of maintaining a weaker copy of its grammar.
+    """
+
+    amount = _AMOUNT_PATTERN.fullmatch(anchor_text)
+    if amount is not None:
+        value = _amount_krw(amount)
+        return ("amount", value, "KRW") if value is not None else None
+
+    rate = _RATE_PATTERN.fullmatch(anchor_text)
+    if rate is not None:
+        value = _rate_bps(rate)
+        return ("rate", value, "BPS") if value is not None else None
+
+    count = _COUNT_PATTERN.fullmatch(anchor_text)
+    if count is not None:
+        value = _count_value(count)
+        return (
+            ("count", value, count.group("unit"))
+            if value is not None
+            else None
+        )
+
+    return None
+
+
+def enumerate_numeric_candidate_spans(
+    source_text: str,
+) -> tuple[tuple[int, int, str], ...]:
+    """Return production-valid ``(start, end, text)`` numeric spans.
+
+    Besides the shared complete-token grammar, this applies the contextual
+    malformed-prefix and line-broken-suffix guards used by profile generation.
+    Each surviving token is guaranteed to normalize successfully through
+    :func:`normalize_numeric_candidate_token`.
+    """
+
+    spans: list[tuple[int, int, str]] = []
+    for match in _NUMERIC_CANDIDATE_PATTERN.finditer(source_text):
+        anchor_text = match.group(0)
+        if is_numeric_placeholder(anchor_text):
+            continue
+        normalized = normalize_numeric_candidate_token(anchor_text)
+        if normalized is None:
+            continue
+        measure_type = normalized[0]
+        # A malformed compound can contain a valid-looking inner amount or
+        # count.  Such a suffix is not an independent candidate.
+        if (
+            measure_type == "amount"
+            and _PRECEDING_MALFORMED_MONEY_FRAGMENT.search(
+                source_text[:match.start()]
+            )
+        ):
+            continue
+        if (
+            measure_type == "count"
+            and _PRECEDING_MALFORMED_COUNT_FRAGMENT.search(
+                source_text[:match.start()]
+            )
+        ):
+            continue
+        if (
+            measure_type == "amount"
+            and _FOLLOWING_LINE_MONEY_AMOUNT.match(source_text[match.end():])
+        ):
+            continue
+        spans.append((match.start(), match.end(), anchor_text))
+    return tuple(spans)
+
 # A package/type/stage's own support facts: the fields a support component can
 # own and that an explicit employment-condition variant can modify.  Shared by
 # the package-completeness check and the variant-relation normalization below
@@ -935,45 +1035,16 @@ def build_numeric_candidates(pack: CandidatePack) -> list[NumericCandidate]:
 
     candidates: list[NumericCandidate] = []
     for block in pack.blocks:
-        index = 0
-        for match in _NUMERIC_CANDIDATE_PATTERN.finditer(block.text):
-            anchor_text = match.group(0)
-            if is_numeric_placeholder(anchor_text):
-                continue
-            # The shared cap scanner accepts source-faithful comma runs and
-            # leaves semantic rejection to its callers. Numeric candidates
-            # have a stricter contract: every emitted token must also be
-            # exactly normalizable, so malformed grouping can never survive
-            # as a whole match or a valid-looking suffix/prefix.
-            amount = _AMOUNT_PATTERN.fullmatch(anchor_text)
-            rate = _RATE_PATTERN.fullmatch(anchor_text)
-            count = _COUNT_PATTERN.fullmatch(anchor_text)
-            if not any((amount, rate, count)):
-                continue
-            # A malformed compound can contain a valid-looking inner amount,
-            # including after source spacing (``... 십 4백만원``).  Reject an
-            # amount preceded only by a numeric money fragment; it is a
-            # suffix of that larger token, not an independent candidate.
-            if amount is not None and _PRECEDING_MALFORMED_MONEY_FRAGMENT.search(
-                block.text[:match.start()]
-            ):
-                continue
-            if count is not None and _PRECEDING_MALFORMED_COUNT_FRAGMENT.search(
-                block.text[:match.start()]
-            ):
-                continue
-            if amount is not None and _FOLLOWING_LINE_MONEY_AMOUNT.match(
-                block.text[match.end():]
-            ):
-                continue
+        for index, (start_char, end_char, anchor_text) in enumerate(
+            enumerate_numeric_candidate_spans(block.text)
+        ):
             candidates.append(NumericCandidate(
                 numeric_candidate_id=f"{block.block_id}#num[{index}]",
                 source_block_id=block.block_id,
                 anchor_text=anchor_text,
-                start_char=match.start(),
-                end_char=match.end(),
+                start_char=start_char,
+                end_char=end_char,
             ))
-            index += 1
     return candidates
 
 
@@ -2247,6 +2318,90 @@ class SupportScaleFactRepairError(ValueError):
         return [item.repair_payload() for item in self._facts]
 
 
+@dataclass(frozen=True, slots=True)
+class _ExactAnchorMaterializationRepairRecord:
+    fact_id: str
+    field_name: str
+    source_block_id: str
+    reason: str
+
+    def repair_payload(self) -> dict[str, str]:
+        return {
+            "fact_id": self.fact_id,
+            "field_name": self.field_name,
+            "source_block_id": self.source_block_id,
+            "reason": self.reason,
+        }
+
+
+class ExactAnchorMaterializationRepairError(ValueError):
+    """Typed retry signal for value anchors absent from canonical block text.
+
+    The repair records deliberately identify only the rejected fact, field,
+    source block, and a closed reason code.  In particular, neither the
+    model-authored anchor nor any canonical source text is retained in the
+    exception or its repair payload.
+    """
+
+    error_classification = "exact_anchor_materialization_requires_repair"
+    _REASON = "anchor_not_exact_substring"
+
+    def __init__(self, repairs: list[dict[str, object]]) -> None:
+        safe_repairs: dict[
+            tuple[str, str, str, str], _ExactAnchorMaterializationRepairRecord
+        ] = {}
+        for item in repairs:
+            fact_id = item.get("fact_id")
+            raw_field_name = item.get("field_name")
+            source_block_id = item.get("source_block_id")
+            reason = item.get("reason")
+            if isinstance(raw_field_name, FactField):
+                field_name = raw_field_name.value
+            elif isinstance(raw_field_name, str):
+                try:
+                    field_name = FactField(raw_field_name).value
+                except ValueError as error:
+                    raise ValueError("invalid exact-anchor repair classification") from error
+            else:
+                field_name = None
+            if (
+                not isinstance(fact_id, str)
+                or not fact_id
+                or field_name is None
+                or not isinstance(source_block_id, str)
+                or not source_block_id
+                or reason != self._REASON
+            ):
+                raise ValueError("invalid exact-anchor repair classification")
+            record = _ExactAnchorMaterializationRepairRecord(
+                fact_id=fact_id,
+                field_name=field_name,
+                source_block_id=source_block_id,
+                reason=self._REASON,
+            )
+            safe_repairs[
+                (record.fact_id, record.field_name, record.source_block_id, record.reason)
+            ] = record
+        if not safe_repairs:
+            raise ValueError("exact-anchor repair classification requires a fact")
+        self._repairs = tuple(safe_repairs[key] for key in sorted(safe_repairs))
+        self._do_not_restore_fact_ids = frozenset(
+            item.fact_id for item in self._repairs
+        )
+        super().__init__(
+            "exact value-anchor repair required: "
+            f"classification={self.error_classification} "
+            f"fact_count={len(self._repairs)}"
+        )
+
+    @property
+    def do_not_restore_fact_ids(self) -> frozenset[str]:
+        return self._do_not_restore_fact_ids
+
+    def required_exact_anchor_repairs(self) -> list[dict[str, str]]:
+        return [item.repair_payload() for item in self._repairs]
+
+
 class SourceSelectionRepairIssuesError(ValueError):
     """Aggregate independent typed defects into the one bounded repair call."""
 
@@ -2254,6 +2409,7 @@ class SourceSelectionRepairIssuesError(ValueError):
 
     def __init__(self, issues: list[ValueError]) -> None:
         supported = (
+            ExactAnchorMaterializationRepairError,
             ExplicitListCompletenessError,
             SupportCapCompletenessError,
             SupportScaleFactRepairError,
@@ -2275,6 +2431,7 @@ class SourceSelectionRepairIssuesError(ValueError):
         blocked: set[str] = set()
         for issue in self._issues:
             if isinstance(issue, (
+                ExactAnchorMaterializationRepairError,
                 ExplicitListCompletenessError,
                 SupportCapCompletenessError,
                 SupportScaleFactRepairError,
@@ -2303,6 +2460,20 @@ class SourceSelectionRepairIssuesError(ValueError):
                     repairs[key] = repair
         return [repairs[key] for key in sorted(repairs)]
 
+    def required_exact_anchor_repairs(self) -> list[dict[str, str]]:
+        repairs: dict[tuple[str, str, str, str], dict[str, str]] = {}
+        for issue in self._issues:
+            if isinstance(issue, ExactAnchorMaterializationRepairError):
+                for repair in issue.required_exact_anchor_repairs():
+                    key = (
+                        repair["fact_id"],
+                        repair["field_name"],
+                        repair["source_block_id"],
+                        repair["reason"],
+                    )
+                    repairs[key] = repair
+        return [repairs[key] for key in sorted(repairs)]
+
     @property
     def required_list_item_regions(self) -> list[dict[str, object]]:
         regions: list[dict[str, object]] = []
@@ -2323,6 +2494,7 @@ def do_not_restore_fact_ids_for_typed_repair_v02(
     """
 
     if isinstance(error, (
+        ExactAnchorMaterializationRepairError,
         SupportCapCompletenessError,
         SupportScaleFactRepairError,
         ExplicitListCompletenessError,
@@ -2368,6 +2540,18 @@ def required_support_scale_fact_repairs_for_typed_repair_v02(
     return []
 
 
+def required_exact_anchor_repairs_for_typed_repair_v02(
+    error: ValueError | None,
+) -> list[dict[str, str]]:
+    """Expose source-text-free absent-anchor records for one repair call."""
+
+    if isinstance(error, ExactAnchorMaterializationRepairError):
+        return error.required_exact_anchor_repairs()
+    if isinstance(error, SourceSelectionRepairIssuesError):
+        return error.required_exact_anchor_repairs()
+    return []
+
+
 def typed_repair_requirements_v02(
     error: ValueError | None,
 ) -> dict[str, object]:
@@ -2379,6 +2563,9 @@ def typed_repair_requirements_v02(
         ),
         "required_support_scale_fact_repairs": (
             required_support_scale_fact_repairs_for_typed_repair_v02(error)
+        ),
+        "required_exact_anchor_repairs": (
+            required_exact_anchor_repairs_for_typed_repair_v02(error)
         ),
         "required_list_item_regions": (
             required_explicit_list_item_regions_for_typed_repair_v02(error)
@@ -3394,7 +3581,10 @@ class SourceSelectedComponent(StrictModel):
     @model_validator(mode="after")
     def component_name_anchor_is_within_component_source(self) -> "SourceSelectedComponent":
         if self.name_anchor and self.name_anchor.source_block_id not in set(self.source_block_ids) | set(self.table_block_ids):
-            raise ValueError("component name_anchor must reference a component source block")
+            raise PydanticCustomError(
+                COMPONENT_NAME_ANCHOR_SOURCE_ERROR,
+                "component name_anchor must reference a component source block",
+            )
         return self
 
 
@@ -3631,7 +3821,9 @@ def _materialized_source_block(
         "source_block_id": block.block_id,
         "text": text,
         "section_id": block.section_id,
-        "source_occurrence_ids": block.source_occurrence_ids,
+        "source_occurrence_ids": stable_unique_occurrence_ids(
+            block.source_occurrence_ids
+        ),
     }
     if pack.common_ir_document_id is not None:
         # CandidatePack's model validator guarantees common_ir_block_id for
@@ -3642,7 +3834,9 @@ def _materialized_source_block(
         materialized.update({
             "common_ir_document_id": pack.common_ir_document_id,
             "common_ir_block_id": block.common_ir_block_id,
-            "common_ir_occurrence_ids": list(block.common_ir_occurrence_ids),
+            "common_ir_occurrence_ids": stable_unique_occurrence_ids(
+                block.common_ir_occurrence_ids
+            ),
         })
         if block.common_ir_cell_id is not None:
             materialized["common_ir_cell_id"] = block.common_ir_cell_id
@@ -3857,6 +4051,28 @@ def materialize_evidence(
                 f"{component.support_component_id} references blocks outside the candidate pack: "
                 f"{sorted(unknown)}"
             )
+    # Check every model-authored value anchor before materializing any row.
+    # This turns all zero-occurrence failures into one bounded retry payload,
+    # rather than leaking the first rejected anchor through a generic
+    # ``ValueError`` or returning a partially materialized list.  Missing
+    # block ids remain ordinary reference-contract errors below; only an
+    # anchor absent from a known canonical block is repairable here.
+    exact_anchor_repairs = [
+        {
+            "fact_id": fact.fact_id,
+            "field_name": fact.field_name.value,
+            "source_block_id": fact.value_anchor.source_block_id,
+            "reason": "anchor_not_exact_substring",
+        }
+        for fact in extraction.facts
+        if fact.value_anchor is not None
+        and (
+            block := by_id.get(fact.value_anchor.source_block_id)
+        ) is not None
+        and not find_all_occurrences(block.text, fact.value_anchor.anchor_text)
+    ]
+    if exact_anchor_repairs:
+        raise ExactAnchorMaterializationRepairError(exact_anchor_repairs)
     repeated_groups: dict[tuple[str, str], list[object]] = {}
     for fact in extraction.facts:
         if fact.value_anchor is not None:

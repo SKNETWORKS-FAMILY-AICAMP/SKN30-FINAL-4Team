@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 
 import pytest
 
@@ -99,6 +100,68 @@ def test_atomic_provenance_serialization_preserves_legacy_shape() -> None:
     assert "parent_generator_version" not in artifact
     assert "native_parent_span" not in artifact["blocks"][0]
     assert "source_spans" not in artifact["blocks"][0]
+
+
+def test_materialized_occurrence_ids_keep_unique_wire_bytes_unchanged() -> None:
+    pack = _pack(_block("p0", "지원 대상은 중소기업", 0))
+    block = pack.blocks[0]
+    expected = {
+        "source_block_id": "p0",
+        "text": "지원 대상은 중소기업",
+        "section_id": "main_notice",
+        "source_occurrence_ids": ["p0:occ"],
+        "common_ir_document_id": "hwpx:PBLN-native-exact-test",
+        "common_ir_block_id": "p0",
+        "common_ir_occurrence_ids": ["p0:occ"],
+    }
+
+    materialized = _materialized_source_block(pack, block, text=block.text)
+
+    def canonical(value: object) -> bytes:
+        return json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+
+    assert canonical(materialized) == canonical(expected)
+
+
+def test_materialized_occurrence_ids_stably_dedupe_without_rewriting_native_spans() -> None:
+    left = _block("p0", "지원 대상은", 0).model_copy(update={
+        "source_occurrence_ids": ["shared", "left", "shared"],
+        "common_ir_occurrence_ids": ("shared", "left", "shared"),
+    })
+    right = _block("p1", "중소기업이다.", 1).model_copy(update={
+        "source_occurrence_ids": ["shared", "right"],
+        "common_ir_occurrence_ids": ("shared", "right"),
+    })
+    pack = augment_pack_with_native_exact_transforms(
+        _pack(left, right),
+        options=NativeExactTransformOptions(
+            enabled=True,
+            include_line_atoms=False,
+            include_continuations=True,
+        ),
+    )
+    composite = next(
+        block for block in pack.blocks if block.block_kind == "native_composite"
+    )
+    source_spans_before = [
+        span.model_dump(mode="json") for span in composite.source_spans
+    ]
+
+    materialized = _materialized_source_block(
+        pack, composite, text=composite.text
+    )
+
+    assert materialized["source_occurrence_ids"] == ["shared", "left", "right"]
+    assert materialized["common_ir_occurrence_ids"] == [
+        "shared", "left", "right",
+    ]
+    assert materialized["source_spans"] == source_spans_before
+    assert materialized["source_spans"][0]["common_ir_occurrence_ids"] == [
+        "shared", "left", "shared",
+    ]
+    assert "native_parent_span" not in materialized
 
 
 def test_native_provenance_survives_request_existing_and_pack_artifacts() -> None:

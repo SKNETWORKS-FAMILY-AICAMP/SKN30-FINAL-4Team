@@ -304,6 +304,7 @@ def main() -> None:
         "For distinct sequential benefit stages, create one stage_support per stage and attach the stage-specific capacity/benefit to it. "
         "Use support_package only for parallel, separately named benefit menus. Use stage_support for sequential benefit progression. In particular, education followed by final selection, a finalist grant, mentoring, or another later benefit is always one or more stage_support components, never support_package components. "
         "Each support component must include name_anchor when an exact package/type/stage name appears in its source. name_anchor has source_block_id and exact contiguous anchor_text; never write a component name yourself. "
+        "For each support component, name_anchor.source_block_id must be present in that same component's source_block_ids. "
         "For this cell-level input, table_block_ids must be an empty list: table parent identity is recovered by the server from selected cell ids. "
         "Link a fact owned by one package/type/stage with primary_component_id. "
         "Use applicability_component_ids when a fact is only true under an additional participation type or stage; do not create a combined component. "
@@ -404,6 +405,9 @@ def main() -> None:
                 required_scale_repairs = repair_requirements[
                     "required_support_scale_fact_repairs"
                 ]
+                required_exact_anchor_repairs = repair_requirements[
+                    "required_exact_anchor_repairs"
+                ]
                 required_list_items = repair_requirements["required_list_item_regions"]
                 retry_instruction = (
                     " This is a repair attempt. The user payload contains previous_selection and "
@@ -422,6 +426,16 @@ def main() -> None:
                         "source text. The required_support_scale_anchors were deterministically found in the "
                         "trusted routed candidate pack. Include each supplied anchor as a separate support_scale fact "
                         "using exactly its source_block_id and anchor_text."
+                    )
+                if required_exact_anchor_repairs:
+                    retry_instruction += (
+                        " The payload's required_exact_anchor_repairs identifies facts whose prior "
+                        "value_anchor was not an exact substring of the designated source block. "
+                        "These records intentionally contain no anchor or source text. For each "
+                        "record, inspect the trusted source_blocks entry with the same source_block_id "
+                        "and replace the rejected fact with a value_anchor copied verbatim from that "
+                        "block. Keep the listed field_name unless the fact must be removed; never "
+                        "normalize, paraphrase, or reconstruct anchor_text."
                     )
                 if required_list_items:
                     retry_instruction += (
