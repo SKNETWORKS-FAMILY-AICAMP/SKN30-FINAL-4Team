@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="./frontend/public/images/pre-review.png" alt="Pre-review Logo" width="200" />
+# <img src="./frontend/public/images/pre-review.png" alt="Pre-review Logo" width="250" />
 
 ### 중소기업 지원사업 사전협의 요청서의<br>작성 항목·내부 정합성·유사 사업 후보를 확인하는 AI 기반 검토 보조 서비스
 
