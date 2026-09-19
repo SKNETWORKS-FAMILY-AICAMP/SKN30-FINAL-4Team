@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_primary_corpus_blind_reveal_v1.schema.json",
+  "title": "PDF primary corpus blind reveal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "split_canonical_sha256",
+    "sealed_case_id",
+    "salt_hex",
+    "revealed_case"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdf_primary_corpus_blind_reveal/v1"},
+    "split_canonical_sha256": {"$ref": "#/$defs/sha256"},
+    "sealed_case_id": {"$ref": "#/$defs/identifier"},
+    "salt_hex": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 128,
+      "pattern": "^(?:[0-9a-f]{2}){32,64}$"
+    },
+    "revealed_case": {"$ref": "#/$defs/revealedCase"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$"
+    },
+    "revealedCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "role",
+        "notice_id",
+        "source_pdf_sha256",
+        "planned_page_scope",
+        "full_native_capture_required",
+        "scope_claim",
+        "state_at_selection",
+        "required_check_kinds"
+      ],
+      "properties": {
+        "case_id": {"$ref": "#/$defs/identifier"},
+        "role": {"const": "held_out"},
+        "notice_id": {
+          "type": "string",
+          "pattern": "^PBLN_[0-9]{15}$"
+        },
+        "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+        "planned_page_scope": {
+          "type": "array",
+          "$comment": "runtime requires strictly increasing physical-page order",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1, "maximum": 256}
+        },
+        "full_native_capture_required": {"const": true},
+        "scope_claim": {"const": "reviewed_regions_only"},
+        "state_at_selection": {"enum": ["gold_ready", "gold_pending"]},
+        "required_check_kinds": {
+          "type": "array",
+          "$comment": "runtime requires the declared canonical check-kind order",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["paragraph", "heading_relation", "table_grid", "table_continuation"]
+          }
+        }
+      }
+    }
+  }
+}

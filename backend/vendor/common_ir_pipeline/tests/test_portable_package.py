@@ -172,6 +172,8 @@ class PortablePackageTests(unittest.TestCase):
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_table_continuation_v1.schema.json", names)
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_table_continuation_gold_v1.schema.json", names)
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_table_continuation_evaluation_v1.schema.json", names)
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_corpus_split_v1.schema.json", names)
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_corpus_blind_reveal_v1.schema.json", names)
 
     def test_document_shell_has_required_lineage(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

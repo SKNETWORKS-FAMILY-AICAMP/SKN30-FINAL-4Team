@@ -4,8 +4,10 @@
   A0 입력·좌표 계약, A1 human-confirmed Gold, A2 native-first reconstruction plan과
   held-out safety replay를 완료했다. A2.5 `pdf_fragment_groups/v1`의 합성 계약·단위 회귀를
   구현하고 114788 전체 7페이지 strict Surya replay를 완료했다. A3 textless context view와
-  114788 replay까지 완료했으며, 4건 corpus gate가 다음 단계다.
-- 기준일: 2026-09-19
+  114788 replay, A4.1~A4.3의 좁은 paragraph·heading·table grid·between-rows 평가 계약을
+  완료했다. A4.5의 6건 immutable split을 동결했으며, held-out Gold와 strict artifact 생성이
+  다음 단계다.
+- 기준일: 2026-09-20
 - 대상: native PDF text, Surya layout/OCR, OpenDataLoader 구조 결과를 이용한 PDF Common IR 전처리
 - 원칙: 기존 Common IR 및 Profile 산출물을 변경하기 전에 독립적인 shadow sidecar와 오프라인 회귀로 구조 품질을 증명한다.
 - 외부 판정: Opus `GO_WITH_CHANGES`, Grok `REJECT as written`. 공통 blocking 지적을
@@ -359,16 +361,19 @@ heading 또는 context parent로 해석하지 않는다.
 
 ## 8. 회귀 corpus와 비교 실험
 
-다음 4건을 계획 corpus로 사용한다. 다만 artifact와 Gold 가용성은 fixture마다 다르며,
-현재 `114788`에는 human-confirmed structural Gold가 없다. 따라서 이 공고의 replay는
-native 소유권과 fail-closed alignment 안전성만 검증하고 구조 품질 점수로 사용하지 않는다.
+선정 역할과 페이지 범위는
+`backend/baselines/pdf_reconstruction/primary_corpus_split_a45.v1.json`으로 동결했다.
+split 자체는 Gold·점수를 담지 않고 품질 PASS를 주장하지 않는다. 상세한 digest·검증 명령은
+`PDF_PRIMARY_DOCUMENT_VIEW_DESIGN.md`의 A4.5 절을 따른다.
 
 | 공고 | 우선 검증 범위 | 현재 가용성·목적 |
 | --- | --- | --- |
-| `104102` | full 14 pages 및 원문 page 1/3/5/9 subset | 계획: full/subset 결정성, 대형 표 |
-| `114788` | full 7 pages | 완료: native+legacy ODL safety replay; structural Gold 없음, cross-page 구조 품질 미승인 |
-| `121019` | page 5 | 완료: human-confirmed structural Gold, 43x2 표와 list hierarchy |
-| `124791` | 원문 page 2~4 subset | 계획: heading/list/table 결합 및 page-scope 검증 |
+| `114788` | page 3~4 | tuning 전용; paragraph·heading·grid·between-rows Gold 준비 |
+| `121019` | page 5 | known regression; 기존 43x2 특수 Gold의 신규 evaluator migration 필요 |
+| `104102` | full native capture, reviewed page 1/3/5/9 | public held-out; Gold pending |
+| `124791` | full native capture, reviewed page 2~4 | public held-out; Gold pending |
+| `blind-x-01` | tracked split에는 비공개 | salted commitment로 봉인한 held-out; Gold pending |
+| `115310` | page 1~3 | table/grid 0건과 continuation 0건을 확인할 clean-negative; Gold pending |
 
 각 fixture에 대해 다음 ablation을 동일 evaluator로 비교한다.
 
@@ -393,9 +398,9 @@ native 소유권과 fail-closed alignment 안전성만 검증하고 구조 품�
 - unresolved/cross-page continuation marker
 
 `121019 page 5`의 table/list 충돌은 human-confirmed hard-negative로 동결했다. `114788`의
-cross-page table은 held-out 진단 대상으로만 관찰했으며, structural Gold를 만들기 전에는
-accepted/rejected 구조 품질 정답으로 동결하지 않는다. 반복 문자열과 subset page mapping도
-Gold가 있는 fixture에서만 hard-negative로 판정한다.
+page 3→4 표는 프로젝트 검토로 page-local grid와 `between_rows` continuation Gold를
+동결했지만, 정책을 고친 tuning fixture이므로 held-out 점수에는 포함하지 않는다. 반복
+문자열과 subset page mapping도 Gold가 있는 fixture에서만 hard-negative로 판정한다.
 
 ## 9. 합격 gate
 
@@ -638,7 +643,8 @@ list item은 occurrence 한 개만 유지하며 16개 occurrence인 parent list 
 ## 14. 구현 시작 판정
 
 A0~A2와 A2.5 합성 계약·단위 회귀, 114788 source-bound strict Surya corpus replay,
-A3 textless context hypothesis 계약·replay까지 구현했다. 다음은 4건 corpus gate다.
+A3 textless context hypothesis 계약·replay, A4.1~A4.3 평가 vertical slice와 A4.5 split
+동결까지 구현했다. 다음은 held-out artifact·Gold 생성과 corpus gate다.
 C2와 production explicit table 승격은 이번 자동 구현 범위에 포함하지 않는다.
 
 ## 15. 2026-09-19 구현 결과와 다음 gate
@@ -854,9 +860,9 @@ SHA와 지표는 같은 frozen fingerprint에 함께 기록했다.
 
 ### 15.2 아직 구현하지 않은 것
 
-- 121019와 추가 corpus의 source-bound strict Surya artifact 생성·replay
+- 104102·124791·clean-negative·sealed blind와 121019의 source-bound strict artifact 생성·replay
 - heading/list/table/section, column·flow·hard-boundary conflict 결합
-- 114788의 human-confirmed structural Gold와 cross-page continuation 품질 판정
+- held-out과 clean-negative의 human-confirmed partial structural Gold
 - 문단/context materialization과 selector byte/work budget gate
 - Common IR block 생성 또는 교체
 - Existing/Request selector와 LLM 입력 연결
@@ -878,7 +884,8 @@ production 승격은 여전히 미승인이다.
    deterministic replay와 fail-closed disposition을 동결했다.
 6. 완료(114788): `partial/context_only` unit과 accepted fragment를 병합 없이 투영하는
    bounded `pdf_context_groups/v1`을 구현·재생했다.
-7. 121019를 포함한 4건 corpus에서 context coverage, over/under-merge와 byte/work budget을
+7. 동결한 6건 split에서 선언된 scope별 exact 구조 평가, context coverage,
+   over/under-merge와 byte/work budget을
    판정한다. 이를 통과하기 전에는
    Common IR/selector/runtime에 연결하지
    않는다.

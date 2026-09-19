@@ -418,6 +418,48 @@ edge를 만들지 않고, ambiguous edge는 unresolved로 둔다. Surya의 단�
 Gold에서 같은 정책을 검증한다. 그 전에는 Common IR, selector 또는 작은 LLM 입력에
 연결하지 않는다.
 
+2026-09-20에 선정 역할과 검토 범위를
+`backend/baselines/pdf_reconstruction/primary_corpus_split_a45.v1.json`으로 먼저 동결했다.
+canonical SHA-256은
+`d6820fbe176df095cbd09e3faf56568167243b9db990982f295243d50f49fd51`다. 이 파일은
+Gold나 실행 점수를 담지 않는 immutable split이며 `evaluation_only=true`,
+`non_promotable=true`다. 실제 품질 판정은 이후 별도 gate report가 이 split digest와
+trusted Gold, raw-input replay 결과를 함께 결속할 때만 수행한다.
+
+| case | 역할 | 사전 고정한 physical page | 선정 당시 상태 |
+| --- | --- | --- | --- |
+| `114788` | tuning | 3, 4 | 좁은 paragraph·heading·grid·between-rows Gold 준비 |
+| `121019` | known regression | 5 | 기존 특수 Gold를 신규 evaluator로 migration해야 함 |
+| `104102` | public held-out | 1, 3, 5, 9 | Gold pending |
+| `124791` | public held-out | 2, 3, 4 | Gold pending |
+| `blind-x-01` | sealed blind held-out | tracked 파일에는 비공개 | salted commitment만 공개, Gold pending |
+| `115310` | table/continuation clean-negative | 1, 2, 3 | 0-grid·0-edge Gold pending |
+
+blind case의 notice/source/page identity와 salt는 Git에 넣지 않고
+`.runtime/evaluations/pdf-primary-corpus-a45/blind-reveal.v1.json`에만 둔다. CLI는 그 값을
+출력하지 않고 commitment와 source baseline membership의 성공 여부만 보고한다. 이 local
+reveal을 분실하면 기존 commitment를 임의로 다시 만들지 말고 corpus split을 새 버전으로
+폐기·재선정한다.
+
+```bash
+PYTHONPATH=backend/vendor/common_ir_pipeline/src \
+backend/vendor/common_ir_pipeline/.venv/bin/python \
+  backend/scripts/verify_pdf_primary_corpus_split.py \
+  --split backend/baselines/pdf_reconstruction/primary_corpus_split_a45.v1.json \
+  --source-baseline backend/baselines/pdf_fusion/bizinfo_existing_100.v1.json \
+  --expected-split-sha256 d6820fbe176df095cbd09e3faf56568167243b9db990982f295243d50f49fd51 \
+  --reveal .runtime/evaluations/pdf-primary-corpus-a45/blind-reveal.v1.json
+```
+
+`--expected-split-sha256` 값은 검증할 코드와 함께 바뀌는 입력이 아니라, 검토가 끝난
+release/commit 기록에서 별도로 가져와야 한다. 이 외부 anchor가 다르면 검증은 실패한다.
+split 검증기는 선정 계약·source baseline·blind reveal의 결속만 확인하며 품질 상태를 만들지
+않는다. 현재 코퍼스는 일부 Gold와 strict artifact가 아직 준비되지 않아 별도 품질 gate를
+실행할 수 없는 상태다. v1이 주장할 수 있는 범위도 2-occurrence paragraph, 번호형 단일행 heading→다음 paragraph, span 없는
+page-local grid, 인접 페이지 `between_rows` continuation뿐이다. clean-negative를 포함해
+Gold가 없는 범위를 N/A나 평균 점수로 상쇄하지 않는다. split 검증에는 RunPod가 필요 없고,
+다음 단계에서 source-bound canonical render와 strict Surya layout artifact를 새로 생성한다.
+
 ## 6. 검증과 제한
 
 - tree: parent 존재, 허용 kind, sibling index 연속, cycle 없음
