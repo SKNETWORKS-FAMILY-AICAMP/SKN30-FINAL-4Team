@@ -1,0 +1,120 @@
+{
+  "schema_version": "pdf_fragment_groups_fingerprint/v1",
+  "fixture_role": "non_reproducible_review_attestation",
+  "evaluation_only": true,
+  "non_promotable": true,
+  "attestation": {
+    "replayed_on": "2026-09-19",
+    "basis": "external_source_bound_artifacts_and_runpod_surya_replayed",
+    "hermetic_replay_available_in_repository": false,
+    "artifact_bound_replay_validation": "passed",
+    "standalone_validation_scope": "internal_consistency_only"
+  },
+  "quality_scope": {
+    "claim": "strict_fragment_consensus_disposition_only",
+    "semantic_gold_bound_to_attestation": false,
+    "structural_gold_available": false,
+    "semantic_quality_approved": false,
+    "structural_quality_approved": false,
+    "common_ir_promotion_approved": false
+  },
+  "source": {
+    "notice_id": "PBLN_000000000114788",
+    "source_pdf_sha256": "466994bb0cd5769dc56e8e8e1d6cffdaa9539ff829a6452e4db757e03fa6f98c",
+    "physical_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "source_pdf_in_repository": false
+  },
+  "inputs": {
+    "native_capture_canonical_sha256": "09acdc7138ae643b3246009f6cc479a79306c3c352e7f78d6c2cc71c0669596b",
+    "legacy_opendataloader_binding_canonical_sha256": "3851d704d808f057057cd5fa1bdbf631e2d5dea64cd517fa2e18b7e095ee3a71",
+    "structure_candidates_canonical_sha256": "44d7d89993b9286b20f3c66bd18cbf081138652936232cacda1c8853fb774427",
+    "render_manifest_canonical_sha256": "de0c6dc7d2279cd310a367d57a1b7d0e908133d7be3135143953f27b9015b296",
+    "reconstruction_plan_canonical_sha256": "26204a3ce7569a40bfa2a2e00e496945374eb6c4b68282f749e115e49e4b61fe",
+    "surya_layout_artifact_canonical_sha256": "ddb30aeaa56bde6cbf6d7eab6683773b29d593929b8f1f9d1a707199f1657116",
+    "fragment_groups_canonical_sha256": "7cda2fd1308bcf02fc719075c86cb213188774132bafa8438ba74ad6c332e631"
+  },
+  "surya_observation": {
+    "logical_compute_key": "300fdc8a7e71e0a560a6ffa11b9bb47471ca74b42b468a1614a601722bd94dce",
+    "requested_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "region_count": 64,
+    "region_label_counts": {
+      "diagram": 1,
+      "footnote": 2,
+      "list_group": 16,
+      "page_footer": 7,
+      "page_header": 2,
+      "picture": 1,
+      "section_header": 18,
+      "table": 6,
+      "text": 11
+    },
+    "canonical_rectangle_region_count": 64,
+    "producer_config_matches_evaluation_config": true,
+    "worker_image_digest_provenance": "legacy_digest_shaped_identifier_not_proven_oci_manifest",
+    "production_provenance_approved": false
+  },
+  "projection": {
+    "schema_version": "pdf_fragment_groups/v1",
+    "eligible_odl_paragraph_count": 8,
+    "accepted_fragment_group_count": 0,
+    "rejected_proposal_count": 8,
+    "rejection_reason_membership_counts": {
+      "no_unique_surya_text_region": 5,
+      "non_contiguous_substantive_source_order": 3
+    },
+    "closest_region_observations": {
+      "eligible_contiguous_proposal_count": 5,
+      "closest_label_counts": {
+        "list_group": 3,
+        "table": 1,
+        "text": 1
+      },
+      "required_containment_tolerance_px": [
+        3.078,
+        7.35,
+        4.989,
+        11.002,
+        0.0
+      ],
+      "bounded_text_tolerance_safe_approval_count": 0,
+      "observed_text_region_extra_occurrence_veto_count": 2,
+      "non_text_closest_region_count": 4,
+      "table_cell_interleaved_non_contiguous_proposal_count": 3,
+      "undercomplete_table_cell_paragraph_count": 3
+    },
+    "semantic_text_copied_into_fragment_groups": false,
+    "common_ir_or_selector_materialized": false
+  },
+  "context_projection": {
+    "schema_version": "pdf_context_groups/v1",
+    "context_policy_version": "pdf-context-groups/v1",
+    "canonical_sha256": "9cbd4ec4ed5a735059aa8a085d0af036fbd7f393279e08c7c765a54644e0d361",
+    "canonical_size_bytes": 44496,
+    "plan_context_unit_count": 101,
+    "fragment_consensus_count": 0,
+    "context_group_count": 101,
+    "aggregate_reference_membership_count": 214,
+    "unique_reference_count": 129,
+    "max_reference_count": 37,
+    "structural_parent_link_count": 1,
+    "suppressed_parent_link_count": 77,
+    "semantic_text_copied_into_context_groups": false,
+    "selector_or_llm_payload_materialized": false
+  }
+}

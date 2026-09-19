@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_fragment_groups_v1.schema.json",
+  "title": "PDF fragment groups v1 (evaluation only, textless)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evaluation_only", "non_promotable", "standalone_validation_scope", "notice_id", "source_pdf_sha256", "page_scope", "input_artifacts", "fragment_groups", "rejected_proposals", "metrics"],
+  "properties": {
+    "schema_version": {"const": "pdf_fragment_groups/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "notice_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?![\\s\\S]*[\\uD800-\\uDFFF])(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$"},
+    "source_pdf_sha256": {"$ref": "#/$defs/sha"},
+    "page_scope": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 256}},
+    "input_artifacts": {"$ref": "#/$defs/inputs"},
+    "fragment_groups": {"type": "array", "maxItems": 25000, "items": {"$ref": "#/$defs/group"}},
+    "rejected_proposals": {"type": "array", "maxItems": 25000, "items": {"$ref": "#/$defs/rejected"}},
+    "metrics": {"$ref": "#/$defs/metrics"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "occurrence": {"type": "string", "pattern": "^occ:inspector:p(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-6]):t(?:0|[1-9][0-9]{0,4}|[1-4][0-9]{5})$"},
+    "nativeUnit": {"type": "string", "pattern": "^unit-native-[0-9a-f]{64}$"},
+    "odlUnit": {"type": "string", "pattern": "^unit-odl-[0-9a-f]{64}$"},
+    "inputs": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reconstruction_plan_schema_version", "reconstruction_plan_sha256", "surya_layout_artifact_schema_version", "surya_layout_artifact_sha256"],
+      "properties": {
+        "reconstruction_plan_schema_version": {"const": "pdf_reconstruction_plan/v1"},
+        "reconstruction_plan_sha256": {"$ref": "#/$defs/sha"},
+        "surya_layout_artifact_schema_version": {"const": "surya_layout_artifact/v1"},
+        "surya_layout_artifact_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fragment_group_id", "page", "occurrence_ids", "owner_unit_ids", "odl_unit_id", "surya_region_id"],
+      "properties": {
+        "fragment_group_id": {"type": "string", "pattern": "^fragment-[0-9a-f]{64}$"},
+        "page": {"type": "integer", "minimum": 1, "maximum": 256},
+        "occurrence_ids": {"type": "array", "minItems": 2, "maxItems": 5000, "uniqueItems": true, "items": {"$ref": "#/$defs/occurrence"}},
+        "owner_unit_ids": {"type": "array", "minItems": 2, "maxItems": 5000, "uniqueItems": true, "items": {"$ref": "#/$defs/nativeUnit"}},
+        "odl_unit_id": {"$ref": "#/$defs/odlUnit"},
+        "surya_region_id": {"type": "string", "pattern": "^p[0-9]{4}-text-[0-9]{4}$"}
+      }
+    },
+    "rejected": {
+      "type": "object", "additionalProperties": false,
+      "required": ["odl_unit_id", "reason_codes"],
+      "properties": {
+        "odl_unit_id": {"$ref": "#/$defs/odlUnit"},
+        "reason_codes": {"type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true, "items": {"enum": ["cross_page", "non_contiguous_substantive_source_order", "no_unique_surya_text_region", "surya_region_extra_native_occurrence", "surya_region_material_overlap", "competing_odl_paragraph", "wrong_native_owner"]}}
+      }
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["eligible_odl_paragraph_count", "accepted_fragment_group_count", "rejected_proposal_count"],
+      "properties": {
+        "eligible_odl_paragraph_count": {"type": "integer", "minimum": 0},
+        "accepted_fragment_group_count": {"type": "integer", "minimum": 0},
+        "rejected_proposal_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

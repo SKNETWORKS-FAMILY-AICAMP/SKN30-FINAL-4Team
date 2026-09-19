@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_context_groups_v1.schema.json",
+  "title": "PDF context groups v1 (evaluation only, textless)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evaluation_only", "non_promotable", "standalone_validation_scope", "context_policy_version", "notice_id", "source_pdf_sha256", "page_scope", "input_artifacts", "context_groups", "metrics"],
+  "properties": {
+    "schema_version": {"const": "pdf_context_groups/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "context_policy_version": {"const": "pdf-context-groups/v1"},
+    "notice_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?![\\s\\S]*[\\uD800-\\uDFFF])(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$"},
+    "source_pdf_sha256": {"$ref": "#/$defs/sha"},
+    "page_scope": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 256}},
+    "input_artifacts": {"$ref": "#/$defs/inputs"},
+    "context_groups": {"type": "array", "maxItems": 25000, "items": {"$ref": "#/$defs/group"}},
+    "metrics": {"$ref": "#/$defs/metrics"}
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "occurrence": {"type": "string", "pattern": "^occ:inspector:p(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-6]):t(?:0|[1-9][0-9]{0,4}|[1-4][0-9]{5})$"},
+    "odlUnit": {"type": "string", "pattern": "^unit-odl-[0-9a-f]{64}$"},
+    "fragmentGroup": {"type": "string", "pattern": "^fragment-[0-9a-f]{64}$"},
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reconstruction_plan_schema_version", "reconstruction_plan_sha256", "fragment_groups_schema_version", "fragment_groups_sha256"],
+      "properties": {
+        "reconstruction_plan_schema_version": {"const": "pdf_reconstruction_plan/v1"},
+        "reconstruction_plan_sha256": {"$ref": "#/$defs/sha"},
+        "fragment_groups_schema_version": {"const": "pdf_fragment_groups/v1"},
+        "fragment_groups_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context_group_id", "basis", "page", "hypothesis_kind", "source_unit_id", "source_fragment_group_id", "reference_occurrence_ids", "structural_parent_unit_id", "context_role"],
+      "properties": {
+        "context_group_id": {"type": "string", "pattern": "^context-[0-9a-f]{64}$"},
+        "basis": {"enum": ["plan_context_unit", "fragment_consensus"]},
+        "page": {"type": "integer", "minimum": 1, "maximum": 256},
+        "hypothesis_kind": {"enum": ["heading", "paragraph", "list", "list_item", "table", "table_row", "table_cell", "text_block", "image", "caption"]},
+        "source_unit_id": {"$ref": "#/$defs/odlUnit"},
+        "source_fragment_group_id": {"oneOf": [{"$ref": "#/$defs/fragmentGroup"}, {"type": "null"}]},
+        "reference_occurrence_ids": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/occurrence"}},
+        "structural_parent_unit_id": {"oneOf": [{"$ref": "#/$defs/odlUnit"}, {"type": "null"}]},
+        "context_role": {"const": "context_only"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"basis": {"const": "plan_context_unit"}}, "required": ["basis"]},
+          "then": {"properties": {"source_fragment_group_id": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"basis": {"const": "fragment_consensus"}}, "required": ["basis"]},
+          "then": {
+            "properties": {
+              "source_fragment_group_id": {"$ref": "#/$defs/fragmentGroup"},
+              "hypothesis_kind": {"const": "paragraph"},
+              "structural_parent_unit_id": {"type": "null"},
+              "reference_occurrence_ids": {"minItems": 2}
+            }
+          }
+        }
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_context_unit_count", "fragment_consensus_count", "context_group_count", "aggregate_reference_membership_count", "unique_reference_count", "max_reference_count", "structural_parent_link_count", "suppressed_parent_link_count"],
+      "properties": {
+        "plan_context_unit_count": {"type": "integer", "minimum": 0},
+        "fragment_consensus_count": {"type": "integer", "minimum": 0},
+        "context_group_count": {"type": "integer", "minimum": 0},
+        "aggregate_reference_membership_count": {"type": "integer", "minimum": 0},
+        "unique_reference_count": {"type": "integer", "minimum": 0},
+        "max_reference_count": {"type": "integer", "minimum": 0, "maximum": 256},
+        "structural_parent_link_count": {"type": "integer", "minimum": 0},
+        "suppressed_parent_link_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
