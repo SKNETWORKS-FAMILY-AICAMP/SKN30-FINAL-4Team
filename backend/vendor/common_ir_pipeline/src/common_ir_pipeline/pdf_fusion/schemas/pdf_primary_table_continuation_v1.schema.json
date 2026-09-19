@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pre-review.local/schemas/pdf_primary_table_continuation_v1.schema.json",
+  "title": "PDF Primary Table Continuation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_only",
+    "non_promotable",
+    "standalone_validation_scope",
+    "policy",
+    "notice_id",
+    "source_pdf_sha256",
+    "page_scope",
+    "input_artifacts",
+    "continuations"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdf_primary_table_continuation/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_version"],
+      "properties": {
+        "policy_version": {"const": "primary_adjacent_page_table_continuation/v1"}
+      }
+    },
+    "notice_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?![\\s\\S]*[\\uD800-\\uDFFF])(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$"
+    },
+    "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+    "page_scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"type": "integer", "minimum": 1, "maximum": 256}
+    },
+    "input_artifacts": {"$ref": "#/$defs/inputArtifacts"},
+    "continuations": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {"$ref": "#/$defs/continuation"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "tableGridId": {
+      "type": "string",
+      "pattern": "^table-grid-[0-9a-f]{64}$"
+    },
+    "ppm": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "inputArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary_table_grid_schema_version",
+        "primary_table_grid_sha256",
+        "native_capture_schema_version",
+        "native_capture_sha256",
+        "render_manifest_schema_version",
+        "render_manifest_sha256",
+        "structure_candidates_schema_version",
+        "structure_candidates_sha256",
+        "reconstruction_plan_schema_version",
+        "reconstruction_plan_sha256",
+        "surya_layout_artifact_schema_version",
+        "surya_layout_artifact_sha256"
+      ],
+      "properties": {
+        "primary_table_grid_schema_version": {"const": "pdf_primary_table_grid/v1"},
+        "primary_table_grid_sha256": {"$ref": "#/$defs/sha256"},
+        "native_capture_schema_version": {"const": "pdf_inspector_native_capture/v1"},
+        "native_capture_sha256": {"$ref": "#/$defs/sha256"},
+        "render_manifest_schema_version": {"const": "pdf_render_manifest/v1"},
+        "render_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "structure_candidates_schema_version": {"const": "pdf_structure_candidates/v1"},
+        "structure_candidates_sha256": {"$ref": "#/$defs/sha256"},
+        "reconstruction_plan_schema_version": {"const": "pdf_reconstruction_plan/v1"},
+        "reconstruction_plan_sha256": {"$ref": "#/$defs/sha256"},
+        "surya_layout_artifact_schema_version": {"const": "surya_layout_artifact/v1"},
+        "surya_layout_artifact_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "columnMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predecessor_column_index", "successor_column_index"],
+      "properties": {
+        "predecessor_column_index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "successor_column_index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "geometryMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predecessor_bottom_gap_ppm",
+        "successor_top_gap_ppm",
+        "outer_x_interval_iou_ppm",
+        "max_column_edge_drift_ppm",
+        "min_column_interval_iou_ppm"
+      ],
+      "properties": {
+        "predecessor_bottom_gap_ppm": {"$ref": "#/$defs/ppm"},
+        "successor_top_gap_ppm": {"$ref": "#/$defs/ppm"},
+        "outer_x_interval_iou_ppm": {"$ref": "#/$defs/ppm"},
+        "max_column_edge_drift_ppm": {"$ref": "#/$defs/ppm"},
+        "min_column_interval_iou_ppm": {"$ref": "#/$defs/ppm"}
+      }
+    },
+    "continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "continuation_id",
+        "relation_kind",
+        "predecessor_table_grid_id",
+        "predecessor_page",
+        "successor_table_grid_id",
+        "successor_page",
+        "column_mapping",
+        "geometry_metrics"
+      ],
+      "properties": {
+        "continuation_id": {
+          "type": "string",
+          "pattern": "^table-continuation-[0-9a-f]{64}$"
+        },
+        "relation_kind": {"const": "between_rows"},
+        "predecessor_table_grid_id": {"$ref": "#/$defs/tableGridId"},
+        "predecessor_page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "successor_table_grid_id": {"$ref": "#/$defs/tableGridId"},
+        "successor_page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "column_mapping": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {"$ref": "#/$defs/columnMapping"}
+        },
+        "geometry_metrics": {"$ref": "#/$defs/geometryMetrics"}
+      }
+    }
+  }
+}

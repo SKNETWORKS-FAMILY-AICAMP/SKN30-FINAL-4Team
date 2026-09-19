@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_primary_table_continuation_evaluation_v1.schema.json",
+  "title": "Offline partial-Gold evaluation for cross-page PDF table continuations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "evaluation_only", "non_promotable",
+    "standalone_validation_scope", "notice_id", "source", "candidate", "gold",
+    "page_local_candidate", "page_local_gold", "page_local_prerequisite",
+    "verdict", "blocking_reason_codes", "continuation_results",
+    "false_positive_relations", "unscored_relations", "metrics"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdf_primary_table_continuation_evaluation/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "notice_id": {"$ref": "#/$defs/noticeId"},
+    "source": {"$ref": "#/$defs/source"},
+    "candidate": {"$ref": "#/$defs/candidateReference"},
+    "gold": {"$ref": "#/$defs/goldReference"},
+    "page_local_candidate": {"$ref": "#/$defs/gridReference"},
+    "page_local_gold": {"$ref": "#/$defs/gridGoldReference"},
+    "page_local_prerequisite": {"$ref": "#/$defs/prerequisite"},
+    "verdict": {
+      "enum": [
+        "passed", "failed", "not_evaluable_gold_pending",
+        "not_evaluable_gold_untrusted", "blocked_page_local_prerequisite",
+        "blocked_scope_mismatch"
+      ]
+    },
+    "blocking_reason_codes": {
+      "type": "array", "maxItems": 7, "uniqueItems": true,
+      "items": {
+        "enum": [
+          "notice_id_mismatch", "source_pdf_mismatch", "native_capture_mismatch",
+          "candidate_table_grid_mismatch", "gold_table_grid_mismatch",
+          "gold_page_scope_not_covered", "page_local_prerequisite_not_passed"
+        ]
+      }
+    },
+    "continuation_results": {
+      "type": "array", "maxItems": 1024,
+      "items": {"$ref": "#/$defs/continuationResult"}
+    },
+    "false_positive_relations": {
+      "type": "array", "maxItems": 10000,
+      "items": {"$ref": "#/$defs/falsePositive"}
+    },
+    "unscored_relations": {
+      "type": "array", "maxItems": 10000,
+      "items": {"$ref": "#/$defs/observedRelation"}
+    },
+    "metrics": {"$ref": "#/$defs/metrics"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"enum": ["passed", "failed"]}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "page_local_prerequisite": {"properties": {"verdict": {"const": "passed"}}},
+          "blocking_reason_codes": {"maxItems": 0},
+          "continuation_results": {"minItems": 1}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "not_evaluable_gold_pending"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "gold": {"properties": {"quality_status": {"const": "not_evaluable_gold_pending"}}},
+          "blocking_reason_codes": {"maxItems": 0},
+          "continuation_results": {"maxItems": 0},
+          "false_positive_relations": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "not_evaluable_gold_untrusted"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "gold": {"properties": {"quality_status": {"const": "not_evaluable_untrusted_confirmation"}}},
+          "blocking_reason_codes": {"maxItems": 0},
+          "continuation_results": {"maxItems": 0},
+          "false_positive_relations": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "blocked_page_local_prerequisite"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "blocking_reason_codes": {"contains": {"const": "page_local_prerequisite_not_passed"}},
+          "continuation_results": {"maxItems": 0},
+          "false_positive_relations": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "blocked_scope_mismatch"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "blocking_reason_codes": {"minItems": 1},
+          "continuation_results": {"maxItems": 0},
+          "false_positive_relations": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}$"},
+    "noticeId": {"type": "string", "minLength": 20, "maxLength": 20, "pattern": "^PBLN_[0-9]{15}$"},
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$"},
+    "continuationId": {"type": "string", "pattern": "^table-continuation-[0-9a-f]{64}$"},
+    "tableGridId": {"type": "string", "pattern": "^table-grid-[0-9a-f]{64}$"},
+    "page": {"type": "integer", "minimum": 1, "maximum": 256},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_pdf_sha256", "native_capture_sha256"],
+      "properties": {
+        "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+        "native_capture_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "candidateReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256"],
+      "properties": {
+        "schema_version": {"const": "pdf_primary_table_continuation/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "goldReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256", "quality_status"],
+      "properties": {
+        "schema_version": {"const": "pdf_primary_table_continuation_gold/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "quality_status": {
+          "enum": ["evaluable", "not_evaluable_gold_pending", "not_evaluable_untrusted_confirmation"]
+        }
+      }
+    },
+    "gridReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256"],
+      "properties": {
+        "schema_version": {"const": "pdf_primary_table_grid/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "gridGoldReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256"],
+      "properties": {
+        "schema_version": {"const": "pdf_primary_table_grid_gold/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "prerequisite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256", "verdict"],
+      "properties": {
+        "schema_version": {"const": "pdf_primary_table_grid_evaluation/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "verdict": {
+          "enum": ["passed", "failed", "not_evaluable_gold_pending", "not_evaluable_gold_untrusted", "blocked_scope_mismatch"]
+        }
+      }
+    },
+    "indexColumnMapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["predecessor_column_index", "successor_column_index"],
+      "properties": {
+        "predecessor_column_index": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "successor_column_index": {"type": "integer", "minimum": 1, "maximum": 1000}
+      }
+    },
+    "identifierColumnMapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["predecessor_column_id", "successor_column_id"],
+      "properties": {
+        "predecessor_column_id": {"$ref": "#/$defs/identifier"},
+        "successor_column_id": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "observedRelation": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "continuation_id", "predecessor_table_grid_id", "predecessor_page",
+        "successor_table_grid_id", "successor_page", "relation_kind",
+        "column_mapping", "mapped_predecessor_scope_id",
+        "mapped_successor_scope_id", "normalized_column_mapping"
+      ],
+      "properties": {
+        "continuation_id": {"$ref": "#/$defs/continuationId"},
+        "predecessor_table_grid_id": {"$ref": "#/$defs/tableGridId"},
+        "predecessor_page": {"$ref": "#/$defs/page"},
+        "successor_table_grid_id": {"$ref": "#/$defs/tableGridId"},
+        "successor_page": {"$ref": "#/$defs/page"},
+        "relation_kind": {"enum": ["between_rows", "same_row"]},
+        "column_mapping": {
+          "type": "array", "minItems": 1, "maxItems": 1000,
+          "items": {"$ref": "#/$defs/indexColumnMapping"}
+        },
+        "mapped_predecessor_scope_id": {"oneOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+        "mapped_successor_scope_id": {"oneOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+        "normalized_column_mapping": {
+          "type": "array", "maxItems": 1024,
+          "items": {"$ref": "#/$defs/identifierColumnMapping"}
+        }
+      }
+    },
+    "continuationResult": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "gold_continuation_id", "predecessor_scope_id", "predecessor_page",
+        "successor_scope_id", "successor_page", "expected_relation_kind",
+        "expected_column_mapping", "status", "failure_codes", "observed_relations"
+      ],
+      "properties": {
+        "gold_continuation_id": {"$ref": "#/$defs/identifier"},
+        "predecessor_scope_id": {"$ref": "#/$defs/identifier"},
+        "predecessor_page": {"$ref": "#/$defs/page"},
+        "successor_scope_id": {"$ref": "#/$defs/identifier"},
+        "successor_page": {"$ref": "#/$defs/page"},
+        "expected_relation_kind": {"const": "between_rows"},
+        "expected_column_mapping": {
+          "type": "array", "minItems": 1, "maxItems": 1024,
+          "items": {"$ref": "#/$defs/identifierColumnMapping"}
+        },
+        "status": {"enum": ["matched", "failed"]},
+        "failure_codes": {
+          "type": "array", "maxItems": 4, "uniqueItems": true,
+          "items": {"enum": ["missing_relation", "multiple_matching_relations", "shared_predecessor", "shared_successor"]}
+        },
+        "observed_relations": {
+          "type": "array", "maxItems": 10000,
+          "items": {"$ref": "#/$defs/observedRelation"}
+        }
+      }
+    },
+    "falsePositive": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relation", "failure_codes"],
+      "properties": {
+        "relation": {"$ref": "#/$defs/observedRelation"},
+        "failure_codes": {
+          "type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": true,
+          "items": {"enum": ["unexpected_edge", "wrong_relation_kind", "wrong_column_mapping", "shared_predecessor", "shared_successor"]}
+        }
+      }
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "reviewed_continuation_count", "evaluated_continuation_count",
+        "matched_continuation_count", "failed_continuation_count",
+        "missing_continuation_count", "false_positive_relation_count",
+        "unscored_relation_count"
+      ],
+      "properties": {
+        "reviewed_continuation_count": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "evaluated_continuation_count": {"type": "integer", "minimum": 0},
+        "matched_continuation_count": {"type": "integer", "minimum": 0},
+        "failed_continuation_count": {"type": "integer", "minimum": 0},
+        "missing_continuation_count": {"type": "integer", "minimum": 0},
+        "false_positive_relation_count": {"type": "integer", "minimum": 0},
+        "unscored_relation_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

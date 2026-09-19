@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_primary_table_grid_gold_v1.schema.json",
+  "title": "Textless partial PDF primary table-grid Gold v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_only",
+    "non_promotable",
+    "standalone_validation_scope",
+    "notice_id",
+    "source",
+    "page_scope",
+    "reviewed_scopes"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdf_primary_table_grid_gold/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "notice_id": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 20,
+      "pattern": "^PBLN_[0-9]{15}$"
+    },
+    "source": {"$ref": "#/$defs/source"},
+    "page_scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/page"}
+    },
+    "reviewed_scopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/reviewedScope"}
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "page": {"type": "integer", "minimum": 1, "maximum": 256},
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$"
+    },
+    "occurrence": {
+      "type": "string",
+      "pattern": "^occ:inspector:p(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-6]):t(?:0|[1-9][0-9]{0,4}|[1-4][0-9]{5})$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_pdf_sha256",
+        "canonical_page_renders",
+        "native_capture"
+      ],
+      "properties": {
+        "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_page_renders": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/pageRender"}
+        },
+        "native_capture": {"$ref": "#/$defs/nativeCapture"}
+      }
+    },
+    "pageRender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physical_page", "canonical_render_sha256"],
+      "properties": {
+        "physical_page": {"$ref": "#/$defs/page"},
+        "canonical_render_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "nativeCapture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256", "extractor_version"],
+      "properties": {
+        "schema_version": {"const": "pdf_inspector_native_capture/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "extractor_version": {"const": "1.17.0"}
+      }
+    },
+    "reviewedScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope_id",
+        "physical_page",
+        "segment_id",
+        "review_status",
+        "reviewer_ref",
+        "confirmed_at",
+        "occurrence_ids",
+        "row_ids",
+        "column_ids",
+        "cells",
+        "hard_negatives"
+      ],
+      "properties": {
+        "scope_id": {"$ref": "#/$defs/identifier"},
+        "physical_page": {"$ref": "#/$defs/page"},
+        "segment_id": {"$ref": "#/$defs/identifier"},
+        "review_status": {
+          "enum": ["pending_human_confirmation", "human_confirmed"]
+        },
+        "reviewer_ref": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 129,
+              "pattern": "^reviewer:[A-Za-z0-9][A-Za-z0-9._-]{0,119}$"
+            },
+            {"type": "null"}
+          ]
+        },
+        "confirmed_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 20,
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+            },
+            {"type": "null"}
+          ]
+        },
+        "occurrence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/occurrence"}
+        },
+        "row_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "column_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16384,
+          "items": {"$ref": "#/$defs/cell"}
+        },
+        "hard_negatives": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": {"$ref": "#/$defs/hardNegative"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "review_status": {"const": "pending_human_confirmation"}
+            },
+            "required": ["review_status"]
+          },
+          "then": {
+            "properties": {
+              "reviewer_ref": {"type": "null"},
+              "confirmed_at": {"type": "null"}
+            }
+          },
+          "else": {
+            "properties": {
+              "reviewer_ref": {
+                "type": "string",
+                "minLength": 10,
+                "maxLength": 129,
+                "pattern": "^reviewer:[A-Za-z0-9][A-Za-z0-9._-]{0,119}$"
+              },
+              "confirmed_at": {
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 20,
+                "format": "date-time",
+                "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell_id",
+        "row_ids",
+        "column_ids",
+        "content_status",
+        "occurrence_ids"
+      ],
+      "properties": {
+        "cell_id": {"$ref": "#/$defs/identifier"},
+        "row_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "column_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/identifier"}
+        },
+        "content_status": {"enum": ["populated", "empty"]},
+        "occurrence_ids": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/occurrence"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"content_status": {"const": "empty"}},
+            "required": ["content_status"]
+          },
+          "then": {"properties": {"occurrence_ids": {"maxItems": 0}}},
+          "else": {"properties": {"occurrence_ids": {"minItems": 1}}}
+        }
+      ]
+    },
+    "hardNegative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "occurrence_id", "anchor_position"],
+      "properties": {
+        "kind": {"const": "forbidden_segment_membership"},
+        "occurrence_id": {"$ref": "#/$defs/occurrence"},
+        "anchor_position": {
+          "enum": ["before_segment", "after_segment"]
+        }
+      }
+    }
+  }
+}

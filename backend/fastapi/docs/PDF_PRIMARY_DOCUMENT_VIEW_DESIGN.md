@@ -1,6 +1,6 @@
 # PDF Primary Document View 설계
 
-- 상태: 외부 설계 검토 반영 및 A4.0·A4.1 구현, 사람 확인·실제 artifact replay 완료
+- 상태: 외부 설계 검토 반영 및 A4.0·A4.1·A4.2·A4.3a·A4.3b 구현, 실제 artifact human-confirmed replay 완료
 - 기준일: 2026-09-19
 - 대상: native PDF occurrence를 누락·중복 없이 배치하는 평가용 문서 구조
 - 범위: Common IR, selector, worker queue, DB, 공개 API는 변경하지 않는다.
@@ -334,6 +334,76 @@ Surya artifact를 직접 검증해 입력받거나 별도 textless region sideca
 ODL `table_row` bbox, table/cell-kind 좌표 calibration, grid·rowspan 계약과
 cell-to-occurrence partition Gold가 준비되기 전에는 cross-page table을 primary leaf로
 승격하지 않는다.
+
+A4.3은 다음 세 단계로 분리한다.
+
+1. **A4.3a page-local grid 평가**: `pdf_primary_table_grid/v1`은 ODL의 table→row→cell
+   topology를 proposal로 받고, strict Surya outer-table region과 Native occurrence geometry가
+   같은 페이지 표 외곽을 독립적으로 지지할 때만 평가용 segment를 만든다. Native atomic
+   ownership은 변경하지 않으며, 첫 slice는 `rowspan=colspan=1`만 허용한다. 대응되는
+   `pdf_primary_table_grid_gold/v1`은 candidate·ODL·Surya ID와 원문 text를 저장하지 않고
+   reviewer-defined row/column/cell ID와 Native occurrence partition만 기록한다. evaluator는
+   모든 원시 입력을 다시 replay하고 missing, wrong partition, duplicate, orphan, negative
+   anchor attachment를 fail-closed 처리한다. Native occurrence가 표 전체에 0개인 일치
+   후보는 skip하고, table/cell partition의 부분 공집합이나 불일치는 malformed 입력으로
+   fail-closed 처리한다.
+2. **A4.3b cross-page continuation 평가**: page-local grid 평가를 통과한 fragment만 별도
+   continuation candidate와 Gold의 입력이 될 수 있다. v1 candidate는 독립 근거가 있는
+   `between_rows`만 제안하고, `same_row`와 cell continuation은 후속 slice로 남긴다. 인접
+   페이지의 유일한 하단·상단 경계 표, 동일한 column count와 정규화 column geometry를
+   요구하며, predecessor/successor 각 1개와 cycle 없음이 필수다. 경계 후보가 모호하면
+   임의 선택하지 않고 relation 0건으로 남긴다. 이 단계도 evaluation-only다.
+3. **production admission**: source-bound ODL producer identity와 table/table-cell 전용 좌표
+   calibration, 그리고 독립적인 textless TableRec/grid artifact가 같은 topology를 확인하기
+   전에는 page-local grid와 continuation 모두 Common IR이나 primary leaf로 승격하지 않는다.
+
+114788의 첫 review 대상 slice는 physical page 3과 4 상단이다. page 3은 header 1행과 body
+2행, page 4 상단은 반복 header가 없는 body 3행으로, human-confirmed Gold에 동결한 논리 구조는 전체
+6행×2열(header 1 + body 5)이다. page 4 하단의 별도 2행×2열 `우대사항` 표는 continuation
+hard negative다. A4.3a에서는 별도 표로 candidate에 보존하되 reviewed scope 밖이므로
+unscored로 남기고, A4.3b continuation Gold에서 잘못 연결하면 실패하도록 판정한다. p3 마지막
+cell의 `t49`와 p4 첫 cell의 `t51`은 같은 cell 또는 row로 합치지 않는다. 현재 두 page-local
+외곽에서 Surya↔ODL IoU는 각각 0.9631과 0.9702지만, 두 엔진 모두 명시적인 page-span
+relation을 제공하지 않으므로 이 수치만으로 continuation을 확정하지 않는다.
+
+A4.3a 구현은 candidate·Gold·evaluator를 분리했다. 실제 114788 replay는 p3 3×2, p4 상단
+3×2, p4 하단 2×2 후보를 생성했다. p3/p4 상단 Gold는 2026-09-20(KST)에 프로젝트
+소유자가 원문 렌더와 셀 내용을 함께 확인했으며, human-confirmed canonical SHA-256
+`548f3fd6ce803e15439f4c4e0e5abaa7fa295db76b6ceb71aa61dcc77bf6d725`를 신뢰 allowlist에
+등록했다. 실제 evaluator verdict는 `passed`이고 2개 scope·12개 cell이 일치하며, p4 하단
+별도 표 1개는 A4.3a에서 unscored로 보존한다. 실제 artifact를 포함한 회귀는 다음 환경 변수와
+테스트로 재현한다.
+
+```bash
+PRIMARY_DOCUMENT_VIEW_114788_SOURCE_PDF=/path/to/source.pdf \
+PRIMARY_DOCUMENT_VIEW_114788_NATIVE_CAPTURE=/path/to/native_capture.v1.json \
+PRIMARY_DOCUMENT_VIEW_114788_STRUCTURE_CANDIDATES=/path/to/structure_candidates.v1.json \
+PRIMARY_DOCUMENT_VIEW_114788_RENDER_MANIFEST=/path/to/render_manifest.json \
+PRIMARY_DOCUMENT_VIEW_114788_RENDER_ROOT=/path/to/render-root \
+PRIMARY_DOCUMENT_VIEW_114788_RECONSTRUCTION_PLAN=/path/to/reconstruction_plan.v1.json \
+PRIMARY_DOCUMENT_VIEW_114788_CALIBRATION_PROOF=backend/baselines/pdf_reconstruction/opendataloader_coordinate_calibration_v1/calibration_proof.json \
+PRIMARY_HEADING_RELATIONS_114788_SURYA_LAYOUT_ARTIFACT=/path/to/surya_layout_artifact.v1.json \
+PYTHONPATH=backend/vendor/common_ir_pipeline/src:backend/vendor/common_ir_pipeline/tests \
+backend/vendor/common_ir_pipeline/.venv/bin/python -m unittest \
+  test_primary_table_grid test_primary_table_grid_gold test_primary_table_grid_evaluation \
+  test_primary_table_continuation test_primary_table_continuation_gold \
+  test_primary_table_continuation_evaluation
+```
+
+A4.3b도 candidate·Gold·evaluator를 분리했다. v1 candidate는 원문 text나 Gold를 보지 않고
+인접 페이지 경계와 column geometry만으로 `between_rows` 관계를 제안한다. 실제 114788에서는
+p3 하단 표→p4 상단 표 관계 1건만 생성됐고, predecessor bottom gap 97,834 ppm, successor
+top gap 68,674 ppm, outer-x IoU 1,000,000 ppm, column edge drift 0 ppm이었다. p4 하단
+`우대사항` 표는 상단 경계 조건과 column geometry를 통과하지 못해 제외된다.
+
+프로젝트 소유자가 원문 렌더를 기준으로 페이지 간 관계와 별도 `우대사항` 표 경계를 확인했고,
+continuation Gold canonical SHA-256
+`36d58cf6c7fb3e85e429937a927fb4a1c5542e487736359aa760b2191c4b98eb`를 신뢰 allowlist에
+등록했다. 공개 evaluator는 A4.3a grid candidate·Gold·evaluation과 A4.3b candidate·Gold를
+같은 raw input에서 매번 replay한다. 실제 정상 관계는 `passed`이며, p3 표를 p4 하단
+`우대사항` 표에 연결하는 변조는 missing expected relation과 잘못된 successor의
+`unexpected_edge` false positive로 실패한다. 이 결과는 여전히 evaluation-only이며
+production admission을 의미하지 않는다.
 
 ### A4.4 diagram
 
