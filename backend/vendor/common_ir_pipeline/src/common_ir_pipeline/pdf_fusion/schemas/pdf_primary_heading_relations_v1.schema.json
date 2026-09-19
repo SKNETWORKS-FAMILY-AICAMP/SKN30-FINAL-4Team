@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_primary_heading_relations_v1.schema.json",
+  "title": "PDF primary heading relations v1 (evaluation only, textless)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_only",
+    "non_promotable",
+    "standalone_validation_scope",
+    "policy",
+    "notice_id",
+    "source_pdf_sha256",
+    "page_scope",
+    "input_artifacts",
+    "relations"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdf_primary_heading_relations/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "policy": {"$ref": "#/$defs/policy"},
+    "notice_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?![\\s\\S]*[\\uD800-\\uDFFF])(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$"
+    },
+    "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+    "page_scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"type": "integer", "minimum": 1, "maximum": 256}
+    },
+    "input_artifacts": {"$ref": "#/$defs/inputArtifacts"},
+    "relations": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {"$ref": "#/$defs/relation"}
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "leafId": {
+      "type": "string",
+      "pattern": "^leaf-[0-9a-f]{64}$"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_version"],
+      "properties": {
+        "policy_version": {"const": "primary_numbered_heading_relation/v1"}
+      }
+    },
+    "suryaSectionHeaderRegionId": {
+      "type": "string",
+      "minLength": 25,
+      "maxLength": 25,
+      "pattern": "^p[0-9]{4}-section_header-[0-9]{4}$"
+    },
+    "inputArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary_document_view_schema_version",
+        "primary_document_view_sha256",
+        "surya_layout_artifact_schema_version",
+        "surya_layout_artifact_sha256"
+      ],
+      "properties": {
+        "primary_document_view_schema_version": {
+          "const": "pdf_primary_document_view/v1"
+        },
+        "primary_document_view_sha256": {"$ref": "#/$defs/sha256"},
+        "surya_layout_artifact_schema_version": {
+          "const": "surya_layout_artifact/v1"
+        },
+        "surya_layout_artifact_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation_id",
+        "kind",
+        "page",
+        "heading_leaf_id",
+        "body_leaf_id",
+        "surya_region_id"
+      ],
+      "properties": {
+        "relation_id": {
+          "type": "string",
+          "pattern": "^heading-relation-[0-9a-f]{64}$"
+        },
+        "kind": {"const": "heading_to_body"},
+        "page": {"type": "integer", "minimum": 1, "maximum": 256},
+        "heading_leaf_id": {"$ref": "#/$defs/leafId"},
+        "body_leaf_id": {"$ref": "#/$defs/leafId"},
+        "surya_region_id": {"$ref": "#/$defs/suryaSectionHeaderRegionId"}
+      }
+    }
+  }
+}

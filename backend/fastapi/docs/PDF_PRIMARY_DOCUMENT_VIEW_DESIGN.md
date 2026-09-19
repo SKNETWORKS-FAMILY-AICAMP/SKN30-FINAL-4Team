@@ -264,10 +264,66 @@ backend/vendor/common_ir_pipeline/.venv/bin/python -m unittest \
 
 Surya `section_header`, native font/geometry, 번호 패턴을 독립적으로 검증한다. paragraph
 slice와 같은 gate에 섞지 않는다. A4.1/v1의 `relations=[]` 계약을 조용히 바꾸지 않고,
-versioned document view 또는 별도 relation sidecar를 추가한다. 수용 조건은 관계 방향이
-heading→body이고 양 끝이 존재하는 서로 다른 leaf를 참조하며, 관계를 추가해도 두 leaf의
-occurrence ownership과 본문 paragraph 경계가 바뀌지 않는 것이다. LLM context 결합은 이
-관계를 소비하는 후속 composition 단계에서만 수행한다.
+별도 `pdf_primary_heading_relations/v1` sidecar를 추가한다. 이 sidecar는 existing v1
+leaf ID 사이의 `heading_to_body` 관계만 저장하며 occurrence를 소유하거나 leaf kind를
+변경하지 않는다. 수용 조건은 관계 방향이 heading→body이고 양 끝이 존재하는 서로 다른
+leaf를 참조하며, 관계를 추가해도 두 leaf의 occurrence ownership과 본문 paragraph 경계가
+바뀌지 않는 것이다. LLM context 결합은 이 관계를 소비하는 후속 composition 단계에서만
+수행한다.
+
+첫 버전의 positive admission 근거는 strict source/render/model replay를 통과한 Surya
+`section_header`, bounded ASCII numbered-heading shape, native typography·geometry·순서다.
+현재 ODL은 `legacy_claim_unbound`, `legacy_odl_non_promotable`,
+`calibration_kind_unverified` 상태이므로 positive 승인 또는 corroboration에 사용하지 않는다.
+ODL을 정식 신호로 쓰려면 source-bound heading-kind calibration을 별도 버전으로 먼저
+도입해야 한다.
+
+v1은 의도적으로 다음 범위만 다룬다.
+
+- singleton atomic source leaf에서 바로 다음 same-page paragraph leaf로 연결
+- unique Surya `section_header` containment와 non-heading region veto
+- 번호가 붙은 single-line heading만 판정
+- heading level, 전체 section span, unnumbered/multiline heading, cross-page 관계는 제외
+- source/target/region의 fan-in·fan-out과 ambiguity는 relation 미생성으로 fail closed
+
+positive Gold는 기존 paragraph Gold를 수정하지 않고 별도
+`pdf_primary_heading_relation_gold/v1`로 둔다. Gold endpoint는 candidate leaf ID가 아니라
+heading occurrence ID와 기존 paragraph Gold group ID를 사용한다. 114788의 첫 micro-slice는
+`occ:inspector:p3:t17 → p3.purpose.paragraph`이며, 기존 `forbidden_same_leaf` hard negative가
+그 선행조건이다. 실제 positive 평가는 full source-bound Surya artifact가 있는 환경에서만
+gated replay로 실행한다.
+
+2026-09-19 구현·replay 결과:
+
+- `pdf_primary_heading_relations/v1`, `pdf_primary_heading_relation_gold/v1`,
+  `pdf_primary_heading_relation_evaluation/v1`을 서로 분리된 textless sidecar로 구현했다.
+- candidate는 `primary_numbered_heading_relation/v1` 정책, A4.1 view SHA, strict Surya artifact
+  SHA와 각 `section_header` region을 관계 ID에 결속한다. 관계 수는 strict Surya 상한과 같은
+  10,000건으로 제한한다.
+- 114788 full replay에서 `t17` leaf → `t19+t20` paragraph leaf 관계가 정확히 1건 생성됐다.
+  Surya region은 `p0003-section_header-0002`, A4.1 view SHA는
+  `e1f80ebdca586acde6fb68bc75f00566f1fae50b66dd1c4e0d72e6816d38fa4e`로 A4.1 구현 때와
+  동일하다.
+- 별도 evaluator는 A4.1 paragraph 평가의 `passed`를 선행조건으로 요구한다. 기대 관계 누락,
+  잘못된 target, reviewed scope 안의 false positive는 실패하고, scope 밖 관계만 unscored로
+  분리한다. 114788 결과는 기대 관계 1/1 일치, 실패·unscored 0건으로 `passed`였다.
+- 이 결과 역시 `evaluation_only=true`, `non_promotable=true`다. A4.1 source ownership과
+  `relations=[]`은 바뀌지 않으며 production Common IR 승격 근거로 단독 사용하지 않는다.
+- standalone `validate_*`와 JSON Schema는 `internal_consistency_only` 검사다. 임의 digest
+  claim을 source replay 증거로 인정하지 않으므로, 품질 판정 경계에서는 반드시 원시 입력을
+  받는 `evaluate_pdf_primary_heading_relations`를 호출해야 한다. JSON Schema만 통과한 결과를
+  admission 또는 승격 근거로 사용하지 않는다.
+
+실제 114788 회귀는 A4.1의 `PRIMARY_DOCUMENT_VIEW_114788_*` 환경 변수 7개와
+`PRIMARY_HEADING_RELATIONS_114788_SURYA_LAYOUT_ARTIFACT`를 설정한 뒤 다음 테스트로 재현한다.
+
+```bash
+PYTHONPATH=backend/vendor/common_ir_pipeline/src:backend/vendor/common_ir_pipeline/tests \
+backend/vendor/common_ir_pipeline/.venv/bin/python -m unittest \
+  test_primary_heading_relations.PrimaryHeadingRelationsTests.test_actual_114788_replay_when_artifact_environment_is_configured \
+  test_primary_heading_relation_gold.PrimaryHeadingRelationGoldTests.test_actual_114788_gold_replay_when_artifact_environment_is_configured \
+  test_primary_heading_relation_evaluation.PrimaryHeadingRelationEvaluationTests.test_actual_114788_full_evaluator_when_artifacts_are_configured
+```
 
 ### A4.3 table grid와 cross-page continuation
 

@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_primary_heading_relation_evaluation_v1.schema.json",
+  "title": "Offline partial-Gold evaluation for PDF heading-to-body relations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_only",
+    "non_promotable",
+    "standalone_validation_scope",
+    "notice_id",
+    "source",
+    "candidate",
+    "primary_document_view",
+    "base_gold",
+    "heading_gold",
+    "primary_view_prerequisite",
+    "verdict",
+    "blocking_reason_codes",
+    "scope_results",
+    "unscored_relations",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {"const": "pdf_primary_heading_relation_evaluation/v1"},
+    "evaluation_only": {"const": true},
+    "non_promotable": {"const": true},
+    "standalone_validation_scope": {"const": "internal_consistency_only"},
+    "notice_id": {"$ref": "#/$defs/noticeId"},
+    "source": {"$ref": "#/$defs/source"},
+    "candidate": {"$ref": "#/$defs/candidateReference"},
+    "primary_document_view": {"$ref": "#/$defs/primaryViewReference"},
+    "base_gold": {"$ref": "#/$defs/baseGoldReference"},
+    "heading_gold": {"$ref": "#/$defs/headingGoldReference"},
+    "primary_view_prerequisite": {"$ref": "#/$defs/primaryViewPrerequisite"},
+    "verdict": {
+      "enum": [
+        "passed",
+        "failed",
+        "not_evaluable_gold_pending",
+        "not_evaluable_gold_untrusted",
+        "blocked_primary_view_prerequisite",
+        "blocked_scope_mismatch"
+      ]
+    },
+    "blocking_reason_codes": {
+      "type": "array",
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "notice_id_mismatch",
+          "source_pdf_mismatch",
+          "native_capture_mismatch",
+          "candidate_primary_view_mismatch",
+          "gold_page_scope_not_covered",
+          "gold_occurrence_not_covered",
+          "primary_view_prerequisite_not_passed"
+        ]
+      }
+    },
+    "scope_results": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/scopeResult"}
+    },
+    "unscored_relations": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {"$ref": "#/$defs/observedRelation"}
+    },
+    "metrics": {"$ref": "#/$defs/metrics"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"verdict": {"enum": ["passed", "failed"]}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "base_gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "heading_gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "primary_view_prerequisite": {"properties": {"verdict": {"const": "passed"}}},
+          "blocking_reason_codes": {"maxItems": 0},
+          "scope_results": {"minItems": 1}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"verdict": {"const": "not_evaluable_gold_pending"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "anyOf": [
+          {"properties": {"base_gold": {"properties": {"quality_status": {"const": "not_evaluable_gold_pending"}}}}},
+          {"properties": {"heading_gold": {"properties": {"quality_status": {"const": "not_evaluable_gold_pending"}}}}}
+        ],
+        "properties": {
+          "blocking_reason_codes": {"maxItems": 0},
+          "scope_results": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"verdict": {"const": "not_evaluable_gold_untrusted"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "anyOf": [
+          {"properties": {"base_gold": {"properties": {"quality_status": {"const": "not_evaluable_untrusted_confirmation"}}}}},
+          {"properties": {"heading_gold": {"properties": {"quality_status": {"const": "not_evaluable_untrusted_confirmation"}}}}}
+        ],
+        "properties": {
+          "base_gold": {"properties": {"quality_status": {"enum": ["evaluable", "not_evaluable_untrusted_confirmation"]}}},
+          "heading_gold": {"properties": {"quality_status": {"enum": ["evaluable", "not_evaluable_untrusted_confirmation"]}}},
+          "blocking_reason_codes": {"maxItems": 0},
+          "scope_results": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"verdict": {"const": "blocked_primary_view_prerequisite"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "base_gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "heading_gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "primary_view_prerequisite": {
+            "properties": {
+              "verdict": {
+                "enum": [
+                  "failed",
+                  "not_evaluable_gold_pending",
+                  "not_evaluable_gold_untrusted",
+                  "blocked_scope_mismatch"
+                ]
+              }
+            }
+          },
+          "blocking_reason_codes": {"const": ["primary_view_prerequisite_not_passed"]},
+          "scope_results": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"verdict": {"const": "blocked_scope_mismatch"}},
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "base_gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "heading_gold": {"properties": {"quality_status": {"const": "evaluable"}}},
+          "primary_view_prerequisite": {"properties": {"verdict": {"const": "passed"}}},
+          "blocking_reason_codes": {
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "notice_id_mismatch",
+                "source_pdf_mismatch",
+                "native_capture_mismatch",
+                "candidate_primary_view_mismatch",
+                "gold_page_scope_not_covered",
+                "gold_occurrence_not_covered"
+              ]
+            }
+          },
+          "scope_results": {"maxItems": 0},
+          "unscored_relations": {"maxItems": 0}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "noticeId": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 20,
+      "pattern": "^PBLN_[0-9]{15}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$"
+    },
+    "occurrence": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^occ:inspector:p(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-6]):t(?:0|[1-9][0-9]{0,4}|[1-4][0-9]{5})$"
+    },
+    "leafId": {
+      "type": "string",
+      "minLength": 69,
+      "maxLength": 69,
+      "pattern": "^leaf-[0-9a-f]{64}$"
+    },
+    "relationId": {
+      "type": "string",
+      "minLength": 81,
+      "maxLength": 81,
+      "pattern": "^heading-relation-[0-9a-f]{64}$"
+    },
+    "page": {"type": "integer", "minimum": 1, "maximum": 256},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_pdf_sha256", "native_capture_sha256"],
+      "properties": {
+        "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+        "native_capture_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256"],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "candidateReference": {
+      "allOf": [
+        {"$ref": "#/$defs/artifactReference"},
+        {"properties": {"schema_version": {"const": "pdf_primary_heading_relations/v1"}}}
+      ]
+    },
+    "primaryViewReference": {
+      "allOf": [
+        {"$ref": "#/$defs/artifactReference"},
+        {"properties": {"schema_version": {"const": "pdf_primary_document_view/v1"}}}
+      ]
+    },
+    "goldReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256", "quality_status"],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "quality_status": {
+          "enum": [
+            "evaluable",
+            "not_evaluable_gold_pending",
+            "not_evaluable_untrusted_confirmation"
+          ]
+        }
+      }
+    },
+    "baseGoldReference": {
+      "allOf": [
+        {"$ref": "#/$defs/goldReference"},
+        {"properties": {"schema_version": {"const": "pdf_primary_structure_gold/v1"}}}
+      ]
+    },
+    "headingGoldReference": {
+      "allOf": [
+        {"$ref": "#/$defs/goldReference"},
+        {"properties": {"schema_version": {"const": "pdf_primary_heading_relation_gold/v1"}}}
+      ]
+    },
+    "primaryViewPrerequisite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "canonical_sha256", "verdict"],
+      "properties": {
+        "schema_version": {"const": "pdf_primary_view_evaluation/v1"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "verdict": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_evaluable_gold_pending",
+            "not_evaluable_gold_untrusted",
+            "blocked_scope_mismatch"
+          ]
+        }
+      }
+    },
+    "scopeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope_id",
+        "physical_page",
+        "base_structure_scope_id",
+        "verdict",
+        "failure_codes",
+        "relation_results",
+        "false_positive_relations"
+      ],
+      "properties": {
+        "scope_id": {"$ref": "#/$defs/identifier"},
+        "physical_page": {"$ref": "#/$defs/page"},
+        "base_structure_scope_id": {"$ref": "#/$defs/identifier"},
+        "verdict": {"enum": ["passed", "failed"]},
+        "failure_codes": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["expected_relation_failed", "false_positive_relation"]
+          }
+        },
+        "relation_results": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/relationResult"}
+        },
+        "false_positive_relations": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/observedRelation"}
+        }
+      }
+    },
+    "relationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "heading_occurrence_id",
+        "body_group_id",
+        "expected_heading_leaf_id",
+        "expected_body_leaf_id",
+        "status",
+        "observed_relation_id",
+        "observed_body_leaf_id"
+      ],
+      "properties": {
+        "heading_occurrence_id": {"$ref": "#/$defs/occurrence"},
+        "body_group_id": {"$ref": "#/$defs/identifier"},
+        "expected_heading_leaf_id": {"$ref": "#/$defs/leafId"},
+        "expected_body_leaf_id": {"$ref": "#/$defs/leafId"},
+        "status": {"enum": ["matched", "missing", "wrong_target"]},
+        "observed_relation_id": {
+          "oneOf": [{"$ref": "#/$defs/relationId"}, {"type": "null"}]
+        },
+        "observed_body_leaf_id": {
+          "oneOf": [{"$ref": "#/$defs/leafId"}, {"type": "null"}]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "missing"}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "observed_relation_id": {"type": "null"},
+              "observed_body_leaf_id": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["matched", "wrong_target"]}}, "required": ["status"]},
+          "then": {
+            "properties": {
+              "observed_relation_id": {"$ref": "#/$defs/relationId"},
+              "observed_body_leaf_id": {"$ref": "#/$defs/leafId"}
+            }
+          }
+        }
+      ]
+    },
+    "observedRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation_id",
+        "heading_occurrence_id",
+        "heading_leaf_id",
+        "body_leaf_id"
+      ],
+      "properties": {
+        "relation_id": {"$ref": "#/$defs/relationId"},
+        "heading_occurrence_id": {"$ref": "#/$defs/occurrence"},
+        "heading_leaf_id": {"$ref": "#/$defs/leafId"},
+        "body_leaf_id": {"$ref": "#/$defs/leafId"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewed_scope_count",
+        "evaluated_scope_count",
+        "passed_scope_count",
+        "failed_scope_count",
+        "expected_relation_count",
+        "matched_relation_count",
+        "missing_relation_count",
+        "wrong_target_relation_count",
+        "false_positive_relation_count",
+        "unscored_relation_count"
+      ],
+      "properties": {
+        "reviewed_scope_count": {"type": "integer", "minimum": 0, "maximum": 256},
+        "evaluated_scope_count": {"type": "integer", "minimum": 0},
+        "passed_scope_count": {"type": "integer", "minimum": 0},
+        "failed_scope_count": {"type": "integer", "minimum": 0},
+        "expected_relation_count": {"type": "integer", "minimum": 0},
+        "matched_relation_count": {"type": "integer", "minimum": 0},
+        "missing_relation_count": {"type": "integer", "minimum": 0},
+        "wrong_target_relation_count": {"type": "integer", "minimum": 0},
+        "false_positive_relation_count": {"type": "integer", "minimum": 0},
+        "unscored_relation_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

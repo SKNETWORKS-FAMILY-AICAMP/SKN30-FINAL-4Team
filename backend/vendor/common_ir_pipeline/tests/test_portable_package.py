@@ -162,6 +162,9 @@ class PortablePackageTests(unittest.TestCase):
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_context_groups_v1.schema.json", names)
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_structure_gold_v1.schema.json", names)
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_document_view_v1.schema.json", names)
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_heading_relations_v1.schema.json", names)
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_heading_relation_gold_v1.schema.json", names)
+            self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_heading_relation_evaluation_v1.schema.json", names)
             self.assertIn("common_ir_pipeline/pdf_fusion/schemas/pdf_primary_view_evaluation_v1.schema.json", names)
 
     def test_document_shell_has_required_lineage(self) -> None:
