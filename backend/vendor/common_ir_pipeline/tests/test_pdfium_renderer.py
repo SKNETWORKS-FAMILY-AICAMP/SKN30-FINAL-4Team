@@ -45,18 +45,21 @@ def fixture_pdf(
     crop_box: tuple[float, float, float, float] = (10, 20, 250, 170),
     content: bytes = b"",
 ) -> bytes:
-    # Page attributes intentionally live only on /Pages. This catches both
-    # PDFium's inherited box API quirk and a metadata parser that reads only
-    # direct leaf-page dictionary values.
+    # Only the page-tree-inheritable attributes intentionally live on /Pages.
+    # /UserUnit is a leaf /Page entry under the PDF specification.
     return _pdf([
         b"<< /Type /Catalog /Pages 2 0 R >>",
         (
             b"<< /Type /Pages /Kids [3 0 R] /Count 1 "
             + f"/MediaBox [{' '.join(str(value) for value in media_box)}] ".encode("ascii")
             + f"/CropBox [{' '.join(str(value) for value in crop_box)}] ".encode("ascii")
-            + f"/Rotate {rotation} /UserUnit {user_unit} >>".encode("ascii")
+            + f"/Rotate {rotation} >>".encode("ascii")
         ),
-        b"<< /Type /Page /Parent 2 0 R /Resources << >> /Contents 4 0 R >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R "
+            + f"/UserUnit {user_unit} ".encode("ascii")
+            + b"/Resources << >> /Contents 4 0 R >>"
+        ),
         b"<< /Length " + str(len(content)).encode("ascii") + b" >>\nstream\n" + content + b"\nendstream",
     ])
 
@@ -107,7 +110,7 @@ class PdfiumRendererTests(unittest.TestCase):
         source.write_bytes(fixture_pdf(rotation=rotation, user_unit=user_unit))
         return source
 
-    def test_inherited_media_crop_rotation_and_user_unit_are_resolved(self) -> None:
+    def test_inherited_media_crop_rotation_and_direct_user_unit_are_resolved(self) -> None:
         geometry = resolve_pdf_page_geometries(fixture_pdf(rotation=270, user_unit=2))
         self.assertEqual(len(geometry), 1)
         page = geometry[0]
@@ -115,6 +118,17 @@ class PdfiumRendererTests(unittest.TestCase):
         self.assertEqual(page.crop_box, (10.0, 20.0, 250.0, 170.0))
         self.assertEqual(page.rotation, 270)
         self.assertEqual(page.user_unit, 2.0)
+
+    def test_parent_user_unit_is_not_inherited(self) -> None:
+        source = _pdf([
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 100 100] /UserUnit 9 >>",
+            b"<< /Type /Page /Parent 2 0 R >>",
+        ])
+
+        geometry = resolve_pdf_page_geometries(source)
+
+        self.assertEqual(geometry[0].user_unit, 1.0)
 
     def test_decimal_a4_geometry_keeps_raw_manifest_values_and_renders(self) -> None:
         media_box = (0.0, 0.0, 595.28, 842.123456)

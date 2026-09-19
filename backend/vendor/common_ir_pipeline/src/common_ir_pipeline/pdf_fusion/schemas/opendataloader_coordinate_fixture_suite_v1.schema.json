@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/opendataloader_coordinate_fixture_suite_v1.schema.json",
+  "title": "OpenDataLoader coordinate calibration fixture suite v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite_id", "generator_version", "parser_target", "cases"],
+  "properties": {
+    "schema_version": {"const": "opendataloader_coordinate_fixture_suite/v1"},
+    "suite_id": {"const": "odl-coordinate-calibration-rotate-crop-userunit-v1"},
+    "generator_version": {"const": "opendataloader-coordinate-fixture-generator/v1"},
+    "parser_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "config", "config_sha256"],
+      "properties": {
+        "name": {"const": "opendataloader-pdf"},
+        "version": {"const": "2.5.7"},
+        "config": {"$ref": "#/$defs/config"},
+        "config_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "finiteNumber": {"type": "number", "minimum": -1000000, "maximum": 1000000},
+    "bbox": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {"$ref": "#/$defs/finiteNumber"}
+    },
+    "point": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"$ref": "#/$defs/finiteNumber"}
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "hybrid", "ocr_enabled"],
+      "properties": {
+        "format": {"const": "json"},
+        "hybrid": {"const": "off"},
+        "ocr_enabled": {"const": false}
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor_id", "label", "marker_bbox_user", "expected_text_bbox_user", "expected_text_center_user"],
+      "properties": {
+        "anchor_id": {"enum": ["north_west", "north_east", "center", "south_west", "south_east"]},
+        "label": {"pattern": "^CAL_[A-Z]{2}[0-9]{2}$", "type": "string"},
+        "marker_bbox_user": {"$ref": "#/$defs/bbox"},
+        "expected_text_bbox_user": {"$ref": "#/$defs/bbox"},
+        "expected_text_center_user": {"$ref": "#/$defs/point"}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id", "source_pdf_relative_path", "source_pdf_sha256", "source_pdf_size_bytes",
+        "render_manifest_relative_path", "render_manifest_sha256", "coordinate_manifest_sha256",
+        "media_box", "crop_box", "rotation", "user_unit", "anchors"
+      ],
+      "properties": {
+        "case_id": {"enum": ["baseline-r0-u1", "crop-r0-u1", "crop-r90-u1", "crop-r180-u1", "crop-r270-u1", "crop-r0-u2", "combined-r270-u2"]},
+        "source_pdf_relative_path": {"type": "string", "pattern": "^cases/[a-z0-9-]+/source/calibration\\.pdf$"},
+        "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+        "source_pdf_size_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "render_manifest_relative_path": {"type": "string", "pattern": "^cases/[a-z0-9-]+/render_manifest\\.json$"},
+        "render_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "coordinate_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "media_box": {"$ref": "#/$defs/bbox"},
+        "crop_box": {"$ref": "#/$defs/bbox"},
+        "rotation": {"enum": [0, 90, 180, 270]},
+        "user_unit": {"enum": [1, 2]},
+        "anchors": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/anchor"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/opendataloader_coordinate_parser_run_v1.schema.json",
+  "title": "OpenDataLoader coordinate calibration parser run v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "case_id", "fixture_suite_sha256",
+    "source_pdf_sha256", "source_pdf_size_bytes", "coordinate_manifest_sha256",
+    "parser_jar_sha256", "parser_package_metadata_sha256", "parser_config_sha256",
+    "java_executable_sha256", "java_provided_package_file_sha256", "java_version_output_sha256",
+    "normalized_command", "normalized_command_sha256", "raw_output_relative_path",
+    "raw_output_sha256", "raw_output_size_bytes"
+  ],
+  "properties": {
+    "schema_version": {"const": "opendataloader_coordinate_parser_run/v1"},
+    "run_id": {"enum": ["run-1", "run-2"]},
+    "case_id": {"enum": ["baseline-r0-u1", "crop-r0-u1", "crop-r90-u1", "crop-r180-u1", "crop-r270-u1", "crop-r0-u2", "combined-r270-u2"]},
+    "fixture_suite_sha256": {"$ref": "#/$defs/sha256"},
+    "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+    "source_pdf_size_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576},
+    "coordinate_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "parser_jar_sha256": {"$ref": "#/$defs/sha256"},
+    "parser_package_metadata_sha256": {"$ref": "#/$defs/sha256"},
+    "parser_config_sha256": {"$ref": "#/$defs/sha256"},
+    "java_executable_sha256": {"$ref": "#/$defs/sha256"},
+    "java_provided_package_file_sha256": {"$ref": "#/$defs/sha256"},
+    "java_version_output_sha256": {"$ref": "#/$defs/sha256"},
+    "normalized_command": {
+      "const": ["<java-17>", "-Djava.awt.headless=true", "-Dapple.awt.UIElement=true", "-jar", "<opendataloader-pdf-2.5.7.jar>", "--hybrid", "off", "--format", "json", "--output-dir", "<output-dir>", "<source-pdf>"]
+    },
+    "normalized_command_sha256": {"$ref": "#/$defs/sha256"},
+    "raw_output_relative_path": {"const": "parser-output/calibration.json"},
+    "raw_output_sha256": {"$ref": "#/$defs/sha256"},
+    "raw_output_size_bytes": {"type": "integer", "minimum": 1, "maximum": 67108864}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

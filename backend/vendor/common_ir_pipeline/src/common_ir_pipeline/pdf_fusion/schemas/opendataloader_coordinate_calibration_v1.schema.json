@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/opendataloader_coordinate_calibration_v1.schema.json",
+  "title": "OpenDataLoader coordinate calibration proof v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fixture_suite_sha256", "producer_identity_verified", "parser", "runtime", "gate", "status", "selected_global_convention", "production_coordinate_contract_changed", "case_results"],
+  "properties": {
+    "schema_version": {"const": "opendataloader_coordinate_calibration/v1"},
+    "fixture_suite_sha256": {"$ref": "#/$defs/sha256"},
+    "producer_identity_verified": {"const": true},
+    "parser": {"$ref": "#/$defs/parser"},
+    "runtime": {"$ref": "#/$defs/runtime"},
+    "gate": {"$ref": "#/$defs/gate"},
+    "status": {"enum": ["passed", "failed"]},
+    "selected_global_convention": {"oneOf": [{"$ref": "#/$defs/convention"}, {"type": "null"}]},
+    "production_coordinate_contract_changed": {"const": false},
+    "case_results": {"type": "array", "minItems": 7, "maxItems": 7, "items": {"$ref": "#/$defs/caseResult"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "finiteMetric": {"type": "number", "minimum": 0, "maximum": 1000000},
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "hybrid", "ocr_enabled"],
+      "properties": {"format": {"const": "json"}, "hybrid": {"const": "off"}, "ocr_enabled": {"const": false}}
+    },
+    "parser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "package_metadata_sha256", "jar_sha256", "config", "config_sha256", "ocr_enabled"],
+      "properties": {
+        "name": {"const": "opendataloader-pdf"},
+        "version": {"const": "2.5.7"},
+        "package_metadata_sha256": {"$ref": "#/$defs/sha256"},
+        "jar_sha256": {"$ref": "#/$defs/sha256"},
+        "config": {"$ref": "#/$defs/config"},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "ocr_enabled": {"const": false}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "major_version", "version_output", "version_output_sha256", "executable_sha256", "provided_package_file_sha256"],
+      "properties": {
+        "name": {"const": "OpenJDK"},
+        "major_version": {"const": 17},
+        "version_output": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "version \\\"17\\."},
+        "version_output_sha256": {"$ref": "#/$defs/sha256"},
+        "executable_sha256": {"$ref": "#/$defs/sha256"},
+        "provided_package_file_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_center_error_pt", "max_edge_error_pt", "min_bbox_iou", "required_anchor_count_per_case", "max_occurrences_per_anchor", "requires_raw_and_canonical_repeat_identity", "requires_verified_run_manifests", "requires_one_global_convention"],
+      "properties": {
+        "max_center_error_pt": {"const": 1.0},
+        "max_edge_error_pt": {"const": 1.0},
+        "min_bbox_iou": {"const": 0.95},
+        "required_anchor_count_per_case": {"const": 5},
+        "max_occurrences_per_anchor": {"const": 2},
+        "requires_raw_and_canonical_repeat_identity": {"const": true},
+        "requires_verified_run_manifests": {"const": true},
+        "requires_one_global_convention": {"const": true}
+      }
+    },
+    "convention": {
+      "enum": [
+        "raw_pdf_user_space_bottom_left", "raw_pdf_user_space_top_left_media",
+        "crop_relative_bottom_left_raw_units", "crop_relative_top_left_raw_units",
+        "crop_relative_bottom_left_physical_points", "crop_relative_top_left_physical_points",
+        "rotated_crop_relative_top_left_raw_units", "rotated_crop_relative_bottom_left_raw_units",
+        "canonical_rotated_top_left_physical_points", "canonical_rotated_bottom_left_physical_points"
+      ]
+    },
+    "mappedAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor_id", "mapped_bbox_user", "expected_bbox_user", "center_error_pt", "max_edge_error_pt", "bbox_iou"],
+      "properties": {
+        "anchor_id": {"enum": ["north_west", "north_east", "center", "south_west", "south_east"]},
+        "mapped_bbox_user": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+        "expected_bbox_user": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+        "center_error_pt": {"$ref": "#/$defs/finiteMetric"},
+        "max_edge_error_pt": {"$ref": "#/$defs/finiteMetric"},
+        "bbox_iou": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["convention", "status", "reason", "mean_center_error_pt", "max_center_error_pt", "max_edge_error_pt", "min_bbox_iou", "mapped_anchors"],
+      "properties": {
+        "convention": {"$ref": "#/$defs/convention"},
+        "status": {"enum": ["passed", "rejected"]},
+        "reason": {"type": ["string", "null"]},
+        "mean_center_error_pt": {"oneOf": [{"$ref": "#/$defs/finiteMetric"}, {"type": "null"}]},
+        "max_center_error_pt": {"oneOf": [{"$ref": "#/$defs/finiteMetric"}, {"type": "null"}]},
+        "max_edge_error_pt": {"oneOf": [{"$ref": "#/$defs/finiteMetric"}, {"type": "null"}]},
+        "min_bbox_iou": {"oneOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "null"}]},
+        "mapped_anchors": {"type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/mappedAnchor"}}
+      }
+    },
+    "caseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id", "status", "source_pdf_sha256", "coordinate_manifest_sha256",
+        "raw_run_1_sha256", "raw_run_2_sha256", "canonical_run_1_sha256", "canonical_run_2_sha256",
+        "deterministic_replay", "run_manifest_1_sha256", "run_manifest_2_sha256", "matched_anchor_count", "observed_anchor_occurrence_count", "duplicate_anchor_occurrence_count", "selected_convention", "passing_convention_count",
+        "passing_conventions", "hypotheses"
+      ],
+      "properties": {
+        "case_id": {"enum": ["baseline-r0-u1", "crop-r0-u1", "crop-r90-u1", "crop-r180-u1", "crop-r270-u1", "crop-r0-u2", "combined-r270-u2"]},
+        "status": {"enum": ["passed", "failed"]},
+        "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+        "coordinate_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "raw_run_1_sha256": {"$ref": "#/$defs/sha256"},
+        "raw_run_2_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_run_1_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_run_2_sha256": {"$ref": "#/$defs/sha256"},
+        "deterministic_replay": {"type": "boolean"},
+        "run_manifest_1_sha256": {"$ref": "#/$defs/sha256"},
+        "run_manifest_2_sha256": {"$ref": "#/$defs/sha256"},
+        "matched_anchor_count": {"type": "integer", "minimum": 0, "maximum": 5},
+        "observed_anchor_occurrence_count": {"type": "integer", "minimum": 5, "maximum": 10},
+        "duplicate_anchor_occurrence_count": {"type": "integer", "minimum": 0, "maximum": 5},
+        "selected_convention": {"oneOf": [{"$ref": "#/$defs/convention"}, {"type": "null"}]},
+        "passing_convention_count": {"type": "integer", "minimum": 0, "maximum": 10},
+        "passing_conventions": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/convention"}},
+        "hypotheses": {"type": "array", "minItems": 10, "maxItems": 10, "items": {"$ref": "#/$defs/hypothesis"}}
+      }
+    }
+  }
+}

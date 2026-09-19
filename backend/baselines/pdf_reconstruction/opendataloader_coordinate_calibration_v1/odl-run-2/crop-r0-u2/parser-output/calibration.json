@@ -1,0 +1,89 @@
+{
+  "file name" : "calibration.pdf",
+  "number of pages" : 1,
+  "author" : null,
+  "title" : null,
+  "creation date" : null,
+  "modification date" : null,
+  "kids" : [ {
+    "type" : "text block",
+    "id" : 1,
+    "page number" : 1,
+    "bounding box" : [ 17.7, 173.7, 90.3, 202.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 4,
+      "page number" : 1,
+      "bounding box" : [ 24.0, 180.0, 81.6, 192.66 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_NW01"
+    } ]
+  }, {
+    "type" : "text block",
+    "id" : 5,
+    "page number" : 1,
+    "bounding box" : [ 209.7, 173.7, 282.3, 202.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 8,
+      "page number" : 1,
+      "bounding box" : [ 216.0, 180.0, 273.6, 192.66 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_NE02"
+    } ]
+  }, {
+    "type" : "text block",
+    "id" : 9,
+    "page number" : 1,
+    "bounding box" : [ 113.7, 95.7, 186.3, 124.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 12,
+      "page number" : 1,
+      "bounding box" : [ 120.0, 102.0, 177.6, 114.66 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_CT03"
+    } ]
+  }, {
+    "type" : "text block",
+    "id" : 13,
+    "page number" : 1,
+    "bounding box" : [ 17.7, 17.7, 90.3, 46.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 16,
+      "page number" : 1,
+      "bounding box" : [ 24.0, 24.0, 81.6, 36.66 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_SW04"
+    } ]
+  }, {
+    "type" : "text block",
+    "id" : 17,
+    "page number" : 1,
+    "bounding box" : [ 209.7, 17.7, 282.3, 46.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 20,
+      "page number" : 1,
+      "bounding box" : [ 216.0, 24.0, 273.6, 36.66 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_SE05"
+    } ]
+  } ]
+}

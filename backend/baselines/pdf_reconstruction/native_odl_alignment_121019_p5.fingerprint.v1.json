@@ -1,0 +1,64 @@
+{
+  "schema_version": "pdf_reconstruction_plan_fingerprint/v1",
+  "fixture_role": "non_reproducible_review_attestation",
+  "evaluation_only": true,
+  "non_promotable": true,
+  "attestation": {
+    "replayed_on": "2026-09-19",
+    "basis": "external_source_bound_artifacts_replayed_locally",
+    "hermetic_replay_available_in_repository": false
+  },
+  "source": {
+    "notice_id": "PBLN_000000000121019",
+    "source_pdf_sha256": "7f5cb27e0e0894ecf919e73a4290e2b6e186df0802ed80b2928d70eea365865a",
+    "physical_page": 5,
+    "source_pdf_in_repository": false
+  },
+  "inputs": {
+    "native_capture_schema_version": "pdf_inspector_native_capture/v1",
+    "native_capture_canonical_sha256": "b041297906492f76a95a91bd266021985ab18f66f71ad84a9ac139b0d7ec9d0c",
+    "render_manifest_schema_version": "pdf_render_manifest/v1",
+    "render_manifest_canonical_sha256": "9d3ef5889025242a8c1789d73f011b6c4094f16d269884d01fbed7f16d063906",
+    "page_5_coordinate_manifest_sha256": "07f4948b2596974504a7229e25da7438c8495b9a291a02e8a11396b2ba8db619",
+    "structure_candidates_schema_version": "pdf_structure_candidates/v1",
+    "structure_candidates_canonical_sha256": "1ad981e3ea045cf0d58a59c92c317c21b193908ea79eebe1df630df4ac1288fd",
+    "coordinate_calibration_canonical_sha256": "f8c041e14cad1637150165050dc12ff87ef9a752d8192e46e73bda12edf003be",
+    "parser_binding_status": "legacy_claim_unbound"
+  },
+  "projection": {
+    "schema_version": "pdf_reconstruction_plan/v1",
+    "canonical_sha256": "b9f28b842d663cfa5b68b64617b59874cd91868ecf267ff60d36811bf6449ef1",
+    "standalone_validation_scope": "internal_consistency_only",
+    "native_text_status": "native_text_available",
+    "native_ownership_gate_status": "passed",
+    "scoped_native_occurrence_count": 60,
+    "substantive_native_occurrence_count": 60,
+    "atomic_evidence_unit_count": 60,
+    "unowned_substantive_occurrence_count": 0,
+    "duplicate_primary_owner_count": 0,
+    "structure_candidate_count": 63,
+    "candidate_alignment_counts": {
+      "accepted": 0,
+      "partial": 59,
+      "rejected": 4
+    },
+    "candidate_use_policy_counts": {
+      "context_only": 59,
+      "diagnostic_only": 4
+    },
+    "evidence_composite_unit_count": 0,
+    "max_context_reference_count": 3,
+    "rejected_candidate_traversal_orders": [
+      2,
+      20,
+      54,
+      55
+    ],
+    "split_bullet_candidate_traversal_orders": [
+      44
+    ],
+    "native_term_occurrence_id": "occ:inspector:p5:t8570",
+    "semantic_text_copied_into_plan": false,
+    "table_or_list_promoted_to_evidence": false
+  }
+}

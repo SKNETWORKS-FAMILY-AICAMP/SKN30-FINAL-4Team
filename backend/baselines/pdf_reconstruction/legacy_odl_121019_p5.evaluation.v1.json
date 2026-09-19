@@ -1,0 +1,22 @@
+{
+  "schema_version": "legacy_opendataloader_evaluation/v1",
+  "evaluation_only": true,
+  "non_promotable": true,
+  "coordinate_status": "odl_pdf_points_unverified",
+  "notice_id": "PBLN_000000000121019",
+  "source_pdf_sha256": "7f5cb27e0e0894ecf919e73a4290e2b6e186df0802ed80b2928d70eea365865a",
+  "raw_json_sha256": "f60515489fa1ad338b9c39d3e9173ec03e2c4400872fa097c09c800c5fce29e4",
+  "canonical_json_sha256": "0c8964181495909245e6f4a2a62acae95c0141f6be82e36330767b31f5816110",
+  "source_page_count": 5,
+  "odl_page_count": 5,
+  "page_scope": [5],
+  "odl_page_to_source_page": [
+    {"odl_page": 5, "source_page": 5}
+  ],
+  "parser_name_claim": "opendataloader-pdf",
+  "parser_version_claim": "2.5.7",
+  "parser_claim_status": "documented_not_machine_bound",
+  "config_status": "unavailable",
+  "ocr_claim_status": "disabled_documented_not_machine_bound",
+  "binding_basis": "curated_manifest_source_hash/v1"
+}

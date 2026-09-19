@@ -1,0 +1,206 @@
+{
+  "schema_version": "pdf_reconstruction_plan_fingerprint/v1",
+  "fixture_role": "non_reproducible_review_attestation",
+  "evaluation_only": true,
+  "non_promotable": true,
+  "attestation": {
+    "replayed_on": "2026-09-19",
+    "basis": "external_source_bound_artifacts_replayed_locally",
+    "hermetic_replay_available_in_repository": false,
+    "artifact_bound_replay_validation": "passed"
+  },
+  "quality_scope": {
+    "claim": "alignment_safety_and_native_ownership_only",
+    "semantic_gold_bound_to_attestation": false,
+    "structural_gold_available": false,
+    "semantic_quality_approved": false,
+    "structural_quality_approved": false
+  },
+  "source": {
+    "notice_id": "PBLN_000000000114788",
+    "source_pdf_sha256": "466994bb0cd5769dc56e8e8e1d6cffdaa9539ff829a6452e4db757e03fa6f98c",
+    "physical_pages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "source_pdf_in_repository": false
+  },
+  "inputs": {
+    "native_capture_schema_version": "pdf_inspector_native_capture/v1",
+    "native_capture_canonical_sha256": "09acdc7138ae643b3246009f6cc479a79306c3c352e7f78d6c2cc71c0669596b",
+    "render_manifest_schema_version": "pdf_render_manifest/v1",
+    "render_manifest_canonical_sha256": "de0c6dc7d2279cd310a367d57a1b7d0e908133d7be3135143953f27b9015b296",
+    "coordinate_manifest_sha256_by_page": {
+      "1": "f74da130c3bbef2d717b01f6806028a50aa04fd99e960a21a4be25f178b7515d",
+      "2": "3bdba2e9e27c2ec9a60220f1bbd4fe3ae27741d5061eca022b1e1238a6bedf48",
+      "3": "88d9bbff969ecf7b2974db83429658210ac3b9c291bd6e93d348bfa8cd4526ff",
+      "4": "8f79f1dc8d7226673910753140618fb1e973cd2b7aa844b47df968e40ebcf2c9",
+      "5": "495e8036ff20146c27b0cf9c9ce915dac1c16d448ab4cc3ba3d8ad37a17b3dbf",
+      "6": "7329af0dfc1018a99c214afd917cdc60aabed2a6967ea1d5ab2114842e62ada4",
+      "7": "2286e7e06ed492f38be0f9ce1fe958832312379fba894932463c09e6dc5fc112"
+    },
+    "structure_candidates_schema_version": "pdf_structure_candidates/v1",
+    "structure_candidates_canonical_sha256": "44d7d89993b9286b20f3c66bd18cbf081138652936232cacda1c8853fb774427",
+    "legacy_binding_schema_version": "legacy_opendataloader_evaluation/v1",
+    "legacy_binding_canonical_sha256": "3851d704d808f057057cd5fa1bdbf631e2d5dea64cd517fa2e18b7e095ee3a71",
+    "external_opendataloader_raw_sha256": "0486089e7396717a835f198de93eebf6d16143a45a4ba96f03a61826777ad6fa",
+    "external_opendataloader_canonical_sha256": "f8ca1c31fe09fab70ed0215a85978d93fe84d8d4f607e5d210f071de02210125",
+    "coordinate_calibration_canonical_sha256": "f8c041e14cad1637150165050dc12ff87ef9a752d8192e46e73bda12edf003be",
+    "parser_binding_status": "legacy_claim_unbound"
+  },
+  "legacy_observation": {
+    "old_top_level_object_count": 71,
+    "old_exact_binding_count": 44,
+    "old_rejected_count": 27,
+    "recursive_table_cell_candidate_count": 79,
+    "recursive_typed_candidate_count": 268,
+    "old_shadow_file_sha256": "c3b9aebd755e1be7e336e1c39abe27b5b54f79aab729a5ce89d755eb5af4eb00",
+    "old_embedded_odl_sha_is_authentication_input": false
+  },
+  "projection": {
+    "schema_version": "pdf_reconstruction_plan/v1",
+    "canonical_sha256": "26204a3ce7569a40bfa2a2e00e496945374eb6c4b68282f749e115e49e4b61fe",
+    "standalone_validation_scope": "internal_consistency_only",
+    "native_text_status": "native_text_available",
+    "native_ownership_gate_status": "passed",
+    "scoped_native_occurrence_count": 230,
+    "substantive_native_occurrence_count": 218,
+    "non_substantive_native_occurrence_count": 12,
+    "native_occurrence_count_by_page": [
+      5,
+      10,
+      36,
+      43,
+      66,
+      62,
+      8
+    ],
+    "atomic_evidence_unit_count": 218,
+    "unowned_substantive_occurrence_count": 0,
+    "duplicate_primary_owner_count": 0,
+    "structure_candidate_count": 268,
+    "structure_candidate_count_by_page": [
+      4,
+      5,
+      35,
+      40,
+      90,
+      89,
+      5
+    ],
+    "structure_candidate_kind_counts": {
+      "paragraph": 115,
+      "table_cell": 79,
+      "table_row": 28,
+      "heading": 12,
+      "image": 10,
+      "list_item": 8,
+      "table": 6,
+      "list": 4,
+      "text_block": 4,
+      "caption": 2
+    },
+    "candidate_alignment_counts": {
+      "accepted": 0,
+      "partial": 101,
+      "rejected": 167
+    },
+    "candidate_use_policy_counts": {
+      "context_only": 101,
+      "diagnostic_only": 167
+    },
+    "candidate_alignment_counts_by_page": {
+      "1": {
+        "partial": 1,
+        "rejected": 3
+      },
+      "2": {
+        "partial": 2,
+        "rejected": 3
+      },
+      "3": {
+        "partial": 9,
+        "rejected": 26
+      },
+      "4": {
+        "partial": 14,
+        "rejected": 26
+      },
+      "5": {
+        "partial": 38,
+        "rejected": 52
+      },
+      "6": {
+        "partial": 35,
+        "rejected": 54
+      },
+      "7": {
+        "partial": 2,
+        "rejected": 3
+      }
+    },
+    "candidate_alignment_counts_by_kind": {
+      "heading": {
+        "partial": 1,
+        "rejected": 11
+      },
+      "paragraph": {
+        "partial": 33,
+        "rejected": 82
+      },
+      "list": {
+        "partial": 4,
+        "rejected": 0
+      },
+      "list_item": {
+        "partial": 1,
+        "rejected": 7
+      },
+      "table": {
+        "partial": 6,
+        "rejected": 0
+      },
+      "table_row": {
+        "partial": 0,
+        "rejected": 28
+      },
+      "table_cell": {
+        "partial": 56,
+        "rejected": 23
+      },
+      "text_block": {
+        "partial": 0,
+        "rejected": 4
+      },
+      "caption": {
+        "partial": 0,
+        "rejected": 2
+      },
+      "image": {
+        "partial": 0,
+        "rejected": 10
+      }
+    },
+    "rejection_reason_membership_counts": {
+      "no_native_occurrence": 94,
+      "calibration_kind_unverified": 47,
+      "multi_occurrence_leaf_unverified": 33,
+      "no_candidate_bbox": 28,
+      "unsupported_candidate_kind": 10,
+      "cross_column_or_row_merge": 2
+    },
+    "cross_column_or_row_merge_traversal_orders": [
+      63,
+      88
+    ],
+    "evidence_composite_unit_count": 0,
+    "max_context_reference_count": 3,
+    "semantic_text_copied_into_plan": false,
+    "table_or_list_promoted_to_evidence": false
+  }
+}

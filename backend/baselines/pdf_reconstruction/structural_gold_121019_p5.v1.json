@@ -1,0 +1,32 @@
+{
+  "schema_version": "pdf_structural_gold/v1",
+  "source": {
+    "notice_id": "PBLN_000000000121019",
+    "source_pdf_sha256": "7f5cb27e0e0894ecf919e73a4290e2b6e186df0802ed80b2928d70eea365865a",
+    "physical_page": 5,
+    "rendered_image": {
+      "pixel_width": 1653,
+      "pixel_height": 2337,
+      "recorded_rendered_image_sha256": "ffd9bd2111f0de09229259ffb95166cbefeb1959aa2c3b3475291e76df5b51c4",
+      "rendered_image_digest_status": "stage_recorded_not_locally_rehashed",
+      "render_manifest_sha256": "e1281e5184c8aed6e553e82939bb906c198dd413d438c0c67a004b1ec8f99e3c",
+      "render_stage_sha256": "4f791ec9c7c0e15031313e27117f5b4d89ca8bbef0693b916a63e961ba864c53",
+      "render_stage_fingerprint": "22c8f48c2bf573f6307860eeba3457bf997eef61b124cc11534cc28f79df4639"
+    }
+  },
+  "adjudication": {"method": "image_first_assisted_review", "review_status": "human_confirmed", "human_confirmation_required": false, "confidence": 0.8, "parser_outputs_are_truth": false},
+  "title": {"text": "[붙임] 사업재편 인센티브", "relation": "above_table"},
+  "table": {
+    "bbox_px": [159, 245, 1496, 1985], "bbox_tolerance_px": {"x0": 8, "y0": 8, "x1": 8, "y1": 8},
+    "headers": ["구 분", "인센티브"], "physical_row_count": 43,
+    "groups": [
+      {"category": "상법 특례", "child_count": 6}, {"category": "공정거래법 특례", "child_count": 6}, {"category": "산업집적법 특례", "child_count": 1},
+      {"category": "세제 지원", "child_count": 12}, {"category": "자금 지원", "child_count": 9}, {"category": "연구개발 지원", "child_count": 2},
+      {"category": "고용안정 지원", "child_count": 2}, {"category": "중소중견 특별지원", "child_count": 1}, {"category": "대·중견 특별 지원", "child_count": 1}, {"category": "자산매각 지원", "child_count": 2}
+    ]
+  },
+  "below_table_notes": {"relation": "below_table", "semantic_role": "explanatory_content", "note_count": 3},
+  "footer": {"text": "- 5 -", "semantic_role": "nonsemantic"},
+  "native_term_assertion": {"accepted_native_term": "익금불산입", "rejected_ocr_term": "의금불산입"},
+  "hard_negatives": {"no_42_categories": true, "no_flattened_52_labels": true, "no_same_line_single_child_merge": true, "no_notes_or_footer_attachment": true, "no_checked_state_inference": true, "reject_surya_rowspans": [10, 8], "reject_ocr_typo": "의금불산입", "do_not_detach_asset_sale_children": true, "table_list_conflict_production_evidence": "reject_parser_only_mixed_type_promotion"}
+}

@@ -1,0 +1,44 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [-30 -20 350 280] /CropBox [20 30 320 250] /Rotate 90 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /UserUnit 1 /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 348 >>
+stream
+q 0.85 G 0.6 w
+38 204 72 28 re S
+BT /F1 12 Tf 1 0 0 1 44 213 Tm (CAL_NW01) Tj ET
+230 204 72 28 re S
+BT /F1 12 Tf 1 0 0 1 236 213 Tm (CAL_NE02) Tj ET
+134 126 72 28 re S
+BT /F1 12 Tf 1 0 0 1 140 135 Tm (CAL_CT03) Tj ET
+38 48 72 28 re S
+BT /F1 12 Tf 1 0 0 1 44 57 Tm (CAL_SW04) Tj ET
+230 48 72 28 re S
+BT /F1 12 Tf 1 0 0 1 236 57 Tm (CAL_SE05) Tj ET
+Q
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000185 00000 n 
+0000000299 00000 n 
+0000000698 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+793
+%%EOF

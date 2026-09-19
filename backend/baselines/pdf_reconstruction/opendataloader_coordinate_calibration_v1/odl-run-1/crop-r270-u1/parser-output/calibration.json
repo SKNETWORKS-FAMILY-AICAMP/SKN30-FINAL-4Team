@@ -1,0 +1,139 @@
+{
+  "file name" : "calibration.pdf",
+  "number of pages" : 1,
+  "author" : null,
+  "title" : null,
+  "creation date" : null,
+  "modification date" : null,
+  "kids" : [ {
+    "type" : "text block",
+    "id" : 6,
+    "page number" : 1,
+    "bounding box" : [ 17.7, 209.7, 46.3, 282.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 9,
+      "page number" : 1,
+      "bounding box" : [ 27.34, 216.0, 40.0, 273.6 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_NE02"
+    } ]
+  }, {
+    "type" : "paragraph",
+    "pdfua_tag" : "P",
+    "id" : 10,
+    "page number" : 1,
+    "bounding box" : [ 27.34, 216.0, 40.0, 273.6 ],
+    "font" : "Courier",
+    "font size" : 12.0,
+    "text color" : "[0.0]",
+    "content" : "CAL_NE02"
+  }, {
+    "type" : "text block",
+    "id" : 1,
+    "page number" : 1,
+    "bounding box" : [ 17.7, 17.7, 46.3, 90.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 4,
+      "page number" : 1,
+      "bounding box" : [ 27.34, 24.0, 40.0, 81.6 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_NW01"
+    } ]
+  }, {
+    "type" : "paragraph",
+    "pdfua_tag" : "P",
+    "id" : 5,
+    "page number" : 1,
+    "bounding box" : [ 27.34, 52.8, 40.0, 81.6 ],
+    "font" : "Courier",
+    "font size" : 12.0,
+    "text color" : "[0.0]",
+    "content" : "NW01"
+  }, {
+    "type" : "text block",
+    "id" : 11,
+    "page number" : 1,
+    "bounding box" : [ 95.7, 113.7, 124.3, 186.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 14,
+      "page number" : 1,
+      "bounding box" : [ 105.34, 120.0, 118.0, 177.6 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_CT03"
+    } ]
+  }, {
+    "type" : "paragraph",
+    "pdfua_tag" : "P",
+    "id" : 15,
+    "page number" : 1,
+    "bounding box" : [ 105.34, 127.2, 118.0, 177.6 ],
+    "font" : "Courier",
+    "font size" : 12.0,
+    "text color" : "[0.0]",
+    "content" : "AL_CT03"
+  }, {
+    "type" : "text block",
+    "id" : 21,
+    "page number" : 1,
+    "bounding box" : [ 173.7, 209.7, 202.3, 282.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 24,
+      "page number" : 1,
+      "bounding box" : [ 183.34, 216.0, 196.0, 273.6 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_SE05"
+    } ]
+  }, {
+    "type" : "paragraph",
+    "pdfua_tag" : "P",
+    "id" : 25,
+    "page number" : 1,
+    "bounding box" : [ 183.34, 216.0, 196.0, 273.6 ],
+    "font" : "Courier",
+    "font size" : 12.0,
+    "text color" : "[0.0]",
+    "content" : "CAL_SE05"
+  }, {
+    "type" : "text block",
+    "id" : 16,
+    "page number" : 1,
+    "bounding box" : [ 173.7, 17.7, 202.3, 90.3 ],
+    "kids" : [ {
+      "type" : "paragraph",
+      "pdfua_tag" : "P",
+      "id" : 19,
+      "page number" : 1,
+      "bounding box" : [ 183.34, 24.0, 196.0, 81.6 ],
+      "font" : "Courier",
+      "font size" : 12.0,
+      "text color" : "[0.0]",
+      "content" : "CAL_SW04"
+    } ]
+  }, {
+    "type" : "paragraph",
+    "pdfua_tag" : "P",
+    "id" : 20,
+    "page number" : 1,
+    "bounding box" : [ 183.34, 24.0, 196.0, 81.6 ],
+    "font" : "Courier",
+    "font size" : 12.0,
+    "text color" : "[0.0]",
+    "content" : "CAL_SW04"
+  } ]
+}

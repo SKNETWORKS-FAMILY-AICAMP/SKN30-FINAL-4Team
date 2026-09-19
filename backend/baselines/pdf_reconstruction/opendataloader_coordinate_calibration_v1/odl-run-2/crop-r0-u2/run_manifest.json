@@ -1,0 +1,33 @@
+{
+  "case_id": "crop-r0-u2",
+  "coordinate_manifest_sha256": "06f802bbb44fd54e1622d5c6b0d085ea324db4e3e147559ccb7e9404e8b80948",
+  "fixture_suite_sha256": "25e28395fa66f70ce9875d5279cb35a5ccbb1f003eebcf908838700becf17bf6",
+  "java_executable_sha256": "4976918b29ece3fe634bdbcf1377676e42af429b5311ba234f6f95039117d4d4",
+  "java_provided_package_file_sha256": "2d5da465ef18c4db26e1d231262d7715e77824aa1f5e1af00883abe8a9369944",
+  "java_version_output_sha256": "a39b79996aa8165eee09d0dcc9c016ce4230f1cfa22409e6fc7c61607cfdc5b9",
+  "normalized_command": [
+    "<java-17>",
+    "-Djava.awt.headless=true",
+    "-Dapple.awt.UIElement=true",
+    "-jar",
+    "<opendataloader-pdf-2.5.7.jar>",
+    "--hybrid",
+    "off",
+    "--format",
+    "json",
+    "--output-dir",
+    "<output-dir>",
+    "<source-pdf>"
+  ],
+  "normalized_command_sha256": "6aab488abe88213cb25ccce7dd69f255f02ad61e47d706489b18d8ee7999e6a5",
+  "parser_config_sha256": "8543138f8508f6f6ebee3280edd010778b3c7b800161cad3d7ef93cdb011cd82",
+  "parser_jar_sha256": "74f0d797bea8088bd4a58137e372eb38a5fa24639e06b633cef7f78eba14cd62",
+  "parser_package_metadata_sha256": "69ce8a3b4bd9d71049abfd82180f4dcf202d4c734dd72241781ec7dafe1ba753",
+  "raw_output_relative_path": "parser-output/calibration.json",
+  "raw_output_sha256": "51f8b4bb05b1d93aebb585e0d376b97bf15066623c40ff15e276604bf4562b0f",
+  "raw_output_size_bytes": 2208,
+  "run_id": "run-2",
+  "schema_version": "opendataloader_coordinate_parser_run/v1",
+  "source_pdf_sha256": "1033436e12054e2e167ca928aabc9ecba73b29b9dce782b287378c848d5b07da",
+  "source_pdf_size_bytes": 975
+}

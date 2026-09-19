@@ -1,0 +1,37 @@
+{
+  "schema_version": "pdf_structure_candidates_fingerprint/v1",
+  "fixture_role": "hermetic_textless_fingerprint",
+  "source": {
+    "notice_id": "PBLN_000000000121019",
+    "source_pdf_sha256": "7f5cb27e0e0894ecf919e73a4290e2b6e186df0802ed80b2928d70eea365865a",
+    "physical_page": 5
+  },
+  "input": {
+    "binding_schema_version": "legacy_opendataloader_evaluation/v1",
+    "binding_sha256": "36fd14646f0cdb3f36b82ab5fe53842fc74ab11b6f2dc6a9b3ac01feda01fd8f",
+    "observed_external_raw_json_sha256": "f60515489fa1ad338b9c39d3e9173ec03e2c4400872fa097c09c800c5fce29e4",
+    "observed_external_canonical_json_sha256": "0c8964181495909245e6f4a2a62acae95c0141f6be82e36330767b31f5816110",
+    "external_raw_payload_in_repository": false,
+    "provenance_status": "legacy_evaluation_only_non_promotable",
+    "derived_textless_fixture": "derived_textless_odl_121019_p5.evaluation.v1.json",
+    "derived_textless_canonical_json_sha256": "793c5ac96a9c7caf1cb682168e9c151a900519df6e4675cabb637fdb69c98bc0"
+  },
+  "projection": {
+    "schema_version": "pdf_structure_candidates/v1",
+    "ordering_status": "odl_traversal_unverified",
+    "evaluation_only": true,
+    "non_promotable": true,
+    "candidate_count": 63,
+    "normalized_kind_counts": {
+      "heading": 1,
+      "list": 8,
+      "list_item": 51,
+      "paragraph": 3
+    },
+    "excluded_payload_fields": ["content", "reading_order", "text"],
+    "observed_external_projection_canonical_json_sha256": "f0de9f98e5b39b2150271f4f733c8c88f247eca75be8743df2afa65f541889c9",
+    "derived_projection_canonical_json_sha256": "1ad981e3ea045cf0d58a59c92c317c21b193908ea79eebe1df630df4ac1288fd",
+    "candidate_ids_sha256": "9a15b62ed6b7d9f88c4e4c4824a7b96cb82931327c28b11e1e0068f0e77aca21",
+    "normalized_kind_sequence_sha256": "5cab31b4bb4917f276c85aee986cced2d2db08b97923227fca3ecff5e259182a"
+  }
+}

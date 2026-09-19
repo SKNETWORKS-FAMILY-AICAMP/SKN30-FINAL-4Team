@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/pdf_structural_gold_v1.schema.json",
+  "title": "Offline human-confirmed image-first PDF structural Gold v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "adjudication",
+    "title",
+    "table",
+    "below_table_notes",
+    "footer",
+    "native_term_assertion",
+    "hard_negatives"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "pdf_structural_gold/v1"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "adjudication": {
+      "$ref": "#/$defs/adjudication"
+    },
+    "title": {
+      "$ref": "#/$defs/title"
+    },
+    "table": {
+      "$ref": "#/$defs/table"
+    },
+    "below_table_notes": {
+      "$ref": "#/$defs/notes"
+    },
+    "footer": {
+      "$ref": "#/$defs/footer"
+    },
+    "native_term_assertion": {
+      "$ref": "#/$defs/native_term_assertion"
+    },
+    "hard_negatives": {
+      "$ref": "#/$defs/hard_negatives"
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "notice_id",
+        "source_pdf_sha256",
+        "physical_page",
+        "rendered_image"
+      ],
+      "properties": {
+        "notice_id": {
+          "const": "PBLN_000000000121019"
+        },
+        "source_pdf_sha256": {
+          "const": "7f5cb27e0e0894ecf919e73a4290e2b6e186df0802ed80b2928d70eea365865a"
+        },
+        "physical_page": {
+          "const": 5
+        },
+        "rendered_image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pixel_width",
+            "pixel_height",
+            "recorded_rendered_image_sha256",
+            "rendered_image_digest_status",
+            "render_manifest_sha256",
+            "render_stage_sha256",
+            "render_stage_fingerprint"
+          ],
+          "properties": {
+            "pixel_width": {
+              "const": 1653
+            },
+            "pixel_height": {
+              "const": 2337
+            },
+            "recorded_rendered_image_sha256": {
+              "const": "ffd9bd2111f0de09229259ffb95166cbefeb1959aa2c3b3475291e76df5b51c4"
+            },
+            "rendered_image_digest_status": {
+              "const": "stage_recorded_not_locally_rehashed"
+            },
+            "render_manifest_sha256": {
+              "const": "e1281e5184c8aed6e553e82939bb906c198dd413d438c0c67a004b1ec8f99e3c"
+            },
+            "render_stage_sha256": {
+              "const": "4f791ec9c7c0e15031313e27117f5b4d89ca8bbef0693b916a63e961ba864c53"
+            },
+            "render_stage_fingerprint": {
+              "const": "22c8f48c2bf573f6307860eeba3457bf997eef61b124cc11534cc28f79df4639"
+            }
+          }
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "review_status",
+        "human_confirmation_required",
+        "confidence",
+        "parser_outputs_are_truth"
+      ],
+      "properties": {
+        "method": {
+          "const": "image_first_assisted_review"
+        },
+        "review_status": {
+          "const": "human_confirmed"
+        },
+        "human_confirmation_required": {
+          "const": false
+        },
+        "confidence": {
+          "const": 0.8
+        },
+        "parser_outputs_are_truth": {
+          "const": false
+        }
+      }
+    },
+    "title": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "relation"
+      ],
+      "properties": {
+        "text": {
+          "const": "[붙임] 사업재편 인센티브"
+        },
+        "relation": {
+          "const": "above_table"
+        }
+      }
+    },
+    "tolerance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x0",
+        "y0",
+        "x1",
+        "y1"
+      ],
+      "properties": {
+        "x0": {
+          "const": 8
+        },
+        "y0": {
+          "const": 8
+        },
+        "x1": {
+          "const": 8
+        },
+        "y1": {
+          "const": 8
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "child_count"
+      ],
+      "properties": {
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "child_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        }
+      }
+    },
+    "group_1": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "상법 특례"
+            },
+            "child_count": {
+              "const": 6
+            }
+          }
+        }
+      ]
+    },
+    "group_2": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "공정거래법 특례"
+            },
+            "child_count": {
+              "const": 6
+            }
+          }
+        }
+      ]
+    },
+    "group_3": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "산업집적법 특례"
+            },
+            "child_count": {
+              "const": 1
+            }
+          }
+        }
+      ]
+    },
+    "group_4": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "세제 지원"
+            },
+            "child_count": {
+              "const": 12
+            }
+          }
+        }
+      ]
+    },
+    "group_5": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "자금 지원"
+            },
+            "child_count": {
+              "const": 9
+            }
+          }
+        }
+      ]
+    },
+    "group_6": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "연구개발 지원"
+            },
+            "child_count": {
+              "const": 2
+            }
+          }
+        }
+      ]
+    },
+    "group_7": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "고용안정 지원"
+            },
+            "child_count": {
+              "const": 2
+            }
+          }
+        }
+      ]
+    },
+    "group_8": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "중소중견 특별지원"
+            },
+            "child_count": {
+              "const": 1
+            }
+          }
+        }
+      ]
+    },
+    "group_9": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "대·중견 특별 지원"
+            },
+            "child_count": {
+              "const": 1
+            }
+          }
+        }
+      ]
+    },
+    "group_10": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/group"
+        },
+        {
+          "properties": {
+            "category": {
+              "const": "자산매각 지원"
+            },
+            "child_count": {
+              "const": 2
+            }
+          }
+        }
+      ]
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bbox_px",
+        "bbox_tolerance_px",
+        "headers",
+        "physical_row_count",
+        "groups"
+      ],
+      "properties": {
+        "bbox_px": {
+          "const": [
+            159,
+            245,
+            1496,
+            1985
+          ]
+        },
+        "bbox_tolerance_px": {
+          "$ref": "#/$defs/tolerance"
+        },
+        "headers": {
+          "const": [
+            "구 분",
+            "인센티브"
+          ]
+        },
+        "physical_row_count": {
+          "const": 43
+        },
+        "groups": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/group_1"
+            },
+            {
+              "$ref": "#/$defs/group_2"
+            },
+            {
+              "$ref": "#/$defs/group_3"
+            },
+            {
+              "$ref": "#/$defs/group_4"
+            },
+            {
+              "$ref": "#/$defs/group_5"
+            },
+            {
+              "$ref": "#/$defs/group_6"
+            },
+            {
+              "$ref": "#/$defs/group_7"
+            },
+            {
+              "$ref": "#/$defs/group_8"
+            },
+            {
+              "$ref": "#/$defs/group_9"
+            },
+            {
+              "$ref": "#/$defs/group_10"
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relation",
+        "semantic_role",
+        "note_count"
+      ],
+      "properties": {
+        "relation": {
+          "const": "below_table"
+        },
+        "semantic_role": {
+          "const": "explanatory_content"
+        },
+        "note_count": {
+          "const": 3
+        }
+      }
+    },
+    "footer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "semantic_role"
+      ],
+      "properties": {
+        "text": {
+          "const": "- 5 -"
+        },
+        "semantic_role": {
+          "const": "nonsemantic"
+        }
+      }
+    },
+    "native_term_assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted_native_term",
+        "rejected_ocr_term"
+      ],
+      "properties": {
+        "accepted_native_term": {
+          "const": "익금불산입"
+        },
+        "rejected_ocr_term": {
+          "const": "의금불산입"
+        }
+      }
+    },
+    "hard_negatives": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "no_42_categories",
+        "no_flattened_52_labels",
+        "no_same_line_single_child_merge",
+        "no_notes_or_footer_attachment",
+        "no_checked_state_inference",
+        "reject_surya_rowspans",
+        "reject_ocr_typo",
+        "do_not_detach_asset_sale_children",
+        "table_list_conflict_production_evidence"
+      ],
+      "properties": {
+        "no_42_categories": {
+          "const": true
+        },
+        "no_flattened_52_labels": {
+          "const": true
+        },
+        "no_same_line_single_child_merge": {
+          "const": true
+        },
+        "no_notes_or_footer_attachment": {
+          "const": true
+        },
+        "no_checked_state_inference": {
+          "const": true
+        },
+        "reject_surya_rowspans": {
+          "const": [
+            10,
+            8
+          ]
+        },
+        "reject_ocr_typo": {
+          "const": "의금불산입"
+        },
+        "do_not_detach_asset_sale_children": {
+          "const": true
+        },
+        "table_list_conflict_production_evidence": {
+          "const": "reject_parser_only_mixed_type_promotion"
+        }
+      }
+    }
+  }
+}

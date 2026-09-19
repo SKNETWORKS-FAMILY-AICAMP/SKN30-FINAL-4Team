@@ -1,0 +1,388 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/legacy_surya_layout_evaluation_v1.schema.json",
+  "title": "Legacy Surya layout evaluation envelope v1 (non-promotable)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_only",
+    "non_promotable",
+    "coordinate_status",
+    "ordering_status",
+    "notice_id",
+    "source_pdf_sha256",
+    "raw_json_sha256",
+    "stage_record_sha256",
+    "legacy_render_manifest_sha256",
+    "page_scope",
+    "page_count",
+    "format_variant",
+    "pages"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "legacy_surya_layout_evaluation/v1"
+    },
+    "evaluation_only": {
+      "const": true
+    },
+    "non_promotable": {
+      "const": true
+    },
+    "coordinate_status": {
+      "const": "legacy_surya_unverified"
+    },
+    "ordering_status": {
+      "const": "legacy_surya_traversal_unverified"
+    },
+    "notice_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "source_pdf_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "raw_json_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "stage_record_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "legacy_render_manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "page_scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 256
+      }
+    },
+    "page_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256
+    },
+    "format_variant": {
+      "const": "all_pages"
+    },
+    "pages": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/page"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bbox": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "number"
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page",
+        "legacy_block_index",
+        "legacy_label",
+        "canonical_label",
+        "bbox_px",
+        "legacy_traversal_order"
+      ],
+      "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+        },
+        "legacy_block_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "legacy_label": {
+          "enum": [
+            "Caption",
+            "Footnote",
+            "Equation",
+            "ListGroup",
+            "PageHeader",
+            "PageFooter",
+            "Picture",
+            "SectionHeader",
+            "Table",
+            "Text",
+            "Figure",
+            "Code",
+            "Form",
+            "TableOfContents",
+            "ChemicalBlock",
+            "Diagram",
+            "Bibliography",
+            "BlankPage"
+          ]
+        },
+        "canonical_label": {
+          "enum": [
+            "caption",
+            "footnote",
+            "equation",
+            "list_group",
+            "page_header",
+            "page_footer",
+            "picture",
+            "section_header",
+            "table",
+            "text",
+            "figure",
+            "code",
+            "form",
+            "table_of_contents",
+            "chemical_block",
+            "diagram",
+            "bibliography",
+            "blank_page"
+          ]
+        },
+        "bbox_px": {
+          "$ref": "#/$defs/bbox"
+        },
+        "legacy_traversal_order": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Caption"
+                },
+                "canonical_label": {
+                  "const": "caption"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Footnote"
+                },
+                "canonical_label": {
+                  "const": "footnote"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Equation"
+                },
+                "canonical_label": {
+                  "const": "equation"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "ListGroup"
+                },
+                "canonical_label": {
+                  "const": "list_group"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "PageHeader"
+                },
+                "canonical_label": {
+                  "const": "page_header"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "PageFooter"
+                },
+                "canonical_label": {
+                  "const": "page_footer"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Picture"
+                },
+                "canonical_label": {
+                  "const": "picture"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "SectionHeader"
+                },
+                "canonical_label": {
+                  "const": "section_header"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Table"
+                },
+                "canonical_label": {
+                  "const": "table"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Text"
+                },
+                "canonical_label": {
+                  "const": "text"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Figure"
+                },
+                "canonical_label": {
+                  "const": "figure"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Code"
+                },
+                "canonical_label": {
+                  "const": "code"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Form"
+                },
+                "canonical_label": {
+                  "const": "form"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "TableOfContents"
+                },
+                "canonical_label": {
+                  "const": "table_of_contents"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "ChemicalBlock"
+                },
+                "canonical_label": {
+                  "const": "chemical_block"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Diagram"
+                },
+                "canonical_label": {
+                  "const": "diagram"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "Bibliography"
+                },
+                "canonical_label": {
+                  "const": "bibliography"
+                }
+              }
+            },
+            {
+              "properties": {
+                "legacy_label": {
+                  "const": "BlankPage"
+                },
+                "canonical_label": {
+                  "const": "blank_page"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page",
+        "pixel_width",
+        "pixel_height",
+        "geometry_proposals"
+      ],
+      "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+        },
+        "pixel_width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "geometry_proposals": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/proposal"
+          }
+        }
+      }
+    }
+  }
+}

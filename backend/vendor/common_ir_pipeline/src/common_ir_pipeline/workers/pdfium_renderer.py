@@ -221,7 +221,11 @@ def _deref(value: Any) -> Any:
 
 
 def _page_tree_value(page: Any, key: str) -> Any:
-    """Resolve inherited page metadata, including /UserUnit explicitly."""
+    """Resolve an inheritable page-tree attribute.
+
+    PDF only makes a small set of page attributes inheritable.  Callers must
+    not use this helper for leaf-only entries such as ``/UserUnit``.
+    """
     current = page
     visited: set[tuple[int, int] | int] = set()
     while current is not None:
@@ -277,7 +281,7 @@ def _rotation(value: Any) -> int:
 
 def _user_unit(value: Any) -> float:
     # PDF 1.6 defines absent /UserUnit as exactly 1. The value is taken only
-    # after walking pypdf's actual page+ancestor dictionaries.
+    # from the leaf /Page dictionary because /UserUnit is not inheritable.
     if value is None:
         return 1.0
     number = _finite_number(_deref(value), label="/UserUnit")
@@ -307,7 +311,7 @@ def resolve_pdf_page_geometries(
     *,
     max_pages: int = _MAX_PAGES,
 ) -> tuple[ResolvedPdfPageGeometry, ...]:
-    """Resolve every page's inherited MediaBox/CropBox/Rotate/UserUnit."""
+    """Resolve inherited page geometry and each leaf page's direct UserUnit."""
     if not isinstance(source, bytes) or not source.startswith(b"%PDF-"):
         raise PdfiumRenderError("source must be PDF bytes with a %PDF- header")
     if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages < 1:
@@ -348,7 +352,7 @@ def resolve_pdf_page_geometries(
         result.append(ResolvedPdfPageGeometry(
             page=index, media_box=media, crop_box=_intersection(media, raw_crop),
             rotation=_rotation(_page_tree_value(page, "/Rotate")),
-            user_unit=_user_unit(_page_tree_value(page, "/UserUnit")),
+            user_unit=_user_unit(_deref(page.get("/UserUnit"))),
         ))
     return tuple(result)
 

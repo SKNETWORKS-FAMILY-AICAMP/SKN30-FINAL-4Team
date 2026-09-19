@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.pre-review.invalid/opendataloader_artifact_v1.schema.json",
+  "title": "OpenDataLoader artifact binding v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "notice_id", "source_pdf_sha256", "raw_json_sha256", "canonical_json_sha256", "parser", "source_page_count", "odl_page_count", "page_scope", "odl_page_to_source_page", "enumeration_mode", "coordinate_space"],
+  "properties": {
+    "schema_version": {"const": "opendataloader_artifact/v1"},
+    "notice_id": {"$ref": "#/$defs/trimmedString"},
+    "source_pdf_sha256": {"$ref": "#/$defs/sha256"},
+    "raw_json_sha256": {"$ref": "#/$defs/sha256"},
+    "canonical_json_sha256": {"$ref": "#/$defs/sha256"},
+    "parser": {"$ref": "#/$defs/parser"},
+    "source_page_count": {"type": "integer", "minimum": 1, "maximum": 256},
+    "odl_page_count": {"type": "integer", "minimum": 1, "maximum": 256},
+    "page_scope": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"type": "integer", "minimum": 1, "maximum": 256}},
+    "odl_page_to_source_page": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/pageMapping"}},
+    "enumeration_mode": {"const": "recursive_structure_candidates/v1"},
+    "coordinate_space": {"const": "odl_pdf_points_unverified"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "trimmedString": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)[\\s\\S]+$"},
+    "parser": {"type": "object", "additionalProperties": false, "required": ["name", "version", "config_sha256", "ocr_enabled"], "properties": {"name": {"const": "opendataloader-pdf"}, "version": {"$ref": "#/$defs/trimmedString"}, "config_sha256": {"$ref": "#/$defs/sha256"}, "ocr_enabled": {"const": false}}},
+    "pageMapping": {"type": "object", "additionalProperties": false, "required": ["odl_page", "source_page"], "properties": {"odl_page": {"type": "integer", "minimum": 1, "maximum": 256}, "source_page": {"type": "integer", "minimum": 1, "maximum": 256}}}
+  }
+}
