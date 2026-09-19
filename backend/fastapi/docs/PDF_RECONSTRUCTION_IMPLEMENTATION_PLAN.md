@@ -1,8 +1,10 @@
 # PDF 구조 복원 구현 계획
 
-- 상태: Opus 5 xhigh 아키텍처 리뷰와 Grok 4.6 xhigh 레드팀, 후속 독립 코드 감사 반영 계획 v0.7,
-  A0 입력·좌표 계약, A1 human-confirmed Gold, A2의 121019 native-first
-  alignment/reconstruction plan과 114788 held-out safety replay 완료; A3 context view가 다음 gate
+- 상태: Opus 5 xhigh 아키텍처 리뷰와 Grok 4.6 xhigh 레드팀, 후속 독립 코드 감사 반영 계획 v1.0.
+  A0 입력·좌표 계약, A1 human-confirmed Gold, A2 native-first reconstruction plan과
+  held-out safety replay를 완료했다. A2.5 `pdf_fragment_groups/v1`의 합성 계약·단위 회귀를
+  구현하고 114788 전체 7페이지 strict Surya replay를 완료했다. A3 textless context view와
+  114788 replay까지 완료했으며, 4건 corpus gate가 다음 단계다.
 - 기준일: 2026-09-19
 - 대상: native PDF text, Surya layout/OCR, OpenDataLoader 구조 결과를 이용한 PDF Common IR 전처리
 - 원칙: 기존 Common IR 및 Profile 산출물을 변경하기 전에 독립적인 shadow sidecar와 오프라인 회귀로 구조 품질을 증명한다.
@@ -90,7 +92,12 @@ immutable source PDF
              └─ rejected + diagnostic_only
                          │
                          ▼
+             pdf_fragment_groups/v1 evaluation sidecar
+          (A2.5 exact fragment consensus, IDs only)
+                         │
+                         ▼  strict disposition 확인; 구조 Gold 전에는 context-only
              pdf_context_groups/v1 evaluation sidecar
+             (A3 textless hypothesis index; no materialization)
                          │
                          ▼
            existing SourceBlock/context envelope projection
@@ -296,6 +303,10 @@ standalone validator와 canonical serializer는 plan 내부 정합성만 검사�
 - 하나의 Surya Text가 여러 ODL paragraph를 포함하면 ODL 경계로 분할한다.
 - ODL paragraph가 여러 Surya region/column/table을 가로지르면 분할 또는 reject한다.
 
+현재 A2.5 구현에서 ODL paragraph와 Surya `text` region의 native 집합 합의는
+`pdf_fragment_groups/v1`의 fragment 후보로만 기록한다. 이를 accepted paragraph,
+heading 또는 context parent로 해석하지 않는다.
+
 #### 목록
 
 - Surya `list_group`을 외곽 영역으로, ODL list/list item nesting을 논리 계층으로 사용한다.
@@ -454,13 +465,59 @@ Gold가 있는 fixture에서만 hard-negative로 판정한다.
 
 이 단계에서는 `pdf_native.py`, selector, worker queue, DB, Storage를 변경하지 않는다.
 
+### 단계 A2.5: strict paragraph-fragment consensus
+
+1. `fragment_groups.py`
+   - `multi_occurrence_leaf_unverified` ODL paragraph만 재검토
+   - ODL과 strict Surya `text` region이 동일한 native occurrence 집합을 제안할 때만
+     ID 기반 fragment group 생성
+   - 동일 페이지·원자 소유권·연속 substantive source order·유일 rectangular region·
+     material overlap 부재·competing paragraph 부재를 모두 요구
+2. `pdf_fragment_groups_v1.schema.json`
+   - `evaluation_only=true`, `non_promotable=true`
+   - semantic text, OCR 문자열, bbox, joiner를 저장하지 않음
+3. synthetic mutation 및 artifact-bound deterministic replay 회귀
+
+이 단계의 합의는 문단 복원 승인이 아니다. heading/parent/sibling/column/flow,
+목록·표, cross-page continuation, Common IR materialization은 다루지 않는다.
+실제 corpus 판정은 114788 전체 7페이지에서 source-bound strict Surya artifact로
+재생성·재생했다. strict fragment consensus는 8개 후보를 모두 거절했으며, 이 결과를
+문단 복원 실패가 아니라 A3가 별도 label-aware context 계약을 필요로 한다는 disposition으로
+고정한다.
+
 ### 단계 A3: context view와 평가 CLI
 
-1. `context_projection.py`
-   - 새 wire가 아니라 기존 SourceBlock/StructuralWorkUnit용 context membership projection
-2. `run_pdf_reconstruction_shadow.py`
-   - 외부 fixture root와 평가 output root를 인자로 받는 offline CLI
-3. input-size 및 over-merge/under-merge 보고서
+독립 설계 검토와 레드팀 결과, A3 v1은 문단을 합쳐 쓰는 materializer가 아니라
+**textless 문맥 가설 인덱스**로 한정한다.
+
+1. `context_groups.py`와 `pdf_context_groups_v1.schema.json`
+   - plan의 `partial/context_only` ODL unit을 각각 하나의 독립 group으로 투영
+   - A2.5에서 accepted된 fragment가 있으면 각각 하나의 독립 group으로 투영
+   - occurrence ID와 source unit/fragment ID만 보존하고 text, bbox, joiner, separator,
+     claim/coverage/value anchor를 저장하지 않음
+   - parent는 같은 페이지의 직접 parent가 `partial/context_only`일 때 구조 링크 하나만
+     보존하며 parent occurrence를 child group에 합치지 않음
+   - sibling, child, grandparent, nearest heading 자동 확장 금지
+   - table/list/container는 leaf와 병합하지 않는 독립 가설이며 selector materialization 금지
+2. deterministic replay
+   - 두 입력의 notice/source/page scope와 canonical digest를 결속
+   - persisted sidecar는 source/render/ODL/calibration/Surya까지 입력 replay를 통과한 뒤
+     context projection을 다시 생성해 canonical byte identity를 비교
+   - standalone validator는 계속 `internal_consistency_only`
+3. `run_pdf_context_projection.py`
+   - 검증을 마친 reconstruction plan·fragment groups와 create-only output 경로를 받는
+     offline CLI
+   - 상류 replay 완료에 대한 명시적 operator acknowledgement를 요구하지만, CLI 자체는
+     replay나 인증을 대신하지 않음
+   - 결과를 mode `0600`으로 생성하고 그룹 수, membership 수·중복도, parent suppression,
+     canonical hash·크기만 보고
+   - semantic text나 실제 selector packet, LLM 호출을 출력하지 않음
+
+114788의 기대값은 plan group 101개, fragment group 0개, aggregate membership 214개,
+unique native occurrence 129개, 최대 group membership 37개다. plan의 parent edge 78개 중
+77개는 diagnostic parent라 억제하고, 허용 가능한 direct parent link는 1개뿐이다. 그
+list item은 occurrence 한 개만 유지하며 16개 occurrence인 parent list 본문을 절대
+끌어오지 않는다.
 
 이 단계에서도 실제 selector packet과 LLM 호출은 생성하지 않는다.
 
@@ -574,15 +631,15 @@ Gold가 있는 fixture에서만 hard-negative로 판정한다.
   대신 production과 완전히 격리된 offline context-only vertical slice로 제한한다.
 - 2,048/1,024 token gate는 현재 selector가 UTF-8 byte budget을 사용하므로 보류한다. 향후
   tokenizer/version을 명시할 때 다시 도입한다.
-- cached 4건에 RunPod 재실행을 필수화하지 않는다. legacy bridge는 unverified 평가만 허용하고,
-  production 승격 시에만 canonical rerender/Surya rerun을 요구한다.
+- cached legacy 4건의 기존 평가를 재현하는 데 RunPod 재실행은 필수가 아니다.
+  114788 A2.5 corpus 검증에는 canonical rerender와 source-bound strict Surya rerun을
+  수행했다. 추가 corpus와 production 승격에는 동일한 lineage 검증을 반복해야 한다.
 
 ## 14. 구현 시작 판정
 
-리뷰 반영 후 구현 가능한 범위는 A0과 A1, 그리고 그것을 통과한 경우의 A2 최소 vertical
-slice다. A2는 textless·non-promotable structure candidate까지만 구현했고, 좌표 calibration과
-alignment 계약 검토 전에는 native alignment와 accepted unit 생성을 시작하지 않는다. A3 이후는 A2 결과를 검토한 뒤
-진행한다. C2와 production explicit table 승격은 이번 자동 구현 범위에 포함하지 않는다.
+A0~A2와 A2.5 합성 계약·단위 회귀, 114788 source-bound strict Surya corpus replay,
+A3 textless context hypothesis 계약·replay까지 구현했다. 다음은 4건 corpus gate다.
+C2와 production explicit table 승격은 이번 자동 구현 범위에 포함하지 않는다.
 
 ## 15. 2026-09-19 구현 결과와 다음 gate
 
@@ -657,9 +714,10 @@ Surya도 5페이지 45영역으로 replay하여 같은 금지를 확인했다.
   - 이 proof는 별도 `opendataloader_coordinate_calibration/v1`이며 기존
     `opendataloader_artifact/v1`의 `odl_pdf_points_unverified` 값을 변경하지 않음
 
-Common IR 패키지 전체 회귀는 JUnit 기준 232 testcase 중 231건 통과, build-capable CI 전용
-wheel 검증 1건 정상 skip으로 완료했다. pytest 수집 기준은 138개 test function이며 unittest
-subtest가 JUnit testcase로 각각 집계된다.
+Common IR 패키지 표준 소스 회귀는 JUnit 기준 243 testcase 중 242건 통과, build-capable
+wheel 검증 1건 정상 skip으로 완료했다. pytest 수집 기준은 146개 test function이며 unittest
+subtest가 JUnit testcase로 각각 집계된다. 같은 wheel 검증을 `COMMON_IR_VERIFY_WHEEL=1`인
+빌드 가능 환경에서 별도로 실행해 신규 PDF fusion schema가 wheel에 포함되는 것도 통과했다.
 
 독립 코드 리뷰·레드팀에서 잘못 상속한 `/UserUnit`, cached-run producer identity, source
 binding, path traversal, runtime/schema parity, 중심점-only gate와 무제한 duplicate collapse를
@@ -687,6 +745,13 @@ binding, path traversal, runtime/schema parity, 중심점-only gate와 무제한
   - standalone 검증은 `internal_consistency_only`로 명시하고, 신뢰 경계에서는 모든 입력을
     재검증·재생성하는 `validate_reconstruction_plan_against_inputs`의 byte identity를 요구
   - native text 0건은 `requires_ocr_semantic_v2`로 표시하고 ownership gate 실패 처리
+- exact fragment consensus용 `pdf_fragment_groups/v1`
+  - `multi_occurrence_leaf_unverified` ODL paragraph와 strict Surya `text` region이 동일한
+    native occurrence 집합을 제안할 때만 ID 기반 후보를 생성
+  - 동일 페이지, 원자 소유권, 연속 source order, 직사각형 region, material overlap·경쟁
+    proposal 부재를 모두 fail-closed로 요구
+  - textless·evaluation-only·non-promotable이며 문단/Common IR로 승격하지 않음
+  - 합성 fixture 집중 회귀 8개와 artifact-bound deterministic replay 검증을 통과
 
 실제 `121019 page 5` 외부 원본을 strict native capture와 current canonical renderer로 다시
 처리한 결과는 다음과 같다. 비재현 review attestation fingerprint만 저장소에 두고 원문
@@ -741,28 +806,83 @@ human-confirmed structural Gold도 없다. 특히 page 3과 page 4 표의 cross-
 아직 context 관계로 정의하지 않았다. 따라서 문단·표 복원 품질과 production 승격은 모두
 미승인 상태다.
 
+같은 114788 canonical render 7페이지를 RunPod Surya 0.22.1에 전달해 strict
+`surya_layout_artifact/v1`을 생성한 뒤 A2.5를 artifact-bound replay했다. 64개 region과
+모든 page/sidecar/hash/좌표 결속은 검증을 통과했지만, exact fragment consensus는 다음처럼
+fail-closed했다.
+
+| A2.5 지표 | 결과 |
+| --- | ---: |
+| eligible ODL paragraph | 8 |
+| accepted fragment group | 0 |
+| rejected: non-contiguous substantive order | 3 |
+| rejected: no unique Surya `text` region | 5 |
+
+연속 순서인 5개 후보의 가장 가까운 region label은 `text` 1개, `list_group` 3개,
+`table` 1개였다. 경계 부족분은 0~11.002px였으나, 유일한 `text` 후보도 다른 native
+occurrence를 함께 포함했다. 따라서 tolerance만 늘려 승인하면 안 된다. `text` label과
+exact native-set veto는 A2.5에 유지하고, `list_group`·`table`은 A3의 context-only
+가설로 분리한다.
+
+나머지 non-contiguous 3개는 장식·빈 atom이 아니라 표의 좌·우 sibling cell 문자열이
+native source order에서 교대로 나타난 경우였다. 각 ODL paragraph는 자기 cell의 첫 줄도
+누락한 under-complete 후보였다. global contiguity를 완화하지 않고, 향후 별도 table-aware
+계약에서 cell 전체 membership과 좌측 label 관계가 검증될 때까지 diagnostic-only로 둔다.
+
+이 실행의 producer config는 평가 config와 일치하지만 `worker_image_digest` 값은 실제 OCI
+manifest digest임이 증명되지 않은 legacy digest-shaped identifier다. 그러므로 결과는
+`evaluation_only=true`, `non_promotable=true` 범위에서만 사용하며 production provenance나
+Common IR 승격 근거로 사용하지 않는다. 원문 없는 frozen disposition은
+`strict_fragment_consensus_114788_full.fingerprint.v1.json`에 기록했다.
+
+A3 `pdf_context_groups/v1`은 이 입력에서 다음과 같이 재생됐다.
+
+| A3 지표 | 결과 |
+| --- | ---: |
+| plan context group | 101 |
+| accepted fragment context group | 0 |
+| aggregate / unique occurrence membership | 214 / 129 |
+| group당 최대 reference | 37 |
+| 허용 direct parent link | 1 |
+| diagnostic parent link 억제 | 77 |
+| canonical JSON size | 44,496 bytes |
+
+이 결과는 101개 unit을 병합한 것이 아니다. 각 unit을 별도 textless 가설로 보존했고,
+parent는 ID link만 남겼으며 parent의 occurrence는 child에 추가하지 않았다. 원문 문자열,
+bbox, joiner, heading 추론, sibling 확장, selector/LLM payload는 생성하지 않았다. canonical
+SHA와 지표는 같은 frozen fingerprint에 함께 기록했다.
+
 ### 15.2 아직 구현하지 않은 것
 
+- 121019와 추가 corpus의 source-bound strict Surya artifact 생성·replay
+- heading/list/table/section, column·flow·hard-boundary conflict 결합
 - 114788의 human-confirmed structural Gold와 cross-page continuation 품질 판정
-- strict Surya와 ODL의 자동 conflict-region 결합
-- `pdf_context_groups/v1`
+- 문단/context materialization과 selector byte/work budget gate
 - Common IR block 생성 또는 교체
 - Existing/Request selector와 LLM 입력 연결
 - worker queue, DB, Storage, 공개 API 변경
-- OpenDataLoader의 운영용 격리 runtime 배포와 RunPod 재실행
+- OpenDataLoader 운영용 격리 runtime 배포
 
-따라서 현재 구현은 PDF 구조 품질을 production에서 고쳤다고 주장하지 않는다. 원문 유실 없이
-parser 구조를 비교할 수 있는 shadow alignment와 ownership ledger까지 만든 상태다.
+현재 구현은 shadow alignment·ownership ledger, exact-fragment consensus와 textless context
+hypothesis 계약, 114788 실제 7페이지 replay까지 만든 상태다. 문단·표 materialization 품질과
+production 승격은 여전히 미승인이다.
 
 ### 15.3 다음 진행 조건
 
 1. 완료: ODL 좌표 convention을 Rotate/CropBox/UserUnit fixture로 calibration했다.
 2. 완료: native-first alignment와 ownership ledger를 121019에서 검증했다.
 3. 완료: 114788 held-out에서 같은 판정 규칙과 artifact-bound deterministic replay를 검증했다.
-4. strict Surya conflict input 계약을 별도 정의한다.
-5. 기존 list-run 확장을 재사용하지 않는 bounded `pdf_context_groups/v1`을 설계한다.
-6. 4건 corpus의 의미·구조 회귀를 통과하기 전에는 Common IR/selector/runtime에 연결하지
+4. 완료(합성 fixture): strict ODL paragraph와 Surya `text` region의 exact fragment
+   consensus 계약을 구현했다.
+5. 완료(114788): strict Surya artifact를 재생성하고 `pdf_fragment_groups/v1`
+   deterministic replay와 fail-closed disposition을 동결했다.
+6. 완료(114788): `partial/context_only` unit과 accepted fragment를 병합 없이 투영하는
+   bounded `pdf_context_groups/v1`을 구현·재생했다.
+7. 121019를 포함한 4건 corpus에서 context coverage, over/under-merge와 byte/work budget을
+   판정한다. 이를 통과하기 전에는
+   Common IR/selector/runtime에 연결하지
    않는다.
 
-현재 단계는 cached artifact만 사용하므로 RunPod worker는 계속 꺼 둬도 된다. 신규 Surya
-artifact를 재생성하는 단계 D에 들어갈 때만 다시 기동한다.
+114788 strict artifact는 확보했으므로 이 문서의 A3 설계·로컬 replay 동안 RunPod는 꺼도
+된다. 추가 corpus artifact를 생성할 때만 다시 기동하면 된다. cached legacy Surya 결과는
+strict 입력을 대신할 수 없다.

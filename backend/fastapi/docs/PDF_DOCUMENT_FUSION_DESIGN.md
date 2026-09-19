@@ -397,6 +397,17 @@ p50/p95/p99를 측정해 lease, polling, `executionTimeout`, `ttl`을 함께 정
 | 9 | Request PDF | 별도 실제 corpus와 frontend/OpenAPI/MIME 계약 승인 전 NO-GO |
 | 10 | OCR semantic Common IR v2 | 별도 RFC/schema/migration/privacy/UI 승인 전 NO-GO |
 
+`pdf_fragment_groups/v1`은 Stage 8의 context group sidecar가 아니라 그 전 단계의
+exact-fragment consensus다. 이것만으로 Stage 8 GO 조건이나 문단 복원 품질을
+충족했다고 판단하지 않는다.
+
+114788 전체 7페이지 strict Surya replay에서는 eligible ODL paragraph 8개가 모두
+fail-closed됐다. 3개는 표 sibling cell의 substantive native atom이 source order 사이에
+끼고 자기 cell 첫 줄도 누락한 후보였으며, 나머지 5개는 유일한 exact `text` region 합의를
+얻지 못했다. 따라서 A2.5의 contiguity·`text` label·exact native-set gate를 완화하지 않는다.
+Stage 8 A3는 `partial/context_only` unit과 accepted fragment를 원문 없는 독립 가설로
+투영하되, parent occurrence·sibling·header를 자동 확장하지 않는 별도 계약으로 진행한다.
+
 현재 코드는 pinned `pdf-inspector` native replay와 stage-2 contract에 더해,
 `pypdfium2==5.13.0`·PDFium `153.0.7999.0`·`pypdf==6.18.1`·
 `Pillow==12.3.0`으로 고정된 실제 200-DPI CPU renderer 및 Stage 4A의 provider-neutral

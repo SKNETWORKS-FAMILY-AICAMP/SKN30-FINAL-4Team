@@ -295,3 +295,129 @@ current staged selector unchanged. Its existing complete-list-run expansion
 can pull an entire long list back into one model call. A later versioned
 context policy must cap context to the claim leaf, at most one immediate
 parent, and at most one nearest heading, with no sibling expansion.
+
+### Exact ODL-Surya fragment consensus (A2.5, evaluation only)
+
+`pdf_fragment_groups/v1` is a textless, non-promotable prerequisite for the
+evaluation-only `pdf_context_groups/v1`. It is not paragraph reconstruction
+and does not change Common IR.
+
+The builder reconsiders only OpenDataLoader `paragraph` units that the
+reconstruction plan rejected as `multi_occurrence_leaf_unverified`. A fragment
+group is emitted only when all of the following hold:
+
+- the reconstruction plan passes artifact-bound deterministic replay;
+- a strict `surya_layout_artifact/v1` is bound to the same source, render
+  manifest, producer identity, logical compute key, and exact page scope;
+- two or more native occurrences are on one page, retain their atomic native
+  owners, and are consecutive in substantive native source order;
+- exactly one rectangular Surya `text` region contains exactly the same native
+  occurrence set as the ODL paragraph;
+- no other substantive native occurrence materially overlaps that region, no
+  broader competing Surya `text` region contains the proposal, and no
+  competing ODL paragraph shares any member occurrence.
+
+The sidecar stores lineage hashes, page scope, native/ODL/Surya IDs, rejection
+reason codes, and aggregate metrics. It stores no semantic text, OCR string,
+bbox, or generated joiner. It does not infer a paragraph boundary, heading,
+parent, sibling, column, list, table, reading flow, or cross-page continuation.
+
+`validate_pdf_fragment_groups` checks an already decoded JSON-derived mapping
+for internal consistency only; it is not a bounded raw-byte JSON parser. A
+future persisted-artifact reader must reject oversized/deep JSON and duplicate
+keys before calling it. A sidecar received from outside the trusted process
+must also pass
+`validate_pdf_fragment_groups_against_inputs`, which revalidates all inputs,
+rebuilds the result deterministically, and requires canonical byte identity.
+
+This contract does not create Common IR blocks, selector context, model input,
+DB/Storage artifacts, or runtime output.
+
+The source-bound seven-page 114788 evaluation replay produced 64 canonical
+Surya regions and passed render/page/sidecar/hash/coordinate validation. All
+eight eligible ODL paragraphs failed closed: five had no unique exact `text`
+region and three interleaved substantive sibling table-cell occurrences in
+native source order. The closest visual regions for four of the five
+contiguous proposals were `list_group` or `table`, not `text`; the sole nearby
+`text` region also contained an extra native occurrence. Increasing geometry
+tolerance or accepting structural labels as paragraph evidence would therefore
+be unsafe. The frozen, textless disposition is recorded in
+`backend/baselines/pdf_reconstruction/strict_fragment_consensus_114788_full.fingerprint.v1.json`.
+
+That run remains evaluation-only. Its producer config is bound, but its legacy
+digest-shaped worker identifier has not been proven to be an OCI manifest
+digest. It is not production provenance and cannot promote Common IR. Actual
+reconstruction quality remains NO-GO until a separate bounded context contract
+and structural-Gold corpus gates pass.
+
+### Textless context hypothesis index (A3, evaluation only)
+
+`pdf_context_groups/v1` projects every reconstruction-plan
+`partial/context_only` ODL unit and every accepted A2.5 fragment into separate,
+non-promotable hypotheses. It does not merge competing interpretations or
+materialize a paragraph.
+
+Each group stores only input hashes, page, hypothesis/source IDs, native
+occurrence IDs, and at most one direct structural-parent ID. A parent ID is
+retained only when that immediate parent is itself `partial/context_only` on
+the same page. Parent occurrences are never copied into the child. The format
+has no semantic text, bbox, joiner, separator, inferred heading, sibling or
+child expansion, claim, coverage, or value anchor.
+
+Standalone validation authenticates no upstream bytes. A persisted result is
+usable for evaluation only after the reconstruction plan and fragment groups
+have each crossed their full source-artifact replay boundary, followed by
+`validate_pdf_context_groups_against_inputs` canonical replay of the immediate
+inputs. The normal builder fails closed above 25,000 groups, 256 references per
+group, or 500,000 aggregate memberships.
+
+The 114788 replay produced 101 independent plan hypotheses, zero fragment
+hypotheses, 214 aggregate memberships over 129 unique native occurrences, and
+one permitted direct-parent link. Seventy-seven links to diagnostic parents
+were suppressed. The largest standalone hypothesis has 37 references; it was
+not expanded into any child and was not sent to a selector or LLM. The
+canonical 44,496-byte result digest and metrics are frozen in the same
+`strict_fragment_consensus_114788_full.fingerprint.v1.json` attestation.
+
+This is a hypothesis index, not a model-input policy. Production connection
+remains NO-GO until the four-document structural corpus and explicit
+byte/work-budget gates pass.
+
+After both immediate inputs have already passed their complete upstream
+source-artifact replay validators, create the offline projection with:
+
+```bash
+backend/.venv/bin/python backend/scripts/run_pdf_context_projection.py \
+  --reconstruction-plan /path/to/reconstruction_plan.v1.json \
+  --fragment-groups /path/to/fragment_groups.v1.json \
+  --output /path/to/context_groups.v1.json \
+  --acknowledge-upstream-replay
+```
+
+The acknowledgement is mandatory and does not perform authentication. The
+CLI reads bounded regular JSON files, rejects duplicate keys and non-finite
+numbers, creates the output exclusively with mode `0600`, and prints only a
+content hash, size, schema/policy versions, and aggregate metrics. It never
+prints source text or the output pathname. The command is Linux/WSL-only. The
+output parent must already exist, be owned by the effective user, and have no
+group/other write bits; the CLI enforces those direct-parent checks. Its
+ancestor path must also be trusted or sticky-protected (for example, a private
+directory below `/tmp`). Repeated inode checks narrow accidental same-owner
+replacement races, but cannot make a directory shared with a hostile process
+under the same uid safe after the command returns.
+
+From the repository root, run the focused and package-wide regressions with:
+
+```bash
+PYTHONPATH=backend/vendor/common_ir_pipeline/src \
+  backend/.venv/bin/python -m pytest -q \
+  backend/vendor/common_ir_pipeline/tests/test_fragment_groups.py \
+  backend/vendor/common_ir_pipeline/tests/test_context_groups.py
+
+PYTHONPATH=backend/vendor/common_ir_pipeline/src \
+  backend/.venv/bin/python -m pytest -q \
+  backend/vendor/common_ir_pipeline/tests
+
+backend/.venv/bin/python -m pytest -q \
+  backend/tests/test_run_pdf_context_projection.py
+```
