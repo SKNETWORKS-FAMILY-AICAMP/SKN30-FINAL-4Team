@@ -168,14 +168,20 @@ class _ReconciliationOnlyAccelerator:
         raise RuntimeError("preflight accelerator cancellation is forbidden")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Accelerator-only persistent-Surya signed-Storage E2E; it does not "
-            "write application database state or delete Storage objects."
-        )
-    )
-    parser.add_argument("--artifact-root", type=Path, required=True)
+def add_e2e_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    include_artifact_root: bool = True,
+) -> None:
+    """Add the bounded persistent-Surya operator arguments to ``parser``.
+
+    A corpus-export wrapper supplies its already-validated ``case-root/render``
+    directory as the artifact root, so it deliberately omits the
+    user-controlled ``--artifact-root`` input.
+    """
+
+    if include_artifact_root:
+        parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--runpod-config-json", type=Path, required=True)
     parser.add_argument("--runpod-api-client-config", type=Path, required=True)
     parser.add_argument(
@@ -195,6 +201,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--http-timeout-seconds", type=float, default=30.0)
     parser.add_argument("--poll-timeout-seconds", type=float)
     parser.add_argument("--poll-interval-seconds", type=float, default=2.0)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Accelerator-only persistent-Surya signed-Storage E2E; it does not "
+            "write application database state or delete Storage objects."
+        )
+    )
+    add_e2e_arguments(parser)
     return parser
 
 
@@ -585,10 +601,18 @@ def run_e2e(
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     accepted_artifact: Callable[[SuryaLayoutArtifact], None] | None = None,
+    expected_source_sha256: str | None = None,
 ) -> SafeE2EOutcome:
     """Execute the bounded operator flow; injectable ports keep tests offline."""
 
     manifest = _load_render_manifest(args.artifact_root)
+    if expected_source_sha256 is not None:
+        if (
+            not isinstance(expected_source_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_source_sha256) is None
+            or manifest.source_pdf_sha256 != expected_source_sha256
+        ):
+            raise PersistentSuryaE2EError("local_artifact_invalid")
     settings = _load_runpod_settings(args.runpod_config_json)
     caps = _resource_caps(settings, manifest)
     capability_ttl_seconds = _capability_ttl_seconds(settings)

@@ -458,7 +458,24 @@ split 검증기는 선정 계약·source baseline·blind reveal의 결속만 확
 실행할 수 없는 상태다. v1이 주장할 수 있는 범위도 2-occurrence paragraph, 번호형 단일행 heading→다음 paragraph, span 없는
 page-local grid, 인접 페이지 `between_rows` continuation뿐이다. clean-negative를 포함해
 Gold가 없는 범위를 N/A나 평균 점수로 상쇄하지 않는다. split 검증에는 RunPod가 필요 없고,
-다음 단계에서 source-bound canonical render와 strict Surya layout artifact를 새로 생성한다.
+공개 네 case의 source-bound canonical render는 다음 A4.6 준비 단계에서 생성했다. 실제
+strict Surya layout artifact와 sealed blind artifact는 아직 생성해야 한다.
+
+### A4.6 공개 case의 strict Surya export 경계
+
+2026-09-20에 `104102`, `124791`, `121019`, `115310` 네 공개 case의 전체 native capture와
+canonical render를 split/source baseline에 결속해 로컬 preflight했다. 각각 14, 8, 5, 3개
+render page가 원문 SHA와 manifest에 맞는지 확인했다. 이 단계는 네트워크 호출을 하지 않았고
+`surya/` 결과도 만들지 않았다.
+
+`backend/scripts/export_pdf_primary_corpus_surya_artifact.py`는 이 preflight를 실제 persistent
+RunPod E2E 직전과 결과 publish 직전에 반복하고, 콜백 artifact의 producer·logical key·전체
+page·render lineage를 독립적으로 재검증한다. 결과는 case별
+`surya/surya_layout_artifact.json`에 create-only로 저장한다. blind reveal은 받지 않으며,
+Gold나 품질 판정도 읽지 않는다. 구현·보안 리뷰와 64개 단위·계약 테스트는 통과했지만,
+RunPod이 꺼진 상태라 위 네 case의 실제 strict Surya artifact 생성은 아직 수행하지 않았다.
+운영 명령과 cache/journal 제한은 `backend/prereview_runpod_worker/README.md`의
+"A4.5 공개 평가 코퍼스 결과 저장" 절을 따른다.
 
 ## 6. 검증과 제한
 

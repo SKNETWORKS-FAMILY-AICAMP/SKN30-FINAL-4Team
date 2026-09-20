@@ -5,7 +5,8 @@
   held-out safety replay를 완료했다. A2.5 `pdf_fragment_groups/v1`의 합성 계약·단위 회귀를
   구현하고 114788 전체 7페이지 strict Surya replay를 완료했다. A3 textless context view와
   114788 replay, A4.1~A4.3의 좁은 paragraph·heading·table grid·between-rows 평가 계약을
-  완료했다. A4.5의 6건 immutable split을 동결했으며, held-out Gold와 strict artifact 생성이
+  완료했다. A4.5의 6건 immutable split을 동결했고, A4.6 공개 case exporter와 네 case의
+  native/render preflight를 완료했다. 실제 strict Surya artifact와 held-out Gold 생성이
   다음 단계다.
 - 기준일: 2026-09-20
 - 대상: native PDF text, Surya layout/OCR, OpenDataLoader 구조 결과를 이용한 PDF Common IR 전처리
@@ -644,7 +645,8 @@ list item은 occurrence 한 개만 유지하며 16개 occurrence인 parent list 
 
 A0~A2와 A2.5 합성 계약·단위 회귀, 114788 source-bound strict Surya corpus replay,
 A3 textless context hypothesis 계약·replay, A4.1~A4.3 평가 vertical slice와 A4.5 split
-동결까지 구현했다. 다음은 held-out artifact·Gold 생성과 corpus gate다.
+동결, A4.6 공개 case exporter까지 구현했다. 다음은 실제 strict Surya artifact·Gold 생성과
+corpus gate다.
 C2와 production explicit table 승격은 이번 자동 구현 범위에 포함하지 않는다.
 
 ## 15. 2026-09-19 구현 결과와 다음 gate
@@ -860,7 +862,8 @@ SHA와 지표는 같은 frozen fingerprint에 함께 기록했다.
 
 ### 15.2 아직 구현하지 않은 것
 
-- 104102·124791·clean-negative·sealed blind와 121019의 source-bound strict artifact 생성·replay
+- 104102·124791·121019·clean-negative의 실제 strict Surya artifact 생성·replay
+- sealed blind의 reveal 이후 source-bound native/render/strict artifact 생성·replay
 - heading/list/table/section, column·flow·hard-boundary conflict 결합
 - held-out과 clean-negative의 human-confirmed partial structural Gold
 - 문단/context materialization과 selector byte/work budget gate
@@ -870,8 +873,9 @@ SHA와 지표는 같은 frozen fingerprint에 함께 기록했다.
 - OpenDataLoader 운영용 격리 runtime 배포
 
 현재 구현은 shadow alignment·ownership ledger, exact-fragment consensus와 textless context
-hypothesis 계약, 114788 실제 7페이지 replay까지 만든 상태다. 문단·표 materialization 품질과
-production 승격은 여전히 미승인이다.
+hypothesis 계약, 114788 실제 7페이지 replay, 공개 case의 안전한 export 경계까지 만든
+상태다. 104102·124791·121019·115310은 native/render preflight만 통과했고 실제 Surya 결과는
+아직 없다. 문단·표 materialization 품질과 production 승격은 여전히 미승인이다.
 
 ### 15.3 다음 진행 조건
 
@@ -884,12 +888,18 @@ production 승격은 여전히 미승인이다.
    deterministic replay와 fail-closed disposition을 동결했다.
 6. 완료(114788): `partial/context_only` unit과 accepted fragment를 병합 없이 투영하는
    bounded `pdf_context_groups/v1`을 구현·재생했다.
-7. 동결한 6건 split에서 선언된 scope별 exact 구조 평가, context coverage,
+7. 완료(공개 4건): 104102·124791·121019·115310의 source-bound native capture와 canonical
+   render를 split에 결속해 preflight하고, create-only strict Surya exporter를 구현했다.
+8. 대기: deterministic Storage cache miss이면 RunPod을 기동해 공개 4건 strict artifact를
+   실제 생성한다.
+9. 대기: 승인된 blind reveal 환경에서 sealed case의 source-bound native/render/strict
+   artifact를 생성하고, 공개·봉인 case의 선언 scope에 필요한 Gold를 확정한다.
+10. 대기: 모든 6건의 artifact와 Gold가 준비되면 exact 구조 평가, context coverage,
    over/under-merge와 byte/work budget을
    판정한다. 이를 통과하기 전에는
    Common IR/selector/runtime에 연결하지
    않는다.
 
 114788 strict artifact는 확보했으므로 이 문서의 A3 설계·로컬 replay 동안 RunPod는 꺼도
-된다. 추가 corpus artifact를 생성할 때만 다시 기동하면 된다. cached legacy Surya 결과는
-strict 입력을 대신할 수 없다.
+된다. 추가 corpus artifact에 유효한 deterministic Storage cache가 없을 때만 다시 기동하면
+된다. cached legacy Surya 결과는 strict 입력을 대신할 수 없다.

@@ -419,6 +419,53 @@ stdout는 `mode`, `operator`, `disposition`, `reason_code`, 선택적 `provider_
 
 계약의 `SuryaLayoutReconciliationHandle`은 trusted render lineage, pinned producer, logical key와 deterministic result binding만 담는 credential-free 영속화 단위다. signed URL, provider status, request digest와 capability는 담지 않는다. 이 스크립트는 동일한 프로세스 안에서는 initial submit의 불확실한 `infra_retryable`(job ID 없음 포함) 또는 deadline 직전에 이 handle로 deterministic result를 reconcile하고, logical key를 persistent API job ID로 사용해 deadline까지 poll한다. 다만 handle·external job ID·lease를 파일/DB에 저장하지 않으므로 operator 프로세스나 Pod가 재시작되면 이 실행을 이어서 reconcile하지 않는다. Production worker는 dispatch 전에 handle과 external job ID 및 DB lease/fence를 durable state에 함께 저장하고 restart 후 이를 사용해 result를 reconcile해야 한다.
 
+### 6.1.1. A4.5 공개 평가 코퍼스 결과 저장
+
+`backend/scripts/export_pdf_primary_corpus_surya_artifact.py`는 A4.5 split에 공개된 한 case의
+native capture와 canonical render를 다시 검증하고, 위 persistent signed-Storage E2E가 반환한
+strict Surya 결과를 다음 고정 경로에 한 번만 생성한다.
+
+```text
+<CASE_ROOT>/surya/surya_layout_artifact.json
+```
+
+blind reveal은 입력으로 받지 않는다. `case_id`는 tracked split의 공개 case여야 하고,
+source PDF·전체 render page·native capture·Common IR과 split/source baseline의 결속이 모두
+맞아야 네트워크 단계로 넘어간다. 새 결과 디렉터리는 mode `0700`으로 만들고, 기존
+디렉터리는 현재 사용자 소유이면서 group/world-write가 없어야 한다. 결과 파일은 `0600`으로
+만들며, 이미 결과가 있으면 덮어쓰지 않고 실패한다.
+
+```bash
+cd /home/paim/Project/SKN30-FINAL-4Team
+backend/.venv/bin/python \
+  backend/scripts/export_pdf_primary_corpus_surya_artifact.py \
+  --split backend/baselines/pdf_reconstruction/primary_corpus_split_a45.v1.json \
+  --expected-split-sha256 d6820fbe176df095cbd09e3faf56568167243b9db990982f295243d50f49fd51 \
+  --source-baseline backend/baselines/pdf_fusion/bizinfo_existing_100.v1.json \
+  --case-id held-out-104102 \
+  --case-root .runtime/evaluations/pdf-primary-corpus-a45/cases/PBLN_000000000104102 \
+  --runpod-config-json .runtime/runpod-e2e/config.json \
+  --runpod-api-client-config .runtime/runpod-e2e/api-client.json \
+  --runpod-bearer-token-file .runtime/prereview-surya-api-token \
+  --storage-bucket request-temp \
+  --supabase-runtime-env .runtime/supabase-dev/.env \
+  --poll-timeout-seconds 180
+```
+
+공개 case ID는 `tuning-114788`, `known-regression-121019`, `held-out-104102`,
+`held-out-124791`, `negative-control-115310`이다. 각 `case_root`는 해당 notice의 실제
+source/native/render lineage에 결속된 evidence root여야 한다. stdout의
+`{"status":"exported"}`는 검증된 artifact를
+로컬에 저장했다는 뜻이다. 같은 logical compute key에 대응하는 유효한 deterministic
+Storage 결과가 이미 있으면 이를 재검증해 사용할 수 있으므로, 이 문구가 새 RunPod 추론을
+증명하지는 않는다. RunPod은 cache miss일 때만 켜져 있으면 된다.
+
+persistent journal에 terminal record가 남아 있는데 대응하는 Storage result가 사라진 경우,
+같은 logical key의 재요청은 기존 terminal job에 고정되어 결과를 다시 만들지 못하고 timeout이
+날 수 있다. `max_records` 도달 문제와 함께 운영 retention 대상으로 관리해야 한다. 임의로
+journal record를 삭제하지 말고, deterministic result와 EC2의 durable 실행 이력을 대조해
+감사 저장소로 옮긴 뒤 승인된 정리 절차를 수행한다.
+
 ## 6.2. Existing PDF one-shot 운영자 경로
 
 `backend/scripts/run_existing_pdf_one_shot.py`는 공개 Request 업로드 API가 아니라, 외부에서

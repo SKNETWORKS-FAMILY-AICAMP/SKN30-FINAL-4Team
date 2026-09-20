@@ -151,6 +151,22 @@ def _args(tmp_path: Path) -> object:
     ])
 
 
+def test_expected_source_digest_rejects_before_settings_or_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _args(tmp_path)
+    manifest = e2e._load_render_manifest(args.artifact_root)
+    monkeypatch.setattr(
+        e2e,
+        "_load_runpod_settings",
+        lambda _: pytest.fail("settings/network path must not run"),
+    )
+
+    with pytest.raises(e2e.PersistentSuryaE2EError, match="local_artifact_invalid"):
+        e2e.run_e2e(args, expected_source_sha256=("0" * 64 if manifest.source_pdf_sha256 != "0" * 64 else "1" * 64))
+
+
 @pytest.mark.parametrize("mode", [0o400, 0o644, 0o660])
 def test_bearer_token_requires_private_current_user_file(tmp_path: Path, mode: int) -> None:
     token = tmp_path / "runpod.token"
